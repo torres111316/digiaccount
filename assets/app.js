@@ -1,0 +1,6455 @@
+﻿/* =========================================================
+   DigiAccount ERP — App (Dashboard Central + Módulo Fiscal)
+   HTML/CSS/JS puro · sin dependencias de framework
+   ========================================================= */
+(function () {
+  'use strict';
+
+  /* ---------- Iconos ---------- */
+  function drawIcons() { if (window.lucide) lucide.createIcons(); }
+  drawIcons();
+
+  /* ---------- Seguridad: escape de HTML ----------
+     Convierte texto en texto plano seguro antes de insertarlo con innerHTML.
+     REGLA: todo dato que escriba el usuario (nombres, RIF, emails, montos
+     escritos a mano…) debe pasar por esc() al construir HTML. Cuando se
+     conecte el backend (Supabase), esto evita XSS almacenado entre usuarios. */
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+  window.esc = esc;
+
+  /* =========================================================
+     SIDEBAR COLLAPSE
+     ========================================================= */
+  const app = document.getElementById('app');
+  const collapseBtn = document.getElementById('collapseBtn');
+  if (collapseBtn) {
+    collapseBtn.addEventListener('click', () => {
+      app.dataset.collapsed = app.dataset.collapsed === 'true' ? 'false' : 'true';
+    });
+  }
+
+  /* =========================================================
+     ENTITY SWITCHER
+     ========================================================= */
+  const sw = document.getElementById('entitySwitcher');
+  const dd = document.getElementById('entityDropdown');
+  if (sw && dd) {
+    sw.addEventListener('click', (e) => {
+      if (e.target.closest('.entity-dropdown')) return;
+      dd.dataset.open = dd.dataset.open === 'true' ? 'false' : 'true';
+    });
+    document.addEventListener('click', (e) => {
+      if (!sw.contains(e.target)) dd.dataset.open = 'false';
+    });
+
+    function bindEntityOption(opt) {
+      opt.addEventListener('click', (e) => {
+        e.stopPropagation();
+        document.querySelectorAll('.entity-option').forEach((o) => o.removeAttribute('data-active'));
+        opt.dataset.active = 'true';
+
+        const { name, avatar, rif, type } = opt.dataset;
+        setText('entityName', name);
+        setText('entityAvatar', avatar);
+        setText('companyTitle', name);
+        setText('companyRif', rif);
+
+        const badge = document.getElementById('contribBadge');
+        const lbl = document.getElementById('contribLabel');
+        if (badge && lbl) {
+          if (type === 'natural') { badge.className = 'contrib-badge'; lbl.textContent = 'Persona Natural'; }
+          else if (type === 'especial') { badge.className = 'contrib-badge especial'; lbl.textContent = 'Contribuyente Especial'; }
+          else { badge.className = 'contrib-badge'; lbl.textContent = 'Contribuyente Ordinario'; }
+        }
+        dd.dataset.open = 'false';
+      });
+    }
+    document.querySelectorAll('.entity-option[data-name]').forEach(bindEntityOption);
+    window.__bindEntityOption = bindEntityOption;
+  }
+
+  function setText(id, val) {
+    const el = document.getElementById(id);
+    if (el && val != null) el.textContent = val;
+  }
+
+  /* =========================================================
+     DATE RANGE + CURRENCY TOGGLE (segmentos genéricos)
+     ========================================================= */
+  const dateRange = document.getElementById('dateRange');
+  if (dateRange) {
+    dateRange.querySelectorAll('button').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        dateRange.querySelectorAll('button').forEach((b) => b.removeAttribute('data-active'));
+        btn.dataset.active = 'true';
+      });
+    });
+  }
+
+  /* =========================================================
+     VIEW SWITCHING (nav items → views)
+     ========================================================= */
+  const views = document.querySelectorAll('.view');
+  const navItems = document.querySelectorAll('.nav-item[data-view]');
+  const breadcrumbHere = document.getElementById('breadcrumbHere');
+
+  function showView(viewId, title) {
+    views.forEach((v) => (v.dataset.active = v.id === 'view-' + viewId ? 'true' : 'false'));
+    navItems.forEach((n) => (n.dataset.active = n.dataset.view === viewId ? 'true' : 'false'));
+    if (title && breadcrumbHere) breadcrumbHere.textContent = title;
+    const content = document.querySelector('.content');
+    if (content) content.scrollTop = 0;
+    drawIcons();
+  }
+  window.showView = showView;
+
+  navItems.forEach((item) => {
+    item.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (item.classList.contains('locked')) { if (window.__mostrarUpgrade) window.__mostrarUpgrade(item); return; }
+      showView(item.dataset.view, item.dataset.title);
+    });
+  });
+
+  // Accesos extra a Usuarios y Roles (perfil y botón de ajustes del pie del menú)
+  ['sidebarUser', 'sidebarSettingsBtn'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); showView('usuarios', 'Usuarios y Roles'); });
+  });
+  const planPill = document.querySelector('.plan-active-pill');
+  if (planPill) planPill.addEventListener('click', (e) => { e.preventDefault(); showView('planes', 'Planes y Precios'); });
+
+  // Botones que saltan a una vista (ej. alerta → módulo fiscal)
+  document.querySelectorAll('[data-go-view]').forEach((el) => {
+    el.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      showView(el.dataset.goView, el.dataset.goTitle || '');
+    });
+  });
+
+  /* =========================================================
+     CASH FLOW CHART (SVG renderizado por JS)
+     ========================================================= */
+  (function cashFlowChart() {
+    const chart = document.getElementById('cashChart');
+    if (!chart) return;
+
+    const days = 28;
+    const ingresos = [
+      180, 95, 110, 240, 320, 215, 280, 195, 165, 320,
+      410, 295, 245, 380, 290, 215, 355, 420, 380, 290,
+      340, 285, 460, 410, 380, 510, 445, 380,
+    ];
+    const egresos = [
+      120, 80, 95, 140, 180, 110, 165, 95, 85, 175,
+      220, 160, 135, 210, 175, 120, 195, 230, 200, 165,
+      175, 155, 245, 215, 195, 270, 240, 210,
+    ];
+
+    const W = 760, H = 260;
+    const padL = 44, padR = 16, padT = 16, padB = 32;
+    const chartW = W - padL - padR;
+    const chartH = H - padT - padB;
+    const maxVal = Math.max(...ingresos, ...egresos) * 1.15;
+    const stepX = chartW / (days - 1);
+    const x = (i) => padL + i * stepX;
+    const y = (v) => padT + chartH - (v / maxVal) * chartH;
+
+    const dateLabels = ['1 may', '7 may', '14 may', '21 may', '28 may'];
+    const dateIdx = [0, 6, 13, 20, 27];
+
+    function buildPath(arr, close) {
+      let d = `M${x(0)},${y(arr[0])}`;
+      for (let i = 1; i < arr.length; i++) d += ` L${x(i)},${y(arr[i])}`;
+      if (close) d += ` L${x(arr.length - 1)},${padT + chartH} L${x(0)},${padT + chartH} Z`;
+      return d;
+    }
+
+    let svg = '';
+    const gridSteps = 4;
+    for (let g = 0; g <= gridSteps; g++) {
+      const gy = padT + (chartH / gridSteps) * g;
+      const val = Math.round(maxVal * (1 - g / gridSteps) * 10) / 10;
+      svg += `<line class="grid-line" x1="${padL}" x2="${W - padR}" y1="${gy}" y2="${gy}"/>`;
+      svg += `<text class="axis-label" x="${padL - 8}" y="${gy + 3}" text-anchor="end">${val ? val.toFixed(0) + 'k' : '0'}</text>`;
+    }
+    dateIdx.forEach((i, n) => {
+      svg += `<text class="axis-label" x="${x(i)}" y="${H - 10}" text-anchor="middle">${dateLabels[n]}</text>`;
+    });
+    svg += `<path class="area-egresos" d="${buildPath(egresos, true)}"/>`;
+    svg += `<path class="area-ingresos" d="${buildPath(ingresos, true)}"/>`;
+    svg += `<path class="line-egresos" d="${buildPath(egresos)}"/>`;
+    svg += `<path class="line-ingresos" d="${buildPath(ingresos)}"/>`;
+    svg += `<circle class="dot ing" cx="${x(days - 1)}" cy="${y(ingresos[days - 1])}" r="4"/>`;
+    svg += `<circle class="dot egr" cx="${x(days - 1)}" cy="${y(egresos[days - 1])}" r="4"/>`;
+    svg += `<line class="hover-line" id="hoverLine" x1="0" x2="0" y1="${padT}" y2="${padT + chartH}" style="opacity:0"/>`;
+    svg += `<circle id="hoverDotIng" class="dot ing" cx="0" cy="0" r="5" style="opacity:0"/>`;
+    svg += `<circle id="hoverDotEgr" class="dot egr" cx="0" cy="0" r="5" style="opacity:0"/>`;
+    svg += `<rect id="hoverRect" x="${padL}" y="${padT}" width="${chartW}" height="${chartH}" fill="transparent"/>`;
+    chart.innerHTML = svg;
+
+    const tooltip = document.getElementById('chartTooltip');
+    const hoverLine = document.getElementById('hoverLine');
+    const hoverDotI = document.getElementById('hoverDotIng');
+    const hoverDotE = document.getElementById('hoverDotEgr');
+    const hoverRect = document.getElementById('hoverRect');
+    const wrap = document.querySelector('.chart-wrap');
+    const fmt = (v) => 'Bs ' + (v * 1000).toLocaleString('es-VE');
+
+    hoverRect.addEventListener('mousemove', (e) => {
+      const rect = chart.getBoundingClientRect();
+      const rx = ((e.clientX - rect.left) / rect.width) * W;
+      let idx = Math.round((rx - padL) / stepX);
+      idx = Math.max(0, Math.min(days - 1, idx));
+      const cx = x(idx), cyI = y(ingresos[idx]), cyE = y(egresos[idx]);
+
+      hoverLine.setAttribute('x1', cx); hoverLine.setAttribute('x2', cx); hoverLine.style.opacity = 1;
+      hoverDotI.setAttribute('cx', cx); hoverDotI.setAttribute('cy', cyI); hoverDotI.style.opacity = 1;
+      hoverDotE.setAttribute('cx', cx); hoverDotE.setAttribute('cy', cyE); hoverDotE.style.opacity = 1;
+
+      const wrapRect = wrap.getBoundingClientRect();
+      const chartRect = chart.getBoundingClientRect();
+      const domX = chartRect.left - wrapRect.left + (cx / W) * chartRect.width;
+      const domY = chartRect.top - wrapRect.top + (Math.min(cyI, cyE) / H) * chartRect.height;
+      tooltip.style.left = domX + 'px';
+      tooltip.style.top = domY + 'px';
+      tooltip.dataset.visible = 'true';
+      tooltip.innerHTML = `
+        <div class="tt-date">${idx + 1} mayo 2026</div>
+        <div class="tt-row"><span class="sw i"></span>Ingresos: ${fmt(ingresos[idx])}</div>
+        <div class="tt-row"><span class="sw e"></span>Egresos: ${fmt(egresos[idx])}</div>`;
+    });
+    hoverRect.addEventListener('mouseleave', () => {
+      hoverLine.style.opacity = 0;
+      hoverDotI.style.opacity = 0;
+      hoverDotE.style.opacity = 0;
+      tooltip.dataset.visible = 'false';
+    });
+  })();
+
+  /* =========================================================
+     SUB-TABS FISCAL
+     ========================================================= */
+  (function fiscalSubtabs() {
+    const tabsWrap = document.getElementById('fiscalTabs');
+    if (!tabsWrap) return;
+    const tabs = tabsWrap.querySelectorAll('button');
+    const panes = document.querySelectorAll('.fiscal-tab');
+
+    function gotoFiscalTab(tab) {
+      tabs.forEach((b) => (b.dataset.active = b.dataset.tab === tab ? 'true' : 'false'));
+      panes.forEach((p) => (p.dataset.active = p.dataset.tab === tab ? 'true' : 'false'));
+      const content = document.querySelector('.content');
+      if (content) content.scrollTop = 0;
+      drawIcons();
+    }
+    window.gotoFiscalTab = gotoFiscalTab;
+
+    tabs.forEach((btn) => btn.addEventListener('click', () => gotoFiscalTab(btn.dataset.tab)));
+
+    document.querySelectorAll('[data-goto-fiscaltab]').forEach((el) => {
+      el.addEventListener('click', (e) => {
+        e.preventDefault();
+        // Si el control está fuera de la vista fiscal, primero cambiamos de vista
+        showView('fiscal', 'Módulo Fiscal · SENIAT');
+        gotoFiscalTab(el.dataset.gotoFiscaltab);
+      });
+    });
+  })();
+
+  /* =========================================================
+     PESTAÑA RETENCIONES — Practicadas / Sufridas + recibo
+     ========================================================= */
+  (function retenciones() {
+    const nav = document.getElementById('retDirNav');
+    if (!nav) return;
+    const dirBtns = nav.querySelectorAll('button');
+    const views = document.querySelectorAll('.ret-view');
+    const fchips = document.querySelectorAll('.ret-fchip');
+    const summary = document.getElementById('retSummary');
+    const countEl = document.getElementById('retCount');
+
+    let curDir = 'practicadas';
+    let curFilter = 'todos';
+
+    const fmt = (n) => n.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const parseNum = (s) => {
+      const t = (s || '').trim();
+      if (!t || t === '—') return 0;
+      return parseFloat(t.replace(/\./g, '').replace(',', '.')) || 0;
+    };
+
+    function activeView() {
+      return document.querySelector('.ret-view[data-retview="' + curDir + '"]');
+    }
+    function rows() {
+      return Array.from(activeView().querySelectorAll('tbody tr'));
+    }
+
+    // Aplica el filtro IVA/ISLR a las filas de la vista activa
+    function applyFilter() {
+      let shown = 0, total = 0;
+      rows().forEach((tr) => {
+        const t = tr.dataset.rettype;
+        const visible = curFilter === 'todos' || curFilter === t;
+        tr.hidden = !visible;
+        total++;
+        if (visible) shown++;
+      });
+      const noun = curDir === 'practicadas' ? 'practicados' : 'sufridos';
+      if (countEl) countEl.innerHTML = 'Mostrando <strong>1–' + shown + '</strong> de <strong>' + shown + '</strong> comprobantes ' + noun;
+    }
+
+    // Recalcula las tarjetas de resumen leyendo la vista activa
+    function refreshSummary() {
+      let ivaT = 0, ivaC = 0, islrT = 0, islrC = 0, ivaPct = '75%', islrPct = '3%';
+      rows().forEach((tr) => {
+        const tds = tr.querySelectorAll('td');
+        const monto = parseNum(tds[8].textContent);
+        const pct = tds[7].textContent.trim();
+        if (tr.dataset.rettype === 'iva') { ivaT += monto; ivaC++; ivaPct = pct; }
+        else { islrT += monto; islrC++; islrPct = pct; }
+      });
+      const totT = ivaT + islrT, totC = ivaC + islrC;
+      const q = (sel) => summary.querySelector('[data-sum="' + sel + '"]');
+      q('iva').textContent = 'Bs ' + fmt(ivaT);
+      q('iva-c').textContent = ivaC + ' comprobante' + (ivaC === 1 ? '' : 's') + ' · ' + ivaPct;
+      q('islr').textContent = 'Bs ' + fmt(islrT);
+      q('islr-c').textContent = islrC + ' comprobante' + (islrC === 1 ? '' : 's') + (islrC ? ' · ' + islrPct : '');
+      q('total').textContent = 'Bs ' + fmt(totT);
+      const noun = curDir === 'practicadas' ? '2da quincena May 2026' : 'sufridas en ventas';
+      q('total-c').textContent = totC + ' comprobante' + (totC === 1 ? '' : 's') + ' · ' + noun;
+    }
+
+    dirBtns.forEach((b) => b.addEventListener('click', () => {
+      curDir = b.dataset.retdir;
+      dirBtns.forEach((x) => (x.dataset.active = x === b ? 'true' : 'false'));
+      views.forEach((v) => (v.hidden = v.dataset.retview !== curDir));
+      refreshSummary();
+      applyFilter();
+      drawIcons();
+    }));
+
+    fchips.forEach((c) => c.addEventListener('click', () => {
+      curFilter = c.dataset.retfilter;
+      fchips.forEach((x) => x.classList.toggle('active', x === c));
+      applyFilter();
+    }));
+
+    /* ---- Recibo / reporte del período ---- */
+    const overlay = document.getElementById('retReciboOverlay');
+    const openBtn = document.getElementById('retReciboBtn');
+    const closeBtn = document.getElementById('retReciboClose');
+    const printBtn = document.getElementById('retReciboPrint');
+
+    function buildRecibo() {
+      const visible = rows().filter((tr) => !tr.hidden);
+      const body = document.getElementById('rrTableBody');
+      let ivaT = 0, ivaC = 0, islrT = 0, islrC = 0, gran = 0;
+      body.innerHTML = '';
+      visible.forEach((tr) => {
+        const tds = tr.querySelectorAll('td');
+        const monto = parseNum(tds[8].textContent);
+        gran += monto;
+        if (tr.dataset.rettype === 'iva') { ivaT += monto; ivaC++; } else { islrT += monto; islrC++; }
+        const tipoTag = tr.dataset.rettype === 'iva' ? '<span class="tag cyan">IVA</span>' : '<span class="tag navy">ISLR</span>';
+        body.insertAdjacentHTML('beforeend',
+          '<tr><td>' + tds[0].textContent + '</td><td class="mono">' + tds[1].textContent + '</td><td>' + tipoTag +
+          '</td><td class="mono">' + tds[3].textContent + '</td><td>' + tds[4].textContent + '</td><td class="mono">' + tds[5].textContent +
+          '</td><td class="num">' + tds[6].textContent + '</td><td class="num">' + tds[7].textContent + '</td><td class="num">' + tds[8].textContent + '</td></tr>');
+      });
+      document.getElementById('rrTableTotal').textContent = fmt(gran);
+
+      // Cabecera y totales según dirección
+      const eyebrow = document.getElementById('rrEyebrow');
+      const kind = document.getElementById('rrKind');
+      if (curDir === 'practicadas') {
+        eyebrow.textContent = 'Agente de Retención';
+        kind.innerHTML = 'Recibo de Retenciones<br><span>Practicadas a proveedores</span>';
+      } else {
+        eyebrow.textContent = 'Sujeto Retenido';
+        kind.innerHTML = 'Recibo de Retenciones<br><span>Sufridas — retenidas por clientes</span>';
+      }
+      const tg = document.getElementById('rrTotGrid');
+      tg.querySelector('.iva .v').textContent = 'Bs ' + fmt(ivaT);
+      tg.querySelector('.iva .c').textContent = ivaC + ' comprobante' + (ivaC === 1 ? '' : 's');
+      tg.querySelector('.islr .v').textContent = 'Bs ' + fmt(islrT);
+      tg.querySelector('.islr .c').textContent = islrC + ' comprobante' + (islrC === 1 ? '' : 's');
+      tg.querySelector('.total .v').textContent = 'Bs ' + fmt(gran);
+      tg.querySelector('.total .c').textContent = (ivaC + islrC) + ' comprobante' + ((ivaC + islrC) === 1 ? '' : 's');
+    }
+
+    if (openBtn) openBtn.addEventListener('click', () => {
+      buildRecibo();
+      overlay.hidden = false;
+      drawIcons();
+    });
+    if (closeBtn) closeBtn.addEventListener('click', () => (overlay.hidden = true));
+    if (overlay) overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.hidden = true; });
+    if (printBtn) printBtn.addEventListener('click', () => {
+      const doc = document.getElementById('retReciboDoc');
+      let portal = document.getElementById('printPortal');
+      if (!portal) { portal = document.createElement('div'); portal.id = 'printPortal'; document.body.appendChild(portal); }
+      portal.innerHTML = '';
+      const clon = doc.cloneNode(true);
+      clon.classList.add('reln-print');
+      portal.appendChild(clon);
+      document.body.classList.add('printing-comp');
+      window.print();
+    });
+    window.addEventListener('afterprint', () => {
+      document.body.classList.remove('printing-comp');
+      const portal = document.getElementById('printPortal');
+      if (portal) portal.innerHTML = '';
+    });
+
+    // Estado inicial
+    refreshSummary();
+    applyFilter();
+  })();
+
+  /* =========================================================
+     LIBRO DE VENTAS — selector de modo (Facturas / Máquina Fiscal)
+     ========================================================= */
+  (function ventasMode() {
+    const nav = document.getElementById('ventasModeNav');
+    if (!nav) return;
+    const btns = nav.querySelectorAll('button');
+    const views = document.querySelectorAll('.ventas-view');
+    btns.forEach((b) => b.addEventListener('click', () => {
+      const mode = b.dataset.vmode;
+      btns.forEach((x) => (x.dataset.active = x === b ? 'true' : 'false'));
+      views.forEach((v) => (v.hidden = v.dataset.ventasmode !== mode));
+      drawIcons();
+    }));
+  })();
+
+  /* =========================================================
+     SUB-TABS TESORERÍA (genérico)
+     ========================================================= */
+  (function tesoSubtabs() {
+    const tabsWrap = document.getElementById('tesoTabs');
+    if (!tabsWrap) return;
+    const tabs = tabsWrap.querySelectorAll('button');
+    const panes = document.querySelectorAll('.teso-tab');
+    tabs.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const tab = btn.dataset.tab;
+        tabs.forEach((b) => (b.dataset.active = b === btn ? 'true' : 'false'));
+        panes.forEach((p) => (p.dataset.active = p.dataset.tab === tab ? 'true' : 'false'));
+        drawIcons();
+      });
+    });
+  })();
+
+  /* =========================================================
+     MÓDULO VENTAS Y FACTURACIÓN — sub-tabs + acciones
+     ========================================================= */
+  (function ventasModule() {
+    const view = document.getElementById('view-ventas');
+    if (!view) return;
+    const toast = (m, t) => { if (window.toast) window.toast(m, t); };
+
+    // Sub-tabs (Facturas / Notas) — el "Libro de Ventas →" navega al Fiscal
+    const tabsWrap = document.getElementById('ventasTabs');
+    if (tabsWrap) {
+      const tabs = tabsWrap.querySelectorAll('button:not(.ventas-link)');
+      const panes = view.querySelectorAll('.ventas-tab');
+      tabs.forEach((btn) => btn.addEventListener('click', () => {
+        const tab = btn.dataset.tab;
+        tabs.forEach((b) => (b.dataset.active = b === btn ? 'true' : 'false'));
+        panes.forEach((p) => (p.dataset.active = p.dataset.tab === tab ? 'true' : 'false'));
+        drawIcons();
+      }));
+    }
+
+    // Exportar facturas (CSV)
+    const exp = document.getElementById('ventasExportBtn');
+    if (exp) exp.addEventListener('click', () => {
+      const table = view.querySelector('.ventas-tab[data-tab="facturas"] table.data-table');
+      if (!table) return;
+      const rows = [];
+      rows.push([...table.querySelectorAll('thead th')].map((th) => th.textContent.trim()).filter((x) => x));
+      table.querySelectorAll('tbody tr').forEach((tr) => {
+        const c = [...tr.querySelectorAll('td')].slice(0, 7).map((td) => td.textContent.replace(/\s+/g, ' ').trim());
+        rows.push(c);
+      });
+      const csv = rows.map((r) => r.map((c) => '"' + String(c).replace(/"/g, '""') + '"').join(';')).join('\r\n');
+      const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'Ventas_Facturas_2026-05.csv';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast('Facturas exportadas a CSV');
+    });
+
+    // Nueva factura / Nueva nota (se conectan al formulario en la siguiente fase)
+    const nf = document.getElementById('nuevaFacturaBtn');
+    if (nf) nf.addEventListener('click', () => { if (window.openNuevaFactura) window.openNuevaFactura(); else toast('Emisión de factura — formulario en preparación', 'info'); });
+    const nn = document.getElementById('nuevaNotaBtn');
+    if (nn) nn.addEventListener('click', () => toast('Nueva nota de crédito/débito — formulario en preparación', 'info'));
+
+    // Selector de MEDIO DE EMISIÓN (Forma libre / Máquina fiscal / Electrónica)
+    if (!window.medioEmision) window.medioEmision = 'forma-libre';
+    const MEDIOS = {
+      'forma-libre': { lbl: 'Forma libre', desc: 'Talonario impreso por imprenta autorizada (Providencia 00102). Apto para pequeños y medianos comercios.' },
+      'maquina-fiscal': { lbl: 'Máquina fiscal', desc: 'Documento emitido por impresora fiscal homologada, con reporte Z diario. Obligatorio para ciertos ramos.' },
+      'electronica': { lbl: 'Electrónica', desc: 'Factura digital certificada con N° de control digital y código QR verificable en el portal del SENIAT.' },
+    };
+    const medioBtn = document.getElementById('medioEmisionBtn');
+    const medioLbl = document.getElementById('medioEmisionLbl');
+    if (medioBtn) medioBtn.addEventListener('click', () => {
+      if (!window.openFormModal) return;
+      window.openFormModal({
+        title: 'Medio de emisión de la factura', saveLabel: 'Aplicar',
+        fields: [{
+          name: 'medio', label: 'Tipo de facturación según el comercio', col: 2, type: 'select',
+          options: Object.keys(MEDIOS).map((k) => MEDIOS[k].lbl),
+          value: MEDIOS[window.medioEmision].lbl,
+        }, {
+          name: 'nota', label: ' ', col: 2, type: 'static',
+          html: '<div style="font-size:12px;color:var(--fg-muted);line-height:1.5;">' +
+            Object.keys(MEDIOS).map((k) => '<strong>' + MEDIOS[k].lbl + ':</strong> ' + MEDIOS[k].desc).join('<br>') +
+            '</div>',
+        }],
+        onSave: (v) => {
+          const key = Object.keys(MEDIOS).find((k) => MEDIOS[k].lbl === v.medio) || 'forma-libre';
+          window.medioEmision = key;
+          if (medioLbl) medioLbl.textContent = MEDIOS[key].lbl;
+          toast('Medio de emisión: ' + MEDIOS[key].lbl + ' · las nuevas facturas usarán este formato');
+        },
+      });
+    });
+  })();
+
+  /* =========================================================
+     SUB-TABS CONTABILIDAD + Libro Mayor (selección de cuenta)
+     ========================================================= */
+  (function contaSubtabs() {
+    const tabsWrap = document.getElementById('contaTabs');
+    if (tabsWrap) {
+      const tabs = tabsWrap.querySelectorAll('button');
+      const panes = document.querySelectorAll('.conta-tab');
+      tabs.forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const tab = btn.dataset.tab;
+          tabs.forEach((b) => (b.dataset.active = b === btn ? 'true' : 'false'));
+          panes.forEach((p) => (p.dataset.active = p.dataset.tab === tab ? 'true' : 'false'));
+          drawIcons();
+        });
+      });
+    }
+    // Libro Mayor: selección visual de cuenta
+    document.querySelectorAll('.account-tree .acc-item').forEach((item) => {
+      item.addEventListener('click', () => {
+        document.querySelectorAll('.account-tree .acc-item').forEach((a) => a.removeAttribute('data-active'));
+        item.dataset.active = 'true';
+      });
+    });
+  })();
+
+  /* =========================================================
+     CONTABILIDAD — acciones (nuevo asiento, cuenta, activo, exportar, etc.)
+     ========================================================= */
+  (function contaActions() {
+    const view = document.getElementById('view-contabilidad');
+    if (!view) return;
+    const fmt2 = (n) => Number(n).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const toast = (m, t) => { if (window.toast) window.toast(m, t); };
+    const csvDownload = (rows, name) => {
+      const csv = rows.map((r) => r.map((c) => '"' + String(c).replace(/"/g, '""') + '"').join(';')).join('\r\n');
+      const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = name;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    };
+
+    // Helper unificado de impresión de documentos contables (orientación por estado)
+    function printContaDoc(sourceEl, opts) {
+      if (!sourceEl) return;
+      opts = opts || {};
+      let portal = document.getElementById('printPortal');
+      if (!portal) { portal = document.createElement('div'); portal.id = 'printPortal'; document.body.appendChild(portal); }
+      portal.innerHTML = '';
+      const doc = document.createElement('div');
+      doc.className = 'conta-print';
+      if (!opts.noHead) {
+        doc.innerHTML = '<div class="cp-head"><div class="cp-co">Agroinversiones Valle, C.A. · RIF J-30456789-0</div>'
+          + '<div class="cp-title">' + (opts.titulo || '') + '</div>'
+          + '<div class="cp-sub">' + (opts.sub || 'Ejercicio 2026 · Expresado en bolívares (Bs)') + '</div></div>';
+      }
+      const clone = sourceEl.cloneNode(true);
+      clone.classList.remove('conta-tab');
+      clone.removeAttribute('data-active');
+      // Quitar controles y bloques que no van en el PDF
+      clone.querySelectorAll('.fin-actions, .table-toolbar, .table-footer, .quick-search, .pager, .fin-highlights, .recon-status-bar, button').forEach((e) => e.remove());
+      doc.appendChild(clone);
+      portal.appendChild(doc);
+      // Orientación: vertical (portrait) u horizontal (landscape)
+      if (window.__setPageSize) window.__setPageSize(opts.orient === 'landscape' ? 'letter landscape' : 'letter portrait', '12mm');
+      document.body.classList.add('printing-comp');
+      drawIcons();
+      window.print();
+    }
+
+    // Lista de cuentas (combina el árbol del Mayor y el Plan de Cuentas, sin grupos)
+    function getCuentas() {
+      const map = new Map();
+      view.querySelectorAll('.account-tree .acc-item').forEach((it) => {
+        const code = (it.querySelector('.code') || {}).textContent || '';
+        const name = (it.querySelector('.nm') || {}).textContent || '';
+        if (code) map.set(code.trim(), code.trim() + ' · ' + name.trim());
+      });
+      const tbody = view.querySelector('.conta-tab[data-tab="plan"] table.data-table tbody');
+      if (tbody) tbody.querySelectorAll('tr').forEach((tr) => {
+        const tds = tr.querySelectorAll('td');
+        if (tds.length < 3) return;
+        const code = tds[0].textContent.trim();
+        const tipo = tds[2].textContent || '';
+        if (/grupo/i.test(tipo) || !code.includes('.')) return;
+        map.set(code, code + ' · ' + tds[1].textContent.replace(/ /g, '').trim());
+      });
+      return Array.from(map.values()).sort().map((v) => ({ value: v, label: v }));
+    }
+
+    // ---- Nuevo asiento (partida doble) ----
+    let asientoNum = 313;
+    // ===== Modal de asiento (partida doble multi-línea) =====
+    (function asientoModal() {
+      const overlay = document.getElementById('asientoModal');
+      const nuevoAsiento = document.getElementById('nuevoAsientoBtn');
+      if (!overlay || !nuevoAsiento) return;
+      const linesEl = document.getElementById('amLines');
+      const totDebeEl = document.getElementById('amTotDebe');
+      const totHaberEl = document.getElementById('amTotHaber');
+      const cuadreEl = document.getElementById('amCuadre');
+      const msgEl = document.getElementById('amMsg');
+      const split = (s) => { const i = s.indexOf(' · '); return i < 0 ? { c: '—', n: s } : { c: s.slice(0, i), n: s.slice(i + 3) }; };
+
+      function optsHtml() {
+        return '<option value="">— Seleccionar cuenta —</option>' + getCuentas().map((o) => '<option value="' + o.value + '">' + o.label + '</option>').join('');
+      }
+      function addLine(tipo) {
+        const row = document.createElement('div');
+        row.className = 'am-line';
+        row.innerHTML = '<select class="am-cta">' + optsHtml() + '</select>'
+          + '<input type="number" class="am-debe" step="0.01" placeholder="0,00"' + (tipo === 'haber' ? ' disabled' : '') + '>'
+          + '<input type="number" class="am-haber" step="0.01" placeholder="0,00"' + (tipo === 'debe' ? ' disabled' : '') + '>'
+          + '<button class="am-del" title="Eliminar línea"><i data-lucide="trash-2"></i></button>';
+        linesEl.appendChild(row);
+        // Al escribir en un lado, se bloquea el otro (una cuenta es debe o haber)
+        const deb = row.querySelector('.am-debe'), hab = row.querySelector('.am-haber');
+        deb.addEventListener('input', () => { hab.disabled = parseFloat(deb.value) > 0; recalc(); });
+        hab.addEventListener('input', () => { deb.disabled = parseFloat(hab.value) > 0; recalc(); });
+        row.querySelector('.am-del').addEventListener('click', () => { row.remove(); recalc(); });
+        drawIcons();
+      }
+      function recalc() {
+        let d = 0, h = 0;
+        linesEl.querySelectorAll('.am-line').forEach((r) => {
+          d += parseFloat(r.querySelector('.am-debe').value) || 0;
+          h += parseFloat(r.querySelector('.am-haber').value) || 0;
+        });
+        totDebeEl.textContent = fmt2(d);
+        totHaberEl.textContent = fmt2(h);
+        const ok = d > 0 && Math.abs(d - h) < 0.009;
+        cuadreEl.innerHTML = ok ? '<i data-lucide="check-circle-2"></i> Partida cuadrada'
+          : '<i data-lucide="alert-circle"></i> Diferencia: Bs ' + fmt2(Math.abs(d - h));
+        cuadreEl.className = 'am-cuadre ' + (ok ? 'ok' : 'bad');
+        drawIcons();
+      }
+      function open() {
+        linesEl.innerHTML = '';
+        document.getElementById('amRef').value = '';
+        document.getElementById('amDesc').value = '';
+        msgEl.textContent = '';
+        addLine('debe'); addLine('haber');
+        recalc();
+        overlay.hidden = false;
+        drawIcons();
+      }
+      function close() { overlay.hidden = true; }
+      nuevoAsiento.addEventListener('click', open);
+      document.getElementById('amClose').addEventListener('click', close);
+      document.getElementById('amCancel').addEventListener('click', close);
+      overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+      document.getElementById('amAddLine').addEventListener('click', () => addLine());
+
+      document.getElementById('amSave').addEventListener('click', () => {
+        const desc = document.getElementById('amDesc').value.trim();
+        const ref = document.getElementById('amRef').value.trim();
+        const fechaRaw = document.getElementById('amFecha').value;
+        const lineas = [];
+        let totD = 0, totH = 0, faltaCuenta = false;
+        linesEl.querySelectorAll('.am-line').forEach((r) => {
+          const cta = r.querySelector('.am-cta').value;
+          const d = parseFloat(r.querySelector('.am-debe').value) || 0;
+          const h = parseFloat(r.querySelector('.am-haber').value) || 0;
+          if (d <= 0 && h <= 0) return;
+          if (!cta) { faltaCuenta = true; return; }
+          lineas.push({ cta: cta, d: d, h: h });
+          totD += d; totH += h;
+        });
+        const setMsg = (m) => { msgEl.textContent = m; msgEl.classList.add('error'); };
+        if (!desc) return setMsg('Indica la descripción del asiento.');
+        if (lineas.length < 2) return setMsg('El asiento requiere al menos dos líneas con monto.');
+        if (faltaCuenta) return setMsg('Hay líneas con monto pero sin cuenta seleccionada.');
+        if (Math.abs(totD - totH) > 0.009) return setMsg('El asiento no cuadra: Debe ' + fmt2(totD) + ' ≠ Haber ' + fmt2(totH) + '.');
+        const journal = view.querySelector('.conta-tab[data-tab="diario"] .journal');
+        if (journal) {
+          asientoNum++;
+          const fecha = fechaRaw ? fechaRaw.split('-').reverse().join('/') : '31/05/2026';
+          const rows = lineas.map((l) => {
+            const s = split(l.cta);
+            const esHaber = l.h > 0;
+            return '<tr><td class="acc-code">' + s.c + '</td><td class="acc-name' + (esHaber ? ' haber-indent' : '') + '">' + s.n + '</td>'
+              + '<td class="deb' + (l.d ? '' : ' zero') + '">' + (l.d ? fmt2(l.d) : '—') + '</td>'
+              + '<td class="haber' + (l.h ? '' : ' zero') + '">' + (l.h ? fmt2(l.h) : '—') + '</td></tr>';
+          }).join('');
+          journal.insertAdjacentHTML('afterbegin',
+            '<div class="asiento"><div class="asiento-head">'
+            + '<span class="asiento-num">#0' + asientoNum + '</span>'
+            + '<span class="asiento-date"><i data-lucide="calendar"></i> ' + fecha + '</span>'
+            + '<span class="asiento-desc">' + desc + '</span>'
+            + '<span class="asiento-ref">Ref: ' + (ref || '—') + '</span>'
+            + '<span class="asiento-origin manual"><i data-lucide="pencil"></i> Manual</span></div>'
+            + '<table class="ledger-lines"><tbody>' + rows
+            + '</tbody><tfoot><tr class="asiento-foot"><td colspan="2" class="total-label">Sumas iguales</td><td class="deb">' + fmt2(totD) + '</td><td class="haber">' + fmt2(totH) + '</td></tr></tfoot></table></div>');
+          drawIcons();
+        }
+        toast('Asiento #0' + asientoNum + ' registrado · ' + lineas.length + ' líneas · cuadra en Bs ' + fmt2(totD));
+        close();
+      });
+    })();
+
+    // ---- Nueva cuenta (ubicación amigable por cuenta padre) ----
+    const nuevaCuenta = document.getElementById('nuevaCuentaBtn');
+    function getCuentasPlan() {
+      const tbody = view.querySelector('.conta-tab[data-tab="plan"] table.data-table tbody');
+      const arr = [];
+      if (tbody) tbody.querySelectorAll('tr').forEach((tr) => {
+        const tds = tr.querySelectorAll('td');
+        if (tds.length < 2) return;
+        const code = tds[0].textContent.trim();
+        const name = (tds[1].textContent || '').replace(/ /g, ' ').replace(/\s+/g, ' ').trim();
+        if (code) arr.push({ code: code, name: name, tr: tr });
+      });
+      return arr;
+    }
+    if (nuevaCuenta) nuevaCuenta.addEventListener('click', () => {
+      const plan = getCuentasPlan();
+      const opciones = [{ value: '__raiz__', label: '◆ Raíz · nuevo grupo principal' }]
+        .concat(plan.map((c) => ({ value: c.code, label: c.code + ' · ' + c.name })));
+      window.openFormModal({
+        title: 'Nueva cuenta contable',
+        saveLabel: 'Crear cuenta',
+        fields: [
+          { name: 'padre', label: 'Ubicar dentro de (cuenta padre)', col: 2, type: 'select', options: opciones },
+          { name: 'nombre', label: 'Nombre de la cuenta', col: 2, placeholder: 'Ej. Inventario de mercancías' },
+          { name: 'tipo', label: 'Tipo', type: 'select', options: ['Cuenta', 'Subcuenta', 'Grupo'] },
+          { name: 'nat', label: 'Naturaleza', type: 'select', options: ['(Heredar del padre)', 'Deudora', 'Acreedora'] },
+          { name: 'cod', label: 'Código (auto si se deja vacío)', col: 2, placeholder: 'Se genera bajo la cuenta padre' },
+          { name: 'nota', label: ' ', col: 2, type: 'static', html: '<div style="font-size:12px;color:var(--fg-muted);line-height:1.5;">La cuenta se insertará <strong>debajo de la cuenta padre</strong>, con su código y sangría según el nivel. El código se autogenera a partir del padre si lo dejas vacío.</div>' },
+        ],
+        onSave: (v) => {
+          if (!v.nombre) return 'El nombre de la cuenta es obligatorio.';
+          const tbody = view.querySelector('.conta-tab[data-tab="plan"] table.data-table tbody');
+          if (!tbody) return;
+          const esRaiz = v.padre === '__raiz__';
+          // Código: usar el indicado o autogenerar bajo el padre
+          let cod = (v.cod || '').trim();
+          if (!cod) {
+            if (esRaiz) {
+              const maxRaiz = Math.max(0, ...plan.filter((c) => /^\d+$/.test(c.code)).map((c) => parseInt(c.code, 10)));
+              cod = String(maxRaiz + 1);
+            } else {
+              const hijos = plan.filter((c) => c.code.indexOf(v.padre + '.') === 0 && c.code.split('.').length === v.padre.split('.').length + 1);
+              const next = String(hijos.length + 1).padStart(2, '0');
+              cod = v.padre + '.' + next;
+            }
+          }
+          // Naturaleza: heredar del padre (por primer dígito) o la indicada
+          let nat = v.nat;
+          if (nat === '(Heredar del padre)') {
+            const raiz = (esRaiz ? cod : v.padre).charAt(0);
+            nat = ['1', '5', '6'].includes(raiz) ? 'Deudora' : 'Acreedora';
+          }
+          const tagTipo = v.tipo === 'Grupo' ? 'navy' : 'slate';
+          const nivel = cod.split('.').length - 1;
+          const indent = '&nbsp;'.repeat(nivel * 3);
+          const filaHtml = '<tr><td class="mono">' + cod + '</td><td class="primary">' + indent + v.nombre + '</td>'
+            + '<td><span class="tag ' + tagTipo + '">' + v.tipo + '</span></td><td>' + nat + '</td>'
+            + '<td class="num">0,00</td><td><span class="tag cyan">Nueva</span></td></tr>';
+          // Insertar debajo de la cuenta padre (o al inicio si es raíz)
+          const padreObj = plan.find((c) => c.code === v.padre);
+          if (padreObj && padreObj.tr) padreObj.tr.insertAdjacentHTML('afterend', filaHtml);
+          else tbody.insertAdjacentHTML('afterbegin', filaHtml);
+          if (window.refreshTables) window.refreshTables();
+          toast('Cuenta ' + cod + ' creada' + (esRaiz ? ' como grupo principal' : ' bajo ' + v.padre));
+        },
+      });
+    });
+
+    // ---- Registrar activo fijo ----
+    const registrarActivo = document.getElementById('registrarActivoBtn');
+    if (registrarActivo) registrarActivo.addEventListener('click', () => {
+      window.openFormModal({
+        title: 'Registrar activo fijo',
+        saveLabel: 'Registrar activo',
+        fields: [
+          { name: 'cod', label: 'Código', placeholder: 'Ej. AF-025' },
+          { name: 'nombre', label: 'Activo', col: 2, placeholder: 'Ej. Computador de oficina' },
+          { name: 'cat', label: 'Categoría', type: 'select', options: ['Equipos', 'Vehículos', 'Inmuebles', 'Mobiliario', 'Maquinaria'] },
+          { name: 'fecha', label: 'Fecha de adquisición', type: 'date', value: '2026-05-31' },
+          { name: 'costo', label: 'Costo (Bs)', type: 'number', step: '0.01', placeholder: '0.00' },
+          { name: 'vida', label: 'Vida útil (años)', type: 'number', value: '5' },
+          { name: 'metodo', label: 'Método', type: 'select', options: ['Línea recta', 'Saldos decrecientes'] },
+        ],
+        onSave: (v) => {
+          const costo = parseFloat(v.costo);
+          if (!v.cod || !v.nombre) return 'El código y el nombre del activo son obligatorios.';
+          if (!(costo > 0)) return 'El costo debe ser mayor a cero.';
+          const tbody = view.querySelector('.conta-tab[data-tab="activos"] table.data-table tbody');
+          if (tbody) {
+            const fecha = v.fecha ? v.fecha.split('-').reverse().join('/') : '31/05/2026';
+            tbody.insertAdjacentHTML('afterbegin',
+              '<tr><td class="mono">' + v.cod + '</td><td class="primary">' + v.nombre + '</td>'
+              + '<td><span class="tag slate">' + v.cat + '</span></td><td>' + fecha + '</td>'
+              + '<td class="num">' + fmt2(costo) + '</td><td>' + (v.vida || '5') + ' años</td><td>' + v.metodo + '</td>'
+              + '<td class="num">0,00</td><td class="num">' + fmt2(costo) + '</td>'
+              + '<td><span class="depr-bar"><span style="width:0%"></span></span><span class="depr-pct">0%</span></td></tr>');
+            if (window.refreshTables) window.refreshTables();
+          }
+          toast('Activo ' + v.cod + ' registrado · valor neto Bs ' + fmt2(costo));
+        },
+      });
+    });
+
+    // ---- Depreciación del mes ----
+    const deprBtn = document.getElementById('deprRunBtn');
+    if (deprBtn) deprBtn.addEventListener('click', () => {
+      const bar = document.getElementById('deprStatusBar');
+      const msg = document.getElementById('deprStatusMsg');
+      if (msg) msg.textContent = 'Depreciación de mayo 2026 contabilizada · asiento generado por Bs 148.750,00';
+      if (bar) bar.classList.remove('pending');
+      deprBtn.disabled = true;
+      deprBtn.innerHTML = '<i data-lucide="check"></i> Contabilizada';
+      drawIcons();
+      toast('Depreciación del mes contabilizada · Bs 148.750,00');
+    });
+
+    // ---- Exportar (libro diario) ----
+    const exportDiario = document.getElementById('contaExportBtn');
+    if (exportDiario) exportDiario.addEventListener('click', () => {
+      const rows = [['Asiento', 'Fecha', 'Descripción', 'Referencia', 'Cuenta', 'Debe', 'Haber']];
+      view.querySelectorAll('.conta-tab[data-tab="diario"] .asiento').forEach((a) => {
+        const num = (a.querySelector('.asiento-num') || {}).textContent || '';
+        const fecha = (a.querySelector('.asiento-date') || {}).textContent.trim() || '';
+        const desc = (a.querySelector('.asiento-desc') || {}).textContent || '';
+        const ref = (a.querySelector('.asiento-ref') || {}).textContent.replace('Ref:', '').trim() || '';
+        a.querySelectorAll('tbody tr').forEach((tr) => {
+          const c = tr.querySelectorAll('td');
+          rows.push([num, fecha, desc, ref, c[1] ? c[1].textContent : '', c[2] ? c[2].textContent : '', c[3] ? c[3].textContent : '']);
+        });
+      });
+      csvDownload(rows, 'Libro_Diario_2026-05.csv');
+      toast('Libro Diario exportado a CSV');
+    });
+
+    // ---- Exportar (activos fijos) ----
+    const exportActivos = document.getElementById('activosExportBtn');
+    if (exportActivos) exportActivos.addEventListener('click', () => {
+      const table = view.querySelector('.conta-tab[data-tab="activos"] table.data-table');
+      if (!table) return;
+      const rows = [];
+      rows.push([...table.querySelectorAll('thead th')].map((th) => th.textContent.trim()));
+      table.querySelectorAll('tbody tr').forEach((tr) => {
+        rows.push([...tr.querySelectorAll('td')].map((td) => td.textContent.replace(/\s+/g, ' ').trim()));
+      });
+      csvDownload(rows, 'Activos_Fijos_2026-05.csv');
+      toast('Registro de activos exportado a CSV');
+    });
+
+    // ---- Imprimir Libro Diario (vertical) ----
+    const diarioPrint = document.getElementById('diarioPrintBtn');
+    if (diarioPrint) diarioPrint.addEventListener('click', () => {
+      const journal = view.querySelector('.conta-tab[data-tab="diario"] .journal');
+      printContaDoc(journal, { titulo: 'Libro Diario · Mayo 2026', orient: 'portrait' });
+    });
+    window.addEventListener('afterprint', () => {
+      document.body.classList.remove('printing-comp');
+      const portal = document.getElementById('printPortal');
+      if (portal) portal.innerHTML = '';
+    });
+
+    // ---- Búsqueda en el Libro Diario (filtra asientos) ----
+    const diarioSearch = view.querySelector('.conta-tab[data-tab="diario"] .quick-search input');
+    if (diarioSearch) diarioSearch.addEventListener('input', () => {
+      const q = diarioSearch.value.trim().toLowerCase();
+      view.querySelectorAll('.conta-tab[data-tab="diario"] .asiento').forEach((a) => {
+        a.style.display = (!q || a.textContent.toLowerCase().includes(q)) ? '' : 'none';
+      });
+    });
+
+    /* =========================================================
+       LIBRO MAYOR — movimientos de la cuenta derivados del Diario
+       ========================================================= */
+    const mayorBody = document.getElementById('mayorBody');
+    const DEUDORAS = ['1', '5', '6']; // activo, costos, gastos
+    // Saldo final conocido de cada cuenta (Bs) → la apertura se calcula para que
+    // el acumulado del Mayor cierre exactamente en este saldo.
+    const SALDOS_FINALES = {
+      '1.1.1.02': 4218640, '1.1.2.01': 1847910, '1.1.4.02': 481000,
+      '2.1.1.01': 968450, '2.1.4.01': 894000, '2.1.4.05': 58000,
+      '3.1.1.01': 3000000, '4.1.1.01': 6142880, '5.1.1.01': 3453500,
+      '6.1.1.01': 3008640, '6.2.1.01': 2184500,
+    };
+    const num2 = (s) => {
+      const t = (s || '').replace(/\./g, '').replace(',', '.').replace(/[^\d.-]/g, '');
+      return parseFloat(t) || 0;
+    };
+
+    function renderMayor(code, name) {
+      if (!mayorBody) return;
+      const deudora = DEUDORAS.includes(code.charAt(0));
+      // Asientos del Diario en orden cronológico ascendente (el DOM va descendente)
+      const asientos = Array.from(view.querySelectorAll('.conta-tab[data-tab="diario"] .asiento')).reverse();
+      const movs = [];
+      asientos.forEach((a) => {
+        const fecha = ((a.querySelector('.asiento-date') || {}).textContent || '').trim();
+        const anum = ((a.querySelector('.asiento-num') || {}).textContent || '').trim();
+        const desc = ((a.querySelector('.asiento-desc') || {}).textContent || '').trim();
+        const ref = ((a.querySelector('.asiento-ref') || {}).textContent || '').replace('Ref:', '').trim();
+        a.querySelectorAll('tbody tr').forEach((tr) => {
+          const td = tr.querySelectorAll('td');
+          if (td.length < 4) return;
+          if (td[0].textContent.trim() !== code) return;
+          movs.push({ fecha, anum, desc, ref, deb: num2(td[2].textContent), haber: num2(td[3].textContent) });
+        });
+      });
+
+      // Movimiento neto del período según la naturaleza + sumas de columnas
+      let netMov = 0, sumDeb = 0, sumHaber = 0;
+      movs.forEach((m) => { netMov += deudora ? (m.deb - m.haber) : (m.haber - m.deb); sumDeb += m.deb; sumHaber += m.haber; });
+      // Apertura: tal que apertura + movimientos = saldo final conocido
+      const target = SALDOS_FINALES[code] != null ? SALDOS_FINALES[code] : netMov;
+      let saldo = target - netMov;
+      let html = '<tr class="opening"><td>01/05/26</td><td class="mono">—</td><td>Saldo de apertura</td><td class="mono">—</td><td class="num">—</td><td class="num">—</td><td class="saldo">' + fmt2(saldo) + '</td></tr>';
+      if (movs.length === 0) {
+        html += '<tr><td colspan="7" style="text-align:center;color:var(--fg-muted);padding:18px;">Sin movimientos en el período · el saldo se mantiene en la apertura.</td></tr>';
+      } else {
+        movs.forEach((m) => {
+          saldo += deudora ? (m.deb - m.haber) : (m.haber - m.deb);
+          html += '<tr><td>' + m.fecha + '</td><td class="mono">' + m.anum + '</td>'
+            + '<td class="primary">' + m.desc + '</td><td class="mono">' + (m.ref || '—') + '</td>'
+            + '<td class="num">' + (m.deb ? fmt2(m.deb) : '—') + '</td>'
+            + '<td class="num">' + (m.haber ? fmt2(m.haber) : '—') + '</td>'
+            + '<td class="saldo">' + fmt2(saldo) + '</td></tr>';
+        });
+      }
+      mayorBody.innerHTML = html;
+
+      // Encabezado y saldo final
+      const setT = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+      setT('mayorBadge', code);
+      setT('mayorTitle', name);
+      const tipoNat = deudora ? 'deudora' : 'acreedora';
+      const grupo = { '1': 'Activo', '2': 'Pasivo', '3': 'Patrimonio', '4': 'Ingreso', '5': 'Costo', '6': 'Gasto' }[code.charAt(0)] || '';
+      setT('mayorSub', grupo + ' · Naturaleza ' + tipoNat + ' · Mayo 2026');
+      setT('mayorSaldoLbl', 'Saldo final ' + tipoNat);
+      setT('mayorSaldoVal', 'Bs ' + fmt2(saldo));
+      // Totales del pie
+      setT('mayorTotDeb', fmt2(sumDeb));
+      setT('mayorTotHaber', fmt2(sumHaber));
+      setT('mayorTotSaldo', fmt2(saldo));
+      drawIcons();
+    }
+
+    // Click en una cuenta del árbol → renderiza su mayor
+    view.querySelectorAll('.account-tree .acc-item').forEach((item) => {
+      item.addEventListener('click', () => {
+        const code = ((item.querySelector('.code') || {}).textContent || '').trim();
+        const name = ((item.querySelector('.nm') || {}).textContent || '').trim();
+        if (code) renderMayor(code, name);
+      });
+    });
+
+    // ---- Exportar Mayor (CSV de la cuenta activa) ----
+    const mayorExport = document.getElementById('mayorExportBtn');
+    if (mayorExport) mayorExport.addEventListener('click', () => {
+      const code = (document.getElementById('mayorBadge') || {}).textContent || '';
+      const name = (document.getElementById('mayorTitle') || {}).textContent || '';
+      const rows = [['Cuenta: ' + code + ' · ' + name], [], ['Fecha', 'Asiento', 'Descripción', 'Referencia', 'Debe', 'Haber', 'Saldo']];
+      view.querySelectorAll('#mayorBody tr').forEach((tr) => {
+        rows.push([...tr.querySelectorAll('td')].map((td) => td.textContent.replace(/\s+/g, ' ').trim()));
+      });
+      csvDownload(rows, 'Mayor_' + code + '_2026-05.csv');
+      toast('Mayor de ' + code + ' exportado a CSV');
+    });
+
+    // ---- Estados financieros: Imprimir / Exportar (Balance, Resultados, General, Flujo) ----
+    // Cada estado clona solo su contenido esencial. Resultados/Flujo ya traen su propia
+    // cabecera (noHead); Balance/General usan la cabecera generada.
+    const finMeta = {
+      balance: { nombre: 'Balance de Comprobación', orient: 'landscape', sub: 'Al 28 de mayo de 2026 · Bs', sel: 'table.balance-table', head: true },
+      resultados: { nombre: 'Estado de Resultados', orient: 'portrait', sel: '.fin-statement', head: false },
+      general: { nombre: 'Balance General', orient: 'portrait', sub: 'Al 31 de mayo de 2026 · Bs', sel: '.fin-two-col', head: true },
+      flujo: { nombre: 'Flujo de Efectivo', orient: 'portrait', sel: '.fin-statement', head: false },
+    };
+    view.querySelectorAll('[data-fin-action]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const pane = btn.closest('.conta-tab');
+        if (!pane) return;
+        const meta = finMeta[pane.dataset.tab] || { nombre: pane.dataset.tab, orient: 'portrait', sel: 'table', head: true };
+        if (btn.dataset.finAction === 'export') {
+          const table = pane.querySelector('table');
+          if (!table) { toast('No hay tabla para exportar', 'error'); return; }
+          const rows = [];
+          table.querySelectorAll('tr').forEach((tr) => {
+            const cells = tr.querySelectorAll('th,td');
+            if (cells.length) rows.push([...cells].map((c) => c.textContent.replace(/\s+/g, ' ').trim()));
+          });
+          csvDownload(rows, meta.nombre.replace(/ /g, '_') + '_2026-05.csv');
+          toast(meta.nombre + ' exportado a CSV');
+        } else {
+          const src = pane.querySelector(meta.sel) || pane;
+          printContaDoc(src, { titulo: meta.nombre, orient: meta.orient, sub: meta.sub, noHead: !meta.head });
+        }
+      });
+    });
+
+    // ---- Imprimir Mayor (vertical) ----
+    const mayorPrint = document.getElementById('mayorPrintBtn');
+    if (mayorPrint) mayorPrint.addEventListener('click', () => {
+      const panel = view.querySelector('.conta-tab[data-tab="mayor"] .panel');
+      const code = (document.getElementById('mayorBadge') || {}).textContent || '';
+      const name = (document.getElementById('mayorTitle') || {}).textContent || '';
+      printContaDoc(panel, { titulo: 'Libro Mayor · ' + code, sub: name + ' · Mayo 2026', orient: 'portrait' });
+    });
+
+    // ---- Imprimir Plan de Cuentas (vertical, solo la tabla) ----
+    const planPrint = document.getElementById('planPrintBtn');
+    if (planPrint) planPrint.addEventListener('click', () => {
+      const table = view.querySelector('.conta-tab[data-tab="plan"] table.data-table');
+      printContaDoc(table, { titulo: 'Plan de Cuentas', sub: 'Catálogo de cuentas · VEN-NIF · 2026', orient: 'portrait' });
+    });
+
+    // ---- Imprimir Activos Fijos (horizontal, solo el registro) ----
+    const activosPrint = document.getElementById('activosPrintBtn');
+    if (activosPrint) activosPrint.addEventListener('click', () => {
+      const table = view.querySelector('.conta-tab[data-tab="activos"] .data-table-wrap table.data-table');
+      printContaDoc(table, { titulo: 'Registro de Activos Fijos y Depreciación', sub: 'Mayo 2026 · Bs', orient: 'landscape' });
+    });
+  })();
+
+  // Mostrar/ocultar paneles de sub-tabs (fiscal + tesorería + contabilidad) según data-active
+  const subtabStyle = document.createElement('style');
+  subtabStyle.textContent =
+    '.fiscal-tab,.teso-tab,.conta-tab,.ventas-tab{display:none}' +
+    '.fiscal-tab[data-active="true"],.teso-tab[data-active="true"],.conta-tab[data-active="true"],.ventas-tab[data-active="true"]{display:block;animation:viewIn var(--dur-base) var(--ease-out)}';
+  document.head.appendChild(subtabStyle);
+
+  /* =========================================================
+     COMPROBANTE IVA / ISLR toggle
+     ========================================================= */
+  (function compToggle() {
+    const toggle = document.getElementById('compToggle');
+    if (toggle) {
+      toggle.querySelectorAll('button').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          toggle.querySelectorAll('button').forEach((b) => b.removeAttribute('data-active'));
+          btn.dataset.active = 'true';
+          const iva = btn.dataset.type === 'iva';
+          const elIva = document.getElementById('compIva');
+          const elIslr = document.getElementById('compIslr');
+          if (elIva) elIva.style.display = iva ? '' : 'none';
+          if (elIslr) elIslr.style.display = iva ? 'none' : '';
+          drawIcons();
+        });
+      });
+    }
+    // Imprimir / PDF del comprobante: se clona el comprobante visible a un
+    // portal aislado y se oculta toda la app, garantizando UNA sola hoja.
+    function printComprobante() {
+      const iva = document.getElementById('compIva');
+      const islr = document.getElementById('compIslr');
+      const target = (islr && getComputedStyle(islr).display !== 'none') ? islr : iva;
+      if (!target) return;
+      let portal = document.getElementById('printPortal');
+      if (!portal) { portal = document.createElement('div'); portal.id = 'printPortal'; document.body.appendChild(portal); }
+      portal.innerHTML = '';
+      const clon = target.cloneNode(true);
+      clon.style.display = 'block';
+      portal.appendChild(clon);
+      document.body.classList.add('printing-comp');
+      window.print();
+    }
+    function cleanupPrint() {
+      document.body.classList.remove('printing-comp');
+      const portal = document.getElementById('printPortal');
+      if (portal) portal.innerHTML = '';
+    }
+    window.addEventListener('afterprint', cleanupPrint);
+    const pBtn = document.getElementById('compPrintBtn');
+    if (pBtn) pBtn.addEventListener('click', printComprobante);
+    const pdfBtn = document.getElementById('compPdfBtn');
+    if (pdfBtn) pdfBtn.addEventListener('click', printComprobante);
+  })();
+
+  /* =========================================================
+     DECLARACIÓN PROTECCIÓN A LAS PENSIONES — imprimir planilla
+     ========================================================= */
+  (function declaracionesFiscales() {
+    function printDocById(docId) {
+      const doc = document.getElementById(docId);
+      if (!doc) return;
+      let portal = document.getElementById('printPortal');
+      if (!portal) { portal = document.createElement('div'); portal.id = 'printPortal'; document.body.appendChild(portal); }
+      portal.innerHTML = '';
+      const clon = doc.cloneNode(true);
+      clon.style.display = 'block';
+      clon.classList.add('dpp-print'); // hoja vertical (portrait)
+      portal.appendChild(clon);
+      document.body.classList.add('printing-comp');
+      window.print();
+    }
+    window.addEventListener('afterprint', () => {
+      document.body.classList.remove('printing-comp');
+      const portal = document.getElementById('printPortal');
+      if (portal) portal.innerHTML = '';
+    });
+    const wire = (ids, fn) => ids.forEach((id) => { const b = document.getElementById(id); if (b) b.addEventListener('click', fn); });
+    const toast = (m, t) => { if (window.toast) window.toast(m, t); };
+
+    // Protección a las Pensiones (Forma 99019)
+    wire(['pensionPrintBtn', 'pensionPdfBtn'], () => printDocById('pensionDoc'));
+    wire(['pensionRegistrarBtn'], () => toast('Declaración de Protección a las Pensiones registrada · lista para transmitir al SENIAT'));
+
+    // Impuesto a los Grandes Patrimonios (IGP)
+    wire(['igpPrintBtn', 'igpPdfBtn'], () => printDocById('igpDoc'));
+    wire(['igpRegistrarBtn'], () => toast('Declaración del IGP registrada en cero · de presentación obligatoria'));
+  })();
+
+  /* =========================================================
+     RELACIÓN DE NÓMINA DEL PERÍODO — modal imprimible
+     ========================================================= */
+  (function relacionNomina() {
+    const overlay = document.getElementById('relnOverlay');
+    const openBtn = document.getElementById('relacionNominaBtn');
+    if (!overlay || !openBtn) return;
+    const closeBtn = document.getElementById('relnClose');
+    const printBtn = document.getElementById('relnPrint');
+
+    const doc = document.getElementById('relnDoc');
+    openBtn.addEventListener('click', () => { overlay.hidden = false; drawIcons(); });
+    if (closeBtn) closeBtn.addEventListener('click', () => (overlay.hidden = true));
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.hidden = true; });
+    if (printBtn) printBtn.addEventListener('click', () => {
+      // Clonar a portal fuera de .app → imprime una sola hoja apaisada
+      let portal = document.getElementById('printPortal');
+      if (!portal) { portal = document.createElement('div'); portal.id = 'printPortal'; document.body.appendChild(portal); }
+      portal.innerHTML = '';
+      const clon = doc.cloneNode(true);
+      clon.classList.add('reln-print');
+      portal.appendChild(clon);
+      document.body.classList.add('printing-comp');
+      window.print();
+    });
+    window.addEventListener('afterprint', () => {
+      document.body.classList.remove('printing-comp');
+      const portal = document.getElementById('printPortal');
+      if (portal) portal.innerHTML = '';
+    });
+  })();
+
+  /* =========================================================
+     CALENDARIO FISCAL (Mayo 2026)
+     ========================================================= */
+  (function calendar() {
+    const calGrid = document.getElementById('calGrid');
+    if (!calGrid) return;
+    const titleEl = document.getElementById('calTitle');
+    const meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+    const dows = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+    let y = 2026, m = 4; // mayo 2026
+
+    function render() {
+      const offset = (new Date(y, m, 1).getDay() + 6) % 7; // inicio en lunes
+      const dias = new Date(y, m + 1, 0).getDate();
+      const today = (y === 2026 && m === 4) ? 28 : -1; // "hoy" sólo en mayo 2026
+      const events = { 15: { type: 'cyan', label: 'Declaración IVA · 1ra quincena' } };
+      events[dias] = { type: 'urgent', label: 'Declaración IVA · 2da quincena' };
+      let html = dows.map((d) => `<div class="cal-dow">${d}</div>`).join('');
+      for (let i = 0; i < offset; i++) html += '<div class="cal-day empty"></div>';
+      for (let d = 1; d <= dias; d++) {
+        let cls = 'cal-day', dot = '';
+        if (d === today) cls += ' today';
+        else if (events[d]) {
+          cls += events[d].type === 'urgent' ? ' has-event urgent' : ' has-event';
+          dot = '<span class="ev-dot"></span>';
+        }
+        html += `<div class="${cls}" title="${events[d] ? events[d].label : ''}">${d}${dot}</div>`;
+      }
+      calGrid.innerHTML = html;
+      if (titleEl) titleEl.textContent = 'Calendario fiscal · ' + meses[m] + ' ' + y;
+    }
+
+    const prev = document.getElementById('calPrevBtn');
+    const next = document.getElementById('calNextBtn');
+    if (prev) prev.addEventListener('click', () => { m--; if (m < 0) { m = 11; y--; } render(); });
+    if (next) next.addEventListener('click', () => { m++; if (m > 11) { m = 0; y++; } render(); });
+    render();
+  })();
+
+  /* =========================================================
+     GENERADOR TXT — descarga real del archivo simulado
+     ========================================================= */
+  (function txtGenerator() {
+    const btn = document.getElementById('txtGenBtn');
+    if (!btn) return;
+    const rif = 'J304567890';
+    // Formato OFICIAL SENIAT retención IVA · 16 columnas (A–P) separadas por TAB
+    // (guía iva_07): A RIF Agente | B Período(AAAAMM) | C Fecha Factura(AAAA-MM-DD) |
+    // D Tipo Operación(C=compra/V=venta) | E Tipo Doc(01=Factura) | F RIF Proveedor |
+    // G N° Documento | H N° Control | I Monto Total | J Base Imponible | K Monto IVA Retenido |
+    // L N° Documento Afectado(0) | M N° Comprobante Retención(14) | N Monto Exento(0.00) |
+    // O Alícuota | P N° Expediente(0)
+    const filas = [
+      [rif, '202605', '2026-05-28', 'C', '01', 'J315678901', '00284716', '00-018472', '214020.00', '184500.00', '22140.00', '0', '20260500000042', '0.00', '16.00', '0'],
+      [rif, '202605', '2026-05-27', 'C', '01', 'J294458217', '00045128', '00-018465', '951200.00', '820000.00', '98400.00', '0', '20260500000041', '0.00', '16.00', '0'],
+      [rif, '202605', '2026-05-24', 'C', '01', 'J287769013', '00731122', '00-018430', '1450000.00', '1250000.00', '150000.00', '0', '20260500000038', '0.00', '16.00', '0'],
+      [rif, '202605', '2026-05-23', 'C', '01', 'J309981225', '00018744', '00-018421', '56422.40', '48640.00', '5836.80', '0', '20260500000037', '0.00', '16.00', '0'],
+      [rif, '202605', '2026-05-22', 'C', '01', 'J293310878', '00045621', '00-018418', '215760.00', '186000.00', '22320.00', '0', '20260500000036', '0.00', '16.00', '0'],
+    ];
+    btn.addEventListener('click', () => {
+      const txt = filas.map((f) => f.join('\t')).join('\r\n') + '\r\n';
+      const blob = new Blob([txt], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'RET_IVA_' + rif + '_202605.txt';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      const orig = btn.innerHTML;
+      btn.innerHTML = '<i data-lucide="check"></i> Archivo descargado';
+      btn.setAttribute('disabled', '');
+      drawIcons();
+      setTimeout(() => { btn.innerHTML = orig; btn.removeAttribute('disabled'); drawIcons(); }, 2200);
+    });
+  })();
+
+  /* =========================================================
+     GENERADOR XML — declaración mensual de retenciones de ISLR
+     ========================================================= */
+  (function xmlGenerator() {
+    const btn = document.getElementById('xmlGenBtn');
+    if (!btn) return;
+    const rif = 'J304567890', periodo = '202605';
+    // Detalle de retenciones (las columnas que arma el XML, como el Excel del SENIAT)
+    const detalle = [
+      { rif: 'J315186225', factura: '0000259539', control: '00386833', fecha: '28-05-2026', concepto: '002', monto: '71428.57', pct: '3.00' },
+      { rif: 'V159982314', factura: '0000102993', control: '00018451', fecha: '26-05-2026', concepto: '002', monto: '240000.00', pct: '3.00' },
+      { rif: 'J301124456', factura: '0000009287', control: '00018442', fecha: '25-05-2026', concepto: '071', monto: '95000.00', pct: '1.00' },
+      { rif: 'J306672210', factura: '0000004410', control: '00018401', fecha: '22-05-2026', concepto: '057', monto: '63000.00', pct: '3.00' },
+    ];
+    function buildXml() {
+      let xml = '<?xml version="1.0" encoding="ISO-8859-1"?>\r\n<RelacionRetencionesISLR>\r\n';
+      xml += '  <RifAgente>' + rif + '</RifAgente>\r\n  <Periodo>' + periodo + '</Periodo>\r\n';
+      detalle.forEach((d, i) => {
+        xml += '  <DetalleRetencion>\r\n'
+          + '    <Secuencial>' + (i + 1) + '</Secuencial>\r\n'
+          + '    <RifRetenido>' + d.rif + '</RifRetenido>\r\n'
+          + '    <NumeroFactura>' + d.factura + '</NumeroFactura>\r\n'
+          + '    <NumeroControl>' + d.control + '</NumeroControl>\r\n'
+          + '    <FechaOperacion>' + d.fecha + '</FechaOperacion>\r\n'
+          + '    <CodigoConcepto>' + d.concepto + '</CodigoConcepto>\r\n'
+          + '    <MontoOperacion>' + d.monto + '</MontoOperacion>\r\n'
+          + '    <PorcentajeRetencion>' + d.pct + '</PorcentajeRetencion>\r\n'
+          + '  </DetalleRetencion>\r\n';
+      });
+      xml += '</RelacionRetencionesISLR>\r\n';
+      return xml;
+    }
+    btn.addEventListener('click', () => {
+      const blob = new Blob([buildXml()], { type: 'application/xml;charset=ISO-8859-1' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'RET_ISLR_' + rif + '_' + periodo + '.xml';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      const orig = btn.innerHTML;
+      btn.innerHTML = '<i data-lucide="check"></i> Archivo XML descargado';
+      btn.setAttribute('disabled', '');
+      drawIcons();
+      if (window.toast) window.toast('Archivo XML de retenciones ISLR generado · ' + detalle.length + ' registros');
+      setTimeout(() => { btn.innerHTML = orig; btn.removeAttribute('disabled'); drawIcons(); }, 2200);
+    });
+  })();
+
+  /* =========================================================
+     GENERADORES — selectores y descargas del historial (IVA/ISLR)
+     ========================================================= */
+  (function generadoresUI() {
+    const view = document.getElementById('view-fiscal');
+    if (!view) return;
+    const toast = (m, t) => { if (window.toast) window.toast(m, t); };
+    const opts = {
+      'Tipo de retención': ['Retención IVA', 'Retención ISLR'],
+      'Período': ['1ra Quincena · May 2026', '2da Quincena · May 2026', 'Junio 2026'],
+      'Período (mensual)': ['Marzo 2026', 'Abril 2026', 'Mayo 2026', 'Junio 2026'],
+    };
+    // Tipo de retención del ISLR (los 3 tipos de archivo XML)
+    const tipoIslr = view.querySelector('#islrTipoSel');
+    if (tipoIslr) tipoIslr.addEventListener('click', () => {
+      window.openFormModal && window.openFormModal({
+        title: 'Tipo de retención de ISLR',
+        saveLabel: 'Seleccionar',
+        fields: [{ name: 'sel', label: 'Tipo / planilla', col: 2, type: 'select',
+          options: ['Salarios y otras (Forma 99074)', 'Dividendos y Acciones (Forma 99075)', 'Ganancias Fortuitas (Forma 99076)'] }],
+        onSave: (v) => {
+          const val = tipoIslr.querySelector('.val');
+          if (val) val.innerHTML = v.sel + ' <i data-lucide="chevron-down"></i>';
+          if (window.lucide) window.lucide.createIcons();
+          toast('Tipo de retención ISLR: ' + v.sel);
+        },
+      });
+    });
+    // Otros selectores .txt-select (generador IVA e ISLR período)
+    view.querySelectorAll('.txt-select').forEach((sel) => {
+      if (sel.id === 'islrTipoSel') return;
+      sel.style.cursor = 'pointer';
+      sel.addEventListener('click', () => {
+        const lbl = ((sel.querySelector('.label') || {}).textContent || '').trim();
+        const list = opts[lbl] || ['Opción 1', 'Opción 2'];
+        window.openFormModal && window.openFormModal({
+          title: 'Seleccionar · ' + lbl,
+          saveLabel: 'Seleccionar',
+          fields: [{ name: 'sel', label: lbl, col: 2, type: 'select', options: list }],
+          onSave: (v) => {
+            const val = sel.querySelector('.val');
+            if (val) val.innerHTML = v.sel + ' <i data-lucide="chevron-down"></i>';
+            if (window.lucide) window.lucide.createIcons();
+            toast(lbl + ': ' + v.sel);
+          },
+        });
+      });
+    });
+    // Botones de descarga del historial de archivos
+    view.querySelectorAll('.txt-history .dl').forEach((b) => {
+      b.addEventListener('click', () => {
+        const nm = ((b.closest('.txt-row') || {}).querySelector ? b.closest('.txt-row').querySelector('.nm').textContent : 'archivo');
+        toast('Descargando ' + nm);
+      });
+    });
+  })();
+
+  /* =========================================================
+     TASA DE CAMBIO — en vivo (simulada)
+     ========================================================= */
+  (function fxRate() {
+    const pill = document.getElementById('fxPill');
+    const panel = document.getElementById('fxPanel');
+    if (!pill || !panel) return;
+
+    let bcv = 145.82, par = 151.3, eur = 158.04;
+    const bcvPrev = 145.21, parPrev = 150.28, eurPrev = 157.55;
+    let secs = 12;
+
+    const fmt = (n) => n.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    function setDelta(el, cur, prev) {
+      if (!el) return;
+      const pct = ((cur - prev) / prev) * 100;
+      const up = pct >= 0;
+      el.className = 'dl ' + (up ? 'up' : 'down');
+      el.innerHTML = '<i data-lucide="arrow-' + (up ? 'up' : 'down') + '"></i> ' + fmt(Math.abs(pct)) + '%';
+    }
+
+    function render() {
+      setText('fxBcv', fmt(bcv));
+      setText('fxPar', fmt(par));
+      setText('fxEur', fmt(eur));
+      setText('fxPillRate', fmt(bcv));
+      window.__bcvRate = bcv;
+      document.dispatchEvent(new CustomEvent('bcv-rate', { detail: { bcv, par, eur } }));
+
+      setDelta(document.getElementById('fxBcvDl'), bcv, bcvPrev);
+      setDelta(document.getElementById('fxParDl'), par, parPrev);
+      setDelta(document.getElementById('fxEurDl'), eur, eurPrev);
+
+      const pct = ((bcv - bcvPrev) / bcvPrev) * 100;
+      const up = pct >= 0;
+      const pd = document.getElementById('fxPillDelta');
+      if (pd) {
+        pd.className = 'fx-delta ' + (up ? 'up' : 'down');
+        pd.innerHTML = '<i data-lucide="trending-' + (up ? 'up' : 'down') + '"></i> ' + fmt(Math.abs(pct)) + '%';
+      }
+      setText('fxSpread', fmt(((par - bcv) / bcv) * 100) + '%');
+      setText('fxConvRate', 'Bs ' + fmt(bcv) + ' / $');
+      recalcFromUsd();
+      drawIcons();
+    }
+
+    function tick() {
+      const jitter = () => (Math.random() - 0.42) * 0.18;
+      bcv = Math.max(140, bcv + jitter());
+      par = Math.max(bcv + 1, par + jitter() * 1.4);
+      eur = Math.max(150, eur + jitter() * 1.1);
+      secs = 0;
+      render();
+    }
+    setInterval(tick, 5000);
+    setInterval(() => {
+      secs += 1;
+      setText('fxUpdated', secs < 60 ? 'hace ' + secs + ' s' : 'hace ' + Math.floor(secs / 60) + ' min');
+    }, 1000);
+
+    const usdInput = document.getElementById('fxUsd');
+    const bsInput = document.getElementById('fxBs');
+    const parseNum = (s) => parseFloat(String(s).replace(/\./g, '').replace(',', '.')) || 0;
+    function recalcFromUsd() { if (usdInput && bsInput) bsInput.value = fmt(parseNum(usdInput.value) * bcv); }
+    function recalcFromBs() {
+      if (usdInput && bsInput) usdInput.value = (parseNum(bsInput.value) / bcv).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    if (usdInput) usdInput.addEventListener('input', recalcFromUsd);
+    if (bsInput) bsInput.addEventListener('input', recalcFromBs);
+
+    pill.addEventListener('click', (e) => {
+      if (e.target.closest('.fx-panel')) return;
+      panel.dataset.open = panel.dataset.open === 'true' ? 'false' : 'true';
+    });
+    document.addEventListener('click', (e) => { if (!pill.contains(e.target)) panel.dataset.open = 'false'; });
+    const refreshBtn = document.getElementById('fxRefresh');
+    if (refreshBtn) refreshBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); tick(); });
+
+    render();
+  })();
+
+  /* =========================================================
+     TOGGLE GLOBAL Bs / $ — conversión de KPIs del dashboard
+     ========================================================= */
+  (function currencyToggle() {
+    const toggle = document.getElementById('currencyToggle');
+    if (!toggle) return;
+    let mode = 'bs';
+    const fmtBs = (n) => n.toLocaleString('es-VE', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    const fmtUsd = (n) => n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+
+    function applyOne(el, rate) {
+      const bs = parseFloat(el.dataset.bs);
+      if (isNaN(bs)) return;
+      const prefix = el.dataset.prefix;
+      if (mode === 'usd') {
+        const usd = bs / rate;
+        if (prefix !== undefined) {
+          const sign = prefix.indexOf('+') >= 0 ? '+ ' : '';
+          el.textContent = sign + '$ ' + fmtUsd(usd);
+        } else {
+          el.innerHTML = '<span class="currency">$</span> ' + fmtUsd(usd);
+        }
+      } else if (prefix !== undefined) {
+        el.textContent = prefix + fmtBs(bs);
+      } else {
+        const dec = Math.round((bs % 1) * 100);
+        if (dec > 0) {
+          el.innerHTML = '<span class="currency">Bs</span> ' + fmtBs(Math.floor(bs)) + '<span class="unit-sm">,' + String(dec).padStart(2, '0') + '</span>';
+        } else {
+          el.innerHTML = '<span class="currency">Bs</span> ' + fmtBs(bs);
+        }
+      }
+    }
+    function applyAll() {
+      const rate = window.__bcvRate || 145.82;
+      document.querySelectorAll('.fx-amount').forEach((el) => applyOne(el, rate));
+    }
+    toggle.querySelectorAll('button').forEach((b) => {
+      b.addEventListener('click', () => {
+        toggle.querySelectorAll('button').forEach((x) => x.removeAttribute('data-active'));
+        b.dataset.active = 'true';
+        mode = b.dataset.cur;
+        applyAll();
+      });
+    });
+    document.addEventListener('bcv-rate', () => { if (mode === 'usd') applyAll(); });
+  })();
+
+  /* =========================================================
+     BÚSQUEDA EN VIVO de tablas (filtra filas)
+     ========================================================= */
+  (function tableSearch() {
+    const norm = (s) => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    document.querySelectorAll('.quick-search input').forEach((input) => {
+      const wrap = input.closest('.data-table-wrap');
+      if (!wrap) return;
+      const tbody = wrap.querySelector('table tbody');
+      if (!tbody) return;
+      const rows = [...tbody.querySelectorAll('tr')];
+      const countEl = wrap.querySelector('.table-footer .count');
+      const origCount = countEl ? countEl.innerHTML : null;
+      const cols = wrap.querySelectorAll('thead th').length || 6;
+
+      function noResRow() {
+        let r = tbody.querySelector('tr.no-res');
+        if (!r) {
+          r = document.createElement('tr');
+          r.className = 'no-res';
+          r.innerHTML = `<td colspan="${cols}" style="text-align:center;padding:28px;color:var(--fg-muted);font-size:13px;">Sin resultados para tu búsqueda</td>`;
+          tbody.appendChild(r);
+        }
+        return r;
+      }
+
+      input.addEventListener('input', () => {
+        const q = norm(input.value.trim());
+        let visible = 0;
+        rows.forEach((tr) => {
+          if (tr.classList.contains('no-res')) return;
+          const match = q === '' || norm(tr.textContent).includes(q);
+          tr.style.display = match ? '' : 'none';
+          if (match) visible++;
+        });
+        noResRow().style.display = visible === 0 ? '' : 'none';
+        if (countEl) {
+          countEl.innerHTML = q === '' ? origCount : `<strong>${visible}</strong> resultado${visible === 1 ? '' : 's'} para “${input.value.trim()}”`;
+        }
+      });
+    });
+  })();
+
+  /* =========================================================
+     FILTER CHIPS + PAGINACIÓN (estado visual)
+     ========================================================= */
+  document.querySelectorAll('.filter-chip').forEach((chip) => {
+    chip.addEventListener('click', () => chip.classList.toggle('active'));
+  });
+  document.querySelectorAll('.pager').forEach((pager) => {
+    const btns = [...pager.querySelectorAll('button')];
+    btns.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        if (/^\d+$/.test(btn.textContent.trim())) {
+          btns.forEach((b) => b.removeAttribute('data-active'));
+          btn.dataset.active = 'true';
+        }
+      });
+    });
+  });
+
+  /* =========================================================
+     BÚSQUEDA GLOBAL (topbar) → salta a la vista relevante
+     ========================================================= */
+  (function globalSearch() {
+    const input = document.getElementById('searchInput');
+    if (!input) return;
+    const norm = (s) => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const map = [
+      { kw: ['rif', 'factura', 'comprobante', 'iva', 'islr', 'seniat', 'retenc', 'fiscal', 'txt'], view: 'fiscal', title: 'Módulo Fiscal · SENIAT' },
+      { kw: ['banco', 'cobr', 'pagar', 'tesoreria', 'cxc', 'cxp', 'concil'], view: 'tesoreria', title: 'Tesorería' },
+      { kw: ['asiento', 'mayor', 'diario', 'balance', 'contab'], view: 'contabilidad', title: 'Contabilidad · Libros' },
+      { kw: ['sku', 'stock', 'inventario', 'almacen', 'articulo'], view: 'inventario', title: 'Catálogo e Inventario' },
+      { kw: ['empleado', 'nomina', 'salario', 'rrhh'], view: 'nomina', title: 'Nómina y RRHH' },
+      { kw: ['agente', 'ia', 'bot'], view: 'agentes', title: 'Centro de Agentes IA' },
+    ];
+    input.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      const q = norm(input.value.trim());
+      if (!q) return;
+      const hit = map.find((m) => m.kw.some((k) => q.includes(k)));
+      if (hit) showView(hit.view, hit.title);
+    });
+  })();
+
+  /* =========================================================
+     PLACEHOLDERS para módulos fuera de alcance
+     ========================================================= */
+  document.querySelectorAll('.placeholder-view').forEach((el) => {
+    const mod = el.dataset.mod || 'Este módulo';
+    el.innerHTML = `
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;min-height:60vh;gap:16px;color:var(--fg-muted);">
+        <div style="width:64px;height:64px;border-radius:var(--radius-md);background:var(--da-navy-50);color:var(--da-navy-700);display:grid;place-items:center;">
+          <i data-lucide="hammer" style="width:30px;height:30px;"></i>
+        </div>
+        <div>
+          <h2 style="font-family:var(--font-display);font-weight:800;font-size:22px;color:var(--fg-primary);letter-spacing:-0.01em;margin:0 0 6px;">${mod}</h2>
+          <p style="max-width:420px;margin:0;font-size:14px;line-height:1.5;">Módulo previsto en el prototipo. En esta entrega se implementaron el <strong style="color:var(--fg-primary);">Dashboard Central</strong> y el <strong style="color:var(--fg-primary);">Módulo Fiscal · SENIAT</strong>.</p>
+        </div>
+        <button class="btn btn-ghost" data-go-view="dashboard" data-go-title="Dashboard Central"><i data-lucide="arrow-left"></i> Volver al Dashboard</button>
+      </div>`;
+  });
+  // re-enlazar los botones "volver" recién creados
+  document.querySelectorAll('.placeholder-view [data-go-view]').forEach((el) => {
+    el.addEventListener('click', (e) => {
+      e.preventDefault();
+      showView(el.dataset.goView, el.dataset.goTitle || '');
+    });
+  });
+
+  /* =========================================================
+     CONCILIACIÓN BANCARIA — resolver partida pendiente
+     ========================================================= */
+  (function bankRecon() {
+    const createBtn = document.getElementById('reconCreateBtn');
+    const resolveBtn = document.getElementById('reconResolveBtn');
+    if (!createBtn && !resolveBtn) return;
+
+    let resolved = false;
+    function resolveRecon() {
+      if (resolved) return;
+      resolved = true;
+
+      const bookRow = document.getElementById('reconBookPending');
+      const bankRow = document.getElementById('reconBankPending');
+      const pendingCheck = document.getElementById('reconPendingCheck');
+      const pendingDesc = document.getElementById('reconPendingDesc');
+
+      if (bookRow) bookRow.classList.add('matched', 'resolving');
+      if (bankRow) bankRow.classList.add('matched', 'resolving');
+      if (pendingCheck) {
+        pendingCheck.classList.remove('pending');
+        pendingCheck.innerHTML = '<i data-lucide="check"></i>';
+      }
+      if (pendingDesc) {
+        pendingDesc.style.color = 'var(--fg-primary)';
+        pendingDesc.textContent = 'Comisión bancaria + IGTF';
+      }
+      // Reemplazar botón "Crear" por monto
+      const cb = document.getElementById('reconCreateBtn');
+      if (cb) cb.outerHTML = '<span class="val neg">− 6.340,00</span>';
+
+      // Icono central unlink → link
+      const midIcon = document.getElementById('reconMidIcon');
+      if (midIcon) { midIcon.setAttribute('data-lucide', 'link'); midIcon.style.color = 'var(--da-success)'; }
+
+      // Stats
+      const matched = document.getElementById('reconMatched');
+      if (matched) matched.innerHTML = '33 <small>/ 33</small>';
+      const autoPct = document.getElementById('reconAutoPct');
+      if (autoPct) autoPct.textContent = '100';
+      const diffStat = document.getElementById('reconDiffStat');
+      if (diffStat) diffStat.dataset.zero = 'true';
+      const diffVal = document.getElementById('reconDiffVal');
+      if (diffVal) diffVal.innerHTML = '<small>Bs</small> 0<small>,00</small>';
+
+      // Cuadre: marcar la comisión como registrada
+      const comision = document.getElementById('cuadreComision');
+      if (comision) {
+        const line = comision.closest('.cuadre-line');
+        if (line) line.querySelector('.lbl').innerHTML = '(−) Comisión + IGTF banco<small>Registrada · asiento #0312</small>';
+      }
+
+      // Status bar
+      const bar = document.getElementById('reconStatusBar');
+      if (bar) {
+        bar.classList.remove('pending');
+        bar.classList.add('ok');
+        bar.querySelector('.msg').innerHTML = '<i data-lucide="check-circle-2"></i> <span>Conciliación cuadrada · saldo banco y libros coinciden en Bs 3.829.840,00</span>';
+      }
+      const rb = document.getElementById('reconResolveBtn');
+      if (rb) rb.outerHTML = '<button class="btn btn-primary" style="height:32px;font-size:12px;" disabled><i data-lucide="check"></i> Cuadrada</button>';
+
+      // Habilitar confirmar
+      const confirmBtn = document.getElementById('reconConfirmBtn');
+      if (confirmBtn) confirmBtn.removeAttribute('disabled');
+
+      drawIcons();
+    }
+
+    if (createBtn) createBtn.addEventListener('click', resolveRecon);
+    if (resolveBtn) resolveBtn.addEventListener('click', resolveRecon);
+
+    const confirmBtn = document.getElementById('reconConfirmBtn');
+    if (confirmBtn) confirmBtn.addEventListener('click', () => {
+      if (confirmBtn.hasAttribute('disabled')) return;
+      confirmBtn.innerHTML = '<i data-lucide="check-check"></i> Conciliación confirmada';
+      confirmBtn.setAttribute('disabled', '');
+      drawIcons();
+    });
+  })();
+
+  /* =========================================================
+     INVENTARIO — modelo de negocio (comercial / manufactura / servicios)
+     ========================================================= */
+  (function inventory() {
+    const view = document.getElementById('view-inventario');
+    if (!view) return;
+
+    const selector = document.getElementById('invModeSelector');
+    const panes = view.querySelectorAll('.inv-mode-pane');
+    const badge = document.getElementById('invModeBadge');
+    const alertBadge = document.getElementById('invAlertBadge');
+    const primaryBtn = document.getElementById('invPrimaryBtn');
+    const config = document.getElementById('invConfig');
+
+    // Estado de habilitación (una empresa puede combinar modelos)
+    const enabled = { comercial: true, manufactura: false, servicios: false };
+    let activeMode = 'comercial';
+
+    const badgeMap = {
+      comercial: '<i data-lucide="store"></i> Empresa comercial',
+      manufactura: '<i data-lucide="factory"></i> Empresa manufacturera',
+      servicios: '<i data-lucide="briefcase"></i> Empresa de servicios',
+    };
+    // El badge de alerta y la acción principal cambian según el modelo
+    const alertMap = {
+      comercial: '<i data-lucide="alert-triangle"></i> 4 en stock crítico',
+      manufactura: '<i data-lucide="alert-triangle"></i> 2 insumos críticos',
+      servicios: null, // servicios no maneja stock físico
+    };
+    const primaryMap = {
+      comercial: '<i data-lucide="plus"></i> Nuevo artículo',
+      manufactura: '<i data-lucide="plus"></i> Nueva orden de producción',
+      servicios: '<i data-lucide="plus"></i> Nuevo servicio',
+    };
+
+    function applyEnabledState() {
+      selector.querySelectorAll('.inv-mode-card').forEach((card) => {
+        card.dataset.enabled = enabled[card.dataset.mode] ? 'true' : 'false';
+      });
+    }
+
+    function setMode(mode) {
+      if (!enabled[mode]) return;
+      activeMode = mode;
+      selector.querySelectorAll('.inv-mode-card').forEach((c) => (c.dataset.active = c.dataset.mode === mode ? 'true' : 'false'));
+      panes.forEach((p) => (p.dataset.active = p.dataset.mode === mode ? 'true' : 'false'));
+      if (badge) badge.innerHTML = badgeMap[mode] || '';
+      // Adaptar badge de alerta (oculto en servicios) y acción principal
+      if (alertBadge) {
+        if (alertMap[mode]) { alertBadge.innerHTML = alertMap[mode]; alertBadge.hidden = false; }
+        else { alertBadge.hidden = true; }
+      }
+      if (primaryBtn) primaryBtn.innerHTML = primaryMap[mode] || primaryBtn.innerHTML;
+      drawIcons();
+    }
+
+    // Selección de modelo
+    selector.querySelectorAll('.inv-mode-card').forEach((card) => {
+      card.addEventListener('click', () => {
+        const mode = card.dataset.mode;
+        if (enabled[mode]) {
+          setMode(mode);
+        } else {
+          // Bloqueado: invitar a habilitarlo en configuración
+          openConfig();
+        }
+      });
+    });
+
+    // ---- Panel de configuración (habilitar / desbloquear) ----
+    function openConfig() {
+      if (!config) return;
+      // sincronizar checkboxes con el estado actual
+      config.querySelectorAll('[data-mode-toggle]').forEach((cb) => {
+        cb.checked = !!enabled[cb.dataset.modeToggle];
+      });
+      config.hidden = false;
+      drawIcons();
+      config.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+    function closeConfig() { if (config) config.hidden = true; }
+
+    const configBtn = document.getElementById('invConfigBtn');
+    if (configBtn) configBtn.addEventListener('click', () => (config.hidden ? openConfig() : closeConfig()));
+    const configClose = document.getElementById('invConfigClose');
+    if (configClose) configClose.addEventListener('click', closeConfig);
+
+    const configSave = document.getElementById('invConfigSave');
+    if (configSave) {
+      configSave.addEventListener('click', () => {
+        const next = {};
+        config.querySelectorAll('[data-mode-toggle]').forEach((cb) => (next[cb.dataset.modeToggle] = cb.checked));
+        // Comercial siempre disponible como base (no permitir quedar sin ningún modelo)
+        if (!next.comercial && !next.manufactura && !next.servicios) {
+          next.comercial = true;
+          const cb = config.querySelector('[data-mode-toggle="comercial"]');
+          if (cb) cb.checked = true;
+        }
+        Object.assign(enabled, next);
+        applyEnabledState();
+        // Si el modo activo quedó deshabilitado, saltar al primero habilitado
+        if (!enabled[activeMode]) {
+          const first = ['comercial', 'manufactura', 'servicios'].find((m) => enabled[m]);
+          if (first) setMode(first);
+        }
+        // feedback en el botón
+        const orig = configSave.innerHTML;
+        configSave.innerHTML = '<i data-lucide="check"></i> Configuración guardada';
+        drawIcons();
+        setTimeout(() => {
+          configSave.innerHTML = orig;
+          drawIcons();
+          closeConfig();
+        }, 1200);
+      });
+    }
+
+    // ---- Subtabs internas por modo ----
+    function wireSubtabs(tabsId, paneClass) {
+      const tabsWrap = document.getElementById(tabsId);
+      if (!tabsWrap) return;
+      const tabs = tabsWrap.querySelectorAll('button');
+      const tabPanes = view.querySelectorAll('.' + paneClass);
+      tabs.forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const tab = btn.dataset.tab;
+          tabs.forEach((b) => (b.dataset.active = b === btn ? 'true' : 'false'));
+          tabPanes.forEach((p) => (p.dataset.active = p.dataset.tab === tab ? 'true' : 'false'));
+          drawIcons();
+        });
+      });
+    }
+    wireSubtabs('invTabsCom', 'invpane-com');
+    wireSubtabs('invTabsMfg', 'invpane-mfg');
+    wireSubtabs('invTabsSrv', 'invpane-srv');
+
+    // Init
+    applyEnabledState();
+    setMode('comercial');
+  })();
+
+  /* =========================================================
+     INVENTARIO — acciones (crear artículo/MP/orden/servicio, exportar, OC…)
+     ========================================================= */
+  (function inventoryActions() {
+    const view = document.getElementById('view-inventario');
+    if (!view) return;
+    const toast = (m, t) => { if (window.toast) window.toast(m, t); };
+    const fmt = (n) => Number(n).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const currentMode = () => { const c = view.querySelector('.inv-mode-card[data-active="true"]'); return c ? c.dataset.mode : 'comercial'; };
+    const ICONS = ['package', 'package-2', 'box', 'coffee', 'milk', 'wheat', 'droplet'];
+
+    // Contadores de correlativos (memoria)
+    let skuSeq = 269, mpSeq = 39, opSeq = 46, srvSeq = 45;
+
+    function tbodyOf(paneClass, tab) {
+      const pane = view.querySelector('.' + paneClass + '[data-tab="' + tab + '"]');
+      return pane ? pane.querySelector('table.data-table tbody') : null;
+    }
+
+    // ---- Nuevo artículo (comercial) ----
+    function nuevoArticulo() {
+      window.openFormModal && window.openFormModal({
+        title: 'Nuevo artículo', saveLabel: 'Crear artículo',
+        fields: [
+          { name: 'nombre', label: 'Nombre del artículo', col: 2, placeholder: 'Ej. Caraotas negras 1 kg' },
+          { name: 'cat', label: 'Categoría', type: 'select', options: ['Alimentos', 'Bebidas', 'Limpieza', 'Cuidado personal', 'Otros'] },
+          { name: 'alic', label: 'Alícuota IVA', type: 'select', options: ['16%', '8%', 'Exento'] },
+          { name: 'stock', label: 'Stock inicial', type: 'number', placeholder: '0' },
+          { name: 'min', label: 'Stock mínimo', type: 'number', placeholder: '0' },
+          { name: 'costo', label: 'Costo prom. (Bs)', type: 'number', step: '0.01', placeholder: '0.00' },
+          { name: 'precio', label: 'Precio venta (Bs)', type: 'number', step: '0.01', placeholder: '0.00' },
+        ],
+        onSave: (v) => {
+          if (!v.nombre) return 'Indica el nombre del artículo.';
+          const tb = tbodyOf('invpane-com', 'articulos'); if (!tb) return;
+          const sku = 'SKU-' + String(skuSeq++).padStart(2, '0');
+          const stock = Number(v.stock) || 0, min = Number(v.min) || 0, costo = Number(v.costo) || 0;
+          const estado = stock <= min ? (stock < min / 2 ? '<span class="tag danger">Crítico</span>' : '<span class="tag warn">Bajo</span>') : '<span class="tag success">Óptimo</span>';
+          const tag = v.alic === 'Exento' ? '<span class="tag slate">Exento</span>' : '<span class="tag navy">' + v.alic + '</span>';
+          const ic = ICONS[Math.floor(Math.random() * ICONS.length)];
+          const tr = document.createElement('tr');
+          tr.innerHTML = '<td><div class="prod-cell"><div class="prod-thumb"><i data-lucide="' + ic + '"></i></div><div class="info"><div class="n">' + v.nombre + '</div><div class="sku">' + sku + '</div></div></div></td>'
+            + '<td>' + v.cat + '</td>'
+            + '<td><div class="stock-cell"><div class="qty">' + stock + ' <span class="unit">uds</span></div><div class="stock-bar"><span style="width:60%"></span></div><div class="min-note">Mín. ' + min + '</div></div></td>'
+            + '<td class="num">' + fmt(costo) + '</td><td class="num">' + fmt(Number(v.precio) || 0) + '</td><td>' + tag + '</td>'
+            + '<td class="num">' + fmt(stock * costo) + '</td><td>' + estado + '</td>';
+          tb.insertBefore(tr, tb.firstChild);
+          if (window.lucide) window.lucide.createIcons();
+          toast('Artículo "' + v.nombre + '" creado · ' + sku, 'success');
+        },
+      });
+    }
+
+    // ---- Nueva materia prima (manufactura) ----
+    function nuevaMP() {
+      window.openFormModal && window.openFormModal({
+        title: 'Nueva materia prima', saveLabel: 'Registrar MP',
+        fields: [
+          { name: 'nombre', label: 'Materia prima / insumo', col: 2, placeholder: 'Ej. Cacao en grano' },
+          { name: 'tipo', label: 'Tipo', type: 'select', options: ['Directa', 'Indirecta'] },
+          { name: 'unidad', label: 'Unidad', type: 'select', options: ['kg', 'L', 'uds', 'm', 'ton'] },
+          { name: 'exist', label: 'Existencia', type: 'number', placeholder: '0' },
+          { name: 'costo', label: 'Costo unit. (Bs)', type: 'number', step: '0.01', placeholder: '0.00' },
+        ],
+        onSave: (v) => {
+          if (!v.nombre) return 'Indica el nombre de la materia prima.';
+          const tb = tbodyOf('invpane-mfg', 'mp'); if (!tb) return;
+          const cod = 'MP-' + String(mpSeq++).padStart(2, '0');
+          const exist = Number(v.exist) || 0, costo = Number(v.costo) || 0;
+          const tr = document.createElement('tr');
+          tr.innerHTML = '<td><div class="prod-cell"><div class="prod-thumb"><i data-lucide="box"></i></div><div class="info"><div class="n">' + v.nombre + '</div><div class="sku">' + cod + '</div></div></div></td>'
+            + '<td>' + v.tipo + '</td>'
+            + '<td><div class="stock-cell"><div class="qty">' + exist + ' <span class="unit">' + v.unidad + '</span></div><div class="stock-bar"><span style="width:60%"></span></div><div class="min-note">Mín. —</div></div></td>'
+            + '<td class="num">' + fmt(costo) + '</td><td>' + v.unidad + '</td><td class="num">' + fmt(exist * costo) + '</td><td><span class="tag success">Óptimo</span></td>';
+          tb.insertBefore(tr, tb.firstChild);
+          if (window.lucide) window.lucide.createIcons();
+          toast('Materia prima "' + v.nombre + '" registrada · ' + cod, 'success');
+        },
+      });
+    }
+
+    // ---- Nueva orden de producción (manufactura) ----
+    function nuevaOrden() {
+      window.openFormModal && window.openFormModal({
+        title: 'Nueva orden de producción', saveLabel: 'Crear orden',
+        fields: [
+          { name: 'prod', label: 'Producto a fabricar', col: 2, placeholder: 'Ej. Café Premium 1 kg' },
+          { name: 'bom', label: 'Receta (BOM)', col: 2, placeholder: 'Ej. Café verde 1,05 kg + empaque ×1' },
+          { name: 'cant', label: 'Cantidad (uds)', type: 'number', placeholder: '0' },
+          { name: 'fin', label: 'Fecha fin', type: 'date', value: '2026-06-10' },
+        ],
+        onSave: (v) => {
+          if (!v.prod) return 'Indica el producto a fabricar.';
+          const tb = tbodyOf('invpane-mfg', 'ordenes'); if (!tb) return;
+          const num = 'OP-2026-' + String(opSeq++).padStart(3, '0');
+          const fin = v.fin ? v.fin.split('-').reverse().join('/').slice(0, 8) : '—';
+          const tr = document.createElement('tr');
+          tr.innerHTML = '<td class="mono">' + num + '</td><td class="primary">' + v.prod + '</td><td class="caption">' + (v.bom || '—') + '</td>'
+            + '<td class="num">' + (Number(v.cant) || 0).toLocaleString('es-VE') + ' uds</td>'
+            + '<td><div style="display:flex;align-items:center;gap:8px;"><div class="bar-mini" style="width:90px;"><span style="width:0%"></span></div><span class="caption">0%</span></div></td>'
+            + '<td>' + fin + '</td><td><span class="tag slate">Programada</span></td>';
+          tb.insertBefore(tr, tb.firstChild);
+          if (window.lucide) window.lucide.createIcons();
+          toast('Orden ' + num + ' creada · ' + v.prod, 'success');
+        },
+      });
+    }
+
+    // ---- Nuevo servicio (servicios) ----
+    function nuevoServicio() {
+      window.openFormModal && window.openFormModal({
+        title: 'Nuevo servicio', saveLabel: 'Crear servicio',
+        fields: [
+          { name: 'nombre', label: 'Nombre del servicio', col: 2, placeholder: 'Ej. Instalación de equipos' },
+          { name: 'cat', label: 'Categoría', type: 'select', options: ['Logística', 'Técnico', 'Consultoría', 'Otros'] },
+          { name: 'alic', label: 'Alícuota IVA', type: 'select', options: ['16%', '8%', '0%'] },
+          { name: 'precio', label: 'Precio (Bs)', type: 'number', step: '0.01', placeholder: '0.00' },
+        ],
+        onSave: (v) => {
+          if (!v.nombre) return 'Indica el nombre del servicio.';
+          const tb = tbodyOf('invpane-srv', 'catalogo'); if (!tb) return;
+          const cod = 'SRV' + String(srvSeq++).padStart(2, '0');
+          const tagCls = v.alic === '0%' ? 'slate' : v.alic === '8%' ? 'cyan' : 'navy';
+          const tr = document.createElement('tr');
+          tr.innerHTML = '<td><div class="prod-cell"><div class="prod-thumb"><i data-lucide="briefcase"></i></div><div class="info"><div class="n">' + v.nombre + '</div></div></div></td>'
+            + '<td class="mono">' + cod + '</td><td>' + v.cat + '</td><td class="num">' + fmt(Number(v.precio) || 0) + '</td>'
+            + '<td><span class="tag ' + tagCls + '">' + v.alic + '</span></td><td class="num">0 órdenes</td><td><span class="tag success">Activo</span></td>';
+          tb.insertBefore(tr, tb.firstChild);
+          if (window.lucide) window.lucide.createIcons();
+          toast('Servicio "' + v.nombre + '" creado · ' + cod, 'success');
+        },
+      });
+    }
+
+    // Acción principal del header (según modo activo)
+    const primaryBtn = document.getElementById('invPrimaryBtn');
+    if (primaryBtn) primaryBtn.addEventListener('click', () => {
+      const m = currentMode();
+      if (m === 'manufactura') nuevaOrden();
+      else if (m === 'servicios') nuevoServicio();
+      else nuevoArticulo();
+    });
+
+    // Botones primary dentro de las pestañas (Nueva MP / Nueva orden / Nuevo servicio)
+    view.querySelectorAll('.btn.btn-primary').forEach((b) => {
+      if (b === primaryBtn) return;
+      const txt = b.textContent.trim();
+      if (/Nueva MP/i.test(txt)) b.addEventListener('click', nuevaMP);
+      else if (/Nueva orden/i.test(txt)) b.addEventListener('click', nuevaOrden);
+      else if (/Nuevo servicio/i.test(txt)) b.addEventListener('click', nuevoServicio);
+      else if (/Generar .* órdenes/i.test(txt)) b.addEventListener('click', () => toast('Órdenes de compra generadas y enviadas a los proveedores sugeridos', 'success'));
+    });
+
+    // Botones "OC" (orden de compra por artículo crítico)
+    view.querySelectorAll('.invpane-com[data-tab="critico"] tbody .btn').forEach((b) => {
+      b.addEventListener('click', () => {
+        const tr = b.closest('tr');
+        const art = (tr.querySelector('.prod-cell .n') || {}).textContent || 'el artículo';
+        const sug = (tr.children[5] || {}).textContent || '';
+        const prov = (tr.children[6] || {}).textContent || 'proveedor';
+        toast('Orden de compra creada: ' + sug.trim() + ' uds de ' + art + ' a ' + prov.trim(), 'success');
+      });
+    });
+
+    // Botones "Exportar" → CSV de la tabla del pane correspondiente
+    view.querySelectorAll('.btn').forEach((b) => {
+      if (!/Exportar/i.test(b.textContent)) return;
+      b.addEventListener('click', () => {
+        const wrap = b.closest('.invpane-com, .invpane-mfg, .invpane-srv, .inv-mode-pane') || view;
+        const table = wrap.querySelector('table.data-table');
+        if (!table) { toast('Exportado'); return; }
+        const rows = [];
+        rows.push([...table.querySelectorAll('thead th')].map((th) => th.textContent.trim()).filter((x) => x));
+        table.querySelectorAll('tbody tr').forEach((tr) => rows.push([...tr.querySelectorAll('td')].map((td) => td.textContent.replace(/\s+/g, ' ').trim())));
+        const csv = rows.map((r) => r.map((c) => '"' + String(c).replace(/"/g, '""') + '"').join(';')).join('\r\n');
+        const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = 'Inventario_' + currentMode() + '.csv';
+        document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+        toast('Inventario exportado a CSV');
+      });
+    });
+
+    // Selector de artículo en el Kardex
+    const kxSel = view.querySelector('.invpane-com[data-tab="kardex"] .txt-select');
+    if (kxSel) { kxSel.style.cursor = 'pointer'; kxSel.addEventListener('click', () => {
+      window.openFormModal && window.openFormModal({
+        title: 'Kardex — seleccionar artículo', saveLabel: 'Ver kardex',
+        fields: [{ name: 'art', label: 'Artículo', col: 2, type: 'select', options: ['Café Premium 1 kg · SKU-01', 'Azúcar refinada 1 kg · SKU-02', 'Harina de maíz 1 kg · SKU-03', 'Arroz blanco 1 kg · SKU-04', 'Aceite vegetal 1 L · SKU-05'] }],
+        onSave: (v) => { const val = kxSel.querySelector('.val'); if (val) val.innerHTML = v.art + ' <i data-lucide="chevron-down"></i>'; if (window.lucide) window.lucide.createIcons(); toast('Kardex de ' + v.art); },
+      });
+    }); }
+
+    // ---- Estructura de costos (ficha de costo + precio + rentabilidad, en vivo) ----
+    function calcCosto(pane) {
+      const mode = pane.dataset.costMode;
+      const get = (k) => { const el = pane.querySelector('[data-k="' + k + '"]'); return el ? (parseFloat(el.value) || 0) : 0; };
+      const setOut = (k, val) => pane.querySelectorAll('[data-out="' + k + '"]').forEach((el) => (el.textContent = val));
+      const bs = (n) => 'Bs ' + fmt(n);            // monto en bolívares
+      const usd = (n) => '$ ' + (Number(n)).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const cant = get('cantidad') || 1;
+      const tasa = get('tasaUsd') || 1;
+
+      let costoLote = 0;
+      if (mode === 'manufactura') {
+        let mp = 0;
+        pane.querySelectorAll('[data-mp-row]').forEach((r) => {
+          const q = parseFloat((r.querySelector('[data-mpq]') || {}).value) || 0;
+          const c = parseFloat((r.querySelector('[data-mpc]') || {}).value) || 0;
+          const sub = q * c;
+          const subEl = r.querySelector('[data-mp-sub]'); if (subEl) subEl.textContent = bs(sub);
+          mp += sub;
+        });
+        const mod = get('modHoras') * get('modTarifa');
+        const cif = get('cif');
+        costoLote = mp + mod + cif;
+        setOut('mp', bs(mp)); setOut('mod', bs(mod));
+      } else {
+        costoLote = get('compra') + get('flete') + get('importacion') + get('otros') + get('igtf');
+      }
+      const costoUnit = costoLote / cant;
+      setOut('costoLote', bs(costoLote));
+      setOut('costoUnit', bs(costoUnit));
+
+      // Estructura de precio
+      const costoOverhead = costoUnit * (1 + get('gastos') / 100);
+      const precioSinIva = costoOverhead * (1 + get('margen') / 100);
+      const iva = precioSinIva * (get('alicuota') / 100);
+      const precioFinal = precioSinIva + iva;
+      setOut('costoOverhead', bs(costoOverhead));
+      setOut('precioSinIva', bs(precioSinIva));
+      setOut('iva', bs(iva));
+      setOut('precioFinal', bs(precioFinal));
+
+      // Rentabilidad
+      const mcUnit = precioSinIva - costoUnit;
+      setOut('mcUnit', bs(mcUnit));
+      setOut('markup', costoUnit ? (mcUnit / costoUnit * 100).toFixed(1) + '%' : '—');
+      setOut('margenReal', precioSinIva ? (mcUnit / precioSinIva * 100).toFixed(1) + '%' : '—');
+      const cf = get('cfAlquiler') + get('cfSueldos') + get('cfServicios') + get('cfOtros');
+      setOut('costosFijos', bs(cf));
+      const peUds = mcUnit > 0 ? Math.ceil(cf / mcUnit) : 0;
+      const peBs = peUds * precioSinIva;
+      setOut('peUds', mcUnit > 0 ? peUds.toLocaleString('es-VE') : '∞');
+      setOut('peBs', mcUnit > 0 ? bs(peBs) : '—');
+
+      // Referencia en USD (ambas monedas en las cifras clave)
+      setOut('costoUsd', usd(costoUnit / tasa));
+      setOut('precioUsd', usd(precioFinal / tasa));
+      setOut('peUsd', mcUnit > 0 ? usd(peBs / tasa) : '—');
+    }
+    view.querySelectorAll('[data-cost-pane]').forEach((pane) => {
+      pane.addEventListener('input', () => calcCosto(pane));
+      calcCosto(pane); // cálculo inicial
+    });
+
+    // Descuento de stock desde el despacho (match por nombre de artículo)
+    window.descontarStock = function (nombre, cant) {
+      const tb = tbodyOf('invpane-com', 'articulos'); if (!tb) return false;
+      let hit = false;
+      [...tb.querySelectorAll('tr')].forEach((tr) => {
+        const n = tr.querySelector('.prod-cell .n');
+        if (!n || n.textContent.trim().toLowerCase() !== String(nombre).trim().toLowerCase()) return;
+        const qtyEl = tr.querySelector('.stock-cell .qty');
+        if (!qtyEl) return;
+        const cur = parseInt(qtyEl.textContent.replace(/\D/g, ''), 10) || 0;
+        const next = Math.max(0, cur - (Number(cant) || 0));
+        qtyEl.innerHTML = next + ' <span class="unit">uds</span>';
+        hit = true;
+      });
+      return hit;
+    };
+  })();
+
+  /* =========================================================
+     NÓMINA — vacaciones, utilidades y liquidación (LOTTT)
+     ========================================================= */
+  (function payroll() {
+    const view = document.getElementById('view-nomina');
+    if (!view) return;
+
+    const HOY = new Date(2026, 4, 30); // 30 may 2026
+    const DIAS_UTILIDADES = 60;        // política de la empresa (mín. legal 30, máx. 120)
+    const TASA_INTERES = 0.12;         // tasa anual referencial sobre prestaciones
+
+    /* Parámetros legales (ajustar al valor vigente) — Venezuela
+       El salario base cotizable es el salario mínimo nacional; el resto del
+       paquete del trabajador se paga como Bono de Contingencia NO salarial
+       (no cotizable, no incide en prestaciones, vacaciones ni utilidades). */
+    const SALARIO_MINIMO = 130;            // Bs/mes — salario mínimo nacional vigente
+    const TOPE_IVSS = 5 * SALARIO_MINIMO;  // base máx. de cotización IVSS (5 salarios mínimos)
+    const TOPE_RPE  = 10 * SALARIO_MINIMO; // base máx. de cotización RPE/Paro Forzoso (10 sal. mín.)
+
+    const empleados = [
+      { id: 'cr', nombre: 'Carlos Ramírez', cedula: 'V-12.445.781', cargo: 'Gerente General', depto: 'Gerencia', tipo: 'Administrativo', ingreso: new Date(2016, 1, 10), salarioMes: 820000, bonoUSD: 450, bonoLabel: '$ 450', formaPago: 'Transferencia', frecHabitual: 'mensual', horasExtra: 0, horasNoct: 0, diasFeriado: 0, comisionBs: 0, bonoProdBs: 0, cajaAhorroPct: 0.05, prestamoCuota: 0, anticipoSueldo: 0, color: '#003057', ini: 'CR' },
+      { id: 'lm', nombre: 'Luisa Méndez', cedula: 'V-15.998.231', cargo: 'Contadora Senior', depto: 'Contabilidad', tipo: 'Administrativo', ingreso: new Date(2019, 5, 3), salarioMes: 485000, bonoUSD: 280, bonoLabel: '$ 280', formaPago: 'Transferencia', frecHabitual: 'quincenal', horasExtra: 6, horasNoct: 0, diasFeriado: 0, comisionBs: 0, bonoProdBs: 0, cajaAhorroPct: 0, prestamoCuota: 30000, anticipoSueldo: 0, color: '#00aeef', ini: 'LM' },
+      { id: 'jp', nombre: 'José Pérez', cedula: 'V-17.331.554', cargo: 'Supervisor de Planta', depto: 'Producción', tipo: 'Planta', ingreso: new Date(2020, 8, 15), salarioMes: 385000, bonoUSD: 180, bonoLabel: '$ 180', formaPago: 'Transferencia', frecHabitual: 'semanal', horasExtra: 12, horasNoct: 16, diasFeriado: 1, comisionBs: 0, bonoProdBs: 25000, cajaAhorroPct: 0, prestamoCuota: 0, anticipoSueldo: 0, color: '#1c8f5a', ini: 'JP' },
+      { id: 'am', nombre: 'Andrea Mora', cedula: 'V-19.881.220', cargo: 'Analista Tesorería', depto: 'Tesorería', tipo: 'Administrativo', ingreso: new Date(2022, 0, 20), salarioMes: 285000, bonoUSD: 120, bonoLabel: '$ 120', formaPago: 'Transferencia', frecHabitual: 'quincenal', horasExtra: 8, horasNoct: 0, diasFeriado: 0, comisionBs: 0, bonoProdBs: 0, cajaAhorroPct: 0.03, prestamoCuota: 0, anticipoSueldo: 0, color: '#c97a14', ini: 'AM' },
+      { id: 'rg', nombre: 'Roberto Gil', cedula: 'V-21.445.998', cargo: 'Vendedor', depto: 'Ventas', tipo: 'Administrativo', ingreso: new Date(2023, 3, 5), salarioMes: 220000, bonoUSD: 80, bonoLabel: '$ 80 + 2% comisión', formaPago: 'Transferencia', frecHabitual: 'quincenal', horasExtra: 4, horasNoct: 0, diasFeriado: 0, comisionBs: 45000, bonoProdBs: 0, cajaAhorroPct: 0, prestamoCuota: 0, anticipoSueldo: 0, color: '#c0392b', ini: 'RG' },
+      { id: 'ms', nombre: 'María Salazar', cedula: 'V-23.776.541', cargo: 'Auxiliar Contable', depto: 'Contabilidad', tipo: 'Administrativo', ingreso: new Date(2024, 2, 11), salarioMes: 198000, bonoUSD: 60, bonoLabel: '$ 60', formaPago: 'Transferencia', frecHabitual: 'quincenal', horasExtra: 10, horasNoct: 0, diasFeriado: 0, comisionBs: 0, bonoProdBs: 0, cajaAhorroPct: 0, prestamoCuota: 0, anticipoSueldo: 20000, color: '#6f8aab', ini: 'MS' },
+      { id: 'dn', nombre: 'Daniel Núñez', cedula: 'V-25.998.110', cargo: 'Operario de Almacén', depto: 'Producción', tipo: 'Planta', ingreso: new Date(2025, 4, 2), salarioMes: 165000, bonoUSD: 0, bonoLabel: '—', formaPago: 'Efectivo', frecHabitual: 'semanal', horasExtra: 14, horasNoct: 24, diasFeriado: 1, comisionBs: 0, bonoProdBs: 0, cajaAhorroPct: 0, prestamoCuota: 0, anticipoSueldo: 0, color: '#3a7bb8', ini: 'DN' },
+      { id: 'pc', nombre: 'Pedro Castro', cedula: 'V-26.110.445', cargo: 'Operario de Producción', depto: 'Producción', tipo: 'Planta', ingreso: new Date(2021, 6, 12), salarioMes: 158000, bonoUSD: 0, bonoLabel: '—', formaPago: 'Efectivo', frecHabitual: 'semanal', horasExtra: 10, horasNoct: 20, diasFeriado: 1, comisionBs: 0, bonoProdBs: 0, cajaAhorroPct: 0, prestamoCuota: 0, anticipoSueldo: 0, color: '#2e7d6b', ini: 'PC' },
+      { id: 'go', nombre: 'Gabriela Ortiz', cedula: 'V-24.553.118', cargo: 'Vendedora', depto: 'Ventas', tipo: 'Administrativo', ingreso: new Date(2022, 9, 1), salarioMes: 175000, bonoUSD: 70, bonoLabel: '$ 70 + 2% comisión', formaPago: 'Transferencia', frecHabitual: 'quincenal', horasExtra: 0, horasNoct: 0, diasFeriado: 0, comisionBs: 38000, bonoProdBs: 0, cajaAhorroPct: 0, prestamoCuota: 0, anticipoSueldo: 0, color: '#b8568f', ini: 'GO' },
+      { id: 'lh', nombre: 'Luis Herrera', cedula: 'V-20.998.762', cargo: 'Chofer de Reparto', depto: 'Logística', tipo: 'Planta', ingreso: new Date(2019, 11, 9), salarioMes: 162000, bonoUSD: 0, bonoLabel: '—', formaPago: 'Efectivo', frecHabitual: 'semanal', horasExtra: 8, horasNoct: 6, diasFeriado: 0, comisionBs: 0, bonoProdBs: 0, cajaAhorroPct: 0, prestamoCuota: 0, anticipoSueldo: 0, color: '#5a7a9a', ini: 'LH' },
+      { id: 'cd', nombre: 'Carmen Díaz', cedula: 'V-22.114.556', cargo: 'Recepcionista', depto: 'Administración', tipo: 'Administrativo', ingreso: new Date(2023, 1, 20), salarioMes: 148000, bonoUSD: 50, bonoLabel: '$ 50', formaPago: 'Transferencia', frecHabitual: 'quincenal', horasExtra: 0, horasNoct: 0, diasFeriado: 0, comisionBs: 0, bonoProdBs: 0, cajaAhorroPct: 0, prestamoCuota: 0, anticipoSueldo: 0, color: '#c77d3a', ini: 'CD' },
+      { id: 'mr', nombre: 'Miguel Rojas', cedula: 'V-18.776.220', cargo: 'Almacenista', depto: 'Almacén', tipo: 'Planta', ingreso: new Date(2018, 3, 14), salarioMes: 155000, bonoUSD: 0, bonoLabel: '—', formaPago: 'Efectivo', frecHabitual: 'semanal', horasExtra: 12, horasNoct: 0, diasFeriado: 0, comisionBs: 0, bonoProdBs: 0, cajaAhorroPct: 0, prestamoCuota: 0, anticipoSueldo: 0, color: '#3a6ea5', ini: 'MR' },
+      { id: 'rf', nombre: 'Rosa Fernández', cedula: 'V-25.443.901', cargo: 'Asistente de RRHH', depto: 'Recursos Humanos', tipo: 'Administrativo', ingreso: new Date(2024, 0, 8), salarioMes: 168000, bonoUSD: 60, bonoLabel: '$ 60', formaPago: 'Transferencia', frecHabitual: 'quincenal', horasExtra: 0, horasNoct: 0, diasFeriado: 0, comisionBs: 0, bonoProdBs: 0, cajaAhorroPct: 0.03, prestamoCuota: 0, anticipoSueldo: 0, color: '#9a5ba8', ini: 'RF' },
+      { id: 'jm', nombre: 'Jesús Morales', cedula: 'V-27.118.334', cargo: 'Operario de Producción', depto: 'Producción', tipo: 'Planta', ingreso: new Date(2025, 1, 17), salarioMes: 152000, bonoUSD: 0, bonoLabel: '—', formaPago: 'Efectivo', frecHabitual: 'semanal', horasExtra: 11, horasNoct: 18, diasFeriado: 1, comisionBs: 0, bonoProdBs: 0, cajaAhorroPct: 0, prestamoCuota: 0, anticipoSueldo: 0, color: '#1c8f5a', ini: 'JM' },
+      { id: 'pl', nombre: 'Patricia León', cedula: 'V-23.009.887', cargo: 'Cajera', depto: 'Ventas', tipo: 'Administrativo', ingreso: new Date(2022, 4, 23), salarioMes: 145000, bonoUSD: 45, bonoLabel: '$ 45', formaPago: 'Transferencia', frecHabitual: 'quincenal', horasExtra: 0, horasNoct: 0, diasFeriado: 0, comisionBs: 0, bonoProdBs: 0, cajaAhorroPct: 0, prestamoCuota: 0, anticipoSueldo: 0, color: '#c0392b', ini: 'PL' },
+      { id: 'as', nombre: 'Ángel Suárez', cedula: 'V-19.554.776', cargo: 'Mecánico de Mantenimiento', depto: 'Mantenimiento', tipo: 'Planta', ingreso: new Date(2017, 8, 6), salarioMes: 172000, bonoUSD: 0, bonoLabel: '—', formaPago: 'Efectivo', frecHabitual: 'semanal', horasExtra: 16, horasNoct: 8, diasFeriado: 1, comisionBs: 0, bonoProdBs: 0, cajaAhorroPct: 0, prestamoCuota: 0, anticipoSueldo: 0, color: '#6a5acd', ini: 'AS' },
+      { id: 'yr', nombre: 'Yolanda Ramos', cedula: 'V-26.778.103', cargo: 'Auxiliar de Limpieza', depto: 'Servicios Generales', tipo: 'Planta', ingreso: new Date(2024, 6, 1), salarioMes: 138000, bonoUSD: 0, bonoLabel: '—', formaPago: 'Efectivo', frecHabitual: 'semanal', horasExtra: 6, horasNoct: 0, diasFeriado: 0, comisionBs: 0, bonoProdBs: 0, cajaAhorroPct: 0, prestamoCuota: 0, anticipoSueldo: 0, color: '#8a98a8', ini: 'YR' },
+      { id: 'fv', nombre: 'Francisco Vargas', cedula: 'V-21.330.998', cargo: 'Supervisor de Ventas', depto: 'Ventas', tipo: 'Administrativo', ingreso: new Date(2020, 2, 16), salarioMes: 284000, bonoUSD: 130, bonoLabel: '$ 130 + 1% comisión', formaPago: 'Transferencia', frecHabitual: 'quincenal', horasExtra: 0, horasNoct: 0, diasFeriado: 0, comisionBs: 52000, bonoProdBs: 0, cajaAhorroPct: 0.05, prestamoCuota: 0, anticipoSueldo: 0, color: '#003057', ini: 'FV' },
+      { id: 'eg', nombre: 'Elena Guerra', cedula: 'V-24.119.665', cargo: 'Analista de Compras', depto: 'Compras', tipo: 'Administrativo', ingreso: new Date(2023, 7, 28), salarioMes: 192000, bonoUSD: 90, bonoLabel: '$ 90', formaPago: 'Transferencia', frecHabitual: 'quincenal', horasExtra: 5, horasNoct: 0, diasFeriado: 0, comisionBs: 0, bonoProdBs: 0, cajaAhorroPct: 0, prestamoCuota: 25000, anticipoSueldo: 0, color: '#00aeef', ini: 'EG' },
+      { id: 'om', nombre: 'Oscar Medina', cedula: 'V-20.443.221', cargo: 'Operario de Almacén', depto: 'Almacén', tipo: 'Planta', ingreso: new Date(2019, 5, 11), salarioMes: 150000, bonoUSD: 0, bonoLabel: '—', formaPago: 'Efectivo', frecHabitual: 'semanal', horasExtra: 9, horasNoct: 12, diasFeriado: 0, comisionBs: 0, bonoProdBs: 0, cajaAhorroPct: 0, prestamoCuota: 0, anticipoSueldo: 0, color: '#3a7bb8', ini: 'OM' },
+      { id: 'bn', nombre: 'Beatriz Navarro', cedula: 'V-25.998.443', cargo: 'Asistente Administrativo', depto: 'Administración', tipo: 'Administrativo', ingreso: new Date(2024, 3, 4), salarioMes: 158000, bonoUSD: 55, bonoLabel: '$ 55', formaPago: 'Transferencia', frecHabitual: 'quincenal', horasExtra: 0, horasNoct: 0, diasFeriado: 0, comisionBs: 0, bonoProdBs: 0, cajaAhorroPct: 0, prestamoCuota: 0, anticipoSueldo: 0, color: '#c97a14', ini: 'BN' },
+      { id: 'hp', nombre: 'Hugo Paredes', cedula: 'V-22.667.110', cargo: 'Vendedor', depto: 'Ventas', tipo: 'Administrativo', ingreso: new Date(2021, 10, 22), salarioMes: 178000, bonoUSD: 75, bonoLabel: '$ 75 + 2% comisión', formaPago: 'Transferencia', frecHabitual: 'quincenal', horasExtra: 0, horasNoct: 0, diasFeriado: 0, comisionBs: 41000, bonoProdBs: 0, cajaAhorroPct: 0, prestamoCuota: 0, anticipoSueldo: 0, color: '#c0392b', ini: 'HP' },
+      { id: 'sc', nombre: 'Silvia Campos', cedula: 'V-23.881.554', cargo: 'Auxiliar Contable', depto: 'Contabilidad', tipo: 'Administrativo', ingreso: new Date(2023, 0, 30), salarioMes: 165000, bonoUSD: 60, bonoLabel: '$ 60', formaPago: 'Transferencia', frecHabitual: 'quincenal', horasExtra: 7, horasNoct: 0, diasFeriado: 0, comisionBs: 0, bonoProdBs: 0, cajaAhorroPct: 0, prestamoCuota: 0, anticipoSueldo: 0, color: '#6f8aab', ini: 'SC' },
+      { id: 'ra', nombre: 'Ramón Acosta', cedula: 'V-19.220.887', cargo: 'Vigilante', depto: 'Seguridad', tipo: 'Planta', ingreso: new Date(2018, 9, 3), salarioMes: 142000, bonoUSD: 0, bonoLabel: '—', formaPago: 'Efectivo', frecHabitual: 'semanal', horasExtra: 18, horasNoct: 30, diasFeriado: 2, comisionBs: 0, bonoProdBs: 0, cajaAhorroPct: 0, prestamoCuota: 0, anticipoSueldo: 0, color: '#4a5568', ini: 'RA' },
+    ];
+
+    const fmt = (n) => n.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const fmt0 = (n) => Math.round(n).toLocaleString('es-VE');
+
+    /* Relación de nómina del período: se genera recorriendo TODA la lista de
+       empleados activos, de modo que incluye a todos los que existan (no una
+       cantidad fija). Asignación = salario quincenal; deducciones de ley ~6%. */
+    (function buildRelacionNomina() {
+      const tbody = document.getElementById('relnTableBody');
+      if (!tbody) return;
+      const DED_LEY = 0.06; // IVSS 4% + RPE 0,5% + FAOV 1% + INCES 0,5%
+      let totA = 0, totD = 0, totN = 0;
+      tbody.innerHTML = empleados.map((e, i) => {
+        const asig = e.salarioMes / 2;
+        const ded = asig * DED_LEY;
+        const neto = asig - ded;
+        totA += asig; totD += ded; totN += neto;
+        return '<tr><td class="ctr">' + (i + 1) + '</td><td>' + e.nombre
+          + '</td><td class="mono">' + e.cedula + '</td><td>' + e.cargo
+          + '</td><td class="num">' + fmt(asig) + '</td><td class="num">' + fmt(ded)
+          + '</td><td class="num">' + fmt(neto) + '</td></tr>';
+      }).join('');
+      const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+      set('relnTotA', fmt(totA));
+      set('relnTotD', fmt(totD));
+      set('relnTotN', fmt(totN));
+      set('relnSubLabel', 'TOTALES DEL PERÍODO · ' + empleados.length + ' empleados');
+
+      // Aportes patronales del período sobre la base salarial mensual (todos)
+      const baseMes = totA * 2;
+      const ivss = baseMes * 0.11, spf = baseMes * 0.02, faov = baseMes * 0.02,
+            inces = baseMes * 0.02, pp = baseMes * 0.09;
+      set('raIvss', fmt(ivss));
+      set('raSpf', fmt(spf));
+      set('raFaov', fmt(faov));
+      set('raInces', fmt(inces));
+      set('raPp', fmt(pp));
+      set('raTotal', fmt(ivss + spf + faov + inces + pp));
+    })();
+
+    function aniosServicio(ing) {
+      let y = HOY.getFullYear() - ing.getFullYear();
+      const m = HOY.getMonth() - ing.getMonth();
+      if (m < 0 || (m === 0 && HOY.getDate() < ing.getDate())) y--;
+      return y;
+    }
+    function mesesFraccion(ing) {
+      const y = aniosServicio(ing);
+      const lastAniv = new Date(ing.getFullYear() + y, ing.getMonth(), ing.getDate());
+      let m = (HOY.getFullYear() - lastAniv.getFullYear()) * 12 + (HOY.getMonth() - lastAniv.getMonth());
+      if (HOY.getDate() < lastAniv.getDate()) m--;
+      return Math.max(0, m);
+    }
+
+    function calc(emp) {
+      // Base cotizable = salario mínimo (el Bono de Contingencia no es cotizable
+      // ni incide en prestaciones, vacaciones ni utilidades)
+      const salBaseMes = SALARIO_MINIMO;
+      const salDia = salBaseMes / 30;
+      const y = aniosServicio(emp.ingreso);
+      const fracMeses = mesesFraccion(emp.ingreso);
+      const mesesAnio = HOY.getMonth() + 1; // utilidades del ejercicio en curso (ene..may = 5)
+
+      const diasVac = Math.min(15 + Math.max(0, y - 1), 30);
+      const diasBonoVac = Math.min(15 + Math.max(0, y - 1), 30);
+      const diasUtil = DIAS_UTILIDADES;
+
+      const alicBV = (salDia * diasBonoVac) / 360;
+      const alicUt = (salDia * diasUtil) / 360;
+      const salIntDia = salDia + alicBV + alicUt;
+
+      // Vacaciones
+      const vacDisfrute = diasVac * salDia;
+      const vacBono = diasBonoVac * salDia;
+      const vacTotal = vacDisfrute + vacBono;
+
+      // Utilidades (el INCES del trabajador, 0,5%, se retiene sobre las utilidades)
+      const utilAnual = diasUtil * salDia;
+      const incesUtil = utilAnual * 0.005;
+      const utilNeto = utilAnual - incesUtil;
+      const utilFrac = (utilAnual * mesesAnio) / 12;
+
+      // Prestaciones sociales (Art. 142 LOTTT)
+      const diasGarantia = 60 * y;                       // 15 días/trimestre
+      const diasAdic = Math.min(2 * Math.max(0, y - 1), 30);
+      const garantia = (diasGarantia + diasAdic) * salIntDia;
+      // Cálculo retroactivo (Art. 142.c): 30 días por año o fracción superior a 6 meses
+      const aniosRetro = y + (fracMeses > 6 ? 1 : 0);
+      const retroactiva = 30 * aniosRetro * salIntDia;
+      const prestacion = Math.max(garantia, retroactiva);
+      const usoRetro = retroactiva >= garantia;
+      const intereses = garantia * TASA_INTERES;
+
+      // Fracciones para liquidación
+      const vacFrac = diasVac * (fracMeses / 12) * salDia;
+      const bonoVacFrac = diasBonoVac * (fracMeses / 12) * salDia;
+
+      const liqAsig = prestacion + intereses + vacFrac + bonoVacFrac + utilFrac;
+      const deducciones = 0;
+      const liqTotal = liqAsig - deducciones;
+
+      return {
+        salDia, y, fracMeses, mesesAnio, diasVac, diasBonoVac, diasUtil,
+        salIntDia, vacDisfrute, vacBono, vacTotal, utilAnual, incesUtil, utilNeto, utilFrac,
+        diasGarantia, diasAdic, garantia, retroactiva, prestacion, usoRetro,
+        intereses, vacFrac, bonoVacFrac, liqAsig, deducciones, liqTotal,
+      };
+    }
+
+    // ---------- Número a letras (parte entera, es-VE) ----------
+    function enLetras(num) {
+      num = Math.floor(num);
+      if (num === 0) return 'cero';
+      const U = ['', 'uno', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho', 'nueve', 'diez', 'once', 'doce', 'trece', 'catorce', 'quince', 'dieciséis', 'diecisiete', 'dieciocho', 'diecinueve', 'veinte'];
+      const D = ['', '', '', 'treinta', 'cuarenta', 'cincuenta', 'sesenta', 'setenta', 'ochenta', 'noventa'];
+      const C = ['', 'ciento', 'doscientos', 'trescientos', 'cuatrocientos', 'quinientos', 'seiscientos', 'setecientos', 'ochocientos', 'novecientos'];
+      function hasta99(n) {
+        if (n <= 20) return U[n];
+        if (n < 30) return 'veexx'.replace('veexx', 'veinti' + U[n - 20]);
+        const d = Math.floor(n / 10), u = n % 10;
+        return D[d] + (u ? ' y ' + U[u] : '');
+      }
+      function hasta999(n) {
+        if (n === 100) return 'cien';
+        const c = Math.floor(n / 100), r = n % 100;
+        return (C[c] + (r ? ' ' + hasta99(r) : '')).trim();
+      }
+      function seccion(n, singular, plural) {
+        if (n === 0) return '';
+        if (n === 1) return singular;
+        return hasta999(n) + ' ' + plural;
+      }
+      const millones = Math.floor(num / 1000000);
+      const miles = Math.floor((num % 1000000) / 1000);
+      const resto = num % 1000;
+      let out = '';
+      if (millones) out += seccion(millones, 'un millón', 'millones') + ' ';
+      if (miles) out += (miles === 1 ? 'mil' : hasta999(miles) + ' mil') + ' ';
+      if (resto) out += hasta999(resto);
+      return out.trim().replace(/\s+/g, ' ');
+    }
+    function montoEnLetras(n) {
+      const ent = Math.floor(n);
+      const cent = Math.round((n - ent) * 100);
+      return enLetras(ent) + ' bolívares con ' + String(cent).padStart(2, '0') + '/100';
+    }
+    window.__montoEnLetras = montoEnLetras; // reutilizable por el visor de facturas
+
+    // ---------- Render del selector de empleados ----------
+    const state = { vacaciones: empleados[0].id, utilidades: empleados[0].id, liquidacion: empleados[0].id };
+
+    function renderPicker(tab) {
+      const host = view.querySelector('.emp-picker[data-picker="' + tab + '"]');
+      if (!host) return;
+      const rows = empleados.map((e) => {
+        const c = calc(e);
+        const active = state[tab] === e.id ? 'true' : 'false';
+        return '<div class="emp-pick" data-emp="' + e.id + '" data-active="' + active + '">'
+          + '<span class="epa" style="background:' + e.color + '">' + e.ini + '</span>'
+          + '<span class="epi"><span class="epn">' + e.nombre + '</span><span class="epr">' + e.cargo + '</span></span>'
+          + '<span class="epy">' + c.y + ' año' + (c.y === 1 ? '' : 's') + '</span>'
+          + '</div>';
+      }).join('');
+      host.innerHTML = '<div class="emp-picker-head">Selecciona un empleado · 24</div><div class="emp-picker-body">' + rows + '</div>';
+      host.querySelectorAll('.emp-pick').forEach((el) => {
+        el.addEventListener('click', () => { state[tab] = el.dataset.emp; renderPicker(tab); renderCalc(tab); });
+      });
+    }
+
+    // ---------- Render del cálculo ----------
+    function empById(id) { return empleados.find((e) => e.id === id); }
+
+    function calcHead(emp, c, conceptLabel, conceptVal) {
+      return '<div class="calc-card-head">'
+        + '<div class="cc-emp"><div class="cc-av" style="background:' + emp.color + '">' + emp.ini + '</div>'
+        + '<div><div class="cc-name">' + emp.nombre + '</div><div class="cc-meta"><span class="mono">' + emp.cedula + '</span> · ' + emp.cargo + ' · ' + emp.depto + '</div></div></div>'
+        + '<div class="cc-concept"><div class="ccl">' + conceptLabel + '</div><div class="ccv">' + conceptVal + '</div></div>'
+        + '</div>';
+    }
+
+    function renderCalc(tab) {
+      const host = view.querySelector('.calc-detail[data-calc="' + tab + '"]');
+      if (!host) return;
+      const emp = empById(state[tab]);
+      const c = calc(emp);
+      let html = '<div class="calc-card">';
+
+      if (tab === 'vacaciones') {
+        html += calcHead(emp, c, 'Período', String(HOY.getFullYear()));
+        html += '<div class="calc-params">'
+          + param('Antigüedad', c.y + ' <small>años</small>')
+          + param('Salario diario', 'Bs ' + fmt(c.salDia))
+          + param('Días de disfrute', c.diasVac + ' <small>días háb.</small>')
+          + param('Días de bono', c.diasBonoVac + ' <small>días</small>')
+          + '</div>';
+        html += '<div class="calc-lines">'
+          + line('Salario por días de disfrute', c.diasVac + ' días × Bs ' + fmt(c.salDia), 'Bs ' + fmt(c.vacDisfrute), '')
+          + line('Bono vacacional', c.diasBonoVac + ' días × Bs ' + fmt(c.salDia) + ' (Art. 192 LOTTT)', 'Bs ' + fmt(c.vacBono), 'add')
+          + '</div>';
+        html += total('Total vacaciones a pagar', 'Bs ' + fmt(c.vacTotal));
+        html += foot('Vacaciones según Art. 190-192 LOTTT: 15 días + 1 por año de servicio (tope 30).', 'vacaciones');
+      } else if (tab === 'utilidades') {
+        html += calcHead(emp, c, 'Ejercicio', String(HOY.getFullYear()));
+        html += '<div class="calc-params">'
+          + param('Antigüedad', c.y + ' <small>años</small>')
+          + param('Salario diario', 'Bs ' + fmt(c.salDia))
+          + param('Días (política)', c.diasUtil + ' <small>días</small>')
+          + param('Meses del ejercicio', c.mesesAnio + ' <small>/ 12</small>')
+          + '</div>';
+        html += '<div class="calc-lines">'
+          + line('Utilidades anuales (ejercicio completo)', c.diasUtil + ' días × Bs ' + fmt(c.salDia), 'Bs ' + fmt(c.utilAnual), '')
+          + line('Provisión acumulada al cierre de ' + mesNombre(HOY.getMonth()), c.mesesAnio + '/12 del ejercicio', 'Bs ' + fmt(c.utilFrac), 'add')
+          + '</div>';
+        html += total('Aguinaldo / utilidades a pagar', 'Bs ' + fmt(c.utilAnual));
+        html += foot('Utilidades según Art. 131-132 LOTTT: mínimo 30 días, esta empresa otorga ' + c.diasUtil + ' días. Pago antes del 15 de diciembre.', 'utilidades');
+      } else if (tab === 'liquidacion') {
+        html += calcHead(emp, c, 'Motivo', 'Retiro / cese');
+        html += '<div class="calc-params">'
+          + param('Antigüedad', c.y + ' <small>años</small> ' + c.fracMeses + ' <small>m</small>')
+          + param('Salario integral diario', 'Bs ' + fmt(c.salIntDia))
+          + param('Garantía (Art. 142a)', c.diasGarantia + c.diasAdic + ' <small>días</small>')
+          + param('Método aplicado', c.usoRetro ? 'Retroactivo' : 'Garantía')
+          + '</div>';
+        html += '<div class="calc-lines">'
+          + sectionLine('Prestaciones sociales (Art. 142 LOTTT)')
+          + line('Garantía de prestaciones', c.diasGarantia + ' días (15/trim.) + ' + c.diasAdic + ' adic. × Bs ' + fmt(c.salIntDia), 'Bs ' + fmt(c.garantia), '')
+          + line('Cálculo retroactivo', '30 días × ' + c.y + ' años × Bs ' + fmt(c.salIntDia), 'Bs ' + fmt(c.retroactiva), '')
+          + line('<strong>Prestación a pagar</strong> (el monto mayor, Art. 142d)', c.usoRetro ? 'Aplica retroactivo' : 'Aplica garantía', 'Bs ' + fmt(c.prestacion), 'subtotal')
+          + line('Intereses sobre prestaciones', '≈ ' + (TASA_INTERES * 100).toFixed(0) + '% anual referencial', 'Bs ' + fmt(c.intereses), 'add')
+          + sectionLine('Conceptos fraccionados')
+          + line('Vacaciones fraccionadas', c.fracMeses + '/12 × ' + c.diasVac + ' días', 'Bs ' + fmt(c.vacFrac), 'add')
+          + line('Bono vacacional fraccionado', c.fracMeses + '/12 × ' + c.diasBonoVac + ' días', 'Bs ' + fmt(c.bonoVacFrac), 'add')
+          + line('Utilidades fraccionadas', c.mesesAnio + '/12 × ' + c.diasUtil + ' días', 'Bs ' + fmt(c.utilFrac), 'add')
+          + '</div>';
+        html += total('Total liquidación a pagar', 'Bs ' + fmt(c.liqTotal));
+        html += foot('Prestaciones según Art. 142 LOTTT: se paga el mayor entre la garantía trimestral y 30 días por año sobre el último salario integral.', 'liquidacion');
+      }
+
+      html += '</div>';
+      host.innerHTML = html;
+      drawIcons();
+      const btn = host.querySelector('[data-recibo]');
+      if (btn) btn.addEventListener('click', () => openRecibo(tab, emp, c));
+    }
+
+    function param(l, v) { return '<div class="calc-param"><div class="l">' + l + '</div><div class="v">' + v + '</div></div>'; }
+    function line(desc, sub, amt, cls) {
+      return '<div class="calc-line ' + (cls || '') + '"><div class="cl-desc">' + desc + (sub ? '<small>' + sub + '</small>' : '') + '</div><div class="cl-amt">' + amt + '</div></div>';
+    }
+    function sectionLine(t) { return '<div class="calc-line section"><div class="cl-desc">' + t + '</div><div class="cl-amt"></div></div>'; }
+    function total(l, v) { return '<div class="calc-total"><span class="ct-l">' + l + '</span><span class="ct-v">' + v + '</span></div>'; }
+    function foot(legal, tab) {
+      return '<div class="calc-foot"><span class="legal"><i data-lucide="scale"></i> ' + legal + '</span>'
+        + '<button class="btn btn-primary" style="height:34px;font-size:12px;" data-recibo="' + tab + '"><i data-lucide="file-text"></i> Generar recibo</button></div>';
+    }
+    function mesNombre(m) {
+      return ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'][m];
+    }
+
+    // ---------- Recibo (modal) ----------
+    const overlay = document.getElementById('reciboOverlay');
+    const doc = document.getElementById('reciboDoc');
+    const modalTitle = document.getElementById('reciboModalTitle');
+    let lastReciboText = '';
+
+    function reciboRows(tab, c) {
+      if (tab === 'vacaciones') {
+        return [
+          ['asig', 'Salario por días de disfrute', c.diasVac + ' días', c.vacDisfrute],
+          ['asig', 'Bono vacacional', c.diasBonoVac + ' días', c.vacBono],
+        ];
+      }
+      if (tab === 'utilidades') {
+        return [
+          ['asig', 'Utilidades / aguinaldo', c.diasUtil + ' días', c.utilAnual],
+          ['ded', 'INCES · aporte del trabajador', '0,5% sobre utilidades (Ley INCES, Art. 14)', c.incesUtil],
+        ];
+      }
+      // liquidación
+      return [
+        ['sec', 'Prestaciones sociales (Art. 142 LOTTT)', '', null],
+        ['asig', 'Prestación a pagar', (c.usoRetro ? 'Retroactivo' : 'Garantía') + ' · ' + c.y + ' años', c.prestacion],
+        ['asig', 'Intereses sobre prestaciones', (TASA_INTERES * 100).toFixed(0) + '% ref.', c.intereses],
+        ['sec', 'Conceptos fraccionados', '', null],
+        ['asig', 'Vacaciones fraccionadas', c.fracMeses + '/12', c.vacFrac],
+        ['asig', 'Bono vacacional fraccionado', c.fracMeses + '/12', c.bonoVacFrac],
+        ['asig', 'Utilidades fraccionadas', c.mesesAnio + '/12', c.utilFrac],
+      ];
+    }
+
+    function openRecibo(tab, emp, c) {
+      const kinds = {
+        vacaciones: { title: 'Recibo de Vacaciones', total: c.vacTotal, num: 'VAC' },
+        utilidades: { title: 'Recibo de Utilidades', total: c.utilNeto, num: 'UTI' },
+        liquidacion: { title: 'Liquidación de Prestaciones', total: c.liqTotal, num: 'LIQ' },
+      };
+      const k = kinds[tab];
+      modalTitle.textContent = k.title;
+      const fecha = '30/05/2026';
+      const numDoc = k.num + '-2026-' + emp.id.toUpperCase() + '04';
+
+      const rows = reciboRows(tab, c).map((r) => {
+        if (r[0] === 'sec') return '<tr class="sec"><td colspan="3">' + r[1] + '</td></tr>';
+        return '<tr class="' + r[0] + '"><td>' + r[1] + (r[2] ? '<span class="sub">' + r[2] + '</span>' : '') + '</td><td class="num">Bs</td><td class="num">' + fmt(r[3]) + '</td></tr>';
+      }).join('');
+
+      doc.innerHTML =
+        '<div class="recibo-head">'
+        + '<div><div class="rh-co">Agroinversiones Valle, C.A.</div><div class="rh-meta"><span class="mono">RIF J-30456789-0</span><br>Av. Intercomunal, Galpón 4, Valencia, Edo. Carabobo</div></div>'
+        + '<div class="rh-kind"><div class="k">' + k.title + '</div><div class="num">N° ' + numDoc + '</div></div>'
+        + '</div>'
+        + '<div class="recibo-party">'
+        + '<div class="rp"><div class="l">Trabajador</div><div class="v">' + emp.nombre + '</div></div>'
+        + '<div class="rp"><div class="l">Cédula</div><div class="v mono">' + emp.cedula + '</div></div>'
+        + '<div class="rp"><div class="l">Cargo</div><div class="v">' + emp.cargo + ' · ' + emp.depto + '</div></div>'
+        + '<div class="rp"><div class="l">Fecha de emisión</div><div class="v">' + fecha + '</div></div>'
+        + '<div class="rp"><div class="l">Fecha de ingreso</div><div class="v">' + ('0' + emp.ingreso.getDate()).slice(-2) + '/' + ('0' + (emp.ingreso.getMonth() + 1)).slice(-2) + '/' + emp.ingreso.getFullYear() + '</div></div>'
+        + '<div class="rp"><div class="l">Antigüedad</div><div class="v">' + c.y + ' años ' + c.fracMeses + ' meses</div></div>'
+        + '</div>'
+        + '<table class="recibo-table"><thead><tr><th>Concepto</th><th class="num"></th><th class="num">Monto</th></tr></thead>'
+        + '<tbody>' + rows + '</tbody>'
+        + '<tfoot><tr><td>Total a pagar</td><td class="num">Bs</td><td class="num">' + fmt(k.total) + '</td></tr></tfoot></table>'
+        + '<div class="recibo-words">Son: <strong>' + capitalizar(montoEnLetras(k.total)) + '</strong>.</div>'
+        + '<div class="recibo-foot">'
+        + '<div class="recibo-sign"><div class="line">Por la empresa</div></div>'
+        + '<div class="recibo-sign"><div class="line">Recibí conforme · ' + emp.nombre + '</div></div>'
+        + '<div class="recibo-legal">Documento generado electrónicamente por DigiAccount conforme a la Ley Orgánica del Trabajo, los Trabajadores y las Trabajadoras (LOTTT). Válido sin firma autógrafa según el Decreto-Ley sobre Mensajes de Datos y Firmas Electrónicas. Este recibo refleja el cálculo automático de los conceptos laborales; cualquier diferencia debe notificarse a Recursos Humanos.</div>'
+        + '</div>';
+
+      // texto para descarga
+      lastReciboText = k.title + ' - ' + emp.nombre + ' (' + emp.cedula + ')\r\n'
+        + 'Documento: ' + numDoc + '  Fecha: ' + fecha + '\r\n'
+        + 'Antiguedad: ' + c.y + ' anios ' + c.fracMeses + ' meses\r\n'
+        + '----------------------------------------\r\n'
+        + reciboRows(tab, c).filter((r) => r[0] !== 'sec').map((r) => '  ' + r[1] + ': Bs ' + fmt(r[3])).join('\r\n')
+        + '\r\n----------------------------------------\r\n'
+        + 'TOTAL A PAGAR: Bs ' + fmt(k.total) + '\r\n'
+        + 'Son: ' + capitalizar(montoEnLetras(k.total)) + '\r\n';
+      lastReciboName = k.num + '_' + emp.id + '_2026.txt';
+
+      overlay.dataset.open = 'true';
+      drawIcons();
+    }
+    let lastReciboName = 'recibo.txt';
+    function capitalizar(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+
+    function closeRecibo() { overlay.dataset.open = 'false'; }
+    const rc = document.getElementById('reciboClose');
+    if (rc) rc.addEventListener('click', closeRecibo);
+    if (overlay) overlay.addEventListener('click', (e) => { if (e.target === overlay) closeRecibo(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && overlay && overlay.dataset.open === 'true') closeRecibo(); });
+    const rp = document.getElementById('reciboPrint');
+    if (rp) rp.addEventListener('click', () => {
+      // Clonar el recibo a un portal fuera de .app → una sola hoja, sin páginas en blanco
+      let portal = document.getElementById('printPortal');
+      if (!portal) { portal = document.createElement('div'); portal.id = 'printPortal'; document.body.appendChild(portal); }
+      portal.innerHTML = '';
+      const clon = doc.cloneNode(true);
+      clon.classList.add('recibo-print');
+      portal.appendChild(clon);
+      document.body.classList.add('printing-comp');
+      window.print();
+    });
+    window.addEventListener('afterprint', () => {
+      document.body.classList.remove('printing-comp');
+      const portal = document.getElementById('printPortal');
+      if (portal) portal.innerHTML = '';
+    });
+    const rd = document.getElementById('reciboDownload');
+    if (rd) rd.addEventListener('click', () => {
+      const blob = new Blob([lastReciboText], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = lastReciboName;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    });
+
+    // ---------- Recibo de pago (semanal / quincenal / mensual) ----------
+    let payFreq = 'quincenal';
+    const CESTATICKET_MES = 40000; // bono de alimentación mensual (Ley de Alimentación) — no salarial
+    const freqInfo = {
+      semanal:   { div: 52 / 12, periodo: 'Semana 4 · 24–30 may 2026', etiqueta: 'Sueldo semanal',   doc: 'SEM' },
+      quincenal: { div: 2,       periodo: 'Quincena 16–31 may 2026',   etiqueta: 'Sueldo quincenal', doc: 'NOM' },
+      mensual:   { div: 1,       periodo: 'Mes de mayo 2026',          etiqueta: 'Sueldo mensual',   doc: 'MEN' },
+    };
+
+    function calcPago(emp) {
+      const f = freqInfo[payFreq];
+      const factor = 2 / f.div; // proporción respecto a la quincena (quincenal=1, mensual=2, semanal≈0,46)
+      const tasa = window.__bcvRate || 145.82;
+
+      // Salario base COTIZABLE = salario mínimo. El resto del paquete del
+      // trabajador se paga como Bono de Contingencia NO salarial (no cotizable).
+      const sueldo = SALARIO_MINIMO / f.div;
+      const bonoContingencia = Math.max(0, emp.salarioMes - SALARIO_MINIMO) / f.div;
+      const bonoBs = (emp.bonoUSD || 0) * tasa * factor; // bono en divisa (no salarial)
+
+      const salDia = SALARIO_MINIMO / 30;            // recargos legales sobre el salario base
+      const valHora = salDia / 8;                    // jornada de 8 h
+
+      // Horas extras (Art. 118 LOTTT: recargo 50% sobre la hora normal)
+      const valHoraExtra = valHora * 1.5;
+      const horas = Math.round((emp.horasExtra || 0) * factor);
+      const montoExtra = horas * valHoraExtra;
+
+      // Bono nocturno (Art. 117 LOTTT: recargo 30% sobre la hora normal)
+      const valBonoNoct = valHora * 0.30;
+      const horasNoct = Math.round((emp.horasNoct || 0) * factor);
+      const montoNoct = horasNoct * valBonoNoct;
+
+      // Días feriados / domingos trabajados (Art. 120 LOTTT: recargo 50%)
+      const diasFeriado = Math.round((emp.diasFeriado || 0) * factor);
+      const montoFeriado = diasFeriado * salDia * 1.5;
+
+      // Comisiones y bono de producción (salariales, proporcionales al período)
+      const comision = (emp.comisionBs || 0) * factor;
+      const bonoProd = (emp.bonoProdBs || 0) * factor;
+
+      // Cestaticket / bono de alimentación (no salarial, sin deducciones)
+      const cestaticket = CESTATICKET_MES / f.div;
+
+      // Base salarial total (asignaciones salariales que devenga el trabajador)
+      const baseSalarial = sueldo + montoExtra + montoNoct + montoFeriado + comision + bonoProd;
+
+      // Salario normal cotizable (Art. 104 LOTTT): regular y permanente =
+      // salario base + comisiones + bono de producción.
+      const salarioNormal = sueldo + comision + bonoProd;
+
+      // Deducciones de ley con topes de cotización (prorrateados al período).
+      // El INCES del trabajador (0,5%) NO se deduce aquí: va sobre las utilidades.
+      const baseIvss = Math.min(salarioNormal, TOPE_IVSS / f.div);
+      const baseRpe  = Math.min(salarioNormal, TOPE_RPE / f.div);
+      const ivss = baseIvss * 0.04;
+      const spf = baseRpe * 0.005;
+      const faov = salarioNormal * 0.01; // FAOV sin tope legal
+      const dedLey = ivss + spf + faov;
+
+      // Otras deducciones
+      const cajaAhorro = salarioNormal * (emp.cajaAhorroPct || 0);
+      const prestamo = (emp.prestamoCuota || 0) / f.div;
+      const anticipo = (emp.anticipoSueldo || 0) * factor;
+      const dedOtras = cajaAhorro + prestamo + anticipo;
+
+      const ded = dedLey + dedOtras;
+      const asigSalarial = baseSalarial + bonoBs;
+      // El Bono de Contingencia y el cestaticket son asignaciones NO salariales
+      const asig = asigSalarial + bonoContingencia + cestaticket;
+      const neto = asig - ded;
+      return {
+        f, tasa, salDia, sueldo, bonoContingencia, bonoBs, valHora, baseIvss, baseRpe,
+        valHoraExtra, horas, montoExtra,
+        valBonoNoct, horasNoct, montoNoct,
+        diasFeriado, montoFeriado, comision, bonoProd,
+        cestaticket, ivss, spf, faov, dedLey,
+        cajaAhorro, prestamo, anticipo, dedOtras, ded,
+        asigSalarial, asig, neto,
+      };
+    }
+
+    function openReciboPago(emp) {
+      const p = calcPago(emp);
+      modalTitle.textContent = 'Recibo de Pago de Nómina';
+      const fecha = '31/05/2026';
+      const numDoc = p.f.doc + '-2026-10-' + emp.id.toUpperCase();
+
+      const rows = [['sec', 'Asignaciones salariales', '', null]];
+      rows.push(['asig', p.f.etiqueta + ' (salario base)', 'Base cotizable: salario mínimo Bs ' + fmt(SALARIO_MINIMO) + '/mes', p.sueldo]);
+      if (p.horas > 0) rows.push(['asig', 'Horas extras (' + p.horas + ' h)', 'Bs ' + fmt(p.valHoraExtra) + '/h · recargo 50% (Art. 118)', p.montoExtra]);
+      if (p.horasNoct > 0) rows.push(['asig', 'Bono nocturno (' + p.horasNoct + ' h)', 'Bs ' + fmt(p.valBonoNoct) + '/h · recargo 30% (Art. 117)', p.montoNoct]);
+      if (p.diasFeriado > 0) rows.push(['asig', 'Días feriados / domingos (' + p.diasFeriado + ')', 'Recargo 50% sobre el día (Art. 120)', p.montoFeriado]);
+      if (p.comision > 0) rows.push(['asig', 'Comisiones por ventas', '2% sobre ventas del período', p.comision]);
+      if (p.bonoProd > 0) rows.push(['asig', 'Bono de producción', 'Meta de planta alcanzada', p.bonoProd]);
+      if (emp.bonoUSD) rows.push(['asig', 'Bono en divisa (' + emp.bonoLabel + ')', 'Ref. Bs ' + fmt(p.tasa) + '/$', p.bonoBs]);
+      rows.push(['sec', 'Beneficios no salariales (no cotizables)', '', null]);
+      if (p.bonoContingencia > 0) rows.push(['asig', 'Bono de contingencia', 'Complemento no salarial · no incide en prestaciones', p.bonoContingencia]);
+      rows.push(['asig', 'Cestaticket · Bono de alimentación', 'Ley de Alimentación · exento de deducciones', p.cestaticket]);
+      rows.push(['sec', 'Deducciones de ley', '', null]);
+      rows.push(['ded', 'IVSS · Seguro Social', '4% · base tope 5 sal. mín.', p.ivss]);
+      rows.push(['ded', 'SPF · Paro Forzoso', '0,5% · base tope 10 sal. mín.', p.spf]);
+      rows.push(['ded', 'FAOV · Política Habitacional', '1,00% s/ salario normal', p.faov]);
+      if (p.dedOtras > 0) {
+        rows.push(['sec', 'Otras deducciones', '', null]);
+        if (p.cajaAhorro > 0) rows.push(['ded', 'Caja de ahorro', (emp.cajaAhorroPct * 100).toFixed(0) + '% del sueldo', p.cajaAhorro]);
+        if (p.prestamo > 0) rows.push(['ded', 'Cuota de préstamo', 'Anticipo de prestaciones', p.prestamo]);
+        if (p.anticipo > 0) rows.push(['ded', 'Anticipo de sueldo', 'Descuento acordado', p.anticipo]);
+      }
+
+      const rowsHtml = rows.map((r) => {
+        if (r[0] === 'sec') return '<tr class="sec"><td colspan="3">' + r[1] + '</td></tr>';
+        const signo = r[0] === 'ded' ? '− ' : '';
+        return '<tr class="' + r[0] + '"><td>' + r[1] + (r[2] ? '<span class="sub">' + r[2] + '</span>' : '') + '</td><td class="num">Bs</td><td class="num">' + signo + fmt(r[3]) + '</td></tr>';
+      }).join('');
+
+      doc.innerHTML =
+        '<div class="recibo-head">'
+        + '<div><div class="rh-co">Agroinversiones Valle, C.A.</div><div class="rh-meta"><span class="mono">RIF J-30456789-0</span><br>Av. Intercomunal, Galpón 4, Valencia, Edo. Carabobo</div></div>'
+        + '<div class="rh-kind"><div class="k">Recibo de Pago</div><div class="num">N° ' + numDoc + '</div></div>'
+        + '</div>'
+        + '<div class="recibo-party">'
+        + '<div class="rp"><div class="l">Trabajador</div><div class="v">' + emp.nombre + '</div></div>'
+        + '<div class="rp"><div class="l">Cédula</div><div class="v mono">' + emp.cedula + '</div></div>'
+        + '<div class="rp"><div class="l">Cargo</div><div class="v">' + emp.cargo + ' · ' + emp.depto + '</div></div>'
+        + '<div class="rp"><div class="l">Tipo de trabajador</div><div class="v">' + emp.tipo + (emp.tipo === 'Planta' ? ' · producción' : '') + '</div></div>'
+        + '<div class="rp"><div class="l">Período de pago</div><div class="v">' + p.f.periodo + '</div></div>'
+        + '<div class="rp"><div class="l">Forma de pago</div><div class="v">' + emp.formaPago + '</div></div>'
+        + '<div class="rp"><div class="l">Fecha de emisión</div><div class="v">' + fecha + '</div></div>'
+        + '</div>'
+        + '<table class="recibo-table"><thead><tr><th>Concepto</th><th class="num"></th><th class="num">Monto</th></tr></thead>'
+        + '<tbody>' + rowsHtml + '</tbody>'
+        + '<tfoot><tr><td>Neto a pagar</td><td class="num">Bs</td><td class="num">' + fmt(p.neto) + '</td></tr></tfoot></table>'
+        + '<div class="recibo-words">Son: <strong>' + capitalizar(montoEnLetras(p.neto)) + '</strong>.</div>'
+        + '<div class="recibo-foot">'
+        + '<div class="recibo-sign"><div class="line">Por la empresa</div></div>'
+        + '<div class="recibo-sign"><div class="line">Recibí conforme · ' + emp.nombre + '</div></div>'
+        + '<div class="recibo-legal">Recibo de pago emitido conforme al Art. 106 de la LOTTT. Las deducciones de ley (IVSS y RPE, con tope de cotización, y FAOV) se aplican sobre el salario normal cotizable; el INCES del trabajador (0,5%) se retiene sobre las utilidades. El Bono de Contingencia es una asignación no salarial que no es cotizable ni incide en prestaciones, vacaciones ni utilidades. El aporte patronal corre por cuenta de la empresa y no se refleja en este recibo. Documento generado electrónicamente por DigiAccount, válido sin firma autógrafa.</div>'
+        + '</div>';
+
+      lastReciboText = 'Recibo de Pago de Nomina - ' + emp.nombre + ' (' + emp.cedula + ')\r\n'
+        + 'Documento: ' + numDoc + '  Periodo: ' + p.f.periodo + '\r\n'
+        + '----------------------------------------\r\n'
+        + '  ' + p.f.etiqueta + ': Bs ' + fmt(p.sueldo) + '\r\n'
+        + (p.horas > 0 ? '  Horas extras (' + p.horas + ' h): Bs ' + fmt(p.montoExtra) + '\r\n' : '')
+        + (p.horasNoct > 0 ? '  Bono nocturno (' + p.horasNoct + ' h): Bs ' + fmt(p.montoNoct) + '\r\n' : '')
+        + (p.diasFeriado > 0 ? '  Dias feriados (' + p.diasFeriado + '): Bs ' + fmt(p.montoFeriado) + '\r\n' : '')
+        + (p.comision > 0 ? '  Comisiones: Bs ' + fmt(p.comision) + '\r\n' : '')
+        + (p.bonoProd > 0 ? '  Bono de produccion: Bs ' + fmt(p.bonoProd) + '\r\n' : '')
+        + (emp.bonoUSD ? '  Bono divisa: Bs ' + fmt(p.bonoBs) + '\r\n' : '')
+        + (p.bonoContingencia > 0 ? '  Bono de contingencia (no salarial): Bs ' + fmt(p.bonoContingencia) + '\r\n' : '')
+        + '  Cestaticket (no salarial): Bs ' + fmt(p.cestaticket) + '\r\n'
+        + '  (-) IVSS: Bs ' + fmt(p.ivss) + '\r\n'
+        + '  (-) SPF: Bs ' + fmt(p.spf) + '\r\n'
+        + '  (-) FAOV: Bs ' + fmt(p.faov) + '\r\n'
+        + (p.cajaAhorro > 0 ? '  (-) Caja de ahorro: Bs ' + fmt(p.cajaAhorro) + '\r\n' : '')
+        + (p.prestamo > 0 ? '  (-) Cuota prestamo: Bs ' + fmt(p.prestamo) + '\r\n' : '')
+        + (p.anticipo > 0 ? '  (-) Anticipo sueldo: Bs ' + fmt(p.anticipo) + '\r\n' : '')
+        + '----------------------------------------\r\n'
+        + 'NETO A PAGAR: Bs ' + fmt(p.neto) + '\r\n'
+        + 'Son: ' + capitalizar(montoEnLetras(p.neto)) + '\r\n';
+      lastReciboName = p.f.doc + '_' + emp.id + '_2026.txt';
+
+      overlay.dataset.open = 'true';
+      drawIcons();
+    }
+
+    // Tabla de empleados generada desde el array completo (todos los activos),
+    // con columna de acción "Recibo" por trabajador.
+    function renderEmpTable() {
+      const empPane = view.querySelector('.nomina-tab[data-tab="empleados"]');
+      const table = empPane && empPane.querySelector('table.data-table');
+      if (!table) return;
+      const headRow = table.querySelector('thead tr');
+      if (headRow && !headRow.dataset.wired) {
+        const th = document.createElement('th');
+        headRow.appendChild(th);
+        headRow.dataset.wired = '1';
+      }
+      const tbody = table.querySelector('tbody');
+      if (!tbody) return;
+      const pendientes = [3, 4, 13, 20]; // algunos con estado "Pendiente" (demo)
+      tbody.innerHTML = empleados.map((emp, i) => {
+        const estado = pendientes.includes(i)
+          ? '<span class="tag warn">Pendiente</span>'
+          : '<span class="tag success">Procesada</span>';
+        return '<tr>'
+          + '<td><div class="emp-cell"><div class="emp-avatar" style="background:' + emp.color + ';">' + emp.ini + '</div>'
+          + '<div class="info"><div class="n">' + emp.nombre + '</div><div class="r">' + emp.cargo + '</div></div></div></td>'
+          + '<td class="mono">' + emp.cedula + '</td>'
+          + '<td>' + emp.depto + '</td>'
+          + '<td class="num">' + fmt(emp.salarioMes) + '</td>'
+          + '<td class="num">' + (emp.bonoLabel || '—') + '</td>'
+          + '<td>' + emp.formaPago + '</td>'
+          + '<td class="num">' + fmt(emp.salarioMes / 2) + '</td>'
+          + '<td>' + estado + '</td>'
+          + '<td><button class="btn btn-ghost" data-emp-idx="' + i + '" style="height:28px;font-size:11px;padding:0 10px;white-space:nowrap;"><i data-lucide="file-text"></i> Recibo</button></td>'
+          + '</tr>';
+      }).join('');
+      tbody.querySelectorAll('button[data-emp-idx]').forEach((b) => {
+        b.addEventListener('click', () => openReciboPago(empleados[parseInt(b.dataset.empIdx, 10)]));
+      });
+      // Mantener el contador de empleados sincronizado
+      const badge = view.querySelector('.contrib-badge');
+      if (badge) badge.innerHTML = '<i data-lucide="users"></i> ' + empleados.length + ' empleados activos';
+      const tabCount = document.querySelector('#nominaTabs button[data-tab="empleados"] .count');
+      if (tabCount) tabCount.textContent = empleados.length;
+      drawIcons();
+    }
+    renderEmpTable();
+
+    // Acciones del módulo: Nuevo trabajador / Procesar / Recalcular / Exportar
+    (function wireNominaActions() {
+      const empPane = view.querySelector('.nomina-tab[data-tab="empleados"]');
+      const table = empPane && empPane.querySelector('table.data-table');
+      const t = (m, tipo) => { if (window.toast) window.toast(m, tipo); };
+      const PALETA = ['#003057', '#00aeef', '#1c8f5a', '#c97a14', '#c0392b', '#6f8aab', '#3a7bb8', '#9a5ba8', '#2e7d6b', '#b8568f'];
+
+      const nuevoTrab = document.getElementById('nuevoTrabajadorBtn');
+      if (nuevoTrab) nuevoTrab.addEventListener('click', () => {
+        window.openFormModal({
+          title: 'Registrar nuevo trabajador',
+          saveLabel: 'Registrar trabajador',
+          fields: [
+            { name: 'nombre', label: 'Nombre y apellido', col: 2, placeholder: 'Ej. Juan Pérez' },
+            { name: 'cedula', label: 'Cédula', placeholder: 'V-00.000.000' },
+            { name: 'cargo', label: 'Cargo', placeholder: 'Ej. Asistente' },
+            { name: 'depto', label: 'Departamento', placeholder: 'Ej. Administración' },
+            { name: 'tipo', label: 'Tipo de trabajador', type: 'select', options: ['Administrativo', 'Planta'] },
+            { name: 'salarioMes', label: 'Ingreso mensual (Bs)', type: 'number', step: '0.01', placeholder: '0.00' },
+            { name: 'formaPago', label: 'Forma de pago', type: 'select', options: ['Transferencia', 'Efectivo', 'Pago móvil'] },
+            { name: 'frec', label: 'Frecuencia', type: 'select', options: [{ value: 'quincenal', label: 'Quincenal' }, { value: 'semanal', label: 'Semanal' }, { value: 'mensual', label: 'Mensual' }] },
+          ],
+          onSave: (v) => {
+            const sal = parseFloat(v.salarioMes);
+            if (!v.nombre || !v.cedula || !v.cargo) return 'Nombre, cédula y cargo son obligatorios.';
+            if (!(sal > 0)) return 'El ingreso mensual debe ser mayor a cero.';
+            const ini = v.nombre.trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
+            empleados.push({
+              id: 'e' + Date.now().toString(36), nombre: v.nombre.trim(), cedula: v.cedula.trim(),
+              cargo: v.cargo.trim(), depto: v.depto.trim() || '—', tipo: v.tipo,
+              ingreso: new Date(2026, 4, 30), salarioMes: sal,
+              bonoUSD: 0, bonoLabel: '—', formaPago: v.formaPago, frecHabitual: v.frec,
+              horasExtra: 0, horasNoct: 0, diasFeriado: 0, comisionBs: 0, bonoProdBs: 0,
+              cajaAhorroPct: 0, prestamoCuota: 0, anticipoSueldo: 0,
+              color: PALETA[empleados.length % PALETA.length], ini,
+            });
+            renderEmpTable();
+            if (window.refreshTables) window.refreshTables();
+            t('Trabajador "' + v.nombre.trim() + '" registrado · ' + empleados.length + ' empleados activos');
+          },
+        });
+      });
+
+      const procesar = document.getElementById('procesarNominaBtn');
+      if (procesar) procesar.addEventListener('click', () => {
+        // Marca como "Procesada" a las pendientes de la tabla
+        let n = 0;
+        if (table) table.querySelectorAll('tbody tr .tag.warn').forEach((tag) => {
+          tag.className = 'tag success'; tag.textContent = 'Procesada'; n++;
+        });
+        t('Nómina procesada · ' + empleados.length + ' recibos generados' + (n ? ' (' + n + ' pendientes liquidadas)' : ''));
+      });
+
+      const recalc = document.getElementById('recalcularNominaBtn');
+      if (recalc) recalc.addEventListener('click', () => {
+        t('Nómina recalculada con los parámetros vigentes', 'info');
+      });
+
+      const exportar = document.getElementById('exportNominaBtn');
+      if (exportar) exportar.addEventListener('click', () => {
+        const filas = [['N°', 'Empleado', 'Cédula', 'Cargo', 'Departamento', 'Salario base (Bs/mes)', 'Bono', 'Forma de pago', 'Quincena (Bs)']];
+        empleados.forEach((e, i) => filas.push([
+          i + 1, e.nombre, e.cedula, e.cargo, e.depto, fmt(e.salarioMes),
+          (e.bonoLabel || '—'), e.formaPago, fmt(e.salarioMes / 2),
+        ]));
+        const csv = filas.map((r) => r.map((c) => '"' + String(c).replace(/"/g, '""') + '"').join(';')).join('\r\n');
+        const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = 'Nomina_Empleados_2026-05.csv';
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        t('Nómina exportada a CSV · ' + empleados.length + ' empleados');
+      });
+    })();
+
+    // ---------- Selector de frecuencia de pago ----------
+    (function wireFreq() {
+      const sel = document.getElementById('payFreq');
+      const hint = document.getElementById('payFreqHint');
+      if (!sel) return;
+      const hints = {
+        semanal: 'El pago semanal aplica típicamente a personal de planta y producción.',
+        quincenal: 'Frecuencia habitual del personal administrativo.',
+        mensual: 'Frecuencia habitual de cargos gerenciales.',
+      };
+      sel.querySelectorAll('button').forEach((b) => {
+        b.addEventListener('click', () => {
+          sel.querySelectorAll('button').forEach((x) => x.removeAttribute('data-active'));
+          b.dataset.active = 'true';
+          payFreq = b.dataset.freq;
+          if (hint) hint.innerHTML = '<i data-lucide="info" style="width:13px;height:13px;"></i> ' + (hints[payFreq] || '');
+          drawIcons();
+        });
+      });
+    })();
+
+    // ---------- Sub-tabs de nómina ----------
+    const tabsWrap = document.getElementById('nominaTabs');
+    if (tabsWrap) {
+      const tabs = tabsWrap.querySelectorAll('button');
+      const panes = view.querySelectorAll('.nomina-tab');
+      tabs.forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const tab = btn.dataset.tab;
+          tabs.forEach((b) => (b.dataset.active = b === btn ? 'true' : 'false'));
+          panes.forEach((p) => (p.dataset.active = p.dataset.tab === tab ? 'true' : 'false'));
+          drawIcons();
+        });
+      });
+    }
+
+    // Init
+    ['vacaciones', 'utilidades', 'liquidacion'].forEach((tab) => { renderPicker(tab); renderCalc(tab); });
+  })();
+
+  /* =========================================================
+     VISOR DE FACTURA FISCAL (venezolana)
+     ========================================================= */
+  (function facturas() {
+    const overlay = document.getElementById('facturaOverlay');
+    const doc = document.getElementById('facturaDoc');
+    const modalTitle = document.getElementById('facturaModalTitle');
+    if (!overlay || !doc) return;
+
+    const EMPRESA = { n: 'Agroinversiones Valle, C.A.', rif: 'J-30456789-0', dom: 'Av. Intercomunal, Galpón 4, Valencia, Edo. Carabobo', cond: 'Contribuyente Especial' };
+    const IMPRENTA = { n: 'Gráficas El Sol, C.A.', rif: 'J-31002030-4', prov: 'SNAT/INTI/GRTI/RCO/2024/0185', desde: '00012001', hasta: '00015000' };
+    const MAQ = { n: 'Z7C0025982', serial: 'VE-FISCAL-0044712', modelo: 'The Factory HKA PP-80 (homologado SENIAT)' };
+    const ELEC = { prov: 'DigiFactura Electrónica, C.A.', rif: 'J-40551203-7', prov_aut: 'SNAT/2024/00102-DE-0087' };
+
+    // Generador de un código QR ilustrativo (placeholder determinista) para la factura electrónica
+    function qrSvg(seed) {
+      const n = 21; let s = 0; for (let i = 0; i < seed.length; i++) s = (s * 31 + seed.charCodeAt(i)) >>> 0;
+      const rnd = () => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; };
+      let rects = '';
+      const inFinder = (x, y, fx, fy) => x >= fx && x < fx + 7 && y >= fy && y < fy + 7;
+      for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+        let on;
+        if (inFinder(x, y, 0, 0) || inFinder(x, y, n - 7, 0) || inFinder(x, y, 0, n - 7)) {
+          const fx = x < 7 ? 0 : (n - 7), fy = y < 7 ? 0 : (n - 7), lx = x - fx, ly = y - fy;
+          on = (lx === 0 || lx === 6 || ly === 0 || ly === 6) || (lx >= 2 && lx <= 4 && ly >= 2 && ly <= 4);
+        } else on = rnd() > 0.5;
+        if (on) rects += '<rect x="' + x + '" y="' + y + '" width="1" height="1"/>';
+      }
+      return '<svg viewBox="0 0 21 21" shape-rendering="crispEdges"><rect width="21" height="21" fill="#fff"/><g fill="#0b1e3a">' + rects + '</g></svg>';
+    }
+    const fmt = (n) => n.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+
+    // Catálogo de facturas (ventas y compras) con sus renglones
+    const DB = {
+      'A-00012841': { tipo: 'venta', control: '00-031284', fecha: '28/05/2026', parte: { n: 'Comercial Andina, C.A.', rif: 'J-31987654-2', dom: 'Av. Lara, Barquisimeto, Edo. Lara' }, alic: 0.16, igtf: true, cond: 'Crédito 30 días', items: [{ d: 'Café Premium 1 kg', c: 20, p: 14500 }, { d: 'Surtido de víveres (varios)', c: 1, p: 195000 }] },
+      'A-00012840': { tipo: 'venta', control: '00-031283', fecha: '28/05/2026', parte: { n: 'Pedro Marín (consumidor final)', rif: 'V-19445221-8', dom: 'Valencia, Edo. Carabobo' }, alic: 0.16, igtf: false, cond: 'Contado', items: [{ d: 'Arroz blanco 1 kg', c: 25, p: 2900 }, { d: 'Pasta larga 500 g', c: 25, p: 2100 }] },
+      'A-00012839': { tipo: 'venta', control: '00-031282', fecha: '27/05/2026', parte: { n: 'Supermercados El Sol, C.A.', rif: 'J-30776554-1', dom: 'Av. Bolívar, Caracas' }, alic: 0.16, igtf: true, cond: 'Crédito 15 días', items: [{ d: 'Café Premium 1 kg', c: 50, p: 14500 }, { d: 'Aceite vegetal 1 L', c: 100, p: 5900 }, { d: 'Surtido mayorista', c: 1, p: 525000 }] },
+      'A-00012838': { tipo: 'venta', control: '00-031281', fecha: '26/05/2026', parte: { n: 'Distribuidora Mérida, C.A.', rif: 'J-29881220-4', dom: 'Av. Las Américas, Mérida' }, alic: 0.16, igtf: false, cond: 'Crédito 30 días', items: [{ d: 'Harina de maíz 1 kg', c: 100, p: 3200 }, { d: 'Surtido de víveres', c: 1, p: 300000 }] },
+      'A-00012837': { tipo: 'venta', control: '00-031280', fecha: '25/05/2026', parte: { n: 'Hotel Caracas Suites, C.A.', rif: 'J-30554998-0', dom: 'Las Mercedes, Caracas' }, alic: 0.08, igtf: false, cond: 'Contado', items: [{ d: 'Suministro de alimentos (tarifa reducida 8%)', c: 1, p: 285000 }] },
+      'A-00012836': { tipo: 'venta', control: '00-031279', fecha: '24/05/2026', parte: { n: 'Café del Llano, C.A.', rif: 'J-31220114-9', dom: 'Guanare, Edo. Portuguesa' }, alic: 0.16, igtf: false, cond: 'Contado', items: [{ d: 'Café Premium 1 kg', c: 5, p: 14500 }, { d: 'Surtido', c: 1, p: 26000 }] },
+      'A-00012828': { tipo: 'venta', control: '00-031271', fecha: '20/05/2026', parte: { n: 'Inversiones del Centro, C.A.', rif: 'J-30118776-2', dom: 'Av. Urdaneta, Caracas, Distrito Capital' }, alic: 0.16, igtf: false, cond: 'Crédito 30 días', items: [{ d: 'Mercancía surtida (consolidado)', c: 1, p: 383620.69 }] },
+      'F-00284716': { tipo: 'compra', control: '00-018472', fecha: '28/05/2026', parte: { n: 'Suministros Lara, C.A.', rif: 'J-31567890-1', dom: 'Calle 22, Barquisimeto, Edo. Lara' }, alic: 0.16, igtf: false, cond: 'Crédito 30 días', items: [{ d: 'Café verde en grano (saco 50 kg)', c: 3, p: 31000 }, { d: 'Insumos varios', c: 1, p: 91500 }] },
+      'F-00045128': { tipo: 'compra', control: '00-018465', fecha: '27/05/2026', parte: { n: 'Tecnología Andes, S.A.', rif: 'J-29445821-7', dom: 'Av. Universidad, Mérida' }, alic: 0.16, igtf: true, cond: 'Contado (divisas)', items: [{ d: 'Equipos de cómputo', c: 2, p: 410000 }] },
+      'F-00102993': { tipo: 'compra', control: '00-018451', fecha: '26/05/2026', parte: { n: 'Servicios Profesionales JM', rif: 'V-15998231-4', dom: 'Maracay, Edo. Aragua' }, alic: 0.08, igtf: false, cond: 'Crédito', items: [{ d: 'Honorarios profesionales (tarifa 8%)', c: 1, p: 240000 }] },
+      'F-00731122': { tipo: 'compra', control: '00-018430', fecha: '24/05/2026', parte: { n: 'Importadora Zulia', rif: 'J-28776901-3', dom: 'Av. 5 de Julio, Maracaibo, Edo. Zulia' }, alic: 0.16, igtf: true, cond: 'Contado (divisas)', items: [{ d: 'Materia prima importada', c: 1, p: 1250000 }] },
+      'F-00018744': { tipo: 'compra', control: '00-018421', fecha: '23/05/2026', parte: { n: 'Papelería Central', rif: 'J-30998122-5', dom: 'Av. Bolívar, Valencia, Edo. Carabobo' }, alic: 0.16, igtf: false, cond: 'Contado', items: [{ d: 'Materiales de oficina', c: 1, p: 48640 }] },
+      'F-00045621': { tipo: 'compra', control: '00-018418', fecha: '22/05/2026', parte: { n: 'Insumos Agrícolas Aragua', rif: 'J-29331087-8', dom: 'Maracay, Edo. Aragua' }, alic: 0.16, igtf: false, cond: 'Crédito 30 días', items: [{ d: 'Insumos agrícolas', c: 1, p: 186000 }] },
+    };
+
+    function calcFactura(f) {
+      const subtotal = f.items.reduce((a, it) => a + it.c * it.p, 0);
+      const iva = subtotal * f.alic;
+      const igtf = f.igtf ? subtotal * 0.03 : 0;
+      const total = subtotal + iva + igtf;
+      return { subtotal, iva, igtf, total };
+    }
+
+    let lastText = '', lastName = 'factura.txt', currentFac = null;
+
+    function openFactura(num) {
+      const f = DB[num];
+      if (!f) return;
+      const t = calcFactura(f);
+      const emisor = f.tipo === 'venta' ? EMPRESA : f.parte;
+      const receptor = f.tipo === 'venta' ? f.parte : EMPRESA;
+      currentFac = { num: num, f: f, emisor: emisor, receptor: receptor };
+      const alicLabel = (f.alic * 100).toLocaleString('es-VE') + '%';
+      modalTitle.textContent = (f.tipo === 'venta' ? 'Factura de venta · ' : 'Factura de compra · ') + num;
+
+      const itemRows = f.items.map((it, i) =>
+        '<tr><td class="mono">ART-' + String(i + 1).padStart(3, '0') + '</td><td>' + it.d + '</td><td class="num">' + it.c + '</td><td class="num">' + fmt(it.p) + '</td><td class="ctr">' + alicLabel + '</td><td class="num">' + fmt(it.c * it.p) + '</td></tr>'
+      ).join('');
+
+      const letras = window.__montoEnLetras ? cap(window.__montoEnLetras(t.total)) : ('Bs ' + fmt(t.total));
+
+      // Medio de emisión: adapta el título y el pie legal de la factura
+      const medio = window.medioEmision || 'forma-libre';
+      const tituloDoc = medio === 'electronica' ? 'FACTURA ELECTRÓNICA'
+        : medio === 'maquina-fiscal' ? 'FACTURA · MÁQ. FISCAL' : 'FACTURA';
+      const ctrlDigital = num.replace(/\D/g, '') + '-' + f.fecha.replace(/\D/g, '');
+      let pieMedio;
+      if (medio === 'maquina-fiscal') {
+        pieMedio = '<div class="fac-legal"><strong>Máquina Fiscal:</strong> N° de registro ' + MAQ.n + ' · Serial ' + MAQ.serial + ' · Modelo ' + MAQ.modelo + '. Número de documento asignado por la máquina fiscal; reporte Z diario obligatorio. Documento emitido conforme a la Providencia Administrativa SNAT/2024/00102. El IGTF (3%) aplica a pagos en moneda extranjera o criptoactivos (Decreto Constituyente). Generado por DigiAccount.</div>';
+      } else if (medio === 'electronica') {
+        pieMedio = '<div class="fac-legal-e"><div class="fle-qr">' + qrSvg(num + ctrlDigital) + '</div>'
+          + '<div class="fle-txt"><strong>Factura Electrónica</strong> · Certificada por ' + ELEC.prov + ' (RIF ' + ELEC.rif + ') · Autorización ' + ELEC.prov_aut + '.<br>N° de control digital: <span class="mono">' + ctrlDigital + '</span>. Verifique la validez de este documento escaneando el código QR en el portal del SENIAT. Emitido conforme a la Providencia Administrativa SNAT/2024/00102. El IGTF (3%) aplica a pagos en moneda extranjera o criptoactivos.</div></div>';
+      } else {
+        pieMedio = '<div class="fac-legal">Imprenta autorizada: <strong>' + IMPRENTA.n + '</strong> · RIF ' + IMPRENTA.rif + ' · Providencia N° ' + IMPRENTA.prov + ' · Facturas autorizadas del N° ' + IMPRENTA.desde + ' al ' + IMPRENTA.hasta + '. Documento emitido conforme a la Providencia Administrativa SNAT/2024/00102 sobre las normas generales de emisión de facturas y otros documentos. El IGTF (3%) aplica a pagos en moneda extranjera o criptoactivos (Decreto Constituyente). Generado por DigiAccount.</div>';
+      }
+
+      if (medio === 'maquina-fiscal') {
+        // ===== Formato TICKET de impresora fiscal (rollo angosto) =====
+        const hora = new Date().toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' });
+        const tasaLetra = f.alic === 0.16 ? 'T' : f.alic === 0.08 ? 'R' : 'E';
+        const tasaDesc = f.alic === 0.16 ? 'TASA GENERAL 16%' : f.alic === 0.08 ? 'TASA REDUCIDA 8%' : 'EXENTO';
+        const tkItems = f.items.map((it) =>
+          '<div class="tk-item"><div class="tk-item-d">' + it.d.toUpperCase() + '</div>'
+          + '<div class="tk-item-l"><span>' + it.c + ' x ' + fmt(it.p) + '</span><span>' + fmt(it.c * it.p) + ' ' + tasaLetra + '</span></div></div>'
+        ).join('');
+        doc.innerHTML =
+          '<div class="fac-ticket">'
+          + '<div class="tk-head"><div class="tk-co">' + emisor.n.toUpperCase() + '</div>'
+          + '<div class="tk-line">RIF: ' + emisor.rif + '</div>'
+          + (emisor.dom ? '<div class="tk-line">' + emisor.dom + '</div>' : '') + '</div>'
+          + '<div class="tk-sep"></div>'
+          + '<div class="tk-row"><span>MÁQUINA FISCAL</span><span>' + MAQ.n + '</span></div>'
+          + '<div class="tk-row"><span>FECHA</span><span>' + f.fecha + '</span></div>'
+          + '<div class="tk-row"><span>HORA</span><span>' + hora + '</span></div>'
+          + '<div class="tk-sep"></div>'
+          + '<div class="tk-doc">FACTURA   N° ' + num.replace(/\D/g, '') + '</div>'
+          + '<div class="tk-line">CLIENTE: ' + receptor.n + '</div>'
+          + '<div class="tk-line">RIF/CI: ' + receptor.rif + '</div>'
+          + '<div class="tk-sep dashed"></div>'
+          + tkItems
+          + '<div class="tk-sep dashed"></div>'
+          + '<div class="tk-row"><span>SUBTOTAL Bs</span><span>' + fmt(t.subtotal) + '</span></div>'
+          + '<div class="tk-row"><span>IVA (' + alicLabel + ') ' + tasaLetra + '</span><span>' + fmt(t.iva) + '</span></div>'
+          + (f.igtf ? '<div class="tk-row"><span>IGTF 3%</span><span>' + fmt(t.igtf) + '</span></div>' : '')
+          + '<div class="tk-sep"></div>'
+          + '<div class="tk-total"><span>TOTAL Bs</span><span>' + fmt(t.total) + '</span></div>'
+          + '<div class="tk-sep"></div>'
+          + '<div class="tk-line tk-center">' + tasaLetra + ' = ' + tasaDesc + '</div>'
+          + '<div class="tk-words">SON: ' + letras + '</div>'
+          + '<div class="tk-sep dashed"></div>'
+          + '<div class="tk-fiscal"><div class="tk-logo">▮ tt ▮</div>'
+          + '<div class="tk-line tk-center">SERIAL: ' + MAQ.serial + '</div>'
+          + '<div class="tk-line tk-center">' + MAQ.modelo + '</div></div>'
+          + '<div class="tk-thanks">¡GRACIAS POR SU COMPRA!</div>'
+          + '<div class="tk-line tk-center">Generado por DigiAccount</div>'
+          + '</div>';
+      } else {
+        // ===== Formato documento (Forma libre / Electrónica) — media carta =====
+        doc.innerHTML =
+          '<div class="fac' + (medio === 'electronica' ? ' fac-e' : '') + '">'
+          + (medio === 'electronica' ? '<div class="fac-e-band"><i data-lucide="shield-check"></i> DOCUMENTO ELECTRÓNICO CERTIFICADO · SENIAT</div>' : '')
+          + '<div class="fac-head">'
+          + '<div class="fac-emisor">'
+          + (medio === 'electronica' ? '<div class="fac-logo">' + (emisor.n.replace(/[^A-Za-zÁÉÍÓÚÑ ]/g, '').trim().split(/\s+/).slice(0, 2).map((w) => w.charAt(0)).join('').toUpperCase() || 'AV') + '</div>' : '')
+          + '<div class="fac-emisor-txt"><div class="fac-co">' + emisor.n + '</div>'
+          + '<div class="fac-meta"><span class="mono">RIF ' + emisor.rif + '</span>' + (emisor.cond ? ' · ' + emisor.cond : '') + '<br>' + emisor.dom + '</div></div></div>'
+          + '<div class="fac-num"><div class="t">' + tituloDoc + '</div>'
+          + '<div class="r"><span>N°</span><strong>' + num + '</strong></div>'
+          + '<div class="c"><span>N° de Control</span><strong>' + f.control + '</strong></div></div>'
+          + '</div>'
+          + '<div class="fac-cliente"><div class="fc-grid">'
+          + '<div class="fc-f"><span class="l">Nombre o Razón Social</span><span class="v">' + receptor.n + '</span></div>'
+          + '<div class="fc-f"><span class="l">RIF / C.I.</span><span class="v mono">' + receptor.rif + '</span></div>'
+          + '<div class="fc-f"><span class="l">Fecha de Emisión</span><span class="v">' + f.fecha + '</span></div>'
+          + '<div class="fc-f"><span class="l">Condición de Pago</span><span class="v">' + f.cond + '</span></div>'
+          + '<div class="fc-f wide"><span class="l">Domicilio Fiscal</span><span class="v">' + receptor.dom + '</span></div>'
+          + '</div></div>'
+          + '<table class="fac-table"><thead><tr><th>Cód.</th><th>Descripción</th><th class="num">Cant.</th><th class="num">P. Unitario</th><th class="ctr">Alíc.</th><th class="num">Monto</th></tr></thead>'
+          + '<tbody>' + itemRows + '</tbody></table>'
+          + '<div class="fac-bottom">'
+          + '<div class="fac-words">Son: <strong>' + letras + '</strong></div>'
+          + '<div class="fac-tot">'
+          + '<div class="ft-row"><span>Base imponible (' + alicLabel + ')</span><span class="mono">' + fmt(t.subtotal) + '</span></div>'
+          + '<div class="ft-row"><span>IVA (' + alicLabel + ')</span><span class="mono">' + fmt(t.iva) + '</span></div>'
+          + (f.igtf ? '<div class="ft-row"><span>IGTF (3%)</span><span class="mono">' + fmt(t.igtf) + '</span></div>' : '')
+          + '<div class="ft-row total"><span>TOTAL A PAGAR</span><span class="mono">Bs ' + fmt(t.total) + '</span></div>'
+          + '</div></div>'
+          + '<div class="fac-firmas"><div class="ff"><div class="line"></div>Por el emisor</div><div class="ff"><div class="line"></div>Recibido conforme · RIF/C.I.</div></div>'
+          + pieMedio
+          + '</div>';
+      }
+
+      lastText = (f.tipo === 'venta' ? 'FACTURA DE VENTA' : 'FACTURA DE COMPRA') + ' N° ' + num + ' (Control ' + f.control + ')\r\n'
+        + 'Emisor: ' + emisor.n + ' - RIF ' + emisor.rif + '\r\n'
+        + (f.tipo === 'venta' ? 'Cliente: ' : 'Proveedor: ') + receptor.n + ' - RIF ' + receptor.rif + '\r\n'
+        + 'Fecha: ' + f.fecha + '\r\n----------------------------------------\r\n'
+        + f.items.map((it) => '  ' + it.d + '  ' + it.c + ' x ' + fmt(it.p) + ' = ' + fmt(it.c * it.p)).join('\r\n')
+        + '\r\n----------------------------------------\r\n'
+        + 'Base imponible: Bs ' + fmt(t.subtotal) + '\r\n'
+        + 'IVA (' + alicLabel + '): Bs ' + fmt(t.iva) + '\r\n'
+        + (f.igtf ? 'IGTF (3%): Bs ' + fmt(t.igtf) + '\r\n' : '')
+        + 'TOTAL: Bs ' + fmt(t.total) + '\r\n';
+      lastName = 'Factura_' + num + '.txt';
+
+      overlay.dataset.open = 'true';
+      drawIcons();
+    }
+
+    function close() { overlay.dataset.open = 'false'; }
+    const cb = document.getElementById('facturaClose');
+    if (cb) cb.addEventListener('click', close);
+    // Despachar: genera la Guía de Despacho a partir de la factura abierta
+    const despBtn = document.getElementById('facturaDespachar');
+    if (despBtn) despBtn.addEventListener('click', () => {
+      if (currentFac && window.crearDespacho) { close(); window.crearDespacho(currentFac); }
+    });
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && overlay.dataset.open === 'true') close(); });
+    const pr = document.getElementById('facturaPrint');
+    if (pr) pr.addEventListener('click', () => {
+      const isTicket = !!doc.querySelector('.fac-ticket');
+      const isElec = !!doc.querySelector('.fac-e');
+      const facEl = doc.querySelector('.fac-ticket, .fac') || doc;
+      let portal = document.getElementById('printPortal');
+      if (!portal) { portal = document.createElement('div'); portal.id = 'printPortal'; document.body.appendChild(portal); }
+      portal.innerHTML = '';
+      const clon = facEl.cloneNode(true);
+      clon.classList.add(isTicket ? 'ticket-print' : 'fac-print');
+      if (isElec) clon.classList.add('fac-e-print');
+      portal.appendChild(clon);
+      // Tamaño de papel según el formato: ticket (rollo 72mm), electrónica (carta) o
+      // forma libre (media carta). Chrome ignora un @page nuevo cuando ya existe otro
+      // @page en conflicto, así que se cambia el size de TODAS las reglas @page vía CSSOM.
+      let size = '5.5in 8.5in', margin = '9mm';
+      if (isTicket) { size = '72mm 200mm'; margin = '4mm'; }
+      else if (isElec) { size = '8.5in 11in'; margin = '12mm'; }
+      setFacturaPageSize(size, margin);
+      document.body.classList.add('printing-comp');
+      window.print();
+    });
+    // Cambia/restaura el size de todas las reglas @page (CSSOM) para la impresión de factura/ticket
+    function setFacturaPageSize(sizeVal, marginVal) {
+      const sheets = document.styleSheets;
+      for (let i = 0; i < sheets.length; i++) {
+        let rules;
+        try { rules = sheets[i].cssRules; } catch (e) { continue; }
+        if (!rules) continue;
+        for (let j = 0; j < rules.length; j++) {
+          const r = rules[j];
+          if (r.type === CSSRule.MEDIA_RULE && /print/.test(r.media && r.media.mediaText || '')) {
+            for (let k = 0; k < r.cssRules.length; k++) {
+              const pr = r.cssRules[k];
+              if (pr.type === CSSRule.PAGE_RULE) {
+                if (sizeVal) {
+                  if (pr.__origSize === undefined) { pr.__origSize = pr.style.size || ''; pr.__origMargin = pr.style.margin || ''; }
+                  pr.style.size = sizeVal;
+                  pr.style.margin = marginVal;
+                } else if (pr.__origSize !== undefined) {
+                  pr.style.size = pr.__origSize;
+                  pr.style.margin = pr.__origMargin || '';
+                  pr.__origSize = undefined;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    window.addEventListener('afterprint', () => {
+      document.body.classList.remove('printing-comp');
+      const portal = document.getElementById('printPortal');
+      if (portal) portal.innerHTML = '';
+      setFacturaPageSize(false);
+    });
+    const dl = document.getElementById('facturaDownload');
+    if (dl) dl.addEventListener('click', () => {
+      const blob = new Blob([lastText], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = lastName;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    });
+
+    // Agregar botón "Ver" a las filas de las tablas de Ventas y Compras del Módulo Fiscal
+    // (se excluye el Libro legal, que muestra el N° de comprobante en su última columna)
+    ['ventas', 'compras'].forEach((tab) => {
+      const pane = document.querySelector('.fiscal-tab[data-tab="' + tab + '"]');
+      const table = pane && pane.querySelector('table.data-table:not(.libro-table)');
+      if (!table) return;
+      const headRow = table.querySelector('thead tr');
+      if (headRow) headRow.appendChild(document.createElement('th'));
+      table.querySelectorAll('tbody tr').forEach((tr) => {
+        // localizar el número de factura en la fila
+        let num = null;
+        tr.querySelectorAll('td.mono').forEach((td) => {
+          const txt = td.textContent.trim();
+          if (/^[AF]-\d+/.test(txt) && DB[txt]) num = txt;
+        });
+        const td = document.createElement('td');
+        if (num) {
+          td.innerHTML = '<button class="btn btn-ghost" style="height:26px;font-size:11px;padding:0 9px;"><i data-lucide="eye"></i> Ver</button>';
+          td.querySelector('button').addEventListener('click', (e) => { e.stopPropagation(); openFactura(num); });
+        }
+        tr.appendChild(td);
+      });
+    });
+    // Conectar los botones "Ver" del módulo de Ventas (data-ver-factura)
+    document.querySelectorAll('[data-ver-factura]').forEach((b) => {
+      b.addEventListener('click', () => openFactura(b.dataset.verFactura));
+    });
+    // ---- Emisión de factura de venta (formulario) ----
+    (function nuevaFacturaForm() {
+      const overlay = document.getElementById('facturaNuevaModal');
+      if (!overlay) return;
+      const linesEl = document.getElementById('fvLines');
+      const selCli = document.getElementById('fvCliente');
+      const rifEl = document.getElementById('fvRif');
+      const idEl = document.getElementById('fvIdSis');
+      const igtfChk = document.getElementById('fvIgtf');
+      const msgEl = document.getElementById('fvMsg');
+      const idSis = (rif) => String(rif || '').replace(/^[A-Za-z]/, '');
+      let clientes = [];
+      function fillCliente(c) { rifEl.value = c ? c.rif : ''; idEl.value = c ? (c.id || idSis(c.rif)) : ''; }
+
+      function addLine() {
+        const row = document.createElement('div');
+        row.className = 'fv-line';
+        row.innerHTML = '<input type="text" class="fv-desc" placeholder="Producto o servicio">'
+          + '<input type="number" class="fv-cant" placeholder="0" step="any">'
+          + '<input type="number" class="fv-precio" placeholder="0.00" step="0.01">'
+          + '<span class="fv-monto">Bs 0,00</span>'
+          + '<button class="fv-del" title="Eliminar"><i data-lucide="trash-2"></i></button>';
+        row.querySelector('.fv-del').addEventListener('click', () => { row.remove(); recalc(); });
+        row.querySelectorAll('input').forEach((i) => i.addEventListener('input', recalc));
+        linesEl.appendChild(row);
+        drawIcons();
+      }
+      function recalc() {
+        const alic = parseFloat(document.getElementById('fvAlic').value) || 0;
+        let base = 0;
+        linesEl.querySelectorAll('.fv-line').forEach((r) => {
+          const c = parseFloat(r.querySelector('.fv-cant').value) || 0;
+          const p = parseFloat(r.querySelector('.fv-precio').value) || 0;
+          const m = c * p;
+          r.querySelector('.fv-monto').textContent = 'Bs ' + fmt(m);
+          base += m;
+        });
+        const iva = base * alic, igtf = igtfChk.checked ? base * 0.03 : 0;
+        document.getElementById('fvBase').textContent = 'Bs ' + fmt(base);
+        document.getElementById('fvIva').textContent = 'Bs ' + fmt(iva);
+        document.getElementById('fvIgtfRow').hidden = !igtfChk.checked;
+        document.getElementById('fvIgtfVal').textContent = 'Bs ' + fmt(igtf);
+        document.getElementById('fvTotal').textContent = 'Bs ' + fmt(base + iva + igtf);
+      }
+      function open() {
+        clientes = (window.__clientes ? window.__clientes() : []);
+        if (!clientes.length) clientes = [{ n: 'Comercial Andina, C.A.', rif: 'J319876542', dom: 'Av. Lara, Barquisimeto, Edo. Lara' }];
+        selCli.innerHTML = clientes.map((c, i) => '<option value="' + i + '">' + c.n + '</option>').join('');
+        fillCliente(clientes[0]);
+        linesEl.innerHTML = ''; addLine();
+        igtfChk.checked = false; msgEl.textContent = '';
+        recalc(); overlay.hidden = false; drawIcons();
+      }
+      function close() { overlay.hidden = true; }
+      selCli.addEventListener('change', () => fillCliente(clientes[parseInt(selCli.value, 10)]));
+      // Registrar cliente nuevo → lleva a la ficha de Terceros (premarcado como cliente)
+      const nuevoCliBtn = document.getElementById('fvNuevoCliente');
+      if (nuevoCliBtn) nuevoCliBtn.addEventListener('click', () => {
+        close();
+        if (window.showView) window.showView('terceros', 'Terceros · Clientes y Proveedores');
+        if (window.openNuevoTercero) window.openNuevoTercero({ cliente: true });
+      });
+      document.getElementById('fvAlic').addEventListener('change', recalc);
+      igtfChk.addEventListener('change', recalc);
+      document.getElementById('fvAddLine').addEventListener('click', addLine);
+      document.getElementById('fvClose').addEventListener('click', close);
+      document.getElementById('fvCancel').addEventListener('click', close);
+      overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+      document.getElementById('fvEmitir').addEventListener('click', () => {
+        const setMsg = (m) => { msgEl.textContent = m; msgEl.classList.add('error'); };
+        msgEl.classList.remove('error'); msgEl.textContent = '';
+        const cli = clientes[parseInt(selCli.value, 10)];
+        if (!cli) return setMsg('Selecciona un cliente.');
+        const items = [];
+        linesEl.querySelectorAll('.fv-line').forEach((r) => {
+          const d = r.querySelector('.fv-desc').value.trim();
+          const c = parseFloat(r.querySelector('.fv-cant').value) || 0;
+          const p = parseFloat(r.querySelector('.fv-precio').value) || 0;
+          if (d && c > 0 && p > 0) items.push({ d: d, c: c, p: p });
+        });
+        if (!items.length) return setMsg('Agrega al menos un renglón con descripción, cantidad y precio.');
+        const nums = Object.keys(DB).filter((k) => /^A-/.test(k)).map((k) => parseInt(k.slice(2), 10));
+        const num = 'A-' + String((nums.length ? Math.max(...nums) : 12841) + 1).padStart(8, '0');
+        const ctrls = Object.values(DB).map((f) => parseInt((f.control || '').replace(/\D/g, ''), 10)).filter((n) => !isNaN(n));
+        const ctrl = '00-' + String((ctrls.length ? Math.max(...ctrls) : 31284) + 1).padStart(6, '0');
+        const fechaRaw = document.getElementById('fvFecha').value;
+        const fecha = fechaRaw ? fechaRaw.split('-').reverse().join('/') : '31/05/2026';
+        const alic = parseFloat(document.getElementById('fvAlic').value) || 0;
+        DB[num] = { tipo: 'venta', control: ctrl, fecha: fecha, parte: { n: cli.n, rif: cli.rif, dom: cli.dom || '' }, alic: alic, igtf: igtfChk.checked, cond: document.getElementById('fvCond').value, items: items };
+        const t = calcFactura(DB[num]);
+        const tb = document.querySelector('.ventas-tab[data-tab="facturas"] table.data-table tbody');
+        if (tb) {
+          const fc = fecha.slice(0, 6) + fecha.slice(8); // dd/mm/yy
+          const tr = document.createElement('tr');
+          tr.innerHTML = '<td>' + fc + '</td><td class="mono">' + num + '</td><td class="mono">' + ctrl + '</td>'
+            + '<td class="primary">' + cli.n + '</td><td class="mono">' + cli.rif + '</td>'
+            + '<td class="num">' + fmt(t.total) + '</td><td><span class="tag cyan">Por cobrar</span></td>'
+            + '<td><button class="btn btn-ghost" data-ver-factura="' + num + '" style="height:26px;font-size:11px;padding:0 9px;white-space:nowrap;"><i data-lucide="eye"></i> Ver</button></td>';
+          tb.insertBefore(tr, tb.firstChild);
+          tr.querySelector('[data-ver-factura]').addEventListener('click', () => openFactura(num));
+          drawIcons();
+        }
+        if (window.toast) window.toast('Factura ' + num + ' emitida · Bs ' + fmt(t.total), 'success');
+        close();
+        openFactura(num);
+      });
+
+      window.openNuevaFactura = open;
+    })();
+
+    window.openFactura = openFactura; // reutilizable
+    window.__setPageSize = setFacturaPageSize; // reutilizable por el visor de despacho
+    // Acceso a las facturas de venta para el módulo de Despachos
+    window.__getFactura = function (num) {
+      const f = DB[num]; if (!f) return null;
+      const em = f.tipo === 'venta' ? EMPRESA : f.parte;
+      const re = f.tipo === 'venta' ? f.parte : EMPRESA;
+      return { num: num, f: f, emisor: em, receptor: re };
+    };
+    window.__listaFacturasVenta = Object.keys(DB).filter((k) => DB[k].tipo === 'venta').map((k) => ({ num: k, cliente: DB[k].parte.n }));
+    drawIcons();
+  })();
+
+  /* =========================================================
+     DESPACHOS — Guía de Despacho desde la factura (descuenta stock)
+     ========================================================= */
+  (function despachos() {
+    const overlay = document.getElementById('despachoOverlay');
+    const doc = document.getElementById('despachoDoc');
+    const titleEl = document.getElementById('despachoModalTitle');
+    const tbody = document.getElementById('despachosBody');
+    if (!overlay || !doc) return;
+    const toast = (m, t) => { if (window.toast) window.toast(m, t); };
+    const fmt = (n) => Number(n).toLocaleString('es-VE', { minimumFractionDigits: 0 });
+    const EMPRESA = { n: 'Agroinversiones Valle, C.A.', rif: 'J-30456789-0', dom: 'Av. Intercomunal, Galpón 4, Valencia, Edo. Carabobo' };
+
+    // Catálogo de guías (memoria). Las de ejemplo replican los renglones de su factura.
+    const DB = {
+      'GD-00031': { fecha: '28/05/2026', factura: 'A-00012841', cliente: { n: 'Comercial Andina, C.A.', rif: 'J-31987654-2', dom: 'Av. Lara, Barquisimeto, Edo. Lara' }, transp: { emp: 'Transporte propio', chofer: 'L. Rodríguez', ci: 'V-14.332.110', placa: 'A45BC1D', veh: 'Camión NPR' }, estado: 'Entregado', items: [{ c: 'ART-001', d: 'Café Premium 1 kg', q: 20, u: 'kg' }, { c: 'ART-002', d: 'Surtido de víveres (varios)', q: 1, u: 'bulto' }] },
+      'GD-00030': { fecha: '27/05/2026', factura: 'A-00012839', cliente: { n: 'Supermercados El Sol, C.A.', rif: 'J-30776554-1', dom: 'Av. Bolívar, Caracas' }, transp: { emp: 'Encava 0034', chofer: 'J. Pérez', ci: 'V-12.998.221', placa: 'AA123BB', veh: 'Encava 610' }, estado: 'En ruta', items: [{ c: 'ART-001', d: 'Café Premium 1 kg', q: 50, u: 'kg' }, { c: 'ART-002', d: 'Aceite vegetal 1 L', q: 100, u: 'und' }, { c: 'ART-003', d: 'Surtido mayorista', q: 1, u: 'lote' }] },
+      'GD-00029': { fecha: '26/05/2026', factura: 'A-00012838', cliente: { n: 'Distribuidora Mérida, C.A.', rif: 'J-29881220-4', dom: 'Av. Las Américas, Mérida' }, transp: { emp: 'Cootransporte C.A.', chofer: 'M. Sánchez', ci: 'V-10.554.873', placa: 'AB456CD', veh: 'Furgón 350' }, estado: 'Entregado', items: [{ c: 'ART-001', d: 'Harina de maíz 1 kg', q: 100, u: 'kg' }, { c: 'ART-002', d: 'Surtido de víveres', q: 1, u: 'bulto' }] },
+    };
+    let seq = 32; // siguiente correlativo
+
+    function bultos(items) { return items.reduce((a, it) => a + Number(it.q), 0); }
+
+    function render(num) {
+      const g = DB[num];
+      if (!g) return;
+      titleEl.textContent = 'Guía de Despacho · ' + num;
+      const rows = g.items.map((it) =>
+        '<tr><td class="mono">' + it.c + '</td><td>' + it.d + '</td><td class="num">' + it.q + '</td><td class="ctr">' + (it.u || 'und') + '</td></tr>'
+      ).join('');
+      doc.innerHTML =
+        '<div class="fac gd-doc">'
+        + '<div class="fac-head">'
+        + '<div class="fac-emisor"><div class="fac-co">' + EMPRESA.n + '</div>'
+        + '<div class="fac-meta"><span class="mono">RIF ' + EMPRESA.rif + '</span><br>' + EMPRESA.dom + '</div></div>'
+        + '<div class="fac-num"><div class="t">GUÍA DE DESPACHO</div>'
+        + '<div class="r"><span>N°</span><strong>' + num + '</strong></div>'
+        + '<div class="c"><span>Factura</span><strong>' + g.factura + '</strong></div></div>'
+        + '</div>'
+        + '<div class="fac-cliente"><div class="fc-grid">'
+        + '<div class="fc-f"><span class="l">Cliente / Destinatario</span><span class="v">' + g.cliente.n + '</span></div>'
+        + '<div class="fc-f"><span class="l">RIF / C.I.</span><span class="v mono">' + g.cliente.rif + '</span></div>'
+        + '<div class="fc-f"><span class="l">Fecha de Despacho</span><span class="v">' + g.fecha + '</span></div>'
+        + '<div class="fc-f"><span class="l">Estado</span><span class="v">' + g.estado + '</span></div>'
+        + '<div class="fc-f wide"><span class="l">Dirección de Entrega</span><span class="v">' + g.cliente.dom + '</span></div>'
+        + '</div></div>'
+        + '<div class="gd-transp"><div class="gd-transp-t">Datos del transporte</div><div class="fc-grid">'
+        + '<div class="fc-f"><span class="l">Transportista</span><span class="v">' + g.transp.emp + '</span></div>'
+        + '<div class="fc-f"><span class="l">Conductor</span><span class="v">' + g.transp.chofer + '</span></div>'
+        + '<div class="fc-f"><span class="l">C.I.</span><span class="v mono">' + g.transp.ci + '</span></div>'
+        + '<div class="fc-f"><span class="l">Placa</span><span class="v mono">' + g.transp.placa + '</span></div>'
+        + '<div class="fc-f wide"><span class="l">Vehículo</span><span class="v">' + g.transp.veh + '</span></div>'
+        + '</div></div>'
+        + '<table class="fac-table"><thead><tr><th>Cód.</th><th>Descripción</th><th class="num">Cant.</th><th class="ctr">Unidad</th></tr></thead>'
+        + '<tbody>' + rows + '</tbody></table>'
+        + '<div class="gd-bultos">Total de bultos / unidades despachadas: <strong>' + bultos(g.items) + '</strong></div>'
+        + '<div class="fac-firmas"><div class="ff"><div class="line"></div>Despachado por</div><div class="ff"><div class="line"></div>Recibido conforme · C.I. / Fecha</div></div>'
+        + '<div class="fac-legal">Documento que ampara el <strong>traslado de bienes</strong> conforme a la normativa del SENIAT. No es una factura ni genera obligaciones tributarias; debe acompañar la mercancía durante su transporte junto con la factura correspondiente (' + g.factura + '). Generado por DigiAccount.</div>'
+        + '</div>';
+      overlay.dataset.open = 'true';
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    function addRow(num) {
+      if (!tbody) return;
+      const g = DB[num];
+      const tr = document.createElement('tr');
+      tr.innerHTML = '<td>' + g.fecha.slice(0, 8) + g.fecha.slice(8) + '</td><td class="mono">' + num + '</td><td class="mono">' + g.factura + '</td><td class="primary">' + g.cliente.n + '</td><td>' + g.transp.emp + (g.transp.chofer ? ' · ' + g.transp.chofer : '') + '</td><td class="num">' + bultos(g.items) + '</td><td><span class="tag cyan">' + g.estado + '</span></td><td><button class="btn btn-ghost" data-ver-despacho="' + num + '" style="height:26px;font-size:11px;padding:0 9px;white-space:nowrap;"><i data-lucide="eye"></i> Ver</button></td>';
+      tbody.insertBefore(tr, tbody.firstChild);
+      tr.querySelector('[data-ver-despacho]').addEventListener('click', () => render(num));
+      const cnt = document.getElementById('despachosCount'); if (cnt) cnt.textContent = Object.keys(DB).length;
+      const shown = document.getElementById('despachosShown'); if (shown) shown.textContent = tbody.children.length;
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    // Genera la guía: crea el registro, agrega la fila, descuenta stock y la muestra
+    function generarGuia(fac, v) {
+      const num = 'GD-' + String(seq++).padStart(5, '0');
+      const fecha = new Date().toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+      DB[num] = {
+        fecha: fecha, factura: fac.num,
+        cliente: { n: fac.receptor.n, rif: fac.receptor.rif, dom: v.entrega || fac.receptor.dom },
+        transp: { emp: v.emp || 'Transporte propio', chofer: v.chofer, ci: v.ci, placa: v.placa, veh: v.veh },
+        estado: 'En ruta',
+        items: fac.f.items.map((it, i) => ({ c: 'ART-' + String(i + 1).padStart(3, '0'), d: it.d, q: it.c, u: 'und' })),
+      };
+      addRow(num);
+      // Descontar del inventario los artículos despachados (match por nombre)
+      let descontados = 0;
+      if (window.descontarStock) DB[num].items.forEach((it) => { if (window.descontarStock(it.d, it.q)) descontados += Number(it.q); });
+      const tot = bultos(DB[num].items);
+      toast('Guía ' + num + ' generada · ' + (descontados ? descontados + ' de ' : '') + tot + ' unidades descontadas del inventario', 'success');
+      render(num);
+    }
+
+    function camposTransporte(fac) {
+      return [
+        { name: 'entrega', label: 'Dirección de entrega', col: 2, value: (fac && fac.receptor.dom) || '', placeholder: 'Si se deja vacío, se usa la dirección del cliente' },
+        { name: 'emp', label: 'Transportista', value: 'Transporte propio' },
+        { name: 'chofer', label: 'Conductor', placeholder: 'Nombre y apellido' },
+        { name: 'ci', label: 'C.I. del conductor', placeholder: 'V-00.000.000' },
+        { name: 'placa', label: 'Placa del vehículo', placeholder: 'AA000BB' },
+        { name: 'veh', label: 'Vehículo', placeholder: 'Tipo / modelo' },
+      ];
+    }
+
+    // Despachar desde el visor de factura (factura ya conocida)
+    window.crearDespacho = function (fac) {
+      if (!window.openFormModal) return;
+      window.openFormModal({
+        title: 'Despachar factura ' + fac.num, saveLabel: 'Generar guía',
+        fields: camposTransporte(fac),
+        onSave: (v) => {
+          if (!v.chofer) return 'Indica el nombre del conductor.';
+          generarGuia(fac, v);
+        },
+      });
+    };
+
+    // Nuevo despacho desde la pestaña: elegir una factura ya generada + datos de transporte
+    const nuevoBtn = document.getElementById('nuevoDespachoBtn');
+    if (nuevoBtn) nuevoBtn.addEventListener('click', () => {
+      if (!window.openFormModal) return;
+      const lista = window.__listaFacturasVenta || [];
+      if (!lista.length) { toast('No hay facturas disponibles para despachar', 'info'); return; }
+      window.openFormModal({
+        title: 'Nuevo despacho', saveLabel: 'Generar guía',
+        fields: [{ name: 'factura', label: 'Factura a despachar', col: 2, type: 'select', options: lista.map((x) => ({ value: x.num, label: x.num + ' · ' + x.cliente })) }].concat(camposTransporte(null)),
+        onSave: (v) => {
+          const fac = window.__getFactura ? window.__getFactura(v.factura) : null;
+          if (!fac) return 'Selecciona una factura válida.';
+          if (!v.chofer) return 'Indica el nombre del conductor.';
+          generarGuia(fac, v);
+        },
+      });
+    });
+
+    // Impresión (media carta, reutiliza el portal y el control de tamaño de la factura)
+    const pr = document.getElementById('despachoPrint');
+    if (pr) pr.addEventListener('click', () => {
+      const el = doc.querySelector('.fac'); if (!el) return;
+      let portal = document.getElementById('printPortal');
+      if (!portal) { portal = document.createElement('div'); portal.id = 'printPortal'; document.body.appendChild(portal); }
+      portal.innerHTML = '';
+      const clon = el.cloneNode(true);
+      clon.classList.add('fac-print');
+      portal.appendChild(clon);
+      if (window.__setPageSize) window.__setPageSize('5.5in 8.5in', '9mm');
+      document.body.classList.add('printing-comp');
+      window.print();
+    });
+
+    function close() { overlay.dataset.open = 'false'; }
+    const cb = document.getElementById('despachoClose');
+    if (cb) cb.addEventListener('click', close);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && overlay.dataset.open === 'true') close(); });
+
+    // Conectar los "Ver" de las guías de ejemplo
+    document.querySelectorAll('[data-ver-despacho]').forEach((b) => {
+      b.addEventListener('click', () => render(b.dataset.verDespacho));
+    });
+  })();
+
+  /* =========================================================
+     LIBROS DE COMPRAS / VENTAS — exportar (CSV) e imprimir
+     ========================================================= */
+  (function libros() {
+    function celda(td) { return td.textContent.replace(/\s+/g, ' ').trim(); }
+
+    function exportLibro(scope) {
+      // El membrete vive en el .fiscal-tab; la tabla, en la vista visible (scope)
+      const tab = scope.closest('.fiscal-tab') || scope;
+      const titulo = (tab.querySelector('.lh-title') || {}).textContent ? tab.querySelector('.lh-title').textContent.trim() : 'Libro';
+      const co = (tab.querySelector('.lh-co') || {}).textContent || '';
+      const data = (tab.querySelector('.lh-data') || {}).textContent || '';
+      const table = scope.querySelector('table.libro-table');
+      if (!table) return;
+
+      const rows = [[titulo], [co.trim()], [data.replace(/\s+/g, ' ').trim()], []];
+      rows.push([...table.querySelectorAll('thead th')].map((th) => celda(th)));
+      table.querySelectorAll('tbody tr').forEach((tr) => rows.push([...tr.querySelectorAll('td')].map(celda)));
+      table.querySelectorAll('tfoot tr').forEach((tr) => rows.push([...tr.querySelectorAll('td')].map(celda)));
+
+      // CSV con separador ';' (Excel en español) y comillas
+      const csv = rows.map((r) => r.map((c) => '"' + String(c || '').replace(/"/g, '""') + '"').join(';')).join('\r\n');
+      const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'Libro_' + (titulo.indexOf('Compras') >= 0 ? 'Compras' : 'Ventas') + '_J304567890_202605.csv';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    function printLibro(scope) {
+      const tab = scope.closest('.fiscal-tab') || scope;
+      let portal = document.getElementById('printPortal');
+      if (!portal) { portal = document.createElement('div'); portal.id = 'printPortal'; document.body.appendChild(portal); }
+      portal.innerHTML = '';
+      const cont = document.createElement('div');
+      cont.className = 'libro-print';
+      // Membrete del tab + tabla y resumen de la vista visible
+      const head = tab.querySelector('.libro-head');
+      if (head) cont.appendChild(head.cloneNode(true));
+      ['.data-table-wrap', '.libro-resumen'].forEach((sel) => {
+        const el = scope.querySelector(sel);
+        if (el) cont.appendChild(el.cloneNode(true));
+      });
+      portal.appendChild(cont);
+      document.body.classList.add('printing-comp');
+      window.print();
+    }
+
+    document.querySelectorAll('[data-libro-action]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const tab = btn.closest('.fiscal-tab');
+        if (!tab) return;
+        // Si el libro tiene modos (Ventas), usar la vista visible; si no, el tab
+        const scope = btn.closest('.ventas-view') || tab;
+        if (btn.dataset.libroAction === 'export') exportLibro(scope);
+        else printLibro(scope);
+      });
+    });
+
+    // limpiar el portal tras imprimir (comparte el listener del comprobante,
+    // pero aseguramos por si este módulo carga primero)
+    window.addEventListener('afterprint', () => {
+      document.body.classList.remove('printing-comp');
+      const portal = document.getElementById('printPortal');
+      if (portal) portal.innerHTML = '';
+    });
+  })();
+
+  /* =========================================================
+     GAUGE DE SALUD FINANCIERA — anima arco + conteo del número
+     ========================================================= */
+  (function healthGauge() {
+    document.querySelectorAll('.health-gauge').forEach((g) => {
+      const score = Math.max(0, Math.min(100, parseFloat(g.dataset.score) || 0));
+      const prog = g.querySelector('.gauge-progress');
+      const num = g.querySelector('.gv');
+
+      // Relleno del arco (transición CSS sobre stroke-dashoffset)
+      if (prog) {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => { prog.style.strokeDashoffset = String(100 - score); });
+        });
+      }
+
+      // Conteo animado del número
+      if (num) {
+        const target = parseFloat(num.dataset.target) || score;
+        const dur = 1100;
+        const start = performance.now();
+        const easeOut = (t) => 1 - Math.pow(1 - t, 3);
+        function step(now) {
+          const t = Math.min(1, (now - start) / dur);
+          num.textContent = Math.round(easeOut(t) * target);
+          if (t < 1) requestAnimationFrame(step);
+        }
+        requestAnimationFrame(step);
+      }
+    });
+  })();
+
+  /* =========================================================
+     TOAST — notificación flotante reutilizable (window.toast)
+     ========================================================= */
+  (function toastSystem() {
+    let host = document.getElementById('toastHost');
+    if (!host) { host = document.createElement('div'); host.id = 'toastHost'; document.body.appendChild(host); }
+    window.toast = function (msg, type) {
+      const el = document.createElement('div');
+      el.className = 'toast' + (type ? ' ' + type : '');
+      const icon = type === 'error' ? 'alert-triangle' : (type === 'info' ? 'info' : 'check-circle-2');
+      el.innerHTML = '<i data-lucide="' + icon + '"></i><span>' + esc(msg) + '</span>';
+      host.appendChild(el);
+      if (window.lucide) window.lucide.createIcons();
+      requestAnimationFrame(() => el.classList.add('show'));
+      setTimeout(() => {
+        el.classList.remove('show');
+        setTimeout(() => el.remove(), 300);
+      }, 2800);
+    };
+  })();
+
+  /* =========================================================
+     MODAL GENÉRICO DE FORMULARIO (window.openFormModal)
+     ========================================================= */
+  (function formModalSystem() {
+    const overlay = document.getElementById('formModal');
+    if (!overlay) return;
+    const titleEl = document.getElementById('fmTitle');
+    const bodyEl = document.getElementById('fmBody');
+    const msgEl = document.getElementById('fmMsg');
+    const saveBtn = document.getElementById('fmSave');
+    const cancelBtn = document.getElementById('fmCancel');
+    const closeBtn = document.getElementById('fmClose');
+    let onSaveCb = null;
+
+    function close() { overlay.hidden = true; bodyEl.innerHTML = ''; msgEl.textContent = ''; onSaveCb = null; }
+
+    function fieldHtml(f) {
+      const span = f.col === 2 ? ' style="grid-column:1/-1;"' : '';
+      if (f.type === 'static') {
+        return '<div class="fm-field"' + span + '>' + (f.label && f.label.trim() ? '<span class="fm-lbl">' + esc(f.label) + '</span>' : '') + (f.html || '') + '</div>';
+      }
+      if (f.type === 'checks') {
+        const sel = f.value || [];
+        return '<div class="fm-field"' + span + '><span class="fm-lbl">' + esc(f.label) + '</span><div class="fm-checks" data-checks="' + esc(f.name) + '">'
+          + (f.options || []).map((o) => { const v = o.value != null ? o.value : o; const l = o.label || o; const ck = sel.indexOf(v) >= 0 ? ' checked' : ''; return '<label class="fm-check"><input type="checkbox" value="' + esc(v) + '"' + ck + '><span>' + esc(l) + '</span></label>'; }).join('')
+          + '</div></div>';
+      }
+      let control;
+      if (f.type === 'select') {
+        control = '<select data-name="' + esc(f.name) + '">' +
+          (f.options || []).map((o) => '<option value="' + esc(o.value != null ? o.value : o) + '"' + ((f.value === (o.value != null ? o.value : o)) ? ' selected' : '') + '>' + esc(o.label || o) + '</option>').join('') +
+          '</select>';
+      } else {
+        control = '<input data-name="' + esc(f.name) + '" type="' + (f.type || 'text') + '" value="' + esc(f.value != null ? f.value : '') + '" placeholder="' + esc(f.placeholder || '') + '"' + (f.step ? ' step="' + f.step + '"' : '') + '>';
+      }
+      return '<label class="fm-field"' + span + '><span class="fm-lbl">' + esc(f.label) + '</span>' + control + '</label>';
+    }
+
+    window.openFormModal = function (cfg) {
+      titleEl.textContent = cfg.title || 'Formulario';
+      bodyEl.innerHTML = '<div class="fm-grid">' + (cfg.fields || []).map(fieldHtml).join('') + '</div>';
+      saveBtn.innerHTML = '<i data-lucide="check"></i> ' + (cfg.saveLabel || 'Guardar');
+      onSaveCb = cfg.onSave;
+      overlay.hidden = false;
+      if (window.lucide) window.lucide.createIcons();
+      const first = bodyEl.querySelector('input,select');
+      if (first) first.focus();
+    };
+
+    function collect() {
+      const v = {};
+      bodyEl.querySelectorAll('[data-name]').forEach((el) => { v[el.dataset.name] = el.value.trim ? el.value.trim() : el.value; });
+      bodyEl.querySelectorAll('[data-checks]').forEach((box) => { v[box.dataset.checks] = [...box.querySelectorAll('input:checked')].map((i) => i.value); });
+      return v;
+    }
+
+    saveBtn.addEventListener('click', () => {
+      if (!onSaveCb) return close();
+      const res = onSaveCb(collect());
+      if (typeof res === 'string') { msgEl.textContent = res; msgEl.classList.add('error'); return; }
+      close();
+    });
+    cancelBtn.addEventListener('click', close);
+    closeBtn.addEventListener('click', close);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  })();
+
+  /* =========================================================
+     MOTOR GENÉRICO DE TABLAS — búsqueda en vivo + filtros + paginación
+     Aplica a las tablas .data-table dentro de .data-table-wrap, EXCEPTO los
+     libros legales (.libro-table, se imprimen completos) y la tabla de
+     Retenciones (.ret-view, tiene su propia lógica de filtrado).
+     ========================================================= */
+  (function liveTables() {
+    document.querySelectorAll('.data-table-wrap').forEach(setupWrap);
+
+    function setupWrap(wrap) {
+      if (wrap.closest('.ret-view')) return;
+      const table = wrap.querySelector('table.data-table');
+      if (!table || table.classList.contains('libro-table')) return;
+      const tbody = table.querySelector('tbody');
+      if (!tbody) return;
+      const getRows = () => Array.from(tbody.children).filter((r) => r.tagName === 'TR');
+      if (getRows().length === 0) return;
+
+      const input = wrap.querySelector('.quick-search input');
+      const countEl = wrap.querySelector('.table-footer .count');
+      const pager = wrap.querySelector('.pager');
+      const chips = Array.from(wrap.querySelectorAll('.table-toolbar .filter-chip'))
+        .filter((c) => !c.classList.contains('ret-fchip'));
+      const pageSize = pager ? 8 : 1e9;
+
+      // Sustantivo del contador original ("registros", "empleados", "comprobantes"…)
+      let noun = 'registros';
+      if (countEl) {
+        const m = countEl.textContent.trim().match(/([a-záéíóúñ]+)\s*$/i);
+        if (m && !/^total$/i.test(m[1])) noun = m[1];
+      }
+
+      const norm = (s) => (s || '').toLowerCase();
+      let query = '', chipText = null, page = 1;
+
+      function visibleRows() {
+        return getRows().filter((r) => {
+          const t = norm(r.textContent);
+          if (query && !t.includes(query)) return false;
+          if (chipText && !t.includes(chipText)) return false;
+          return true;
+        });
+      }
+
+      function pageList(cur, total) {
+        if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+        const out = [1];
+        if (cur > 3) out.push('…');
+        for (let i = Math.max(2, cur - 1); i <= Math.min(total - 1, cur + 1); i++) out.push(i);
+        if (cur < total - 2) out.push('…');
+        out.push(total);
+        return out;
+      }
+
+      function buildPager(pages) {
+        if (!pager) return;
+        let html = '<button data-pg="prev"' + (page <= 1 ? ' disabled' : '') + '><i data-lucide="chevron-left"></i></button>';
+        pageList(page, pages).forEach((n) => {
+          if (n === '…') html += '<button disabled>…</button>';
+          else html += '<button data-pg="' + n + '"' + (n === page ? ' data-active="true"' : '') + '>' + n + '</button>';
+        });
+        html += '<button data-pg="next"' + (page >= pages ? ' disabled' : '') + '><i data-lucide="chevron-right"></i></button>';
+        pager.innerHTML = html;
+        pager.querySelectorAll('button[data-pg]').forEach((b) => {
+          b.addEventListener('click', () => {
+            const v = b.dataset.pg;
+            if (v === 'prev') page = Math.max(1, page - 1);
+            else if (v === 'next') page = Math.min(pages, page + 1);
+            else page = parseInt(v, 10);
+            render();
+          });
+        });
+      }
+
+      function render() {
+        const vis = visibleRows();
+        const pages = Math.max(1, Math.ceil(vis.length / pageSize));
+        if (page > pages) page = pages;
+        getRows().forEach((r) => { r.style.display = 'none'; });
+        const start = (page - 1) * pageSize;
+        const shown = vis.slice(start, start + pageSize);
+        shown.forEach((r) => { r.style.display = ''; });
+        if (countEl) {
+          countEl.innerHTML = vis.length === 0
+            ? 'Sin resultados'
+            : 'Mostrando <strong>' + (start + 1) + '–' + (start + shown.length) + '</strong> de <strong>' + vis.length + '</strong> ' + noun;
+        }
+        buildPager(pages);
+        drawIcons();
+      }
+
+      if (input) input.addEventListener('input', () => { query = norm(input.value.trim()); page = 1; render(); });
+
+      chips.forEach((chip) => {
+        chip.addEventListener('click', () => {
+          const wasActive = chip.classList.contains('active');
+          chips.forEach((c) => c.classList.remove('active'));
+          if (wasActive) {
+            chipText = null;
+          } else {
+            chip.classList.add('active');
+            const t = norm(chip.textContent.replace(/\s+/g, ' ').trim());
+            // Filtra por el texto del chip sólo si deja resultados y no es "Todos/Todas"
+            const test = getRows().filter((r) => norm(r.textContent).includes(t));
+            chipText = (test.length > 0 && !/todos|todas/.test(t)) ? t : null;
+          }
+          page = 1; render();
+        });
+      });
+
+      // Permite refrescar tras agregar/quitar filas dinámicamente
+      window.__liveTables = window.__liveTables || [];
+      window.__liveTables.push(render);
+      render();
+    }
+  })();
+
+  // Re-renderiza todas las tablas vivas (tras crear/eliminar filas)
+  window.refreshTables = function () {
+    (window.__liveTables || []).forEach((fn) => { try { fn(); } catch (e) {} });
+  };
+
+  /* =========================================================
+     FISCAL — comprobante, período y calendario
+     ========================================================= */
+  (function fiscalActions() {
+    const view = document.getElementById('view-fiscal');
+    if (!view) return;
+    const toast = (m, t) => { if (window.toast) window.toast(m, t); };
+
+    // Comprobante de retención: emitir y registrar
+    const emitir = document.getElementById('compEmitirBtn');
+    if (emitir) emitir.addEventListener('click', () =>
+      toast('Comprobante de retención emitido y registrado · incluido en el TXT del período'));
+
+    // Selector de período fiscal del módulo
+    const periodo = document.getElementById('fiscalPeriodo');
+    if (periodo) periodo.querySelectorAll('button').forEach((b) => {
+      b.addEventListener('click', () => {
+        if (b.classList.contains('custom-date')) {
+          window.openFormModal && window.openFormModal({
+            title: 'Cambiar período fiscal',
+            saveLabel: 'Aplicar',
+            fields: [{ name: 'periodo', label: 'Período a consultar', col: 2, type: 'select',
+              options: ['Marzo 2026', 'Abril 2026', 'Mayo 2026', 'Junio 2026', 'Julio 2026'] }],
+            onSave: (v) => {
+              const main = periodo.querySelector('button:not(.custom-date)');
+              if (main) main.textContent = v.periodo;
+              toast('Período fiscal cambiado a ' + v.periodo);
+            },
+          });
+          return;
+        }
+        periodo.querySelectorAll('button').forEach((x) => x.removeAttribute('data-active'));
+        b.dataset.active = 'true';
+        toast('Período fiscal actualizado a ' + b.textContent.trim());
+      });
+    });
+
+    // Calendario fiscal: el botón Configurar (la navegación ◀▶ la maneja el IIFE calendar)
+    const agenda = view.querySelector('.fiscal-tab[data-tab="agenda"]');
+    if (agenda) {
+      agenda.querySelectorAll('.panel-actions .icon-btn').forEach((b) => {
+        if (/config/i.test(b.title || '')) b.addEventListener('click', () => toast('Configuración de recordatorios fiscales', 'info'));
+      });
+      agenda.querySelectorAll('.deadline').forEach((d) => {
+        d.style.cursor = 'pointer';
+        d.addEventListener('click', () => {
+          const t = ((d.querySelector('.t') || {}).textContent || '').toLowerCase();
+          if (t.includes('iva')) { window.showView && window.showView('fiscal', 'Módulo Fiscal · SENIAT'); window.gotoFiscalTab && window.gotoFiscalTab('ventas'); }
+          else if (/islr|retenci/.test(t)) { window.showView && window.showView('fiscal', 'Módulo Fiscal · SENIAT'); window.gotoFiscalTab && window.gotoFiscalTab('retenciones'); }
+          else if (/inces|n[oó]mina/.test(t)) { window.showView && window.showView('nomina', 'Nómina y Parafiscales'); }
+          else toast((d.querySelector('.t') || {}).textContent || 'Vencimiento fiscal');
+        });
+      });
+    }
+
+    // Selectores de los paneles de control (Comprobantes, Pensiones, IGP)
+    const opciones = {
+      'Proveedor / Sujeto retenido': ['Suministros Lara, C.A.', 'Tecnología Andes, S.A.', 'Importadora Zulia', 'Papelería Central', 'Insumos Agrícolas Aragua'],
+      'Factura asociada': ['F-00284716', 'F-00045128', 'F-00731122', 'F-00018744', 'F-00045621'],
+      'Período fiscal': ['1ra quincena · May 2026', '2da quincena · May 2026', 'Junio 2026'],
+      'Período de declaración': ['Marzo 2026 (01–31)', 'Abril 2026 (01–30)', 'Mayo 2026 (01–31)', 'Junio 2026 (01–30)'],
+      'Tipo de declaración': ['Originaria', 'Sustitutiva', 'Complementaria'],
+      'Alícuota vigente': ['9% (sector privado)', '15% (tope de ley)'],
+      'Ejercicio fiscal': ['Al 30/09/2025', 'Al 30/09/2026', 'Al 30/09/2027'],
+      'Condición del sujeto': ['Contribuyente Especial', 'Contribuyente Ordinario', 'Persona Natural'],
+    };
+    view.querySelectorAll('.fiscal-tab .comp-controls .comp-field').forEach((field) => {
+      const sb = field.querySelector('.select-box');
+      if (!sb) return;
+      const lbl = ((field.querySelector('.lbl') || {}).textContent || '').trim();
+      const isRecalc = /base imponible|patrimonio/i.test(lbl);
+      sb.style.cursor = 'pointer';
+      sb.addEventListener('click', () => {
+        if (isRecalc) { toast(lbl + ' recalculado desde los datos del período'); return; }
+        const opts = opciones[lbl] || ['Opción 1', 'Opción 2'];
+        window.openFormModal && window.openFormModal({
+          title: 'Seleccionar · ' + lbl,
+          saveLabel: 'Seleccionar',
+          fields: [{ name: 'sel', label: lbl, col: 2, type: 'select', options: opts }],
+          onSave: (v) => {
+            const isMono = sb.classList.contains('mono');
+            sb.innerHTML = v.sel + ' <i data-lucide="' + (isMono ? 'refresh-cw' : 'chevron-down') + '"></i>';
+            if (window.lucide) window.lucide.createIcons();
+            toast(lbl + ': ' + v.sel);
+          },
+        });
+      });
+    });
+  })();
+
+  /* =========================================================
+     TESORERÍA — acciones (transferir, movimiento, cobrar, pagar, etc.)
+     ========================================================= */
+  (function tesoActions() {
+    const view = document.getElementById('view-tesoreria');
+    if (!view) return;
+    const toast = (m, t) => { if (window.toast) window.toast(m, t); };
+    const CUENTAS = ['Banesco · Cta. Corriente Bs', 'Banesco · Cta. Ahorro Bs', 'Mercantil · Cta. Corriente Bs', 'BBVA Provincial · Divisas $'];
+    const find = (sel, re) => [...view.querySelectorAll(sel)].find((b) => re.test(b.textContent));
+
+    // Header — Transferir / Registrar movimiento
+    const transferir = find('.dash-actions .btn', /transferir/i);
+    if (transferir) transferir.addEventListener('click', () => window.openFormModal && window.openFormModal({
+      title: 'Transferencia entre cuentas', saveLabel: 'Transferir',
+      fields: [
+        { name: 'origen', label: 'Cuenta origen', type: 'select', options: CUENTAS },
+        { name: 'destino', label: 'Cuenta destino', type: 'select', options: CUENTAS },
+        { name: 'monto', label: 'Monto (Bs)', type: 'number', step: '0.01', placeholder: '0.00' },
+        { name: 'concepto', label: 'Concepto', placeholder: 'Ej. Cobertura de pagos' },
+      ],
+      onSave: (v) => {
+        if (!(parseFloat(v.monto) > 0)) return 'Indica un monto válido.';
+        if (v.origen === v.destino) return 'La cuenta origen y destino deben ser distintas.';
+        toast('Transferencia registrada · Bs ' + Number(v.monto).toLocaleString('es-VE', { minimumFractionDigits: 2 }));
+      },
+    }));
+
+    const regMov = find('.dash-actions .btn', /registrar movimiento/i);
+    if (regMov) regMov.addEventListener('click', () => window.openFormModal && window.openFormModal({
+      title: 'Registrar movimiento bancario', saveLabel: 'Registrar',
+      fields: [
+        { name: 'cuenta', label: 'Cuenta', type: 'select', options: CUENTAS },
+        { name: 'tipo', label: 'Tipo', type: 'select', options: ['Ingreso', 'Egreso'] },
+        { name: 'fecha', label: 'Fecha', type: 'date', value: '2026-05-31' },
+        { name: 'monto', label: 'Monto (Bs)', type: 'number', step: '0.01', placeholder: '0.00' },
+        { name: 'concepto', label: 'Concepto', col: 2, placeholder: 'Descripción del movimiento' },
+      ],
+      onSave: (v) => {
+        if (!(parseFloat(v.monto) > 0)) return 'Indica un monto válido.';
+        toast('Movimiento (' + v.tipo + ') registrado · Bs ' + Number(v.monto).toLocaleString('es-VE', { minimumFractionDigits: 2 }));
+      },
+    }));
+
+    // Registrar compra
+    const regCompra = find('.teso-tab[data-tab="compras"] .btn', /registrar compra/i);
+    if (regCompra) regCompra.addEventListener('click', () => window.openFormModal && window.openFormModal({
+      title: 'Registrar factura de compra', saveLabel: 'Registrar',
+      fields: [
+        { name: 'prov', label: 'Proveedor', col: 2, placeholder: 'Razón social' },
+        { name: 'rif', label: 'RIF', placeholder: 'J-00000000-0' },
+        { name: 'factura', label: 'N° Factura', placeholder: 'F-00000000' },
+        { name: 'fecha', label: 'Fecha', type: 'date', value: '2026-05-31' },
+        { name: 'monto', label: 'Total (Bs)', type: 'number', step: '0.01', placeholder: '0.00' },
+        { name: 'alic', label: 'Alícuota IVA', type: 'select', options: ['16%', '8%', 'Exenta'] },
+      ],
+      onSave: (v) => {
+        if (!v.prov || !v.factura) return 'Proveedor y N° de factura son obligatorios.';
+        if (!(parseFloat(v.monto) > 0)) return 'Indica el total de la compra.';
+        toast('Compra ' + v.factura + ' de ' + v.prov + ' registrada');
+      },
+    }));
+
+    // Cobrar (CxC) — envía recordatorio de cobro
+    view.querySelectorAll('.teso-tab[data-tab="cxc"] tbody .btn').forEach((b) => {
+      if (!/cobrar/i.test(b.textContent)) return;
+      b.addEventListener('click', () => {
+        const cli = (b.closest('tr').querySelector('.primary') || {}).textContent || 'el cliente';
+        toast('Recordatorio de cobro enviado a ' + cli);
+      });
+    });
+    const recMasivo = find('.teso-tab[data-tab="cxc"] .btn', /recordatorio masivo/i);
+    if (recMasivo) recMasivo.addEventListener('click', () => toast('Recordatorio masivo enviado a los clientes con saldo pendiente'));
+
+    // Pagar / Programar (CxP)
+    view.querySelectorAll('.teso-tab[data-tab="cxp"] tbody .btn').forEach((b) => {
+      const tr = b.closest('tr');
+      const prov = (tr.querySelector('.primary') || {}).textContent || 'el proveedor';
+      if (/pagar/i.test(b.textContent)) b.addEventListener('click', () => {
+        const tag = tr.querySelector('.tag'); if (tag) { tag.className = 'tag success'; tag.textContent = 'Pagada'; }
+        toast('Pago registrado a ' + prov);
+      });
+      else if (/programar/i.test(b.textContent)) b.addEventListener('click', () => toast('Pago a ' + prov + ' programado'));
+    });
+    const progPagos = find('.teso-tab[data-tab="cxp"] .btn', /programar pagos/i);
+    if (progPagos) progPagos.addEventListener('click', () => toast('Lote de pagos programado según fecha de vencimiento'));
+
+    // Conciliación — Cargar extracto + selector de cuenta
+    const cargar = find('.teso-tab[data-tab="concil"] .btn', /cargar extracto/i);
+    if (cargar) cargar.addEventListener('click', () => toast('Extracto bancario cargado · conciliando movimientos…', 'info'));
+    const selCuenta = view.querySelector('.teso-tab[data-tab="concil"] .txt-select');
+    if (selCuenta) { selCuenta.style.cursor = 'pointer'; selCuenta.addEventListener('click', () => window.openFormModal && window.openFormModal({
+      title: 'Cuenta a conciliar', saveLabel: 'Seleccionar',
+      fields: [{ name: 'cta', label: 'Cuenta', col: 2, type: 'select', options: CUENTAS }],
+      onSave: (v) => { const val = selCuenta.querySelector('.val'); if (val) val.innerHTML = v.cta + ' <i data-lucide="chevron-down"></i>'; if (window.lucide) window.lucide.createIcons(); toast('Conciliando: ' + v.cta); },
+    })); }
+
+    // Botones "ojo" de Compras → abrir la factura
+    view.querySelectorAll('.teso-tab[data-tab="compras"] tbody .icon-btn').forEach((b) => {
+      const mono = (b.closest('tr').querySelector('td.mono') || {}).textContent;
+      const num = mono ? mono.trim() : null;
+      if (num) b.addEventListener('click', () => window.openFactura && window.openFactura(num));
+    });
+
+    // Exportar (Resumen)
+    const expResumen = find('.teso-tab[data-tab="resumen"] .btn', /exportar/i);
+    if (expResumen) expResumen.addEventListener('click', () => toast('Resumen de tesorería exportado'));
+  })();
+
+  /* =========================================================
+     LIBROS — filtros de alícuota, período y máquina fiscal
+     ========================================================= */
+  (function librosFilters() {
+    const drawI = () => { if (window.lucide) window.lucide.createIcons(); };
+    document.querySelectorAll('table.libro-table').forEach((table) => {
+      const wrap = table.closest('.data-table-wrap');
+      if (!wrap) return;
+      const toolbar = wrap.querySelector('.table-toolbar');
+      if (!toolbar) return;
+      const rows = Array.from(table.querySelectorAll('tbody tr'));
+      const ths = Array.from(table.querySelectorAll('thead th'));
+      const alicIdx = ths.findIndex((th) => /al[ií]c/i.test(th.textContent));
+      const chips = Array.from(toolbar.querySelectorAll('.filter-chip'));
+
+      // estado de filtros combinados
+      let fAlic = 'Todas', fMaq = null;
+      function aplicar() {
+        rows.forEach((r) => {
+          let ok = true;
+          if (fAlic !== 'Todas' && alicIdx >= 0) {
+            const c = r.children[alicIdx];
+            ok = ok && c && c.textContent.trim() === fAlic;
+          }
+          if (fMaq) {
+            const mc = Array.from(r.children).find((td) => /Z7C\d/.test(td.textContent));
+            ok = ok && mc && mc.textContent.trim() === fMaq;
+          }
+          r.style.display = ok ? '' : 'none';
+        });
+      }
+
+      // Chip de alícuota: cicla Todas → 16% → 8% → Exenta
+      const chipAlic = chips.find((c) => /al[ií]cuota/i.test(c.textContent));
+      if (chipAlic && alicIdx >= 0) {
+        const ciclo = ['Todas', '16%', '8%', 'Exenta'];
+        let i = 0;
+        chipAlic.addEventListener('click', () => {
+          i = (i + 1) % ciclo.length;
+          fAlic = ciclo[i];
+          chipAlic.innerHTML = '<i data-lucide="percent"></i> Alícuota: ' + fAlic;
+          chipAlic.classList.toggle('active', fAlic !== 'Todas');
+          aplicar(); drawI();
+        });
+      }
+
+      // Chip de período (Mayo 2026): informativo
+      const chipPer = chips.find((c) => /\b20\d\d\b/.test(c.textContent) && !/al[ií]cuota|m[áa]quina/i.test(c.textContent));
+      if (chipPer) chipPer.addEventListener('click', () => {
+        if (window.toast) window.toast('Período del libro: ' + chipPer.textContent.replace(/[×x]\s*$/, '').trim(), 'info');
+      });
+
+      // Chip de máquina fiscal (Libro de Ventas por Máquina Fiscal)
+      const chipMaq = chips.find((c) => /m[áa]quina/i.test(c.textContent));
+      if (chipMaq) chipMaq.addEventListener('click', () => {
+        window.openFormModal && window.openFormModal({
+          title: 'Filtrar por máquina fiscal',
+          saveLabel: 'Aplicar',
+          fields: [{ name: 'maq', label: 'Máquina fiscal / caja', col: 2, type: 'select',
+            options: ['Todas las máquinas', 'Z7C0025982 · Caja 1', 'Z7C0025983 · Caja 2', 'Z7C0025984 · Caja 3'] }],
+          onSave: (v) => {
+            fMaq = v.maq.indexOf('Todas') === 0 ? null : v.maq.split(' · ')[0];
+            chipMaq.innerHTML = '<i data-lucide="cpu"></i> Máquina: ' + (fMaq || 'Todas');
+            chipMaq.classList.toggle('active', !!fMaq);
+            aplicar(); drawI();
+            if (window.toast) window.toast(fMaq ? 'Filtrando por ' + fMaq : 'Mostrando todas las máquinas');
+          },
+        });
+      });
+    });
+  })();
+
+  /* =========================================================
+     TOPBAR — notificaciones, calendario y ayuda
+     ========================================================= */
+  (function topbarActions() {
+    const btn = document.getElementById('notifBtn');
+    const panel = document.getElementById('notifPanel');
+    if (btn && panel) {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        panel.hidden = !panel.hidden;
+        if (!panel.hidden) drawIcons();
+      });
+      document.addEventListener('click', (e) => {
+        if (!panel.hidden && !panel.contains(e.target) && !btn.contains(e.target)) panel.hidden = true;
+      });
+      panel.querySelectorAll('.np-item, .np-foot a').forEach((a) => a.addEventListener('click', () => { panel.hidden = true; }));
+      const markAll = document.getElementById('notifMarkAll');
+      if (markAll) markAll.addEventListener('click', () => {
+        btn.classList.add('read');
+        const c = document.getElementById('notifCount'); if (c) c.textContent = '0';
+        const d = document.getElementById('notifDot'); if (d) d.textContent = '0';
+        panel.hidden = true;
+        if (window.toast) window.toast('Notificaciones marcadas como leídas');
+      });
+    }
+    // Inyecta una notificación nueva desde cualquier módulo del sistema
+    window.__notificar = function (n) {
+      const list = document.querySelector('#notifPanel .np-list');
+      if (!list) return;
+      const a = document.createElement('a');
+      a.href = '#';
+      a.className = 'np-item np-new' + (n.nivel ? ' ' + n.nivel : '');
+      a.innerHTML = '<div class="np-ic"><i data-lucide="' + (n.icon || 'bell') + '"></i></div>'
+        + '<div class="np-body"><div class="np-t">' + n.titulo + '</div><div class="np-d">' + (n.detalle || '') + '</div></div>';
+      list.insertBefore(a, list.firstChild);
+      a.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (panel) panel.hidden = true;
+        if (n.view && window.showView) window.showView(n.view, n.title2 || '');
+      });
+      if (btn) btn.classList.remove('read');
+      const dot = document.getElementById('notifDot');
+      const cnt = document.getElementById('notifCount');
+      const nuevo = (parseInt((dot || {}).textContent, 10) || 0) + 1;
+      if (dot) { dot.textContent = nuevo; dot.hidden = false; }
+      if (cnt) cnt.textContent = nuevo;
+      if (window.lucide) window.lucide.createIcons();
+    };
+    // Calendario del topbar → Módulo Fiscal · Calendario fiscal
+    const cal = document.getElementById('topbarCalBtn');
+    if (cal) cal.addEventListener('click', () => {
+      if (window.showView) window.showView('fiscal', 'Módulo Fiscal · SENIAT');
+      if (window.gotoFiscalTab) window.gotoFiscalTab('agenda');
+    });
+    // Ayuda
+    const ayuda = document.getElementById('ayudaBtn');
+    if (ayuda) ayuda.addEventListener('click', () => {
+      if (window.toast) window.toast('Centro de ayuda de DigiAccount · disponible próximamente', 'info');
+    });
+  })();
+
+  /* =========================================================
+     NAVEGACIÓN MÓVIL — sidebar off-canvas (hamburguesa)
+     ========================================================= */
+  (function mobileNav() {
+    const toggle = document.getElementById('navToggle');
+    const scrim = document.getElementById('navScrim');
+    const closeNav = () => document.body.classList.remove('nav-open');
+    if (toggle) toggle.addEventListener('click', (e) => { e.stopPropagation(); document.body.classList.toggle('nav-open'); });
+    if (scrim) scrim.addEventListener('click', closeNav);
+    // Cerrar el menú al navegar a una vista
+    document.querySelectorAll('.sidebar .nav-item, .sidebar .plan-active-pill').forEach((a) => a.addEventListener('click', closeNav));
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeNav(); });
+  })();
+
+  /* =========================================================
+     MAYÚSCULAS automáticas — RIF, razón social y cédula
+     Convierte el VALOR real a mayúsculas mientras se escribe
+     (no solo visual), como exige el formato del SENIAT.
+     ========================================================= */
+  (function forzarMayusculas() {
+    function upper(el) {
+      const s = el.selectionStart, e = el.selectionEnd;
+      const v = el.value.toUpperCase();
+      if (v !== el.value) { el.value = v; try { el.setSelectionRange(s, e); } catch (x) {} }
+    }
+    // Campos fijos (registro, wizard de empresa, configuración)
+    ['cwNombre', 'cwFpNombre', 'cwFpComercial', 'cwEmpNombre', 'cwEmpApellido', 'cwDom', 'cwRif',
+      'suCedula', 'cfgRif', 'cfgRazon', 'cfgDom'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('input', () => upper(el));
+    });
+    // Campos dinámicos (Terceros y modales): por selector
+    document.addEventListener('input', (e) => {
+      const t = e.target;
+      if (t && t.matches && t.matches('input[data-upper], .ter-f input[data-tk="nombre"], .ter-f input[data-tk="dom"], .ter-f input[data-tk="rif"]')) upper(t);
+    });
+  })();
+
+  /* =========================================================
+     DASHBOARD — activar botones de acción (header, paneles, alertas)
+     ========================================================= */
+  (function dashboardActions() {
+    const view = document.getElementById('view-dashboard');
+    if (!view) return;
+    const toast = (m, t) => { if (window.toast) window.toast(m, t); };
+
+    // Header: Exportar resumen ejecutivo (CSV de KPIs) y Nuevo documento
+    view.querySelectorAll('.dash-actions .btn').forEach((b) => {
+      const txt = b.textContent.trim();
+      if (/Exportar/i.test(txt)) b.addEventListener('click', () => {
+        const rows = [['Indicador', 'Valor']];
+        view.querySelectorAll('.kpi').forEach((k) => {
+          const label = ((k.querySelector('.label') || {}).textContent || '').trim();
+          const val = ((k.querySelector('.kpi-value') || {}).textContent || '').replace(/\s+/g, ' ').trim();
+          if (label) rows.push([label, val]);
+        });
+        const csv = rows.map((r) => r.map((c) => '"' + String(c).replace(/"/g, '""') + '"').join(';')).join('\r\n');
+        const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = 'Resumen_Ejecutivo_2026-05.csv';
+        document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+        toast('Resumen ejecutivo exportado a CSV');
+      });
+      else if (/Nuevo documento/i.test(txt)) b.addEventListener('click', () => {
+        window.openFormModal && window.openFormModal({
+          title: 'Nuevo documento', saveLabel: 'Continuar',
+          fields: [{ name: 'tipo', label: '¿Qué deseas crear?', col: 2, type: 'select', options: ['Factura de venta', 'Asiento contable', 'Nota de crédito / débito', 'Registrar activo fijo', 'Orden de compra'] }],
+          onSave: (v) => {
+            const map = {
+              'Factura de venta': ['ventas', 'Ventas y Facturación'],
+              'Asiento contable': ['contabilidad', 'Contabilidad'],
+              'Nota de crédito / débito': ['ventas', 'Ventas y Facturación'],
+              'Registrar activo fijo': ['contabilidad', 'Contabilidad'],
+              'Orden de compra': ['tesoreria', 'Tesorería'],
+            };
+            const dest = map[v.tipo] || ['dashboard', 'Dashboard'];
+            if (window.showView) window.showView(dest[0], dest[1]);
+            toast('Abriendo ' + v.tipo + ' · ' + dest[1]);
+          },
+        });
+      });
+    });
+
+    // Acciones de los paneles (gráfico de flujo y feed de alertas)
+    const panelMsgs = {
+      'Cambiar vista': 'Vista del gráfico cambiada',
+      'Comparar': 'Comparando con el mes anterior',
+      'Más opciones': 'Más opciones del panel',
+      'Filtrar': 'Filtro de alertas aplicado',
+      'Marcar como leídas': 'Alertas marcadas como leídas',
+    };
+    view.querySelectorAll('.panel-actions .icon-btn').forEach((b) => {
+      const t = b.getAttribute('title') || '';
+      b.addEventListener('click', () => {
+        if (/Marcar como leídas/i.test(t)) {
+          const sub = b.closest('.panel').querySelector('.panel-title-block .sub');
+          if (sub) sub.textContent = '0 nuevas · al día';
+        }
+        toast(panelMsgs[t] || t, 'info');
+      });
+    });
+
+    // Botón de cada alerta (los que no navegan a una vista)
+    view.querySelectorAll('.alert-cta').forEach((b) => {
+      if (b.hasAttribute('data-go-view')) return;
+      b.addEventListener('click', () => {
+        const al = b.closest('.alert');
+        const titulo = ((al && al.querySelector('.alert-title')) || {}).textContent || 'la alerta';
+        toast('Gestionando · ' + titulo, 'info');
+      });
+    });
+
+    // Ver todas las alertas → Centro de Agentes IA
+    const verTodas = view.querySelector('.view-all');
+    if (verTodas) verTodas.addEventListener('click', (e) => { e.preventDefault(); if (window.showView) window.showView('agentes', 'Centro de Agentes IA'); });
+  })();
+
+  /* =========================================================
+     CONTABILIDAD — botones extra (depreciación detalle, filtros activos)
+     ========================================================= */
+  (function contaExtraButtons() {
+    const view = document.getElementById('view-contabilidad');
+    if (!view) return;
+    const toast = (m, t) => { if (window.toast) window.toast(m, t); };
+
+    // Ver detalle de la cédula de depreciación
+    const deprView = document.getElementById('deprViewBtn');
+    if (deprView) deprView.addEventListener('click', () => {
+      window.openFormModal && window.openFormModal({
+        title: 'Detalle de depreciación · Mayo 2026', saveLabel: 'Cerrar',
+        fields: [{ name: 'x', label: ' ', col: 2, type: 'static', html: '<div style="font-size:12.5px;line-height:1.8;color:var(--fg-body);">'
+          + 'Vehículos · <strong>Bs 70.000,00</strong><br>Inmuebles · <strong>Bs 12.500,00</strong><br>Maquinaria · <strong>Bs 9.833,00</strong><br>Equipos · <strong>Bs 45.250,00</strong><br>Mobiliario · <strong>Bs 11.167,00</strong>'
+          + '<hr style="border:0;border-top:1px solid var(--border-default);margin:9px 0;">Total del mes · <strong style="color:var(--da-cyan-700);">Bs 148.750,00</strong> · método de línea recta sobre 24 activos.</div>' }],
+        onSave: () => {},
+      });
+    });
+
+    // Contabilizar el asiento de depreciación
+    const deprPost = document.getElementById('deprPostBtn');
+    if (deprPost) deprPost.addEventListener('click', () => {
+      const num = document.getElementById('deprAsientoNum');
+      if (num) num.textContent = '#0314';
+      deprPost.disabled = true;
+      deprPost.innerHTML = '<i data-lucide="check"></i> Contabilizado';
+      if (window.lucide) window.lucide.createIcons();
+      toast('Asiento de depreciación contabilizado · Bs 148.750,00', 'success');
+    });
+
+    // Filtros por categoría en Activos Fijos
+    const activosPane = view.querySelector('.conta-tab[data-tab="activos"]');
+    if (activosPane) {
+      const chips = activosPane.querySelectorAll('.table-toolbar .filter-chip');
+      const tbody = activosPane.querySelector('table.data-table tbody');
+      chips.forEach((chip) => {
+        chip.addEventListener('click', () => {
+          const txt = chip.textContent.trim().toLowerCase();
+          const todas = /todas/.test(txt);
+          chips.forEach((c) => c.classList.toggle('active', c === chip));
+          if (!tbody) return;
+          const key = txt.replace(/s$/, '');
+          tbody.querySelectorAll('tr').forEach((tr) => {
+            const cat = (tr.children[2] ? tr.children[2].textContent : '').toLowerCase();
+            tr.style.display = (todas || cat.includes(key)) ? '' : 'none';
+          });
+        });
+      });
+    }
+  })();
+
+  /* =========================================================
+     VEN-NIF 12 (Criptoactivos) + VEN-NIF 11 (Impuesto Diferido)
+     ========================================================= */
+  (function vennifModule() {
+    const fmt = (n) => Number(n).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const toast = (m, t) => { if (window.toast) window.toast(m, t); };
+
+    // ----- Criptoactivos (gestor + medición a valor razonable) -----
+    const cxTable = document.getElementById('criptoTable');
+    if (cxTable) {
+      const setOut = (k, v) => document.querySelectorAll('[data-out="' + k + '"]').forEach((el) => (el.textContent = v));
+      function recalc() {
+        let costo = 0, vr = 0, ori = 0, perdida = 0;
+        cxTable.querySelectorAll('tr[data-cripto]').forEach((tr) => {
+          const c = parseFloat(tr.dataset.costo) || 0, v = parseFloat(tr.dataset.vr) || 0;
+          costo += c; vr += v;
+          const diff = v - c;
+          if (diff >= 0) ori += diff; else perdida += diff;
+        });
+        setOut('cxTotCosto', fmt(costo));
+        setOut('cxTotVr', fmt(vr));
+        setOut('cxTotVar', (vr - costo >= 0 ? '+' : '') + fmt(vr - costo));
+        setOut('cxValorLibros', fmt(vr));
+        setOut('cxCosto', fmt(costo));
+        setOut('cxOri', fmt(ori));
+        setOut('cxResultado', fmt(Math.abs(perdida)));
+      }
+      const medir = document.getElementById('criptoMedir');
+      if (medir) medir.addEventListener('click', () => {
+        const lineas = [];
+        cxTable.querySelectorAll('tr[data-cripto]').forEach((tr) => {
+          const inp = tr.querySelector('.cx-newvr');
+          const nuevoVr = parseFloat(inp.value) || 0;
+          const vrPrev = parseFloat(tr.dataset.vr) || 0;
+          const costo = parseFloat(tr.dataset.costo) || 0;
+          const nombre = (tr.querySelector('.prod-cell .n') || {}).textContent || '';
+          const delta = nuevoVr - vrPrev;
+          tr.dataset.vr = nuevoVr;
+          tr.querySelector('.cx-vr').textContent = fmt(nuevoVr);
+          const varTotal = nuevoVr - costo;
+          const varEl = tr.querySelector('.cx-var');
+          varEl.textContent = (varTotal >= 0 ? '+' : '') + fmt(varTotal);
+          varEl.style.color = varTotal > 0 ? 'var(--da-success)' : varTotal < 0 ? 'var(--da-danger)' : 'var(--fg-muted)';
+          if (Math.abs(delta) >= 0.005) {
+            if (delta > 0) lineas.push({ d: nombre, debe: '1.1.6.01 Criptoactivos', haber: '3.2.5.01 Ganancia por tenencia (ORI)', monto: delta });
+            else lineas.push({ d: nombre, debe: '6.3.1.01 Pérdida por tenencia de criptoactivos', haber: '1.1.6.01 Criptoactivos', monto: -delta });
+          }
+        });
+        recalc();
+        const body = document.getElementById('cxAsientoBody');
+        const wrap = document.getElementById('cxAsiento');
+        if (!lineas.length) { toast('No hay variación en el valor razonable', 'info'); if (wrap) wrap.hidden = true; return; }
+        let html = '<table class="cxa-table"><thead><tr><th>Cuenta</th><th>Detalle</th><th class="num">Debe</th><th class="num">Haber</th></tr></thead><tbody>';
+        let tot = 0;
+        lineas.forEach((l) => {
+          html += '<tr><td>' + l.debe + '</td><td class="caption">' + l.d + '</td><td class="num">' + fmt(l.monto) + '</td><td class="num">—</td></tr>';
+          html += '<tr><td style="padding-left:22px;color:var(--fg-muted);">' + l.haber + '</td><td class="caption">' + l.d + '</td><td class="num">—</td><td class="num">' + fmt(l.monto) + '</td></tr>';
+          tot += l.monto;
+        });
+        html += '</tbody><tfoot><tr><td colspan="2">Totales</td><td class="num">' + fmt(tot) + '</td><td class="num">' + fmt(tot) + '</td></tr></tfoot></table>';
+        body.innerHTML = html;
+        wrap.hidden = false;
+        if (window.lucide) window.lucide.createIcons();
+        toast('Medición aplicada · valor razonable actualizado', 'success');
+      });
+      const post = document.getElementById('cxAsientoPost');
+      if (post) post.addEventListener('click', () => { document.getElementById('cxAsiento').hidden = true; toast('Asiento de medición contabilizado', 'success'); });
+      const nuevo = document.getElementById('criptoNuevo');
+      if (nuevo) nuevo.addEventListener('click', () => {
+        window.openFormModal && window.openFormModal({
+          title: 'Registrar criptoactivo', saveLabel: 'Registrar al costo',
+          fields: [
+            { name: 'nombre', label: 'Criptoactivo', placeholder: 'Ej. Ethereum' },
+            { name: 'simbolo', label: 'Símbolo', placeholder: 'ETH' },
+            { name: 'wallet', label: 'Wallet / custodia', placeholder: 'Custodia fría' },
+            { name: 'cantidad', label: 'Cantidad', placeholder: '0' },
+            { name: 'costo', label: 'Costo de adquisición (Bs)', type: 'number', step: '0.01', placeholder: '0.00' },
+            { name: 'clasif', label: 'Clasificación', type: 'select', options: ['Corriente', 'No corriente'] },
+          ],
+          onSave: (v) => {
+            if (!v.nombre) return 'Indica el criptoactivo.';
+            const costo = parseFloat(v.costo) || 0;
+            const tag = v.clasif === 'Corriente' ? 'cyan' : 'slate';
+            const tr = document.createElement('tr');
+            tr.setAttribute('data-cripto', '');
+            tr.dataset.costo = costo; tr.dataset.vr = costo;
+            tr.innerHTML = '<td><div class="prod-cell"><div class="prod-thumb"><i data-lucide="coins"></i></div><div class="info"><div class="n">' + v.nombre + '</div><div class="sku">' + (v.simbolo || '') + '</div></div></div></td>'
+              + '<td class="mono">' + (v.wallet || '—') + '</td><td class="num">' + (v.cantidad || '0') + '</td>'
+              + '<td class="num cx-costo">' + fmt(costo) + '</td><td class="num cx-vr">' + fmt(costo) + '</td>'
+              + '<td class="num cx-var" style="color:var(--fg-muted);">0,00</td>'
+              + '<td><span class="tag ' + tag + '">' + v.clasif + '</span></td><td><span class="tag navy">Nivel 1</span></td>'
+              + '<td><input type="number" class="cx-newvr" value="' + costo + '" step="0.01" style="width:120px;height:30px;border:1px solid var(--border-default);border-radius:6px;padding:0 8px;text-align:right;font-family:var(--font-mono);font-size:12px;"></td>';
+            cxTable.querySelector('tbody').appendChild(tr);
+            if (window.lucide) window.lucide.createIcons();
+            recalc();
+            toast('Criptoactivo ' + v.nombre + ' registrado al costo', 'success');
+          },
+        });
+      });
+      recalc();
+    }
+
+    // ----- Impuesto diferido (política configurable) -----
+    const difPane = document.querySelector('[data-dif-pane]');
+    if (difPane) {
+      const get = (k) => { const el = difPane.querySelector('[data-k="' + k + '"]'); return el ? (parseFloat(el.value) || 0) : 0; };
+      const setOut = (k, v) => difPane.querySelectorAll('[data-out="' + k + '"]').forEach((el) => (el.textContent = v));
+      function calcDif() {
+        const dt = get('baseContable') - get('baseFiscal');
+        const imp = dt * (get('tasaIslr') / 100);
+        setOut('difTemporaria', 'Bs ' + fmt(dt));
+        setOut('difImpuesto', 'Bs ' + fmt(imp));
+        const especial = difPane.querySelector('#difEspecial').checked;
+        let pol = (difPane.querySelector('input[name="difPol"]:checked') || {}).value || 'omitir';
+        if (!especial && pol === 'omitir') {
+          const rec = difPane.querySelector('input[name="difPol"][value="reconocer"]');
+          if (rec) rec.checked = true;
+          pol = 'reconocer';
+        }
+        const nota = document.getElementById('difNota');
+        if (pol === 'omitir') {
+          setOut('difReconocido', 'Bs 0,00');
+          setOut('difNoReconocido', 'Bs ' + fmt(imp));
+          if (nota) nota.innerHTML = '<i data-lucide="info"></i> <strong>Revelación en notas:</strong> la entidad, como sujeto pasivo especial, omite el reconocimiento del impuesto diferido pasivo de <strong>Bs ' + fmt(imp) + '</strong> originado por la supresión del Ajuste por Inflación Fiscal, conforme al BA VEN-NIF 11.';
+        } else {
+          setOut('difReconocido', 'Bs ' + fmt(imp));
+          setOut('difNoReconocido', 'Bs 0,00');
+          if (nota) nota.innerHTML = '<i data-lucide="info"></i> <strong>Reconocimiento estricto (NIC 12 / Sección 29):</strong> se registra el pasivo por impuesto diferido de <strong>Bs ' + fmt(imp) + '</strong> con cargo al resultado del período.' + (!especial ? ' La entidad no califica como sujeto pasivo especial, por lo que no aplica el tratamiento alternativo.' : '');
+        }
+        if (window.lucide) window.lucide.createIcons();
+      }
+      difPane.addEventListener('input', calcDif);
+      difPane.addEventListener('change', calcDif);
+      calcDif();
+    }
+  })();
+
+  /* =========================================================
+     AUTENTICACIÓN — login / registro / recuperar contraseña
+     ========================================================= */
+  (function authModule() {
+    const screen = document.getElementById('authScreen');
+    const body = document.body;
+    if (!screen) return;
+    const toast = (m, t) => { if (window.toast) window.toast(m, t); };
+    const tabs = document.getElementById('authTabs');
+    const panes = screen.querySelectorAll('.auth-pane');
+    const foot = document.getElementById('authFoot');
+
+    function setTab(tab) {
+      tabs.querySelectorAll('button').forEach((b) => (b.dataset.active = b.dataset.tab === tab ? 'true' : 'false'));
+      panes.forEach((p) => (p.dataset.active = p.dataset.tab === tab ? 'true' : 'false'));
+      if (foot) foot.hidden = tab !== 'login';
+      drawIcons();
+    }
+    function showApp() { body.classList.add('authed'); drawIcons(); }
+    function showAuth() { body.classList.remove('authed'); setTab('login'); window.scrollTo(0, 0); drawIcons(); }
+    window.__showAuth = showAuth;
+
+    tabs.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => setTab(b.dataset.tab)));
+    screen.querySelectorAll('[data-goauth]').forEach((a) => a.addEventListener('click', (e) => { e.preventDefault(); setTab(a.dataset.goauth); }));
+    const fl = document.getElementById('forgotLink');
+    if (fl) fl.addEventListener('click', (e) => { e.preventDefault(); setTab('forgot'); });
+    const fb = document.getElementById('forgotBack');
+    if (fb) fb.addEventListener('click', () => setTab('login'));
+    screen.querySelectorAll('.auth-eye').forEach((btn) => btn.addEventListener('click', () => {
+      const inp = document.getElementById(btn.dataset.toggle);
+      if (inp) inp.type = inp.type === 'password' ? 'text' : 'password';
+    }));
+
+    document.getElementById('loginForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      if (!document.getElementById('loginEmail').value.trim()) return toast('Ingresa tu correo electrónico', 'error');
+      showApp(); toast('Bienvenido a DigiAccount', 'success');
+    });
+    // Acceso con Google — simulado en el prototipo (será Supabase Auth OAuth en producción)
+    screen.querySelectorAll('.auth-sso').forEach((b) => b.addEventListener('click', () => {
+      showApp(); toast('Acceso con Google (demo) · bienvenido', 'success');
+    }));
+    document.getElementById('signupForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const name = document.getElementById('suName').value.trim();
+      const cedula = document.getElementById('suCedula').value.trim();
+      const whatsapp = document.getElementById('suWhatsapp').value.trim();
+      const email = document.getElementById('suEmail').value.trim();
+      const pass = document.getElementById('suPass').value;
+      if (!name) return toast('Indica tu nombre y apellido', 'error');
+      if (!cedula) return toast('Indica tu cédula', 'error');
+      if (!whatsapp) return toast('Indica tu número de WhatsApp', 'error');
+      if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return toast('Indica un correo válido', 'error');
+      if ((pass || '').length < 8) return toast('La contraseña debe tener al menos 8 caracteres', 'error');
+      if (!document.getElementById('suTerms').checked) return toast('Debes aceptar los términos', 'error');
+      const segmento = (document.getElementById('suSegmento') || {}).value || 'empresas';
+      // Registro en la base de contactos (para CRM / email marketing)
+      if (window.__registrarContacto) window.__registrarContacto({ tipo: 'Usuario', nombre: name, doc: cedula, email: email, whatsapp: whatsapp, segmento: segmento, origen: 'Registro de cuenta' });
+      showApp();
+      toast('Cuenta creada · ¡bienvenido, ' + name.split(' ')[0] + '!', 'success');
+      // Funnel: cuenta creada → elegir plan → onboarding de empresa → sistema
+      if (window.openPlanOnboarding) setTimeout(() => window.openPlanOnboarding(segmento, name), 350);
+      else if (window.openCompanyWizard) setTimeout(() => window.openCompanyWizard({ fromSignup: true }), 400);
+    });
+    document.getElementById('forgotForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      toast('Enviamos un enlace de recuperación a tu correo', 'success');
+      setTab('login');
+    });
+    const logoutBtn = document.getElementById('logoutBtn');
+    if (logoutBtn) logoutBtn.addEventListener('click', () => { showAuth(); toast('Sesión cerrada'); });
+
+    // Estado inicial: pantalla de acceso
+    body.classList.remove('authed');
+    setTab('login');
+  })();
+
+  /* =========================================================
+     TERCEROS — registro unificado de clientes y proveedores
+     ========================================================= */
+  (function tercerosModule() {
+    const view = document.getElementById('view-terceros');
+    const overlay = document.getElementById('terModal');
+    if (!view || !overlay) return;
+    const tbody = document.getElementById('tercerosBody');
+    const toast = (m, t) => { if (window.toast) window.toast(m, t); };
+    const fmt = (n) => Number(n).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const normRif = (s) => (s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const idSistema = (rif) => String(rif || '').replace(/^[A-Za-z]/, ''); // RIF sin la letra inicial
+
+    // Catálogo de terceros (memoria) — registro único por RIF
+    const DB = [
+      { tipo: 'Persona jurídica (J)', rif: 'J319876542', nombre: 'Comercial Andina, C.A.', cli: true, prov: false, fiscal: 'Contribuyente ordinario', tel: '0241-8334455', email: 'compras@andina.com', dom: 'Av. Lara, Barquisimeto, Edo. Lara', cxc: 1847910, cxp: 0, cont: [{ n: 'María Pérez', cargo: 'Jefa de Compras', tel: '0414-1234567', email: 'mperez@andina.com' }] },
+      { tipo: 'Persona jurídica (J)', rif: 'J307765541', nombre: 'Supermercados El Sol, C.A.', cli: true, prov: false, fiscal: 'Contribuyente especial', tel: '0212-5550101', email: 'pagos@elsol.com', dom: 'Av. Bolívar, Caracas', cxc: 0, cxp: 0, cont: [] },
+      { tipo: 'Persona jurídica (J)', rif: 'J315678901', nombre: 'Suministros Lara, C.A.', cli: false, prov: true, fiscal: 'Contribuyente ordinario', tel: '0251-2667788', email: 'ventas@suministroslara.com', dom: 'Calle 22, Barquisimeto, Edo. Lara', cxc: 0, cxp: 487500, cont: [] },
+      { tipo: 'Persona jurídica (J)', rif: 'J298812204', nombre: 'Distribuidora Mérida, C.A.', cli: true, prov: true, fiscal: 'Contribuyente especial', tel: '0274-2519900', email: 'admin@distmerida.com', dom: 'Av. Las Américas, Mérida', cxc: 719200, cxp: 142000, cont: [{ n: 'José Rangel', cargo: 'Administrador', tel: '0416-9988776', email: 'jrangel@distmerida.com' }] },
+      { tipo: 'Persona jurídica (J)', rif: 'J294458217', nombre: 'Tecnología Andes, S.A.', cli: false, prov: true, fiscal: 'Contribuyente ordinario', tel: '0274-2440011', email: 'info@tecandes.com', dom: 'Av. Universidad, Mérida', cxc: 0, cxp: 0, cont: [] },
+      { tipo: 'Persona natural · Venezolano (V)', rif: 'V194452218', nombre: 'Pedro Marín', cli: true, prov: false, fiscal: 'No contribuyente', tel: '0412-3344556', email: 'pedromarin@gmail.com', dom: 'Valencia, Edo. Carabobo', cxc: 0, cxp: 0, cont: [] },
+      { tipo: 'Persona natural · Extranjero (E)', rif: 'E841220337', nombre: 'Giuseppe Romano', cli: false, prov: true, fiscal: 'Contribuyente formal', tel: '0414-5567788', email: 'g.romano@import.com', dom: 'Av. Libertador, Caracas', cxc: 0, cxp: 96400, cont: [] },
+      { tipo: 'Ente gubernamental (G)', rif: 'G200012568', nombre: 'Alcaldía de Valencia', cli: true, prov: false, fiscal: 'Ente público', tel: '0241-8001122', email: 'compras@alcaldiavalencia.gob.ve', dom: 'Palacio Municipal, Valencia, Edo. Carabobo', cxc: 284000, cxp: 0, cont: [] },
+      { tipo: 'Persona jurídica (J)', rif: 'J287769013', nombre: 'Importadora Zulia, C.A.', cli: false, prov: true, fiscal: 'Contribuyente especial', tel: '0261-7889900', email: 'compras@impzulia.com', dom: 'Av. 5 de Julio, Maracaibo, Edo. Zulia', cxc: 0, cxp: 487500, cont: [] },
+      { tipo: 'Persona jurídica (J)', rif: 'J305549980', nombre: 'Hotel Caracas Suites, C.A.', cli: true, prov: false, fiscal: 'Contribuyente especial', tel: '0212-9012345', email: 'admin@caracassuites.com', dom: 'Las Mercedes, Caracas', cxc: 0, cxp: 0, cont: [] },
+      { tipo: 'Firma Personal · F.P. (V)', rif: 'V192651251', nombre: 'RAFAEL JOSE GORDILLO (COMERCIALIZADORA RADIAN GORDILLO, F.P.)', cli: false, prov: true, fiscal: 'Contribuyente especial', agenteRet: 'Sí', tel: '0251-3322110', email: 'gordillo@comercial.com', dom: 'CR 5 ENTRE CALLES 7 Y 8, SABANA DE PARRA, EDO. YARACUY', cxc: 0, cxp: 184500, cont: [] },
+      { tipo: 'Emprendimiento (J)', rif: 'J507632059', nombre: 'EMPRENDIMIENTO GILBERTO PARRA 2', cli: true, prov: false, fiscal: 'Contribuyente ordinario', agenteRet: 'No', tel: '0251-4455667', email: 'gilberto.parra@emprende.com', dom: 'CR 6 ENTRE 4 Y 6, URB. ALEXIS OLMOS, SABANA DE PARRA, EDO. YARACUY', cxc: 96400, cxp: 0, cont: [] },
+    ];
+
+    const rolDe = (t) => t.cli && t.prov ? 'ambos' : t.cli ? 'cliente' : t.prov ? 'proveedor' : 'otro';
+    function rolBadges(t) {
+      if (t.cli && t.prov) return '<span class="tag" style="background:var(--da-cyan-500);color:var(--da-navy-900);">Cliente + Proveedor</span>';
+      if (t.cli) return '<span class="tag success">Cliente</span>';
+      if (t.prov) return '<span class="tag warn">Proveedor</span>';
+      return '<span class="tag slate">Otro</span>';
+    }
+    function saldoCell(t) {
+      const parts = [];
+      if (t.cxc > 0) parts.push('<span style="color:var(--da-success);">+' + fmt(t.cxc) + '</span>');
+      if (t.cxp > 0) parts.push('<span style="color:#8a5410;">−' + fmt(t.cxp) + '</span>');
+      return parts.length ? parts.join('<br>') : '<span style="color:var(--fg-muted);">—</span>';
+    }
+    // Tipo de RIF venezolano (V, E, J, P, G, C) derivado del prefijo
+    const prefijoTipo = (tipo) => { const m = (tipo || '').match(/\(([A-Z])\)/); return m ? m[1] : ''; };
+    const iconTipo = (tipo) => {
+      if (/F\.P\./.test(tipo)) return 'stamp';
+      if (/Emprendimiento/i.test(tipo)) return 'rocket';
+      const l = prefijoTipo(tipo);
+      return l === 'G' ? 'landmark' : l === 'J' ? 'building-2' : l === 'C' ? 'users' : 'user';
+    };
+    function tipoCell(tipo) {
+      const l = prefijoTipo(tipo);
+      const cortos = { J: 'Jurídica', V: 'Natural', E: 'Extranjero', G: 'Gobierno', P: 'Pasaporte', C: 'Comunal' };
+      let corto = cortos[l] || tipo;
+      if (/F\.P\./.test(tipo)) corto = 'Firma P.';
+      else if (/Emprendimiento/i.test(tipo)) corto = 'Emprend.';
+      const cls = l === 'J' ? 'navy' : l === 'G' ? 'cyan' : l === 'E' ? 'warn' : 'slate';
+      return '<span class="tag ' + cls + '" style="font-family:var(--font-mono);">' + (l || '?') + '</span> ' + corto;
+    }
+
+    let filtroRol = 'todos', query = '';
+    function pasa(t) {
+      if (filtroRol === 'cliente' && !(t.cli && !t.prov)) return false;
+      if (filtroRol === 'proveedor' && !(t.prov && !t.cli)) return false;
+      if (filtroRol === 'ambos' && !(t.cli && t.prov)) return false;
+      if (query) {
+        const blob = (t.nombre + ' ' + t.rif + ' ' + t.tel).toLowerCase();
+        if (!blob.includes(query)) return false;
+      }
+      return true;
+    }
+    function render() {
+      const vis = DB.filter(pasa);
+      tbody.innerHTML = vis.map((t, i) => {
+        const idx = DB.indexOf(t);
+        return '<tr data-idx="' + idx + '">'
+          + '<td><div class="prod-cell"><div class="prod-thumb" style="background:var(--da-navy-50);color:var(--da-navy-700);"><i data-lucide="' + iconTipo(t.tipo) + '"></i></div><div class="info"><div class="n">' + esc(t.nombre) + '</div><div class="sku">ID ' + esc(idSistema(t.rif)) + (t.email ? ' · ' + esc(t.email) : '') + '</div></div></div></td>'
+          + '<td class="mono">' + esc(t.rif) + '</td><td>' + tipoCell(t.tipo) + '</td>'
+          + '<td>' + rolBadges(t) + '</td><td>' + esc(t.fiscal) + '</td><td class="mono">' + esc(t.tel || '—') + '</td>'
+          + '<td class="num">' + saldoCell(t) + '</td>'
+          + '<td><button class="btn btn-ghost" data-ver-tercero="' + idx + '" style="height:26px;font-size:11px;padding:0 9px;white-space:nowrap;"><i data-lucide="eye"></i> Ficha</button></td></tr>';
+      }).join('');
+      const shown = document.getElementById('tercerosShown'); if (shown) shown.textContent = vis.length;
+      tbody.querySelectorAll('[data-ver-tercero]').forEach((b) => b.addEventListener('click', () => openFicha(DB[parseInt(b.dataset.verTercero, 10)])));
+      if (window.lucide) window.lucide.createIcons();
+    }
+    function updateKPIs() {
+      const set = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
+      set('terKpiTotal', DB.length + 40);
+      set('terKpiCli', DB.filter((t) => t.cli).length + 23);
+      set('terKpiProv', DB.filter((t) => t.prov).length + 17);
+      set('terKpiAmbos', DB.filter((t) => t.cli && t.prov).length + 4);
+    }
+
+    // ---- Filtros y búsqueda ----
+    document.getElementById('tercerosFilters').querySelectorAll('button').forEach((b) => {
+      b.addEventListener('click', () => {
+        document.getElementById('tercerosFilters').querySelectorAll('button').forEach((x) => x.classList.toggle('active', x === b));
+        filtroRol = b.dataset.rol; render();
+      });
+    });
+    const search = document.getElementById('tercerosSearch');
+    if (search) search.addEventListener('input', () => { query = search.value.trim().toLowerCase(); render(); });
+
+    // ---- Modal: pestañas, roles, contactos ----
+    const tabsWrap = document.getElementById('terTabs');
+    const panes = overlay.querySelectorAll('.ter-pane');
+    function setTab(tab) {
+      tabsWrap.querySelectorAll('button').forEach((b) => (b.dataset.active = b.dataset.tab === tab ? 'true' : 'false'));
+      panes.forEach((p) => (p.dataset.active = p.dataset.tab === tab ? 'true' : 'false'));
+    }
+    tabsWrap.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => { if (!b.disabled) setTab(b.dataset.tab); }));
+
+    const get = (k) => overlay.querySelector('[data-tk="' + k + '"]');
+    function syncRolesTabs() {
+      const cli = get('esCliente').checked, prov = get('esProveedor').checked;
+      tabsWrap.querySelector('[data-rol="cliente"]').disabled = !cli;
+      tabsWrap.querySelector('[data-rol="proveedor"]').disabled = !prov;
+    }
+    get('esCliente').addEventListener('change', syncRolesTabs);
+    get('esProveedor').addEventListener('change', syncRolesTabs);
+    // ID del sistema = RIF sin la letra inicial (se actualiza al escribir)
+    get('rif').addEventListener('input', () => { const e = get('idsis'); if (e) e.value = idSistema(get('rif').value); });
+
+    // Contactos dinámicos
+    const contactsEl = document.getElementById('terContacts');
+    function addContact(c) {
+      c = c || { n: '', cargo: '', tel: '', email: '' };
+      const row = document.createElement('div');
+      row.className = 'ter-contact';
+      row.innerHTML = '<input type="text" data-c="n" placeholder="Nombre" value="' + (c.n || '') + '">'
+        + '<input type="text" data-c="cargo" placeholder="Cargo" value="' + (c.cargo || '') + '">'
+        + '<input type="text" data-c="tel" placeholder="Teléfono" value="' + (c.tel || '') + '">'
+        + '<input type="text" data-c="email" placeholder="Email" value="' + (c.email || '') + '">'
+        + '<button class="ter-cdel" title="Eliminar"><i data-lucide="trash-2"></i></button>';
+      row.querySelector('.ter-cdel').addEventListener('click', () => row.remove());
+      contactsEl.appendChild(row);
+      if (window.lucide) window.lucide.createIcons();
+    }
+    document.getElementById('terAddContact').addEventListener('click', () => addContact());
+
+    let editIdx = null;
+    function openFicha(t) {
+      editIdx = t ? DB.indexOf(t) : null;
+      document.getElementById('terModalTitle').textContent = t ? t.nombre : 'Nuevo tercero';
+      document.getElementById('terMsg').textContent = '';
+      const setV = (k, v) => { const e = get(k); if (e) e.value = v; };
+      setV('tipo', (t && t.tipo) || 'Persona jurídica');
+      setV('rif', (t && t.rif) || '');
+      setV('idsis', idSistema(t && t.rif));
+      setV('nombre', (t && t.nombre) || '');
+      get('esCliente').checked = !!(t && t.cli);
+      get('esProveedor').checked = !!(t && t.prov);
+      setV('tel', (t && t.tel) || ''); setV('email', (t && t.email) || ''); setV('dom', (t && t.dom) || '');
+      setV('fiscalCond', (t && t.fiscal) || 'Contribuyente ordinario');
+      setV('agenteRet', (t && t.agenteRet) || 'No');
+      const out = (k, v) => { const e = overlay.querySelector('[data-tk-out="' + k + '"]'); if (e) e.textContent = v; };
+      out('saldoCxc', 'Bs ' + fmt((t && t.cxc) || 0));
+      out('saldoCxp', 'Bs ' + fmt((t && t.cxp) || 0));
+      contactsEl.innerHTML = '';
+      ((t && t.cont) || []).forEach(addContact);
+      syncRolesTabs();
+      setTab('general');
+      overlay.hidden = false;
+      if (window.lucide) window.lucide.createIcons();
+    }
+    function close() { overlay.hidden = true; }
+    document.getElementById('nuevoTerceroBtn').addEventListener('click', () => openFicha(null));
+    document.getElementById('terClose').addEventListener('click', close);
+    document.getElementById('terCancel').addEventListener('click', close);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+    document.getElementById('terSave').addEventListener('click', () => {
+      const msg = document.getElementById('terMsg');
+      const setMsg = (m) => { msg.textContent = m; msg.classList.add('error'); };
+      msg.classList.remove('error'); msg.textContent = '';
+      const nombre = get('nombre').value.trim().toUpperCase();
+      const rif = normRif(get('rif').value); // RIF sin guiones (formato SENIAT)
+      const cli = get('esCliente').checked, prov = get('esProveedor').checked;
+      if (!nombre) return setMsg('Indica la razón social o nombre.');
+      if (!rif) return setMsg('El RIF / C.I. es obligatorio.');
+      if (!cli && !prov) return setMsg('Marca al menos un rol: cliente o proveedor.');
+      // Detección de duplicados por RIF (solo al crear nuevo)
+      const dup = DB.find((x, i) => normRif(x.rif) === normRif(rif) && i !== editIdx);
+      if (dup) return setMsg('Ya existe un tercero con ese RIF: "' + dup.nombre + '". Abre su ficha para añadirle el rol y evitar duplicados.');
+      const cont = [...contactsEl.querySelectorAll('.ter-contact')].map((r) => ({
+        n: r.querySelector('[data-c="n"]').value.trim(), cargo: r.querySelector('[data-c="cargo"]').value.trim(),
+        tel: r.querySelector('[data-c="tel"]').value.trim(), email: r.querySelector('[data-c="email"]').value.trim(),
+      })).filter((c) => c.n);
+      const data = {
+        tipo: get('tipo').value, rif: rif, nombre: nombre, cli: cli, prov: prov,
+        fiscal: get('fiscalCond').value, agenteRet: get('agenteRet') ? get('agenteRet').value : 'No',
+        tel: get('tel').value.trim(), email: get('email').value.trim(),
+        dom: get('dom').value.trim().toUpperCase(), cont: cont,
+        cxc: editIdx != null ? DB[editIdx].cxc : 0, cxp: editIdx != null ? DB[editIdx].cxp : 0,
+      };
+      if (editIdx != null) { DB[editIdx] = data; toast('Tercero "' + nombre + '" actualizado'); }
+      else { DB.unshift(data); toast('Tercero "' + nombre + '" registrado · ' + (cli && prov ? 'cliente y proveedor' : cli ? 'cliente' : 'proveedor')); }
+      render(); updateKPIs(); close();
+    });
+
+    // Exportar CSV
+    document.getElementById('tercerosExportBtn').addEventListener('click', () => {
+      const rows = [['Nombre', 'RIF', 'Tipo', 'Rol', 'Condición fiscal', 'Teléfono', 'Email', 'CxC', 'CxP']];
+      DB.forEach((t) => rows.push([t.nombre, t.rif, t.tipo, rolDe(t), t.fiscal, t.tel, t.email, t.cxc, t.cxp]));
+      const csv = rows.map((r) => r.map((c) => '"' + String(c).replace(/"/g, '""') + '"').join(';')).join('\r\n');
+      const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = 'Terceros.csv';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+      toast('Directorio de terceros exportado a CSV');
+    });
+
+    // Clientes disponibles para emitir facturas (lo usa el módulo de Ventas)
+    window.__clientes = () => DB.filter((t) => t.cli).map((t) => ({ n: t.nombre, rif: t.rif, id: idSistema(t.rif), dom: t.dom }));
+    // Abrir la ficha de un nuevo tercero (opcionalmente premarcado como cliente)
+    window.openNuevoTercero = function (preset) {
+      openFicha(null);
+      if (preset && preset.cliente) { get('esCliente').checked = true; syncRolesTabs(); }
+      setTab('general');
+    };
+
+    render(); updateKPIs();
+  })();
+
+  /* =========================================================
+     CENTRO DE AGENTES IA — organigrama, aprobaciones, chat
+     ========================================================= */
+  (function agentesModule() {
+    const view = document.getElementById('view-agentes');
+    if (!view) return;
+    const toast = (m, t) => { if (window.toast) window.toast(m, t); };
+
+    const AUTO_LABEL = { sugiere: 'Sugiere', aviso: 'Auto + aviso', silencioso: 'Auto silencioso' };
+    const AUTO_CLS = { sugiere: 'sugiere', aviso: 'aviso', silencioso: 'silencioso' };
+
+    // Especialistas subordinados del Gerente IA
+    const AGENTS = [
+      { id: 'contable', n: 'Agente Contable', ic: 'book-open', col: '#2f6df0', spec: 'Asientos · conciliación · cierre', tareas: 34, auto: 'sugiere' },
+      { id: 'fiscal', n: 'Agente Fiscal', ic: 'file-text', col: '#c0392b', spec: 'SENIAT · IVA · ISLR · retenciones', tareas: 21, auto: 'aviso' },
+      { id: 'tesoreria', n: 'Agente Tesorería', ic: 'wallet', col: '#1c8f5a', spec: 'Cobros · pagos · conciliación', tareas: 28, auto: 'aviso' },
+      { id: 'ventas', n: 'Agente Ventas', ic: 'receipt', col: '#0e9bbf', spec: 'Facturación · despachos', tareas: 19, auto: 'sugiere' },
+      { id: 'inventario', n: 'Agente Inventario', ic: 'package', col: '#c97a14', spec: 'Stock · reposición · órdenes', tareas: 12, auto: 'aviso' },
+      { id: 'nomina', n: 'Agente Nómina', ic: 'users', col: '#7b54c9', spec: 'Recibos · LOTTT · parafiscales', tareas: 8, auto: 'sugiere' },
+      { id: 'ocr', n: 'Agente OCR / Documentos', ic: 'scan-text', col: '#3a8dde', spec: 'Lee facturas por foto', tareas: 16, auto: 'aviso' },
+      { id: 'analista', n: 'Agente Analista', ic: 'line-chart', col: '#0f8a8a', spec: 'Salud financiera · reportes', tareas: 4, auto: 'silencioso' },
+    ];
+
+    // Gradientes compartidos (volumen metálico, visor con profundidad, ojos brillantes)
+    function injectBotDefs() {
+      if (document.getElementById('agBotDefs')) return;
+      const d = document.createElement('div');
+      d.id = 'agBotDefs';
+      d.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden';
+      d.innerHTML = '<svg aria-hidden="true"><defs>'
+        + '<linearGradient id="botShine" x1="0" y1="0" x2="0.25" y2="1"><stop offset="0" stop-color="#fff" stop-opacity="0.5"/><stop offset="0.32" stop-color="#fff" stop-opacity="0.1"/><stop offset="0.62" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity="0.42"/></linearGradient>'
+        + '<linearGradient id="botGlass" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#15407a"/><stop offset="0.5" stop-color="#0a2143"/><stop offset="1" stop-color="#040d1c"/></linearGradient>'
+        + '<radialGradient id="botEye" cx="0.38" cy="0.3" r="0.75"><stop offset="0" stop-color="#ffffff"/><stop offset="0.4" stop-color="#bdf2ff"/><stop offset="1" stop-color="#27aede"/></radialGradient>'
+        + '<linearGradient id="mgrBody" x1="0" y1="0" x2="0.3" y2="1"><stop offset="0" stop-color="#3f679e"/><stop offset="0.5" stop-color="#21456f"/><stop offset="1" stop-color="#102a49"/></linearGradient>'
+        + '<linearGradient id="mgrSuit" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1d3454"/><stop offset="1" stop-color="#0b1830"/></linearGradient>'
+        + '<linearGradient id="mgrGold" x1="0" y1="0" x2="0.2" y2="1"><stop offset="0" stop-color="#ffe9a3"/><stop offset="0.5" stop-color="#ffd24a"/><stop offset="1" stop-color="#cf9c2c"/></linearGradient>'
+        + '</defs></svg>';
+      document.body.appendChild(d);
+    }
+    // Avatar de robot (metálico, con gradientes de luz y ojos brillantes) — usa var(--bot)
+    function robotSvg() {
+      return '<svg class="ag-bot-svg" viewBox="0 0 48 48" aria-hidden="true">'
+        + '<path d="M9 47 Q9 39 16 38 L32 38 Q39 39 39 47 Z" fill="var(--bot)"/><path d="M9 47 Q9 39 16 38 L32 38 Q39 39 39 47 Z" fill="url(#botShine)"/>'
+        + '<rect x="20" y="34" width="8" height="6" rx="2" fill="var(--bot)"/><rect x="20" y="34" width="8" height="6" rx="2" fill="#000" opacity="0.22"/>'
+        + '<rect x="23" y="3.4" width="2" height="5.4" rx="1" fill="var(--bot)"/>'
+        + '<circle cx="24" cy="2.9" r="2.6" fill="#8fe9ff" opacity="0.42"/><circle class="bot-antena" cx="24" cy="2.9" r="1.5" fill="#eafdff"/>'
+        + '<rect x="5.4" y="20" width="4.8" height="10" rx="2.4" fill="var(--bot)"/><rect x="5.4" y="20" width="4.8" height="10" rx="2.4" fill="url(#botShine)"/>'
+        + '<rect x="37.8" y="20" width="4.8" height="10" rx="2.4" fill="var(--bot)"/><rect x="37.8" y="20" width="4.8" height="10" rx="2.4" fill="url(#botShine)"/>'
+        + '<circle cx="7.8" cy="25" r="1.3" fill="#06122a" opacity="0.6"/><circle cx="40.2" cy="25" r="1.3" fill="#06122a" opacity="0.6"/>'
+        + '<rect x="8.5" y="9" width="31" height="28.5" rx="11" fill="var(--bot)"/><rect x="8.5" y="9" width="31" height="28.5" rx="11" fill="url(#botShine)"/>'
+        + '<ellipse cx="16.5" cy="14" rx="7" ry="3.8" fill="#fff" opacity="0.26"/>'
+        + '<rect x="12" y="14.4" width="24" height="15.6" rx="7.5" fill="url(#botGlass)"/><rect x="12" y="14.4" width="24" height="15.6" rx="7.5" fill="none" stroke="#000" stroke-opacity="0.22" stroke-width="0.6"/>'
+        + '<path d="M14.5 16.4 Q22 14.4 25 17.8 Q19 19.4 14.5 22.8 Z" fill="#fff" opacity="0.10"/>'
+        + '<circle cx="19.2" cy="22.2" r="4.2" fill="#36c5ee" opacity="0.28"/><circle cx="28.8" cy="22.2" r="4.2" fill="#36c5ee" opacity="0.28"/>'
+        + '<circle class="bot-eye" cx="19.2" cy="22.2" r="2.7" fill="url(#botEye)"/><circle class="bot-eye" cx="28.8" cy="22.2" r="2.7" fill="url(#botEye)"/>'
+        + '<path d="M20 26.9 Q24 28.6 28 26.9" stroke="#8fe9ff" stroke-width="1.3" fill="none" stroke-linecap="round" opacity="0.72"/>'
+        + '</svg>';
+    }
+    // Robot del Gerente — ejecutivo metálico: saco, corbata, dorados con gradiente
+    function managerSvg() {
+      return '<svg class="ag-bot-svg mgr" viewBox="0 0 64 64" aria-hidden="true">'
+        + '<path d="M7 63 Q7 49 20 47 L44 47 Q57 49 57 63 Z" fill="url(#mgrSuit)"/>'
+        + '<path d="M27 47 L32 60 L24 56 Z" fill="#0b1a32"/><path d="M37 47 L32 60 L40 56 Z" fill="#0b1a32"/>'
+        + '<path d="M28.5 46 L32 56 L35.5 46 Z" fill="#f0f5fb"/>'
+        + '<path d="M32 48 l-2.8 3.4 2.8 8.6 2.8 -8.6 z" fill="url(#mgrGold)"/><rect x="30" y="46.4" width="4" height="2.8" rx="0.9" fill="#caa033"/>'
+        + '<rect x="25.5" y="42" width="13" height="7.6" rx="2.6" fill="url(#mgrBody)"/>'
+        + '<rect x="30.8" y="6.2" width="2.4" height="7.6" rx="1.2" fill="#9a7d2e"/>'
+        + '<circle cx="32" cy="5.6" r="3.6" fill="#ffd24a" opacity="0.45"/><circle class="bot-antena" cx="32" cy="5.6" r="2.1" fill="url(#mgrGold)"/>'
+        + '<rect x="6.5" y="25.5" width="6.2" height="14" rx="3.1" fill="url(#mgrBody)"/><rect x="51.3" y="25.5" width="6.2" height="14" rx="3.1" fill="url(#mgrBody)"/>'
+        + '<circle cx="9.6" cy="32.5" r="1.9" fill="url(#mgrGold)"/><circle cx="54.4" cy="32.5" r="1.9" fill="url(#mgrGold)"/>'
+        + '<rect x="11.5" y="12.5" width="41" height="36" rx="14" fill="url(#mgrBody)"/>'
+        + '<ellipse cx="23" cy="19" rx="10" ry="5.4" fill="#fff" opacity="0.20"/>'
+        + '<rect x="15.5" y="19.5" width="33" height="21" rx="10" fill="url(#mgrGold)"/>'
+        + '<rect x="16.8" y="20.8" width="30.4" height="18.4" rx="9" fill="url(#botGlass)"/>'
+        + '<path d="M19.5 22.4 Q30 19.4 33.5 23.8 Q26 26 19.5 30.4 Z" fill="#fff" opacity="0.11"/>'
+        + '<circle cx="25.5" cy="29.5" r="5" fill="#36c5ee" opacity="0.28"/><circle cx="38.5" cy="29.5" r="5" fill="#36c5ee" opacity="0.28"/>'
+        + '<circle class="bot-eye" cx="25.5" cy="29.5" r="3.2" fill="url(#botEye)"/><circle class="bot-eye" cx="38.5" cy="29.5" r="3.2" fill="url(#botEye)"/>'
+        + '<path d="M26 34.9 Q32 37.4 38 34.9" stroke="#8fe9ff" stroke-width="1.5" fill="none" stroke-linecap="round" opacity="0.78"/>'
+        + '</svg>';
+    }
+
+    const grid = document.getElementById('agGrid');
+    function renderGrid() {
+      grid.innerHTML = AGENTS.map((a) =>
+        '<div class="ag-card" data-agent="' + a.id + '">'
+        + '<div class="ag-card-top"><span class="ag-bot" style="--bot:' + a.col + ';">' + robotSvg() + '<span class="ag-bot-badge"><i data-lucide="' + a.ic + '"></i></span></span><span class="ag-status online"><span class="dot"></span> Activo</span></div>'
+        + '<div class="ag-name">' + a.n + '</div><div class="ag-spec">' + a.spec + '</div>'
+        + '<div class="ag-cardmeta"><span><strong>' + a.tareas + '</strong> hoy</span><span class="ag-auto ' + AUTO_CLS[a.auto] + '">' + AUTO_LABEL[a.auto] + '</span></div>'
+        + '<button class="ag-config" data-ag-config="' + a.id + '"><i data-lucide="sliders-horizontal"></i> Autonomía</button>'
+        + '</div>'
+      ).join('');
+      grid.querySelectorAll('[data-ag-config]').forEach((b) => b.addEventListener('click', () => openAuto(b.dataset.agConfig)));
+      drawIcons();
+    }
+
+    // ---- Bandeja de aprobaciones (human-in-the-loop) ----
+    const APROB = [
+      { id: 1, ic: 'scan-text', agente: 'Agente OCR', titulo: 'Registrar factura de compra F-00284716', desc: 'Suministros Lara · Bs 487.500 · IVA Bs 67.241. Detectada por foto en WhatsApp.', conf: 'Confianza 96% · cuenta sugerida 6.1.1.01 Compras' },
+      { id: 2, ic: 'file-text', agente: 'Agente Fiscal', titulo: 'Declarar IVA · 2da quincena de mayo', desc: 'Débito Bs 894.420 − Crédito Bs 481.120 = a pagar Bs 413.300.', conf: 'Confianza 99% · falta tu confirmación para enviar al SENIAT' },
+      { id: 3, ic: 'wallet', agente: 'Agente Tesorería', titulo: 'Pagar a Importadora Zulia', desc: 'Vence mañana · Bs 487.500 desde Banesco. Pago en divisas con IGTF.', conf: 'Confianza 92% · requiere tu autorización por el monto' },
+      { id: 4, ic: 'package', agente: 'Agente Inventario', titulo: 'Generar 4 órdenes de compra', desc: 'Café Premium, Pasta larga y 2 más en stock crítico.', conf: 'Confianza 88% · proveedores sugeridos por histórico' },
+    ];
+    const aprobEl = document.getElementById('agApprovals');
+    function renderAprob() {
+      if (!APROB.length) { aprobEl.innerHTML = '<div class="ag-empty"><i data-lucide="check-circle-2"></i> Todo al día · no hay acciones por aprobar</div>'; drawIcons(); }
+      else aprobEl.innerHTML = APROB.map((a) =>
+        '<div class="ag-approval" data-id="' + a.id + '">'
+        + '<div class="aga-ic"><i data-lucide="' + a.ic + '"></i></div>'
+        + '<div class="aga-body"><div class="aga-head"><span class="aga-title">' + a.titulo + '</span><span class="aga-agent">' + a.agente + '</span></div>'
+        + '<div class="aga-desc">' + a.desc + '</div><div class="aga-conf"><i data-lucide="sparkles"></i> ' + a.conf + '</div></div>'
+        + '<div class="aga-actions"><button class="aga-btn ok" data-act="ok" title="Aprobar"><i data-lucide="check"></i></button>'
+        + '<button class="aga-btn edit" data-act="edit" title="Editar"><i data-lucide="pencil"></i></button>'
+        + '<button class="aga-btn no" data-act="no" title="Descartar"><i data-lucide="x"></i></button></div></div>'
+      ).join('');
+      aprobEl.querySelectorAll('.aga-btn').forEach((b) => b.addEventListener('click', () => handleAprob(b)));
+      const cnt = document.getElementById('agPendCount'); if (cnt) cnt.textContent = APROB.length;
+      drawIcons();
+    }
+    function addFeed(txt, meta, cls) {
+      const feed = document.getElementById('agFeed');
+      if (!feed) return;
+      feed.insertAdjacentHTML('afterbegin', '<div class="agf-item"><span class="agf-dot ' + (cls || 'ok') + '"></span><div class="agf-body"><div class="agf-txt">' + txt + '</div><div class="agf-meta">Ahora · ' + meta + '</div></div></div>');
+    }
+    function handleAprob(btn) {
+      const card = btn.closest('.ag-approval');
+      const id = parseInt(card.dataset.id, 10);
+      const item = APROB.find((x) => x.id === id);
+      const act = btn.dataset.act;
+      if (act === 'edit') { toast('Abriendo "' + item.titulo + '" para editar antes de aprobar', 'info'); return; }
+      const i = APROB.indexOf(item);
+      if (i >= 0) APROB.splice(i, 1);
+      if (act === 'ok') { toast('Aprobado · ' + item.titulo, 'success'); addFeed('<strong>' + item.agente + '</strong> ejecutó: ' + item.titulo + ' (aprobado por ti)', 'human-in-the-loop', 'ok'); }
+      else { toast('Descartado · ' + item.titulo, 'info'); }
+      renderAprob();
+    }
+
+    // ---- Configuración de autonomía ----
+    const autoModal = document.getElementById('agAutoModal');
+    let autoAgent = null;
+    function openAuto(id) {
+      autoAgent = AGENTS.find((a) => a.id === id);
+      if (!autoAgent) return;
+      document.getElementById('agAutoName').textContent = autoAgent.n;
+      const demo = !!window.__demoAgentes;
+      autoModal.querySelectorAll('input[name="agLevel"]').forEach((r) => {
+        r.checked = demo ? (r.value === 'sugiere') : (r.value === autoAgent.auto);
+        r.disabled = demo && r.value !== 'sugiere';
+        r.closest('.aga-level').classList.toggle('disabled', demo && r.value !== 'sugiere');
+      });
+      const note = document.getElementById('agAutoDemoNote');
+      if (note) note.hidden = !demo;
+      autoModal.hidden = false;
+      drawIcons();
+    }
+    function closeAuto() { autoModal.hidden = true; }
+    document.getElementById('agAutoClose').addEventListener('click', closeAuto);
+    document.getElementById('agAutoCancel').addEventListener('click', closeAuto);
+    autoModal.addEventListener('click', (e) => { if (e.target === autoModal) closeAuto(); });
+    document.getElementById('agAutoSave').addEventListener('click', () => {
+      const sel = autoModal.querySelector('input[name="agLevel"]:checked');
+      if (sel && autoAgent) { autoAgent.auto = sel.value; renderGrid(); toast(autoAgent.n + ' → ' + AUTO_LABEL[sel.value]); }
+      closeAuto();
+    });
+
+    // ---- Canales ----
+    view.querySelectorAll('.agch-connect').forEach((b) => b.addEventListener('click', () => {
+      toast('Asistente de conexión de ' + b.dataset.channel + ' (próximamente)', 'info');
+    }));
+    const channelsBtn = document.getElementById('agChannelsBtn');
+    if (channelsBtn) channelsBtn.addEventListener('click', () => {
+      const p = document.getElementById('agChannelsPanel');
+      if (p) p.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+
+    // ---- Chat con el Gerente IA ----
+    const msgs = document.getElementById('agcMessages');
+    const input = document.getElementById('agcInput');
+    function bubble(text, who) {
+      const d = document.createElement('div');
+      d.className = 'agc-msg ' + who;
+      d.innerHTML = text;
+      msgs.appendChild(d);
+      msgs.scrollTop = msgs.scrollHeight;
+    }
+    function respond(q) {
+      const t = q.toLowerCase();
+      let r;
+      if (/iva/.test(t)) r = 'Según el <strong>Agente Fiscal</strong>: el IVA de la 2da quincena va en <strong>Bs 413.300</strong> a pagar (débito 894.420 − crédito 481.120). Tienes una aprobación pendiente para declararlo. ¿La autorizo?';
+      else if (/pag|vence|venc/.test(t)) r = 'El <strong>Agente Tesorería</strong> reporta 1 pago crítico: <strong>Importadora Zulia · Bs 487.500</strong> vence mañana. Hay 5 facturas más en los próximos 7 días por Bs 968.450.';
+      else if (/salud|financ|análisis|analisis/.test(t)) r = 'El <strong>Agente Analista</strong> califica la salud financiera en <strong>78/100 (saludable)</strong>: liquidez 82, solvencia 71, rentabilidad 85. Atención: el período de cobro subió 3 días.';
+      else if (/factura|registr|compra/.test(t)) r = 'Perfecto. Envíame la <strong>foto de la factura por WhatsApp</strong> y el <strong>Agente OCR</strong> la lee, valida el RIF en Terceros y prepara el registro + asiento para tu aprobación.';
+      else if (/hola|buen|gracias/.test(t)) r = '¡A la orden! Puedo coordinar a cualquiera de los 8 agentes. Dime qué necesitas.';
+      else r = 'Entendido. Lo derivo al especialista correspondiente y te traigo la propuesta a la bandeja de aprobaciones. ¿Algo más?';
+      setTimeout(() => bubble(r, 'bot'), 480);
+    }
+    function send(q) {
+      const text = (q || input.value).trim();
+      if (!text) return;
+      bubble(text, 'user');
+      input.value = '';
+      respond(text);
+    }
+    document.getElementById('agcSend').addEventListener('click', () => send());
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') send(); });
+    view.querySelectorAll('#agcSuggest button').forEach((b) => b.addEventListener('click', () => send(b.dataset.q)));
+    view.querySelectorAll('[data-ag-chat]').forEach((b) => b.addEventListener('click', () => {
+      const p = document.getElementById('agChatPanel');
+      if (p) p.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      if (input) input.focus();
+    }));
+
+    // Gradientes compartidos + robot del Gerente
+    injectBotDefs();
+    const mgrAvatar = view.querySelector('.agm-avatar');
+    if (mgrAvatar) mgrAvatar.innerHTML = managerSvg();
+
+    renderGrid();
+    renderAprob();
+  })();
+
+  /* =========================================================
+     PLANES Y PRECIOS — pricing por segmentos
+     ========================================================= */
+  (function planesModule() {
+    const view = document.getElementById('view-planes');
+    if (!view) return;
+    const toast = (m, t) => { if (window.toast) window.toast(m, t); };
+
+    const SEGMENTOS = {
+      contadores: {
+        desc: 'Para contadores públicos que gestionan la contabilidad y los impuestos de varios clientes.',
+        planes: [
+          { nombre: 'Contador Básico', precio: 49, popular: false, cta: 'Elegir plan', features: [
+            { t: 'Hasta 3 empresas', ok: true }, { t: 'Módulos: Fiscal + Contabilidad', ok: true },
+            { t: 'Soporte por email', ok: true }, { t: 'Onboarding', ok: false }] },
+          { nombre: 'Contador PRO', precio: 79, popular: true, cta: 'Elegir plan', features: [
+            { t: 'Hasta 10 empresas', ok: true }, { t: 'Todos los módulos', ok: true },
+            { t: 'Soporte por email', ok: true }, { t: 'Onboarding 1:1 (1 sesión)', ok: true }] },
+          { nombre: 'Firma Contable', precio: 199, popular: false, cta: 'Elegir plan', features: [
+            { t: 'Empresas ilimitadas', ok: true }, { t: 'Todos los módulos', ok: true },
+            { t: 'Soporte por email y WhatsApp', ok: true }, { t: 'Onboarding + capacitación', ok: true }] },
+        ],
+      },
+      empresas: {
+        desc: 'Para empresas que implementan DigiAccount para su propia gestión.',
+        planes: [
+          { nombre: 'Emprendimientos y PYME', sub: 'Contribuyentes Ordinarios', precio: 29, popular: false, cta: 'Elegir plan', features: [
+            { t: '1 empresa', ok: true }, { t: 'Módulos: Tesorería e Inventario', ok: true },
+            { t: 'Soporte por email', ok: true }, { t: 'Onboarding', ok: false }] },
+          { nombre: 'Empresa Completa', precio: 99, popular: true, cta: 'Elegir plan', features: [
+            { t: '1 empresa · usuarios ilimitados', ok: true }, { t: 'Todos los módulos', ok: true },
+            { t: 'Soporte por email', ok: true }, { t: 'Onboarding + capacitación', ok: true }] },
+          { nombre: 'Grupo Empresarial', precio: 299, popular: false, cta: 'Elegir plan', features: [
+            { t: 'Hasta 5 empresas', ok: true }, { t: 'Todos los módulos', ok: true },
+            { t: 'Soporte por email y WhatsApp', ok: true }, { t: 'Onboarding + capacitación', ok: true }] },
+        ],
+      },
+      ia: {
+        desc: 'Servicios de automatización e inteligencia artificial a la medida, sobre cualquier plan.',
+        planes: [
+          { nombre: 'Agentes IA', precio: null, consultar: true, cta: 'Consultar', features: [
+            { t: 'Setup inicial sobre cualquier plan', ok: true }, { t: '+ mensualidad de mantenimiento', ok: true },
+            { t: 'Soporte por email y WhatsApp', ok: true }, { t: 'Agentes a la medida de tu operación', ok: true }] },
+          { nombre: 'Auditoría + Implementación', sub: 'Sistema completo de automatizaciones y Agentes IA', precio: null, consultar: true, cta: 'Consultar', features: [
+            { t: 'Diagnóstico y auditoría de procesos', ok: true }, { t: 'Implementación integral a medida', ok: true },
+            { t: 'Acompañamiento dedicado', ok: true }, { t: 'Integraciones (n8n, WhatsApp, OCR)', ok: true }] },
+        ],
+      },
+    };
+    window.__PLANES = SEGMENTOS;
+
+    const ICONS = {
+      'Contador Básico': 'calculator', 'Contador PRO': 'briefcase-business', 'Firma Contable': 'landmark',
+      'Emprendimientos y PYME': 'sprout', 'Empresa Completa': 'building-2', 'Grupo Empresarial': 'network',
+      'Agentes IA': 'bot', 'Auditoría + Implementación': 'shield-check',
+    };
+    let seg = 'contadores', billing = 'mes';
+    const grid = document.getElementById('pricingGrid');
+    function render() {
+      const s = SEGMENTOS[seg];
+      document.getElementById('planSegDesc').textContent = s.desc;
+      grid.dataset.count = s.planes.length;
+      grid.innerHTML = s.planes.map((p) => {
+        let precioHtml;
+        if (p.consultar || p.precio == null) precioHtml = '<div class="pc-amount consultar">A consultar</div>';
+        else if (billing === 'anual') { const m = Math.round(p.precio * 10 / 12); precioHtml = '<div class="pc-amount"><span class="cur">$</span>' + m + '<span class="per">/mes</span></div><div class="pc-bill">facturado anual · $' + (p.precio * 10) + '/año</div>'; }
+        else precioHtml = '<div class="pc-amount"><span class="cur">$</span>' + p.precio + '<span class="per">/mes</span></div>';
+        return '<div class="price-card' + (p.popular ? ' popular' : '') + '">'
+          + (p.popular ? '<span class="pc-badge">Más elegido</span>' : '')
+          + '<div class="pc-icon"><i data-lucide="' + (ICONS[p.nombre] || 'package') + '"></i></div>'
+          + '<div class="pc-plan">' + p.nombre + '</div>'
+          + (p.sub ? '<div class="pc-sub">' + p.sub + '</div>' : '<div class="pc-sub">&nbsp;</div>')
+          + precioHtml
+          + '<ul class="pc-features">' + p.features.map((f) => '<li class="' + (f.ok ? 'ok' : 'no') + '"><i data-lucide="' + (f.ok ? 'check' : 'x') + '"></i> ' + f.t + '</li>').join('') + '</ul>'
+          + '<button class="pc-cta ' + (p.popular ? 'primary' : 'ghost') + '" data-plan="' + p.nombre + '"' + (p.consultar ? ' data-consultar="1"' : '') + '>' + p.cta + '</button>'
+          + '</div>';
+      }).join('');
+      grid.querySelectorAll('.pc-cta').forEach((b) => b.addEventListener('click', () => {
+        if (b.dataset.consultar) { toast('Solicitud enviada · te contactaremos por WhatsApp o email', 'success'); return; }
+        // Abre el checkout de pago para activar la suscripción
+        if (window.openCheckout) { window.openCheckout(b.dataset.plan); return; }
+        if (window.aplicarPlan) window.aplicarPlan(b.dataset.plan);
+        toast('Plan "' + b.dataset.plan + '" activado · módulos actualizados', 'success');
+      }));
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    document.getElementById('planTabs').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => {
+      document.getElementById('planTabs').querySelectorAll('button').forEach((x) => (x.dataset.active = x === b ? 'true' : 'false'));
+      seg = b.dataset.seg; render();
+    }));
+    document.getElementById('planBilling').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => {
+      document.getElementById('planBilling').querySelectorAll('button').forEach((x) => x.removeAttribute('data-active'));
+      b.dataset.active = 'true';
+      billing = b.dataset.bill; render();
+    }));
+
+    render();
+  })();
+
+  /* =========================================================
+     DOCUMENTOS LEGALES — Términos y Política de privacidad
+     ========================================================= */
+  (function legalDocs() {
+    const HOY = '6 de junio de 2026';
+    const wrap = (titulo, sub, cuerpo) => '<div class="legal-doc">'
+      + '<div class="legal-meta">Última actualización: ' + HOY + ' · DigiAccount · Venezuela</div>'
+      + '<p class="legal-intro">' + sub + '</p>' + cuerpo + '</div>';
+
+    const TERMINOS = wrap('Términos y Condiciones',
+      'Al crear una cuenta y utilizar DigiAccount aceptas estos Términos y Condiciones. Léelos con atención.',
+      [
+        ['1. Descripción del servicio', 'DigiAccount es una plataforma web (SaaS) de gestión contable, fiscal, administrativa y de nómina, orientada al cumplimiento de la normativa venezolana (SENIAT, providencias administrativas, VEN-NIF, LOTTT). El servicio se presta "tal cual", se actualiza periódicamente y no constituye asesoría legal, contable ni tributaria.'],
+        ['2. Cuenta y registro', 'Debes ser mayor de edad y tener capacidad para contratar. Eres responsable de la veracidad de los datos suministrados y de mantener la confidencialidad de tus credenciales. Cada usuario accede únicamente a las empresas y módulos que su plan y su rol permitan.'],
+        ['3. Planes, prueba gratuita y pagos', 'Ofrecemos un período de prueba gratuito de 14 días sin necesidad de tarjeta. Al finalizar, para continuar deberás contratar un plan. Los precios se expresan en dólares estadounidenses (USD) y pueden pagarse en bolívares al tipo de cambio de referencia del BCV del día, o en divisas. Aceptamos Pago Móvil, transferencia, USDT y Zelle. La suscripción se renueva por períodos iguales hasta que la canceles.'],
+        ['4. Comprobantes de pago', 'Por cada pago se emite un comprobante. Mientras DigiAccount completa su inscripción mercantil y fiscal, se emiten recibos de pago (no fiscales); una vez formalizada, se emitirán facturas conforme a la normativa del SENIAT.'],
+        ['5. Responsabilidad sobre la información fiscal', 'DigiAccount es una herramienta de apoyo. La determinación, declaración y pago de impuestos, así como la veracidad de los registros contables, son responsabilidad exclusiva del contribuyente y de su contador. No sustituimos la asesoría profesional.'],
+        ['6. Uso aceptable', 'Te comprometes a no utilizar la plataforma para fines ilícitos, a no vulnerar su seguridad y a no cargar información de terceros sin la debida autorización.'],
+        ['7. Propiedad intelectual', 'El software, la marca DigiAccount, su diseño y contenidos son propiedad de DigiAccount y su agencia desarrolladora. Tus datos y los de tus empresas son y seguirán siendo tuyos; podrás exportarlos en cualquier momento.'],
+        ['8. Disponibilidad y limitación de responsabilidad', 'Procuramos la máxima disponibilidad, pero el servicio puede sufrir interrupciones por mantenimiento o causas de fuerza mayor. En la medida permitida por la ley, no respondemos por daños indirectos ni por la pérdida de datos derivada del uso o imposibilidad de uso de la plataforma.'],
+        ['9. Cancelación y reembolsos', 'Puedes cancelar tu suscripción en cualquier momento; conservarás el acceso hasta el final del período ya pagado y podrás exportar tu información. Los montos del período en curso no son reembolsables, salvo disposición legal en contrario.'],
+        ['10. Modificaciones', 'Podemos actualizar estos términos, los planes y los precios. Te avisaremos por la plataforma o por correo con antelación razonable; el uso continuado del servicio implica la aceptación de los cambios.'],
+        ['11. Ley aplicable', 'Estos términos se rigen por las leyes de la República Bolivariana de Venezuela y cualquier controversia se someterá a los tribunales competentes del país.'],
+      ].map((s) => '<h4>' + s[0] + '</h4><p>' + s[1] + '</p>').join(''));
+
+    const PRIVACIDAD = wrap('Política de Privacidad',
+      'En DigiAccount valoramos tu privacidad. Esta política explica qué datos recopilamos, con qué fin y cuáles son tus derechos.',
+      [
+        ['1. Datos que recopilamos', 'Datos de identificación y contacto (nombre y apellido o razón social, cédula o RIF, correo electrónico y número de WhatsApp), datos de tu(s) empresa(s), la información que cargues en la plataforma, y datos técnicos de uso (dirección IP, dispositivo y registros de acceso) necesarios para operar y mejorar el servicio.'],
+        ['2. Finalidad del tratamiento', 'Usamos tus datos para: (a) prestar y mantener el servicio; (b) brindarte soporte; (c) gestionar pagos y suscripciones; y (d) enviarte comunicaciones sobre el producto, novedades, ofertas y otros servicios que puedan interesarte (email marketing y mensajería).'],
+        ['3. Base legal y consentimiento', 'Tratamos tus datos con base en la ejecución del contrato de servicio y en tu consentimiento, en el marco del derecho a la protección de datos reconocido en el artículo 28 de la Constitución de la República Bolivariana de Venezuela (habeas data). Al registrarte aceptas recibir comunicaciones comerciales de DigiAccount.'],
+        ['4. Comunicaciones y baja', 'Podrás darte de baja de las comunicaciones de marketing en cualquier momento mediante el enlace incluido en cada mensaje o escribiéndonos, sin que ello afecte la prestación del servicio que tengas contratado.'],
+        ['5. Seguridad y almacenamiento', 'Aplicamos medidas técnicas y organizativas razonables para proteger tu información frente a accesos no autorizados. La información de cada cuenta está aislada de las demás.'],
+        ['6. Compartir con terceros', 'No vendemos tus datos. Solo los compartimos con proveedores tecnológicos necesarios para operar el servicio (alojamiento, mensajería, procesadores de pago), bajo deber de confidencialidad, o cuando lo exija la ley o una autoridad competente.'],
+        ['7. Cookies y tecnologías similares', 'Usamos cookies y almacenamiento local para mantener tu sesión, recordar tus preferencias y medir el uso de la plataforma. Puedes gestionarlas desde la configuración de tu navegador.'],
+        ['8. Tus derechos', 'Puedes solicitar acceder, rectificar, actualizar o eliminar tus datos personales, así como oponerte a su uso para marketing, escribiéndonos a privacidad@digiaccount.com. Atenderemos tu solicitud en un plazo razonable.'],
+        ['9. Conservación', 'Conservamos tus datos mientras tengas una cuenta activa y durante el plazo que exija la normativa contable y fiscal aplicable; luego se eliminan o anonimizan.'],
+        ['10. Contacto', 'Para cualquier asunto relacionado con tus datos, escríbenos a privacidad@digiaccount.com.'],
+      ].map((s) => '<h4>' + s[0] + '</h4><p>' + s[1] + '</p>').join(''));
+
+    const DOCS = {
+      terminos: { title: 'Términos y Condiciones', html: TERMINOS },
+      privacidad: { title: 'Política de Privacidad', html: PRIVACIDAD },
+    };
+
+    document.querySelectorAll('[data-legal]').forEach((a) => a.addEventListener('click', (e) => {
+      e.preventDefault();
+      const d = DOCS[a.dataset.legal]; if (!d) return;
+      window.openFormModal && window.openFormModal({
+        title: d.title, saveLabel: 'Entendido',
+        fields: [{ name: 'x', label: ' ', col: 2, type: 'static', html: d.html }],
+        onSave: () => {},
+      });
+    }));
+  })();
+
+  /* =========================================================
+     BASE DE CONTACTOS — CRM / leads para email marketing
+     Captura a todo el que ingresa (usuarios y empresas)
+     ========================================================= */
+  (function contactosCRM() {
+    const CONTACTOS = [
+      { tipo: 'Empresa', nombre: 'AGROINVERSIONES VALLE, C.A.', doc: 'J294857613', email: 'admin@valle.com', whatsapp: '0414-1234567', segmento: 'empresas', origen: 'Onboarding', fecha: '12/03/2026' },
+      { tipo: 'Usuario', nombre: 'Luis Torres', doc: 'V-15789456', email: 'luis@digiaccount.com', whatsapp: '0412-9988776', segmento: 'contadores', origen: 'Registro de cuenta', fecha: '08/01/2026' },
+    ];
+    window.__CONTACTOS = CONTACTOS;
+    window.__registrarContacto = function (c) {
+      const reg = Object.assign({ fecha: new Date().toLocaleDateString('es-VE') }, c);
+      CONTACTOS.unshift(reg);
+      if (window.__renderContactos) window.__renderContactos();
+      return CONTACTOS.length;
+    };
+  })();
+
+  /* =========================================================
+     PANEL DEL FUNDADOR · Pestaña Contactos y Leads
+     ========================================================= */
+  (function leadsModule() {
+    const view = document.getElementById('view-fundador');
+    if (!view) return;
+    const toast = (m, t) => { if (window.toast) window.toast(m, t); };
+    const tabs = document.getElementById('fundadorTabs');
+    const panelCuentas = document.getElementById('fundadorTabCuentas');
+    const panelContactos = document.getElementById('fundadorTabContactos');
+    const body = document.getElementById('leadsBody');
+    if (!tabs || !body) return;
+    const exportBtn = document.getElementById('saasExportBtn');
+    const nuevaBtn = document.getElementById('nuevaCuentaSaasBtn');
+    let filtro = 'todos', q = '';
+
+    function lista() {
+      return (window.__CONTACTOS || []).filter((c) => {
+        if (filtro !== 'todos' && c.tipo !== filtro) return false;
+        if (q) {
+          const hay = (c.nombre + ' ' + (c.doc || '') + ' ' + (c.email || '') + ' ' + (c.whatsapp || '') + ' ' + (c.origen || '')).toLowerCase();
+          if (hay.indexOf(q) < 0) return false;
+        }
+        return true;
+      });
+    }
+
+    function render() {
+      const all = window.__CONTACTOS || [];
+      const rows = lista();
+      body.innerHTML = rows.length ? rows.map((c) => {
+        const badge = c.tipo === 'Empresa'
+          ? '<span class="role-badge" style="background:rgba(0,142,199,.12);color:#008ec7;"><i data-lucide="building-2"></i> Empresa</span>'
+          : '<span class="role-badge" style="background:rgba(123,84,201,.12);color:#7b54c9;"><i data-lucide="user"></i> Usuario</span>';
+        return '<tr><td><strong>' + c.nombre + '</strong></td><td>' + badge + '</td><td>' + (c.doc || '—') + '</td><td>' + (c.email || '—') + '</td><td>' + (c.whatsapp || '—') + '</td><td>' + (c.origen || '—') + '</td><td>' + (c.fecha || '—') + '</td></tr>';
+      }).join('') : '<tr><td colspan="7" style="text-align:center;padding:28px;color:var(--fg-muted);">Sin contactos que coincidan</td></tr>';
+      document.getElementById('leadsShown').textContent = rows.length;
+      document.getElementById('leadKpiTotal').textContent = all.length;
+      document.getElementById('leadKpiEmpresas').textContent = all.filter((c) => c.tipo === 'Empresa').length;
+      document.getElementById('leadKpiUsuarios').textContent = all.filter((c) => c.tipo === 'Usuario').length;
+      document.getElementById('leadKpiWsp').textContent = all.filter((c) => (c.whatsapp || '').trim()).length;
+      if (window.lucide) window.lucide.createIcons();
+    }
+    window.__renderContactos = render;
+
+    const PANELS = { cuentas: panelCuentas, contactos: panelContactos, cobros: document.getElementById('fundadorTabCobros') };
+    tabs.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => {
+      tabs.querySelectorAll('button').forEach((x) => (x.dataset.active = x === b ? 'true' : 'false'));
+      const tab = b.dataset.tab;
+      Object.keys(PANELS).forEach((k) => { if (PANELS[k]) PANELS[k].hidden = k !== tab; });
+      const esCuentas = tab === 'cuentas';
+      if (exportBtn) exportBtn.style.display = esCuentas ? '' : 'none';
+      if (nuevaBtn) nuevaBtn.style.display = esCuentas ? '' : 'none';
+      if (tab === 'contactos') render();
+      if (tab === 'cobros' && window.__renderPagos) window.__renderPagos();
+    }));
+
+    document.getElementById('leadsFiltros').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => {
+      document.getElementById('leadsFiltros').querySelectorAll('button').forEach((x) => x.classList.toggle('active', x === b));
+      filtro = b.dataset.f; render();
+    }));
+    const search = document.getElementById('leadsSearch');
+    if (search) search.addEventListener('input', () => { q = search.value.trim().toLowerCase(); render(); });
+
+    document.getElementById('leadsExportBtn').addEventListener('click', () => {
+      const rows = lista();
+      if (!rows.length) return toast('No hay contactos para exportar', 'info');
+      const filas = [['Nombre / Razon social', 'Tipo', 'Cedula / RIF', 'Correo', 'WhatsApp', 'Origen', 'Fecha']];
+      rows.forEach((c) => filas.push([c.nombre, c.tipo, c.doc || '', c.email || '', c.whatsapp || '', c.origen || '', c.fecha || '']));
+      const csv = filas.map((r) => r.map((x) => '"' + String(x).replace(/"/g, '""') + '"').join(';')).join('\r\n');
+      const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'DigiAccount_Contactos_Leads.csv';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast('Contactos exportados · ' + rows.length + ' registros', 'success');
+    });
+
+    render();
+  })();
+
+  /* =========================================================
+     MÉTRICAS SaaS — gráfica de evolución del MRR (Fundador)
+     ========================================================= */
+  (function saasMetrics() {
+    const bars = document.getElementById('mrrBars');
+    if (!bars) return;
+    const MRR = [
+      { m: 'Ene', v: 2980 }, { m: 'Feb', v: 3320 }, { m: 'Mar', v: 3640 },
+      { m: 'Abr', v: 3980 }, { m: 'May', v: 4240 }, { m: 'Jun', v: 4505 },
+    ];
+    const max = Math.max.apply(null, MRR.map((x) => x.v));
+    bars.innerHTML = MRR.map((x, i) => {
+      const h = Math.max(8, Math.round((x.v / max) * 100));
+      const last = i === MRR.length - 1;
+      return '<div class="shc-bar' + (last ? ' active' : '') + '">'
+        + '<div class="shc-bar-val">$' + (x.v / 1000).toFixed(1) + 'k</div>'
+        + '<div class="shc-col" style="height:' + h + '%"></div>'
+        + '<div class="shc-bar-m">' + x.m + '</div></div>';
+    }).join('');
+  })();
+
+  /* =========================================================
+     COBROS Y PAGOS — métodos receptores + suscripciones
+     Métodos para Venezuela: Pago Móvil C2P, USDT/Binance, Zelle
+     ========================================================= */
+  (function cobrosModule() {
+    const view = document.getElementById('view-fundador');
+    if (!view) return;
+    const toast = (m, t) => { if (window.toast) window.toast(m, t); };
+    const bsFmt = (n) => Number(n).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    window.__BCV = 36.80;
+    const METODOS = {
+      pagomovil: { label: 'Pago Móvil C2P', icon: 'smartphone', moneda: 'Bs', auto: true, nota: 'Confirmación automática vía banco' },
+      usdt: { label: 'USDT · Binance Pay', icon: 'bitcoin', moneda: 'USD', auto: true, nota: 'Confirmación automática on-chain' },
+      zelle: { label: 'Zelle', icon: 'circle-dollar-sign', moneda: 'USD', auto: false, nota: 'Verifica el Agente IA (comprobante)' },
+    };
+    const RECEPTORAS = {
+      pagomovil: { activo: true, campos: { Banco: 'Banco Mercantil · 0105', Teléfono: '0414-1234567', RIF: 'J-50763205-9', Titular: 'DigiAccount, C.A.' } },
+      usdt: { activo: true, campos: { Red: 'TRON · TRC-20', Wallet: 'TZ8x7Hq2...n4kP9', Titular: 'DigiAccount' } },
+      zelle: { activo: true, campos: { Email: 'pagos@digiaccount.com', Titular: 'DigiAccount LLC', Banco: 'Bank of America' } },
+    };
+    window.__CUENTAS_RECEPTORAS = RECEPTORAS;
+    window.__METODOS_PAGO = METODOS;
+
+    const PAGOS = [
+      { cliente: 'Comercial Andina', plan: 'Empresa Completa', metodo: 'pagomovil', monto: 99, ref: '004857213', estado: 'Confirmado', fecha: '05/06/2026' },
+      { cliente: 'Despacho Contable Mérida', plan: 'Firma Contable', metodo: 'usdt', monto: 199, ref: '0x9f2a…c7', estado: 'Confirmado', fecha: '03/06/2026' },
+      { cliente: 'Servicios Profesionales JM', plan: 'Emprendimientos y PYME', metodo: 'zelle', monto: 29, ref: 'ZL-7782', estado: 'Por verificar', fecha: '06/06/2026' },
+    ];
+    window.__PAGOS = PAGOS;
+    window.__registrarPago = function (p) {
+      PAGOS.unshift(Object.assign({ fecha: new Date().toLocaleDateString('es-VE') }, p));
+      if (window.__renderPagos) window.__renderPagos();
+    };
+
+    // ---- Cuentas receptoras (config) ----
+    const grid = document.getElementById('cobrosGrid');
+    function renderReceptoras() {
+      if (!grid) return;
+      grid.innerHTML = Object.keys(METODOS).map((k) => {
+        const m = METODOS[k]; const r = RECEPTORAS[k];
+        const datos = Object.keys(r.campos).map((c) => '<div class="cr-row"><span>' + esc(c) + '</span><strong>' + esc(r.campos[c]) + '</strong></div>').join('');
+        return '<div class="cobro-card' + (r.activo ? '' : ' off') + '">'
+          + '<div class="cc-head"><span class="cc-ic"><i data-lucide="' + m.icon + '"></i></span><div class="cc-tt"><div class="cc-name">' + m.label + '</div><div class="cc-tag ' + (m.auto ? 'auto' : 'ia') + '">' + (m.auto ? 'Automático' : 'Agente IA') + '</div></div>'
+          + '<label class="cc-switch"><input type="checkbox" data-m="' + k + '"' + (r.activo ? ' checked' : '') + '><span></span></label></div>'
+          + '<div class="cc-body">' + datos + '</div>'
+          + '<button class="cc-edit" data-edit="' + k + '"><i data-lucide="pencil"></i> Configurar</button>'
+          + '</div>';
+      }).join('');
+      grid.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => configurar(b.dataset.edit)));
+      grid.querySelectorAll('input[data-m]').forEach((c) => c.addEventListener('change', () => {
+        RECEPTORAS[c.dataset.m].activo = c.checked;
+        c.closest('.cobro-card').classList.toggle('off', !c.checked);
+        toast(METODOS[c.dataset.m].label + (c.checked ? ' activado' : ' desactivado'), c.checked ? 'success' : 'info');
+      }));
+      if (window.lucide) window.lucide.createIcons();
+    }
+    function configurar(k) {
+      const r = RECEPTORAS[k]; const m = METODOS[k];
+      window.openFormModal && window.openFormModal({
+        title: 'Configurar · ' + m.label, saveLabel: 'Guardar datos',
+        fields: Object.keys(r.campos).map((c) => ({ name: c, label: c, value: r.campos[c], col: 2 })),
+        onSave: (v) => { Object.keys(r.campos).forEach((c) => { if (v[c] != null) r.campos[c] = v[c]; }); renderReceptoras(); toast('Datos de ' + m.label + ' actualizados'); },
+      });
+    }
+    const bcvEdit = document.getElementById('bcvEdit');
+    if (bcvEdit) bcvEdit.addEventListener('click', () => {
+      window.openFormModal && window.openFormModal({
+        title: 'Tasa BCV del día', saveLabel: 'Actualizar',
+        fields: [{ name: 'tasa', label: 'Bs por USD', value: String(window.__BCV).replace('.', ','), col: 2 }],
+        onSave: (v) => { const n = parseFloat(String(v.tasa).replace(',', '.')); if (!n || n <= 0) return 'Indica una tasa válida.'; window.__BCV = n; document.getElementById('bcvTasa').textContent = bsFmt(n); toast('Tasa BCV actualizada a Bs ' + bsFmt(n)); },
+      });
+    });
+
+    // ---- Tabla de pagos ----
+    const body = document.getElementById('pagosBody');
+    let filtro = 'todos', q = '';
+    function listaPagos() {
+      return PAGOS.filter((p) => {
+        if (filtro !== 'todos' && p.estado !== filtro) return false;
+        if (q) { const hay = (p.cliente + ' ' + p.plan + ' ' + p.ref).toLowerCase(); if (hay.indexOf(q) < 0) return false; }
+        return true;
+      });
+    }
+    function renderPagos() {
+      if (!body) return;
+      const rows = listaPagos();
+      body.innerHTML = rows.length ? rows.map((p, i) => {
+        const m = METODOS[p.metodo] || { label: p.metodo, icon: 'wallet' };
+        const estBadge = p.estado === 'Confirmado'
+          ? '<span class="tag success"><i data-lucide="check-circle-2"></i> Confirmado</span>'
+          : '<span class="tag warn"><i data-lucide="clock"></i> Por verificar</span>';
+        const accion = p.estado === 'Por verificar'
+          ? '<button class="row-act" data-verif="' + PAGOS.indexOf(p) + '"><i data-lucide="bot"></i> Verificar (IA)</button>'
+          : '<span class="row-done"><i data-lucide="check"></i></span>';
+        const montoStr = '$' + p.monto + (m.moneda === 'Bs' ? ' · Bs ' + bsFmt(p.monto * window.__BCV) : '');
+        return '<tr><td><strong>' + p.cliente + '</strong></td><td>' + p.plan + '</td>'
+          + '<td><span class="pm-cell"><i data-lucide="' + m.icon + '"></i> ' + m.label + '</span></td>'
+          + '<td class="num">' + montoStr + '</td><td>' + p.ref + '</td><td>' + estBadge + '</td><td>' + p.fecha + '</td><td>' + accion + '</td></tr>';
+      }).join('') : '<tr><td colspan="8" style="text-align:center;padding:28px;color:var(--fg-muted);">Sin pagos que coincidan</td></tr>';
+      document.getElementById('pagosShown').textContent = rows.length;
+      body.querySelectorAll('[data-verif]').forEach((b) => b.addEventListener('click', () => verificar(parseInt(b.dataset.verif, 10), b)));
+      if (window.lucide) window.lucide.createIcons();
+    }
+    window.__renderPagos = renderPagos;
+    function verificar(idx, btn) {
+      const p = PAGOS[idx]; if (!p) return;
+      if (btn) { btn.disabled = true; btn.innerHTML = '<i data-lucide="loader"></i> Verificando…'; if (window.lucide) window.lucide.createIcons(); }
+      toast('Agente IA leyendo el comprobante de ' + p.cliente + '…', 'info');
+      setTimeout(() => {
+        p.estado = 'Confirmado'; renderPagos();
+        toast('Pago de ' + p.cliente + ' verificado y confirmado · suscripción activa', 'success');
+        if (window.__notificar) window.__notificar({ icon: 'badge-check', nivel: 'ok', titulo: 'Pago verificado · ' + p.cliente, detalle: 'El Agente IA confirmó el pago de $' + p.monto + ' · suscripción activa', view: 'fundador', title2: 'Panel del Fundador' });
+      }, 1400);
+    }
+
+    document.getElementById('pagosFiltros').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => {
+      document.getElementById('pagosFiltros').querySelectorAll('button').forEach((x) => x.classList.toggle('active', x === b));
+      filtro = b.dataset.f; renderPagos();
+    }));
+    const psearch = document.getElementById('pagosSearch');
+    if (psearch) psearch.addEventListener('input', () => { q = psearch.value.trim().toLowerCase(); renderPagos(); });
+
+    renderReceptoras();
+    renderPagos();
+  })();
+
+  /* =========================================================
+     CHECKOUT — pago de suscripción del cliente + apertura
+     ========================================================= */
+  (function checkoutModule() {
+    const scrim = document.getElementById('payModal');
+    if (!scrim) return;
+    const toast = (m, t) => { if (window.toast) window.toast(m, t); };
+    const bsFmt = (n) => Number(n).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    let plan = null, precio = 0, metodo = 'pagomovil';
+
+    function precioPlan(nombre) {
+      const SEG = window.__PLANES || {};
+      for (const k in SEG) { const p = (SEG[k].planes || []).find((x) => x.nombre === nombre); if (p && p.precio != null) return p.precio; }
+      return null;
+    }
+    function close() { scrim.dataset.open = 'false'; }
+
+    function renderMetodos() {
+      const METODOS = window.__METODOS_PAGO || {};
+      const REC = window.__CUENTAS_RECEPTORAS || {};
+      const box = document.getElementById('payMethods');
+      const activos = Object.keys(METODOS).filter((k) => !REC[k] || REC[k].activo);
+      if (activos.indexOf(metodo) < 0) metodo = activos[0];
+      box.innerHTML = activos.map((k) => {
+        const m = METODOS[k];
+        return '<button class="pay-m' + (k === metodo ? ' active' : '') + '" data-m="' + k + '"><i data-lucide="' + m.icon + '"></i><span>' + m.label + '</span></button>';
+      }).join('');
+      box.querySelectorAll('[data-m]').forEach((b) => b.addEventListener('click', () => { metodo = b.dataset.m; renderMetodos(); renderDetalle(); }));
+      if (window.lucide) window.lucide.createIcons();
+    }
+    function renderDetalle() {
+      const METODOS = window.__METODOS_PAGO || {};
+      const REC = window.__CUENTAS_RECEPTORAS || {};
+      const m = METODOS[metodo]; const r = REC[metodo] || { campos: {} };
+      const bs = bsFmt(precio * (window.__BCV || 1));
+      const datos = Object.keys(r.campos).map((c) => '<div class="pd-row"><span>' + c + '</span><strong>' + r.campos[c] + '</strong></div>').join('');
+      const montoLinea = m.moneda === 'Bs'
+        ? '<div class="pd-row total"><span>Monto a pagar</span><strong>Bs ' + bs + '</strong></div>'
+        : '<div class="pd-row total"><span>Monto a pagar</span><strong>$' + precio + ' USD</strong></div>';
+      const aviso = m.auto
+        ? '<div class="pd-aviso auto"><i data-lucide="zap"></i> ' + m.nota + ' · tu plan se activa al instante.</div>'
+        : '<div class="pd-aviso ia"><i data-lucide="bot"></i> ' + m.nota + '. Adjunta la referencia y el Agente IA lo valida en minutos.</div>';
+      const refField = '<label class="pd-field"><span>' + (metodo === 'zelle' ? 'Referencia / N° de confirmación Zelle' : metodo === 'usdt' ? 'Hash de la transacción (TXID)' : 'Número de referencia del Pago Móvil') + '</span><input id="payRef" placeholder="' + (metodo === 'zelle' ? 'Ej. ZL-00123' : metodo === 'usdt' ? '0x…' : 'Ej. 004857213') + '"></label>';
+      document.getElementById('payDetail').innerHTML = '<div class="pd-data">' + datos + montoLinea + '</div>' + aviso + refField;
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    window.openCheckout = function (planNombre) {
+      plan = planNombre || window.__planActivo || 'Empresa Completa';
+      precio = precioPlan(plan) || 0;
+      document.getElementById('payPlanName').textContent = plan;
+      document.getElementById('payUsd').textContent = precio;
+      document.getElementById('payBcv').textContent = bsFmt(window.__BCV || 0);
+      document.getElementById('payBs').textContent = bsFmt(precio * (window.__BCV || 1));
+      const cb = document.getElementById('payConfirm'); cb.disabled = false; cb.innerHTML = '<i data-lucide="check"></i> Ya realicé el pago';
+      renderMetodos(); renderDetalle();
+      scrim.dataset.open = 'true';
+      if (window.lucide) window.lucide.createIcons();
+    };
+
+    document.getElementById('payClose').addEventListener('click', close);
+    document.getElementById('payCancel').addEventListener('click', close);
+    scrim.addEventListener('click', (e) => { if (e.target === scrim) close(); });
+
+    document.getElementById('payConfirm').addEventListener('click', () => {
+      const METODOS = window.__METODOS_PAGO || {};
+      const m = METODOS[metodo];
+      const ref = (document.getElementById('payRef') || {}).value || '';
+      if (!ref.trim()) return toast('Indica la referencia de tu pago', 'error');
+      const btn = document.getElementById('payConfirm');
+      btn.disabled = true;
+      btn.innerHTML = m.auto ? '<i data-lucide="loader"></i> Confirmando con el banco…' : '<i data-lucide="loader"></i> Agente IA verificando…';
+      if (window.lucide) window.lucide.createIcons();
+      const cliente = (document.querySelector('.entity-current .ec-name') || {}).textContent || 'Mi empresa';
+      setTimeout(() => {
+        const estado = m.auto ? 'Confirmado' : 'Por verificar';
+        if (window.__registrarPago) window.__registrarPago({ cliente: cliente, plan: plan, metodo: metodo, monto: precio, ref: ref.trim(), estado: estado });
+        if (m.auto) {
+          if (window.aplicarPlan) window.aplicarPlan(plan); // activa definitivo (sin prueba)
+          close();
+          toast('¡Pago confirmado! Suscripción ' + plan + ' activada ✓', 'success');
+          if (window.__notificar) window.__notificar({ icon: 'check-circle-2', nivel: 'ok', titulo: 'Pago confirmado · Plan ' + plan, detalle: m.label + ' · tu suscripción quedó activa', view: 'suscripcion', title2: 'Mi Suscripción' });
+          if (window.__generarRecibo) setTimeout(() => window.__generarRecibo({ cliente: cliente, plan: plan, monto: precio, metodoLabel: m.label, ref: ref.trim() }), 360);
+        } else {
+          close();
+          toast('Pago reportado · el Agente IA validará tu comprobante y activará tu plan en minutos', 'info');
+          if (window.__notificar) window.__notificar({ icon: 'clock', nivel: 'warn', titulo: 'Pago en verificación', detalle: m.label + ' · el Agente IA está validando tu comprobante', view: 'suscripcion', title2: 'Mi Suscripción' });
+        }
+      }, 1600);
+    });
+  })();
+
+  /* =========================================================
+     COMPROBANTE — Recibo de pago (no fiscal) / Factura (al formalizar)
+     ========================================================= */
+  (function comprobanteModule() {
+    const modal = document.getElementById('subReciboModal');
+    if (!modal) return;
+    const toast = (m, t) => { if (window.toast) window.toast(m, t); };
+    const bsFmt = (n) => Number(n).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    let rifFiscal = null;
+    window.__modoComprobante = 'recibo';
+    // Historial de comprobantes del cliente (meses anteriores de ejemplo)
+    const COMPROBANTES = [
+      { num: '000003', fecha: '05/05/2026', tipo: 'Recibo', cliente: 'Agroinversiones Valle, C.A.', doc: 'J-29485761-3', plan: 'Empresa Completa', monto: 99, metodoLabel: 'Pago Móvil C2P', ref: '003981245', fiscal: false, estado: 'Pagado' },
+      { num: '000002', fecha: '05/04/2026', tipo: 'Recibo', cliente: 'Agroinversiones Valle, C.A.', doc: 'J-29485761-3', plan: 'Empresa Completa', monto: 99, metodoLabel: 'USDT · Binance Pay', ref: '0x7a2f…b1', fiscal: false, estado: 'Pagado' },
+      { num: '000001', fecha: '05/03/2026', tipo: 'Recibo', cliente: 'Agroinversiones Valle, C.A.', doc: 'J-29485761-3', plan: 'Empresa Completa', monto: 99, metodoLabel: 'Zelle', ref: 'ZL-5521', fiscal: false, estado: 'Pagado' },
+    ];
+    window.__COMPROBANTES = COMPROBANTES;
+    let correlativo = COMPROBANTES.length;
+
+    function renderComprobante(c) {
+      const fiscal = !!c.fiscal;
+      const bcv = window.__BCV || 1;
+      document.getElementById('subReciboBarTitle').textContent = fiscal ? 'Factura' : 'Recibo de pago';
+      let totals = '<div class="rd-trow"><span>Subtotal</span><strong>$' + bsFmt(c.monto) + '</strong></div>';
+      if (fiscal) {
+        const iva = c.monto * 0.16;
+        totals += '<div class="rd-trow"><span>IVA 16%</span><strong>$' + bsFmt(iva) + '</strong></div>'
+          + '<div class="rd-trow total"><span>Total USD</span><strong>$' + bsFmt(c.monto + iva) + '</strong></div>';
+      } else {
+        totals += '<div class="rd-trow total"><span>Total USD</span><strong>$' + bsFmt(c.monto) + '</strong></div>';
+      }
+      totals += '<div class="rd-trow bs"><span>Equivalente Bs · BCV ' + bsFmt(bcv) + '</span><strong>Bs ' + bsFmt(c.monto * bcv) + '</strong></div>';
+      const emisorSub = fiscal && rifFiscal ? ('RIF ' + rifFiscal.rif) : 'En proceso de formalización mercantil y fiscal';
+      const nota = fiscal
+        ? 'Factura emitida conforme a la Providencia Administrativa del SENIAT. Conserve este documento.'
+        : 'Este documento es un comprobante de pago y NO constituye una factura fiscal según la normativa del SENIAT. Se emite mientras DigiAccount completa su inscripción mercantil y fiscal.';
+      document.getElementById('subReciboDoc').innerHTML =
+        '<div class="rd-head"><div class="rd-brand"><img class="rd-logo-img" src="assets/isotipo.png" alt="DigiAccount"><div class="rd-bn">DigiAccount<small>Gestión contable y fiscal</small></div></div>'
+        + '<div class="rd-meta"><div class="rd-doctype">' + (fiscal ? 'FACTURA' : 'RECIBO DE PAGO') + '</div><div class="rd-num">N° <strong>' + c.num + '</strong></div><div class="rd-date">' + c.fecha + '</div></div></div>'
+        + '<div class="rd-parties"><div class="rd-party"><span>Recibido de</span><strong>' + (c.cliente || '—') + '</strong><small>' + (c.doc || 'Cliente DigiAccount') + '</small></div>'
+        + '<div class="rd-party"><span>Emisor</span><strong>DigiAccount</strong><small>' + emisorSub + '</small></div></div>'
+        + '<table class="rd-items"><thead><tr><th>Concepto</th><th>Período</th><th class="num">Monto</th></tr></thead>'
+        + '<tbody><tr><td>Suscripción · Plan ' + (c.plan || '') + '</td><td>1 mes</td><td class="num">$' + bsFmt(c.monto) + '</td></tr></tbody></table>'
+        + '<div class="rd-totals">' + totals + '</div>'
+        + '<div class="rd-pay"><i data-lucide="wallet"></i> Forma de pago: <strong>' + (c.metodoLabel || '—') + '</strong> · Referencia: <strong>' + (c.ref || '—') + '</strong></div>'
+        + '<div class="rd-note">' + nota + '</div>'
+        + '<div class="rd-sign"><div class="rd-sign-line">Firma y sello autorizado</div></div>';
+      modal.dataset.open = 'true';
+      if (window.lucide) window.lucide.createIcons();
+    }
+    window.__verComprobante = renderComprobante;
+
+    window.__generarRecibo = function (d) {
+      correlativo += 1;
+      const fiscal = window.__modoComprobante === 'factura' && !!rifFiscal;
+      const c = {
+        num: String(correlativo).padStart(6, '0'),
+        fecha: new Date().toLocaleDateString('es-VE'),
+        tipo: fiscal ? 'Factura' : 'Recibo',
+        cliente: d.cliente || '—', doc: d.doc || '', plan: d.plan || '',
+        monto: d.monto, metodoLabel: d.metodoLabel || '—', ref: d.ref || '—',
+        fiscal: fiscal, estado: 'Pagado',
+      };
+      COMPROBANTES.unshift(c);
+      if (window.__renderHistorial) window.__renderHistorial();
+      renderComprobante(c);
+    };
+
+    document.getElementById('subReciboClose').addEventListener('click', () => (modal.dataset.open = 'false'));
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.dataset.open = 'false'; });
+    document.getElementById('subReciboPrint').addEventListener('click', () => {
+      const doc = document.getElementById('subReciboDoc');
+      let portal = document.getElementById('printPortal');
+      if (!portal) { portal = document.createElement('div'); portal.id = 'printPortal'; document.body.appendChild(portal); }
+      portal.innerHTML = '';
+      const clon = doc.cloneNode(true);
+      clon.classList.add('recibo-print');
+      portal.appendChild(clon);
+      if (window.__setPageSize) window.__setPageSize('letter portrait', '14mm');
+      document.body.classList.add('printing-comp');
+      window.print();
+    });
+    window.addEventListener('afterprint', () => {
+      document.body.classList.remove('printing-comp');
+      const portal = document.getElementById('printPortal');
+      if (portal) portal.innerHTML = '';
+    });
+
+    // Configuración del modo de comprobante (Panel del Fundador → Cobros)
+    const compConfig = document.getElementById('compConfig');
+    if (compConfig) {
+      compConfig.querySelectorAll('input[name="compMode"]').forEach((r) => r.addEventListener('change', () => {
+        if (r.disabled) return;
+        window.__modoComprobante = r.value;
+        compConfig.querySelectorAll('.comp-opt').forEach((o) => o.classList.toggle('active', o.querySelector('input').checked));
+      }));
+      const formBtn = document.getElementById('compFormalizar');
+      if (formBtn) formBtn.addEventListener('click', () => {
+        window.openFormModal && window.openFormModal({
+          title: 'Activar facturación fiscal', saveLabel: 'Activar facturación',
+          fields: [
+            { name: 'rif', label: 'RIF de DigiAccount', placeholder: 'J-XXXXXXXX-X' },
+            { name: 'registro', label: 'N° de Registro Mercantil', placeholder: 'Ej. 45, Tomo 12-A' },
+            { name: 'imprenta', label: 'Imprenta autorizada / Nº de control', col: 2, placeholder: 'Ej. Imprenta XYZ · serie 00-00001' },
+          ],
+          onSave: (v) => {
+            if (!/^[VEJPG]?-?\d{7,9}/i.test((v.rif || '').replace(/-/g, ''))) return 'Indica un RIF válido (ej. J-12345678-9).';
+            rifFiscal = { rif: v.rif, registro: v.registro, imprenta: v.imprenta };
+            const facOpt = compConfig.querySelector('input[value="factura"]').closest('.comp-opt');
+            const facRadio = compConfig.querySelector('input[value="factura"]');
+            facOpt.classList.remove('locked');
+            facRadio.disabled = false; facRadio.checked = true;
+            window.__modoComprobante = 'factura';
+            const lockIc = facOpt.querySelector('[data-lucide="lock"]');
+            if (lockIc) lockIc.remove();
+            const sub = facOpt.querySelector('small');
+            if (sub) sub.textContent = 'Activa · RIF ' + v.rif;
+            compConfig.querySelectorAll('.comp-opt').forEach((o) => o.classList.toggle('active', o.querySelector('input').checked));
+            formBtn.style.display = 'none';
+            toast('¡Facturación fiscal activada! Ahora DigiAccount emite facturas SENIAT', 'success');
+          },
+        });
+      });
+    }
+  })();
+
+  /* =========================================================
+     MI SUSCRIPCIÓN — resumen del plan + historial de comprobantes
+     ========================================================= */
+  (function suscripcionModule() {
+    const view = document.getElementById('view-suscripcion');
+    if (!view) return;
+    const bsFmt = (n) => Number(n).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const body = document.getElementById('compBody');
+    let filtro = 'todos', q = '';
+
+    function precioPlan(nombre) {
+      const SEG = window.__PLANES || {};
+      for (const k in SEG) { const p = (SEG[k].planes || []).find((x) => x.nombre === nombre); if (p && p.precio != null) return p.precio; }
+      return 0;
+    }
+    const addMes = (d) => { const x = new Date(d); x.setMonth(x.getMonth() + 1); return x; };
+    const addDias = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+    const fFecha = (d) => d.toLocaleDateString('es-VE');
+    const ICON = { 'Contador Básico': 'calculator', 'Contador PRO': 'briefcase-business', 'Firma Contable': 'landmark', 'Emprendimientos y PYME': 'sprout', 'Empresa Completa': 'building-2', 'Grupo Empresarial': 'network' };
+
+    function renderResumen() {
+      const plan = window.__planActivo || 'Empresa Completa';
+      const prueba = window.__prueba;
+      const precio = precioPlan(plan);
+      const bcv = window.__BCV || 1;
+      const badge = document.getElementById('subEstadoBadge');
+      let estadoTxt, estadoCls, fechaLabel, fechaVal;
+      if (prueba) {
+        estadoTxt = 'Prueba · ' + prueba.dias + ' días'; estadoCls = 'prueba';
+        fechaLabel = 'Tu prueba vence'; fechaVal = fFecha(addDias(new Date(), prueba.dias));
+      } else {
+        estadoTxt = 'Activo'; estadoCls = 'activo';
+        fechaLabel = 'Próximo cobro'; fechaVal = fFecha(addMes(new Date()));
+      }
+      if (badge) { badge.className = 'contrib-badge' + (estadoCls === 'activo' ? ' especial' : ''); badge.innerHTML = '<i data-lucide="' + (prueba ? 'clock' : 'circle-check') + '"></i> <span>' + estadoTxt + '</span>'; }
+      document.getElementById('subSummary').innerHTML =
+        '<div class="ss-card"><div class="ss-main"><div class="ss-plan-ic"><i data-lucide="' + (ICON[plan] || 'package') + '"></i></div>'
+        + '<div><div class="ss-label">Tu plan actual</div><div class="ss-plan">' + plan + '</div><span class="ss-badge ' + estadoCls + '">' + estadoTxt + '</span></div></div>'
+        + '<div class="ss-meta"><div class="ss-meta-item"><span>Precio</span><strong>$' + precio + ' <em>/mes</em></strong></div>'
+        + '<div class="ss-meta-item"><span>' + fechaLabel + '</span><strong>' + fechaVal + '</strong></div>'
+        + '<div class="ss-meta-item"><span>Equivalente Bs</span><strong>Bs ' + bsFmt(precio * bcv) + '</strong></div></div></div>';
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    function listaComp() {
+      return (window.__COMPROBANTES || []).filter((c) => {
+        if (filtro !== 'todos' && c.tipo !== filtro) return false;
+        if (q) { const hay = (c.num + ' ' + c.plan + ' ' + c.fecha + ' ' + c.metodoLabel).toLowerCase(); if (hay.indexOf(q) < 0) return false; }
+        return true;
+      });
+    }
+    function render() {
+      renderResumen();
+      const rows = listaComp();
+      body.innerHTML = rows.length ? rows.map((c) => {
+        const tipoBadge = c.tipo === 'Factura'
+          ? '<span class="role-badge" style="background:rgba(0,142,199,.12);color:#008ec7;"><i data-lucide="file-text"></i> Factura</span>'
+          : '<span class="role-badge" style="background:rgba(123,84,201,.12);color:#7b54c9;"><i data-lucide="receipt"></i> Recibo</span>';
+        return '<tr><td><strong>' + c.num + '</strong></td><td>' + tipoBadge + '</td><td>Suscripción · ' + c.plan + '</td>'
+          + '<td class="num">$' + bsFmt(c.monto) + '</td><td>' + c.metodoLabel + '</td>'
+          + '<td><span class="tag success"><i data-lucide="check-circle-2"></i> ' + c.estado + '</span></td><td>' + c.fecha + '</td>'
+          + '<td><button class="row-act" data-ver="' + window.__COMPROBANTES.indexOf(c) + '"><i data-lucide="eye"></i> Ver / PDF</button></td></tr>';
+      }).join('') : '<tr><td colspan="8" style="text-align:center;padding:28px;color:var(--fg-muted);">Sin comprobantes</td></tr>';
+      document.getElementById('compShown').textContent = rows.length;
+      body.querySelectorAll('[data-ver]').forEach((b) => b.addEventListener('click', () => {
+        const c = window.__COMPROBANTES[parseInt(b.dataset.ver, 10)];
+        if (c && window.__verComprobante) window.__verComprobante(c);
+      }));
+      if (window.lucide) window.lucide.createIcons();
+    }
+    window.__renderHistorial = render;
+
+    document.getElementById('compFiltros').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => {
+      document.getElementById('compFiltros').querySelectorAll('button').forEach((x) => x.classList.toggle('active', x === b));
+      filtro = b.dataset.f; render();
+    }));
+    const cs = document.getElementById('compSearch');
+    if (cs) cs.addEventListener('input', () => { q = cs.value.trim().toLowerCase(); render(); });
+
+    document.getElementById('subCambiarBtn').addEventListener('click', () => { if (window.showView) window.showView('planes', 'Planes y Precios'); });
+    document.getElementById('subActivarBtn').addEventListener('click', () => { if (window.openCheckout) window.openCheckout(window.__planActivo); });
+
+    render();
+  })();
+
+  /* =========================================================
+     CONFIGURACIÓN · Mi Empresa (datos, identidad, fiscal, facturación)
+     ========================================================= */
+  (function configModule() {
+    const view = document.getElementById('view-config');
+    if (!view) return;
+    const toast = (m, t) => { if (window.toast) window.toast(m, t); };
+    const bsFmt = (n) => Number(n).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    // Subida de logo (vista previa local)
+    const logoBtn = document.getElementById('cfgLogoBtn');
+    const logoFile = document.getElementById('cfgLogoFile');
+    const logoPrev = document.getElementById('cfgLogoPreview');
+    const logoName = document.getElementById('cfgLogoName');
+    if (logoBtn) logoBtn.addEventListener('click', () => logoFile.click());
+    if (logoFile) logoFile.addEventListener('change', () => {
+      const f = logoFile.files && logoFile.files[0];
+      if (!f) return;
+      logoName.textContent = f.name;
+      const reader = new FileReader();
+      reader.onload = (e) => { logoPrev.innerHTML = '<img src="' + e.target.result + '" alt="logo">'; };
+      reader.readAsDataURL(f);
+      toast('Logo cargado · se usará en tus documentos', 'success');
+    });
+
+    // La tasa de cambio se comparte con Cobros y los recibos (window.__BCV)
+    const tasaInput = document.getElementById('cfgTasa');
+    if (tasaInput && window.__BCV) tasaInput.value = bsFmt(window.__BCV);
+
+    document.getElementById('cfgGuardar').addEventListener('click', () => {
+      const razon = (document.getElementById('cfgRazon').value || '').trim();
+      if (razon) document.getElementById('cfgEmpresaNombre').textContent = razon;
+      // Tasa de cambio → se propaga a Cobros y recibos
+      const tasa = parseFloat(String((document.getElementById('cfgTasa') || {}).value || '').replace(',', '.'));
+      if (tasa && tasa > 0) {
+        window.__BCV = tasa;
+        const bcvTasa = document.getElementById('bcvTasa');
+        if (bcvTasa) bcvTasa.textContent = bsFmt(tasa);
+      }
+      toast('Configuración guardada correctamente', 'success');
+    });
+
+    // ---- Métodos de cobro de la empresa a sus clientes ----
+    const METODOS_EMP = {
+      pagomovil: { label: 'Pago Móvil', icon: 'smartphone' },
+      transferencia: { label: 'Transferencia', icon: 'landmark' },
+      zelle: { label: 'Zelle', icon: 'circle-dollar-sign' },
+      usdt: { label: 'USDT / Binance', icon: 'bitcoin' },
+      efectivo: { label: 'Efectivo / Divisas', icon: 'banknote' },
+    };
+    const COBROS_EMP = {
+      pagomovil: { activo: true, campos: { Banco: 'Banco de Venezuela · 0102', 'Teléfono': '0414-1234567', RIF: 'J-29485761-3', Titular: 'Agroinversiones Valle, C.A.' } },
+      transferencia: { activo: true, campos: { Banco: 'Banco Mercantil · 0105', Cuenta: '0105-1234-56-1234567890', Tipo: 'Corriente', Titular: 'Agroinversiones Valle, C.A.' } },
+      zelle: { activo: false, campos: { Email: 'pagos@valle.com', Titular: 'Valle Investments LLC' } },
+      usdt: { activo: false, campos: { Red: 'TRON · TRC-20', Wallet: 'No configurado' } },
+      efectivo: { activo: true, campos: { Moneda: 'USD / EUR', Nota: 'En oficina, previa cita' } },
+    };
+    window.__COBROS_EMPRESA = COBROS_EMP;
+    const cobrosGrid = document.getElementById('cfgCobrosGrid');
+    function renderCobrosEmp() {
+      if (!cobrosGrid) return;
+      cobrosGrid.innerHTML = Object.keys(METODOS_EMP).map((k) => {
+        const m = METODOS_EMP[k]; const r = COBROS_EMP[k];
+        const datos = Object.keys(r.campos).map((c) => '<div class="cr-row"><span>' + esc(c) + '</span><strong>' + esc(r.campos[c]) + '</strong></div>').join('');
+        return '<div class="cobro-card' + (r.activo ? '' : ' off') + '">'
+          + '<div class="cc-head"><span class="cc-ic"><i data-lucide="' + m.icon + '"></i></span><div class="cc-tt"><div class="cc-name">' + m.label + '</div></div>'
+          + '<label class="cc-switch"><input type="checkbox" data-m="' + k + '"' + (r.activo ? ' checked' : '') + '><span></span></label></div>'
+          + '<div class="cc-body">' + datos + '</div>'
+          + '<button class="cc-edit" data-edit="' + k + '"><i data-lucide="pencil"></i> Configurar</button>'
+          + '</div>';
+      }).join('');
+      cobrosGrid.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => configCobro(b.dataset.edit)));
+      cobrosGrid.querySelectorAll('input[data-m]').forEach((c) => c.addEventListener('change', () => {
+        COBROS_EMP[c.dataset.m].activo = c.checked;
+        c.closest('.cobro-card').classList.toggle('off', !c.checked);
+        toast(METODOS_EMP[c.dataset.m].label + (c.checked ? ' activado' : ' desactivado') + ' como método de cobro', c.checked ? 'success' : 'info');
+      }));
+      if (window.lucide) window.lucide.createIcons();
+    }
+    function configCobro(k) {
+      const r = COBROS_EMP[k]; const m = METODOS_EMP[k];
+      window.openFormModal && window.openFormModal({
+        title: 'Configurar · ' + m.label, saveLabel: 'Guardar',
+        fields: Object.keys(r.campos).map((c) => ({ name: c, label: c, value: r.campos[c], col: 2 })),
+        onSave: (v) => { Object.keys(r.campos).forEach((c) => { if (v[c] != null) r.campos[c] = v[c]; }); renderCobrosEmp(); toast('Datos de ' + m.label + ' actualizados'); },
+      });
+    }
+    renderCobrosEmp();
+  })();
+
+  /* =========================================================
+     BANNER DE PRUEBA — recordatorio de vencimiento (dashboard)
+     Fases: info (8-14) · recordatorio (4-7) · urgente (1-3) · vencido
+     ========================================================= */
+  (function trialBanner() {
+    const banner = document.getElementById('trialBanner');
+    if (!banner) return;
+    const drawIcons = () => { if (window.lucide) window.lucide.createIcons(); };
+    let dismissedNivel = null;
+
+    function nivel(d) {
+      if (d <= 0) return 'vencido';
+      if (d <= 3) return 'urgente';
+      if (d <= 7) return 'aviso';
+      return 'info';
+    }
+    const CONTENIDO = {
+      info: (d) => ({ icon: 'gift', title: 'Estás disfrutando tu prueba gratis', sub: 'Quedan ' + d + ' días · activa tu plan cuando quieras, sin apuro.' }),
+      aviso: (d) => ({ icon: 'clock', title: 'Tu prueba vence en ' + d + ' días', sub: 'Activa tu plan para no perder el acceso a tus módulos.' }),
+      urgente: (d) => ({ icon: 'alert-triangle', title: '¡Solo te quedan ' + d + (d === 1 ? ' día' : ' días') + ' de prueba!', sub: 'Activa tu plan ahora para no perder tu información ni tu acceso.' }),
+      vencido: () => ({ icon: 'lock', title: 'Tu prueba terminó', sub: 'Activa un plan para seguir usando DigiAccount.' }),
+    };
+
+    function sync() {
+      const p = window.__prueba;
+      if (!p) { banner.hidden = true; return; }
+      const d = p.dias;
+      const nv = nivel(d);
+      const fijo = (nv === 'urgente' || nv === 'vencido');
+      if (dismissedNivel === nv && !fijo) { banner.hidden = true; return; }
+      const c = CONTENIDO[nv](d);
+      banner.dataset.nivel = nv;
+      document.getElementById('tbIcon').setAttribute('data-lucide', c.icon);
+      document.getElementById('tbTitle').textContent = c.title;
+      document.getElementById('tbSub').textContent = c.sub;
+      document.getElementById('tbClose').hidden = fijo; // urgente/vencido no se puede descartar
+      banner.hidden = false;
+      drawIcons();
+    }
+    window.__syncTrialBanner = sync;
+    // Helper para simular días restantes (demo): window.__setDiasPrueba(5)
+    window.__setDiasPrueba = function (n) {
+      if (!window.__prueba) { if (window.toast) window.toast('No hay una prueba activa', 'info'); return; }
+      const antes = window.__prueba.dias;
+      window.__prueba.dias = n;
+      dismissedNivel = null;
+      const trial = document.getElementById('planTrial');
+      if (trial) trial.textContent = 'Prueba · ' + n + ' días';
+      // Notifica al entrar en zona urgente o al vencer
+      if (window.__notificar && nivel(n) !== nivel(antes)) {
+        if (n <= 0) window.__notificar({ icon: 'lock', nivel: 'danger', titulo: 'Tu prueba terminó', detalle: 'Activa un plan para no perder tu acceso', view: 'suscripcion', title2: 'Mi Suscripción' });
+        else if (n <= 3) window.__notificar({ icon: 'alert-triangle', nivel: 'warn', titulo: '¡Tu prueba vence en ' + n + (n === 1 ? ' día!' : ' días!'), detalle: 'Activa tu plan para mantener tu suscripción', view: 'suscripcion', title2: 'Mi Suscripción' });
+      }
+      sync();
+    };
+
+    document.getElementById('tbActivar').addEventListener('click', () => {
+      if (window.openCheckout) window.openCheckout(window.__prueba ? window.__prueba.plan : window.__planActivo);
+    });
+    document.getElementById('tbClose').addEventListener('click', () => {
+      dismissedNivel = nivel(window.__prueba ? window.__prueba.dias : 0);
+      banner.hidden = true;
+    });
+
+    sync();
+  })();
+
+  /* =========================================================
+     ONBOARDING · Selección de plan (funnel de registro)
+     cuenta creada → elegir plan (prueba 14 días) → empresa → sistema
+     ========================================================= */
+  (function planOnboarding() {
+    const scrim = document.getElementById('planOnboarding');
+    if (!scrim) return;
+    const toast = (m, t) => { if (window.toast) window.toast(m, t); };
+    const grid = document.getElementById('onbGrid');
+    const ICONS = {
+      'Contador Básico': 'calculator', 'Contador PRO': 'briefcase-business', 'Firma Contable': 'landmark',
+      'Emprendimientos y PYME': 'sprout', 'Empresa Completa': 'building-2', 'Grupo Empresarial': 'network',
+    };
+    let seg = 'empresas', billing = 'mensual';
+
+    function precioMes(p) { return billing === 'anual' ? Math.round(p.precio * 10 / 12) : p.precio; }
+
+    function render() {
+      const SEG = window.__PLANES || {};
+      const s = SEG[seg]; if (!s) return;
+      grid.dataset.count = s.planes.length;
+      grid.innerHTML = s.planes.map((p) => {
+        let precioHtml;
+        if (billing === 'anual') precioHtml = '<div class="pc-amount"><span class="cur">$</span>' + precioMes(p) + '<span class="per">/mes</span></div><div class="pc-bill">facturado anual · $' + (p.precio * 10) + '/año</div>';
+        else precioHtml = '<div class="pc-amount"><span class="cur">$</span>' + p.precio + '<span class="per">/mes</span></div>';
+        return '<div class="price-card' + (p.popular ? ' popular' : '') + '">'
+          + (p.popular ? '<span class="pc-badge">Más elegido</span>' : '')
+          + '<div class="pc-icon"><i data-lucide="' + (ICONS[p.nombre] || 'package') + '"></i></div>'
+          + '<div class="pc-plan">' + p.nombre + '</div>'
+          + (p.sub ? '<div class="pc-sub">' + p.sub + '</div>' : '<div class="pc-sub">&nbsp;</div>')
+          + precioHtml
+          + '<ul class="pc-features">' + p.features.map((f) => '<li class="' + (f.ok ? 'ok' : 'no') + '"><i data-lucide="' + (f.ok ? 'check' : 'x') + '"></i> ' + f.t + '</li>').join('') + '</ul>'
+          + '<button class="pc-cta ' + (p.popular ? 'primary' : 'ghost') + '" data-plan="' + p.nombre + '"><i data-lucide="sparkles"></i> Iniciar prueba</button>'
+          + '<div class="pc-trial-note">14 días gratis · luego $' + precioMes(p) + '/mes</div>'
+          + '</div>';
+      }).join('');
+      grid.querySelectorAll('.pc-cta').forEach((b) => b.addEventListener('click', () => elegir(b.dataset.plan)));
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    function elegir(plan) {
+      if (window.__iniciarPrueba) window.__iniciarPrueba(plan, 14);
+      else if (window.aplicarPlan) window.aplicarPlan(plan);
+      close();
+      toast('Prueba de 14 días iniciada · Plan ' + plan + ' · ahora registra tu empresa', 'success');
+      if (window.openCompanyWizard) setTimeout(() => window.openCompanyWizard({ fromSignup: true }), 280);
+    }
+
+    function close() { scrim.dataset.open = 'false'; }
+
+    const segBox = scrim.querySelector('.onb-seg');
+    segBox.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => {
+      segBox.querySelectorAll('button').forEach((x) => (x.dataset.active = x === b ? 'true' : 'false'));
+      seg = b.dataset.seg; render();
+    }));
+    document.getElementById('onbBilling').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => {
+      document.getElementById('onbBilling').querySelectorAll('button').forEach((x) => x.removeAttribute('data-active'));
+      b.dataset.active = 'true'; billing = b.dataset.bill; render();
+    }));
+    document.getElementById('onbSkip').addEventListener('click', () => elegir(seg === 'contadores' ? 'Firma Contable' : 'Empresa Completa'));
+
+    window.openPlanOnboarding = function (segmento, nombre) {
+      seg = (segmento === 'contadores') ? 'contadores' : 'empresas';
+      segBox.querySelectorAll('button').forEach((x) => (x.dataset.active = x.dataset.seg === seg ? 'true' : 'false'));
+      if (nombre) document.getElementById('onbNombre').textContent = String(nombre).split(' ')[0];
+      render();
+      scrim.dataset.open = 'true';
+    };
+  })();
+
+  /* =========================================================
+     PANEL DEL FUNDADOR — back-office SaaS (solo super-admin)
+     ========================================================= */
+  (function fundadorModule() {
+    const view = document.getElementById('view-fundador');
+    if (!view) return;
+    const toast = (m, t) => { if (window.toast) window.toast(m, t); };
+    const fmt0 = (n) => Number(n).toLocaleString('es-VE');
+
+    const PLANES = {
+      'Esencial': { precio: 15, color: '#545e67', empresas: '1 empresa', usuarios: '2 usuarios', modulos: 'Facturación · Fiscal · Contabilidad' },
+      'Profesional': { precio: 45, color: '#008ec7', empresas: 'Hasta 5 empresas', usuarios: '10 usuarios', modulos: 'Todos los módulos + Agentes IA básicos' },
+      'Firma Contable': { precio: 120, color: '#003057', empresas: 'Empresas ilimitadas', usuarios: 'Usuarios ilimitados', modulos: 'Todos los módulos + Agentes IA' },
+      'Enterprise': { precio: 300, color: '#7b54c9', empresas: 'A medida', usuarios: 'A medida', modulos: 'Todo + integraciones a medida' },
+    };
+    const CUENTAS = [
+      { cuenta: 'Torres & Asociados', admin: 'luis@digiaccount.com', tipo: 'Firma Contable', plan: 'Firma Contable', empresas: 18, usuarios: 6, estado: 'Activo', mrr: 120, alta: 'Ene 2026' },
+      { cuenta: 'Despacho Contable Mérida', admin: 'contacto@despachomerida.com', tipo: 'Firma Contable', plan: 'Firma Contable', empresas: 24, usuarios: 8, estado: 'Activo', mrr: 120, alta: 'Feb 2026' },
+      { cuenta: 'Grupo Empresarial Lara', admin: 'sistemas@grupolara.com', tipo: 'Empresa', plan: 'Enterprise', empresas: 9, usuarios: 24, estado: 'Activo', mrr: 300, alta: 'Dic 2025' },
+      { cuenta: 'Agroinversiones Valle, C.A.', admin: 'admin@valle.com', tipo: 'Empresa', plan: 'Profesional', empresas: 1, usuarios: 5, estado: 'Activo', mrr: 45, alta: 'Mar 2026' },
+      { cuenta: 'Distribuidora Caracas, C.A.', admin: 'admin@distcaracas.com', tipo: 'Empresa', plan: 'Profesional', empresas: 3, usuarios: 7, estado: 'Activo', mrr: 45, alta: 'Mar 2026' },
+      { cuenta: 'Comercial Andina', admin: 'gerencia@andina.com', tipo: 'Empresa', plan: 'Esencial', empresas: 1, usuarios: 2, estado: 'Activo', mrr: 15, alta: 'Abr 2026' },
+      { cuenta: 'Inversiones del Centro', admin: 'centro@inversiones.com', tipo: 'Empresa', plan: 'Esencial', empresas: 1, usuarios: 2, estado: 'Prueba', mrr: 0, alta: 'May 2026' },
+      { cuenta: 'Servicios Profesionales JM', admin: 'jm@servprof.com', tipo: 'Empresa', plan: 'Esencial', empresas: 1, usuarios: 1, estado: 'Moroso', mrr: 15, alta: 'Feb 2026' },
+    ];
+    const estadoTag = { 'Activo': 'success', 'Prueba': 'cyan', 'Moroso': 'danger', 'Suspendido': 'slate' };
+
+    // Distribución por plan
+    function renderPlanDist() {
+      const cont = document.getElementById('planDist');
+      cont.innerHTML = Object.keys(PLANES).map((p) => {
+        const cs = CUENTAS.filter((c) => c.plan === p);
+        const mrr = cs.reduce((a, c) => a + (c.estado === 'Activo' ? c.mrr : 0), 0);
+        return '<div class="plan-card" style="--pc:' + PLANES[p].color + ';">'
+          + '<div class="pc-head"><span class="pc-dot"></span><span class="pc-name">' + p + '</span><span class="pc-price">$' + PLANES[p].precio + '/mes</span></div>'
+          + '<div class="pc-stats"><strong>' + cs.length + '</strong> cuentas · <strong>$' + fmt0(mrr) + '</strong> MRR</div></div>';
+      }).join('');
+    }
+
+    let filtro = 'todos', query = '';
+    function pasa(c) {
+      if (filtro === 'firma' && c.tipo !== 'Firma Contable') return false;
+      if (filtro === 'empresa' && c.tipo !== 'Empresa') return false;
+      if (query && !(c.cuenta + ' ' + c.admin + ' ' + c.plan).toLowerCase().includes(query)) return false;
+      return true;
+    }
+    function render() {
+      const tb = document.getElementById('cuentasBody');
+      const vis = CUENTAS.filter(pasa);
+      tb.innerHTML = vis.map((c) => {
+        const ini = c.cuenta.replace(/[^A-Za-zÁÉÍÓÚÑ ]/g, '').trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
+        const pc = PLANES[c.plan] || { color: '#545e67' };
+        return '<tr>'
+          + '<td><div class="user-cell"><div class="u-avatar" style="background:' + pc.color + '">' + ini + '</div><div class="ui"><div class="n">' + c.cuenta + '</div><div class="e">' + c.admin + '</div></div></div></td>'
+          + '<td><span class="tag ' + (c.tipo === 'Firma Contable' ? 'navy' : 'slate') + '">' + c.tipo + '</span></td>'
+          + '<td><span class="tag" style="background:' + pc.color + '1f;color:' + pc.color + ';font-weight:700;">' + c.plan + '</span></td>'
+          + '<td class="num">' + c.empresas + '</td><td class="num">' + c.usuarios + '</td>'
+          + '<td><span class="tag ' + (estadoTag[c.estado] || 'slate') + '">' + c.estado + '</span></td>'
+          + '<td class="num mono">$' + c.mrr + '</td>'
+          + '<td><button class="btn btn-ghost" data-cuenta="' + CUENTAS.indexOf(c) + '" style="height:26px;font-size:11px;padding:0 9px;"><i data-lucide="eye"></i> Ver</button></td></tr>';
+      }).join('');
+      tb.querySelectorAll('[data-cuenta]').forEach((b) => b.addEventListener('click', () => verCuenta(CUENTAS[parseInt(b.dataset.cuenta, 10)])));
+      const sh = document.getElementById('cuentasShown'); if (sh) sh.textContent = vis.length;
+      if (window.lucide) window.lucide.createIcons();
+    }
+    function updateKPIs() {
+      const set = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
+      const activas = CUENTAS.filter((c) => c.estado === 'Activo');
+      set('saasKpiCuentas', activas.length + 34);
+      set('saasKpiMrr', fmt0(activas.reduce((a, c) => a + c.mrr, 0) + 3845));
+      set('saasKpiEmpresas', fmt0(CUENTAS.reduce((a, c) => a + c.empresas, 0) + 118));
+      set('saasKpiUsuarios', fmt0(CUENTAS.reduce((a, c) => a + c.usuarios, 0) + 286));
+    }
+    function verCuenta(c) {
+      const pl = PLANES[c.plan] || {};
+      window.openFormModal && window.openFormModal({
+        title: c.cuenta, saveLabel: 'Cerrar',
+        fields: [{ name: 'x', label: ' ', col: 2, type: 'static', html: '<div style="font-size:12.5px;line-height:1.8;color:var(--fg-body);">'
+          + '<strong>Administrador:</strong> ' + c.admin + '<br>'
+          + '<strong>Tipo:</strong> ' + c.tipo + ' · <strong>Estado:</strong> ' + c.estado + '<br>'
+          + '<strong>Plan:</strong> ' + c.plan + ' ($' + (pl.precio || 0) + '/mes)<br>'
+          + '<strong>Incluye:</strong> ' + (pl.empresas || '') + ' · ' + (pl.usuarios || '') + '<br>'
+          + '<strong>Módulos:</strong> ' + (pl.modulos || '') + '<hr style="border:0;border-top:1px solid var(--border-default);margin:8px 0;">'
+          + 'Gestiona <strong>' + c.empresas + ' empresa' + (c.empresas === 1 ? '' : 's') + '</strong> con <strong>' + c.usuarios + ' usuario' + (c.usuarios === 1 ? '' : 's') + '</strong> · alta ' + c.alta + '.</div>' }],
+        onSave: () => {},
+      });
+    }
+
+    document.getElementById('cuentasFiltros').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => {
+      document.getElementById('cuentasFiltros').querySelectorAll('button').forEach((x) => x.classList.toggle('active', x === b));
+      filtro = b.dataset.f; render();
+    }));
+    const search = document.getElementById('cuentasSearch');
+    if (search) search.addEventListener('input', () => { query = search.value.trim().toLowerCase(); render(); });
+
+    document.getElementById('nuevaCuentaSaasBtn').addEventListener('click', () => {
+      window.openFormModal && window.openFormModal({
+        title: 'Nueva cuenta · cliente', saveLabel: 'Crear cuenta',
+        fields: [
+          { name: 'cuenta', label: 'Nombre de la cuenta', col: 2, placeholder: 'Ej. Despacho Contable XYZ' },
+          { name: 'admin', label: 'Correo del administrador', col: 2, placeholder: 'admin@cliente.com' },
+          { name: 'tipo', label: 'Tipo', type: 'select', options: ['Empresa', 'Firma Contable'] },
+          { name: 'plan', label: 'Plan', type: 'select', options: Object.keys(PLANES) },
+        ],
+        onSave: (v) => {
+          if (!v.cuenta || !v.admin) return 'Completa el nombre y el correo del administrador.';
+          CUENTAS.unshift({ cuenta: v.cuenta, admin: v.admin, tipo: v.tipo, plan: v.plan, empresas: v.tipo === 'Firma Contable' ? 0 : 1, usuarios: 1, estado: 'Prueba', mrr: 0, alta: 'Jun 2026' });
+          render(); renderPlanDist(); updateKPIs();
+          toast('Cuenta "' + v.cuenta + '" creada en periodo de prueba', 'success');
+        },
+      });
+    });
+
+    document.getElementById('saasExportBtn').addEventListener('click', () => {
+      const rows = [['Cuenta', 'Administrador', 'Tipo', 'Plan', 'Empresas', 'Usuarios', 'Estado', 'MRR USD']];
+      CUENTAS.forEach((c) => rows.push([c.cuenta, c.admin, c.tipo, c.plan, c.empresas, c.usuarios, c.estado, c.mrr]));
+      const csv = rows.map((r) => r.map((x) => '"' + String(x).replace(/"/g, '""') + '"').join(';')).join('\r\n');
+      const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = 'Cuentas_DigiAccount.csv';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+      toast('Cuentas exportadas a CSV');
+    });
+
+    renderPlanDist(); render(); updateKPIs();
+  })();
+
+  /* =========================================================
+     USUARIOS Y ROLES — control de acceso
+     ========================================================= */
+  (function usuariosModule() {
+    const view = document.getElementById('view-usuarios');
+    if (!view) return;
+    const toast = (m, t) => { if (window.toast) window.toast(m, t); };
+
+    const ROLES = [
+      { id: 'admin', nombre: 'Administrador', cls: 'admin', ic: 'shield-check', color: '#003057', desc: 'Acceso total al sistema, la facturación y la configuración.' },
+      { id: 'gerente', nombre: 'Gerente', cls: 'gerente', ic: 'briefcase', color: '#1a3f6f', desc: 'Ve todo, aprueba y edita. Sin gestión de usuarios ni roles.' },
+      { id: 'contador', nombre: 'Contador', cls: 'contador', ic: 'calculator', color: '#008ec7', desc: 'Contabilidad, fiscal, tesorería, terceros y reportes.' },
+      { id: 'operador', nombre: 'Vendedor / Operador', cls: 'operador', ic: 'receipt', color: '#c97a14', desc: 'Ventas, facturación, clientes e inventario.' },
+      { id: 'lectura', nombre: 'Auditor (solo lectura)', cls: 'lectura', ic: 'eye', color: '#545e67', desc: 'Consulta todo el sistema sin modificar nada.' },
+    ];
+    const rolDe = (id) => ROLES.find((r) => r.id === id) || ROLES[0];
+    const USUARIOS = [
+      { n: 'Marcos Rojas', email: 'marcos@digiaccount.com', rol: 'admin', color: '#003057', emp: ['Todas'], acc: 'Hace 5 min', est: 'Activo' },
+      { n: 'Ana Gómez', email: 'ana.gomez@valle.com', rol: 'contador', color: '#1c8f5a', emp: ['AV'], acc: 'Hace 2 h', est: 'Activo' },
+      { n: 'Luis Pérez', email: 'luis.perez@valle.com', rol: 'operador', color: '#c97a14', emp: ['AV'], acc: 'Ayer', est: 'Activo' },
+      { n: 'Carmen Díaz', email: 'carmen@grupo.com', rol: 'gerente', color: '#7b54c9', emp: ['AV', 'TS'], acc: 'Hace 3 días', est: 'Activo' },
+      { n: 'Auditores Asociados', email: 'auditoria@externa.com', rol: 'lectura', color: '#545e67', emp: ['Todas'], acc: 'Hace 1 sem', est: 'Activo' },
+    ];
+    const INVIT = [
+      { email: 'nuevo.contador@valle.com', rol: 'contador', meta: 'Enviada hace 2 días' },
+      { email: 'vendedor2@valle.com', rol: 'operador', meta: 'Enviada ayer' },
+    ];
+    // Empresas de la cuenta a las que se puede dar acceso
+    const EMPRESAS = [
+      { value: 'AV', label: 'Agroinversiones Valle, C.A.' },
+      { value: 'TS', label: 'Tecnoservicios del Sur, C.A.' },
+      { value: 'DC', label: 'Distribuidora Caracas, C.A.' },
+    ];
+    const MODULOS = [
+      { n: 'Dashboard', ic: 'layout-dashboard' }, { n: 'Ventas', ic: 'receipt' }, { n: 'Tesorería', ic: 'wallet' },
+      { n: 'Inventario', ic: 'package' }, { n: 'Nómina', ic: 'users' }, { n: 'Terceros', ic: 'contact-round' },
+      { n: 'Contabilidad', ic: 'book-open' }, { n: 'Fiscal', ic: 'file-text' }, { n: 'Agentes IA', ic: 'bot' }, { n: 'Usuarios y Roles', ic: 'users-round' },
+    ];
+    const ACCIONES = [['v', 'Ver'], ['c', 'Crear'], ['e', 'Editar'], ['d', 'Eliminar'], ['a', 'Aprobar']];
+
+    function perms(rol, mod) {
+      if (rol === 'admin') return { v: 1, c: 1, e: 1, d: 1, a: 1 };
+      if (rol === 'lectura') return { v: 1, c: 0, e: 0, d: 0, a: 0 };
+      if (rol === 'gerente') return { v: 1, c: 1, e: 1, d: mod === 'Usuarios y Roles' ? 0 : 0, a: 1 };
+      if (rol === 'contador') {
+        const m = ['Dashboard', 'Tesorería', 'Terceros', 'Contabilidad', 'Fiscal'].includes(mod);
+        return m ? { v: 1, c: 1, e: 1, d: 0, a: 1 } : { v: 1, c: 0, e: 0, d: 0, a: 0 };
+      }
+      if (rol === 'operador') {
+        const m = ['Dashboard', 'Ventas', 'Terceros', 'Inventario'].includes(mod);
+        return m ? { v: 1, c: 1, e: 1, d: 0, a: 0 } : { v: mod === 'Tesorería' ? 1 : 0, c: 0, e: 0, d: 0, a: 0 };
+      }
+      return { v: 0, c: 0, e: 0, d: 0, a: 0 };
+    }
+
+    // ---- Tabla de usuarios ----
+    const usuariosBody = document.getElementById('usuariosBody');
+    function chips(emp) {
+      if (emp.includes('Todas')) return '<span class="entity-chips"><span class="entity-chip all">TODAS</span></span>';
+      return '<span class="entity-chips">' + emp.map((e) => '<span class="entity-chip">' + e + '</span>').join('') + '</span>';
+    }
+    function renderUsuarios(filtro) {
+      const q = (filtro || '').toLowerCase();
+      const vis = USUARIOS.filter((u) => !q || (u.n + ' ' + u.email + ' ' + rolDe(u.rol).nombre).toLowerCase().includes(q));
+      usuariosBody.innerHTML = vis.map((u, i) => {
+        const r = rolDe(u.rol);
+        return '<tr data-uidx="' + USUARIOS.indexOf(u) + '">'
+          + '<td><div class="user-cell"><div class="u-avatar" style="background:' + u.color + '">' + u.n.split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase() + '</div><div class="ui"><div class="n">' + u.n + '</div><div class="e">' + u.email + '</div></div></div></td>'
+          + '<td><span class="role-badge ' + r.cls + '"><i data-lucide="' + r.ic + '"></i> ' + r.nombre + '</span></td>'
+          + '<td>' + chips(u.emp) + '</td><td class="caption">' + u.acc + '</td>'
+          + '<td><span class="tag success">' + u.est + '</span></td>'
+          + '<td><button class="btn btn-ghost" data-edit-user="' + USUARIOS.indexOf(u) + '" style="height:26px;font-size:11px;padding:0 9px;"><i data-lucide="settings-2"></i> Editar</button></td></tr>';
+      }).join('');
+      usuariosBody.querySelectorAll('[data-edit-user]').forEach((b) => b.addEventListener('click', () => editUser(USUARIOS[parseInt(b.dataset.editUser, 10)])));
+      const c = document.getElementById('usCount'); if (c) c.textContent = USUARIOS.length;
+      const ka = document.getElementById('usKpiActivos'); if (ka) ka.textContent = USUARIOS.length;
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    // ---- Invitaciones ----
+    const invitList = document.getElementById('invitacionesList');
+    function renderInvit() {
+      if (!INVIT.length) { invitList.innerHTML = '<div style="padding:18px;text-align:center;color:var(--fg-muted);font-size:13px;">No hay invitaciones pendientes</div>'; }
+      else invitList.innerHTML = INVIT.map((iv, i) => {
+        const r = rolDe(iv.rol);
+        return '<div class="invite-row"><div class="invite-icon"><i data-lucide="mail"></i></div>'
+          + '<div class="invite-info"><div class="em">' + iv.email + '</div><div class="meta">' + iv.meta + ' · rol ' + r.nombre + '</div></div>'
+          + '<span class="role-badge ' + r.cls + '"><i data-lucide="' + r.ic + '"></i> ' + r.nombre + '</span>'
+          + '<button class="btn btn-ghost" data-resend="' + i + '" style="height:30px;font-size:11px;">Reenviar</button></div>';
+      }).join('');
+      invitList.querySelectorAll('[data-resend]').forEach((b) => b.addEventListener('click', () => toast('Invitación reenviada', 'success')));
+      const ki = document.getElementById('usKpiInvit'); if (ki) ki.textContent = INVIT.length;
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    // ---- Roles (tarjetas) ----
+    const rolesGrid = document.getElementById('rolesGrid');
+    let rolActivo = 'admin';
+    function renderRoles() {
+      rolesGrid.innerHTML = ROLES.map((r) => {
+        const n = USUARIOS.filter((u) => u.rol === r.id).length;
+        return '<div class="role-card" data-rol="' + r.id + '">'
+          + '<div class="role-card-head"><div class="role-card-icon" style="background:' + r.color + '1f;color:' + r.color + '"><i data-lucide="' + r.ic + '"></i></div>'
+          + '<div><div class="rc-name">' + r.nombre + '</div><div class="rc-count">' + n + ' usuario' + (n === 1 ? '' : 's') + '</div></div></div>'
+          + '<div class="rc-desc">' + r.desc + '</div>'
+          + '<div class="rc-foot"><span class="rc-scope"><i data-lucide="layers"></i> ' + (r.id === 'admin' ? 'Todos los módulos' : r.id === 'lectura' ? 'Solo lectura' : 'Permisos por módulo') + '</span>'
+          + '<button class="btn btn-ghost" data-cfg-rol="' + r.id + '" style="height:28px;font-size:11px;padding:0 10px;">Configurar</button></div></div>';
+      }).join('');
+      rolesGrid.querySelectorAll('[data-cfg-rol]').forEach((b) => b.addEventListener('click', (e) => { e.stopPropagation(); loadMatrix(b.dataset.cfgRol); }));
+      rolesGrid.querySelectorAll('.role-card').forEach((c) => c.addEventListener('click', () => loadMatrix(c.dataset.rol)));
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    // ---- Matriz de permisos ----
+    const matrix = document.getElementById('permMatrix');
+    function loadMatrix(rolId) {
+      rolActivo = rolId;
+      const r = rolDe(rolId);
+      document.getElementById('permRolName').textContent = r.nombre;
+      rolesGrid.querySelectorAll('.role-card').forEach((c) => c.style.outline = c.dataset.rol === rolId ? '2px solid var(--da-cyan-500)' : '');
+      let html = '<thead><tr><th>Módulo</th>' + ACCIONES.map((a) => '<th>' + a[1] + '</th>').join('') + '</tr></thead><tbody>';
+      MODULOS.forEach((m) => {
+        const p = perms(rolId, m.n);
+        html += '<tr><td><i data-lucide="' + m.ic + '"></i> ' + m.n + '</td>'
+          + ACCIONES.map((a) => '<td data-mod="' + m.n + '" data-act="' + a[0] + '"><span class="perm-cell ' + (p[a[0]] ? 'perm-yes' : 'perm-no') + '"><i data-lucide="' + (p[a[0]] ? 'check' : 'x') + '"></i></span></td>').join('');
+        html += '</tr>';
+      });
+      matrix.innerHTML = html + '</tbody>';
+      // celdas toggleables
+      matrix.querySelectorAll('td[data-act]').forEach((td) => td.addEventListener('click', () => {
+        if (rolActivo === 'admin') { toast('El Administrador siempre tiene acceso total', 'info'); return; }
+        const span = td.querySelector('.perm-cell');
+        const on = span.classList.contains('perm-yes');
+        span.className = 'perm-cell ' + (on ? 'perm-no' : 'perm-yes');
+        span.innerHTML = '<i data-lucide="' + (on ? 'x' : 'check') + '"></i>';
+        if (window.lucide) window.lucide.createIcons();
+      }));
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    // ---- Subtabs ----
+    const tabsWrap = document.getElementById('usuariosTabs');
+    const panes = view.querySelectorAll('.usuarios-pane');
+    tabsWrap.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => {
+      tabsWrap.querySelectorAll('button').forEach((x) => (x.dataset.active = x === b ? 'true' : 'false'));
+      panes.forEach((p) => (p.dataset.active = p.dataset.tab === b.dataset.tab ? 'true' : 'false'));
+      if (window.lucide) window.lucide.createIcons();
+    }));
+
+    // ---- Invitar usuario ----
+    function invitar() {
+      window.openFormModal && window.openFormModal({
+        title: 'Invitar usuario', saveLabel: 'Enviar invitación',
+        fields: [
+          { name: 'nombre', label: 'Nombre y apellido', placeholder: 'Ej. Ana Pérez' },
+          { name: 'whatsapp', label: 'WhatsApp', placeholder: '0414-1234567' },
+          { name: 'email', label: 'Correo electrónico', col: 2, placeholder: 'persona@empresa.com' },
+          { name: 'rol', label: 'Rol', type: 'select', options: ROLES.map((r) => r.nombre) },
+          { name: 'empresas', label: 'Empresas a las que tendrá acceso', col: 2, type: 'checks', options: EMPRESAS, value: EMPRESAS.map((e) => e.value) },
+        ],
+        onSave: (v) => {
+          if (!v.nombre) return 'Indica el nombre y apellido.';
+          if (!v.whatsapp) return 'Indica el número de WhatsApp.';
+          if (!v.email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v.email)) return 'Indica un correo válido.';
+          if (!(v.empresas || []).length) return 'Asigna acceso a al menos una empresa.';
+          const r = ROLES.find((x) => x.nombre === v.rol) || ROLES[2];
+          INVIT.unshift({ email: v.email, rol: r.id, meta: 'Enviada ahora · ' + (v.empresas.length === EMPRESAS.length ? 'todas las empresas' : v.empresas.length + ' empresa' + (v.empresas.length === 1 ? '' : 's')) });
+          if (window.__registrarContacto) window.__registrarContacto({ tipo: 'Usuario', nombre: v.nombre, doc: '', email: v.email, whatsapp: v.whatsapp, segmento: 'usuario invitado', origen: 'Invitación de usuario' });
+          renderInvit();
+          toast('Invitación enviada a ' + v.nombre + ' (' + v.email + ')', 'success');
+        },
+      });
+    }
+    document.getElementById('invitarUsuarioBtn').addEventListener('click', invitar);
+    const inv2 = document.getElementById('invitarUsuarioBtn2'); if (inv2) inv2.addEventListener('click', invitar);
+
+    // ---- Editar usuario ----
+    function editUser(u) {
+      const todas = u.emp.includes('Todas');
+      window.openFormModal && window.openFormModal({
+        title: 'Editar · ' + u.n, saveLabel: 'Guardar',
+        fields: [
+          { name: 'rol', label: 'Rol', type: 'select', options: ROLES.map((r) => r.nombre), value: rolDe(u.rol).nombre },
+          { name: 'est', label: 'Estado', type: 'select', options: ['Activo', 'Suspendido'], value: u.est },
+          { name: 'empresas', label: 'Empresas con acceso', col: 2, type: 'checks', options: EMPRESAS, value: todas ? EMPRESAS.map((e) => e.value) : u.emp },
+        ],
+        onSave: (v) => {
+          const emp = v.empresas || [];
+          if (!emp.length) return 'Asigna acceso a al menos una empresa.';
+          const r = ROLES.find((x) => x.nombre === v.rol); if (r) u.rol = r.id;
+          u.est = v.est;
+          u.emp = emp.length === EMPRESAS.length ? ['Todas'] : emp;
+          renderUsuarios(); renderRoles();
+          toast('Usuario ' + u.n + ' actualizado · acceso a ' + (u.emp.includes('Todas') ? 'todas las empresas' : u.emp.length + ' empresa' + (u.emp.length === 1 ? '' : 's')));
+        },
+      });
+    }
+
+    // ---- Nuevo rol ----
+    function nuevoRol() {
+      window.openFormModal && window.openFormModal({
+        title: 'Nuevo rol personalizado', saveLabel: 'Crear rol',
+        fields: [
+          { name: 'nombre', label: 'Nombre del rol', col: 2, placeholder: 'Ej. Asistente de compras' },
+          { name: 'base', label: 'Basado en', type: 'select', options: ROLES.map((r) => r.nombre) },
+          { name: 'desc', label: 'Descripción', col: 2, placeholder: 'Qué puede hacer este rol' },
+        ],
+        onSave: (v) => {
+          if (!v.nombre) return 'Indica el nombre del rol.';
+          const base = ROLES.find((r) => r.nombre === v.base) || ROLES[3];
+          ROLES.push({ id: 'rol' + Date.now(), nombre: v.nombre, cls: base.cls, ic: 'shield', color: '#1a3f6f', desc: v.desc || 'Rol personalizado basado en ' + base.nombre + '.' });
+          renderRoles();
+          toast('Rol "' + v.nombre + '" creado');
+        },
+      });
+    }
+    document.getElementById('nuevoRolBtn').addEventListener('click', nuevoRol);
+
+    // ---- Búsqueda ----
+    const search = document.getElementById('usuariosSearch');
+    if (search) search.addEventListener('input', () => renderUsuarios(search.value.trim()));
+
+    renderUsuarios(); renderInvit(); renderRoles(); loadMatrix('admin');
+  })();
+
+  /* =========================================================
+     WIZARD DE ALTA DE EMPRESA (onboarding)
+     ========================================================= */
+  (function companyWizard() {
+    const scrim = document.getElementById('companyWizard');
+    if (!scrim) return;
+    const steps = scrim.querySelectorAll('.wiz-step');
+    const panes = scrim.querySelectorAll('.wiz-pane');
+    const back = document.getElementById('cwBack');
+    const next = document.getElementById('cwNext');
+    const progress = document.getElementById('cwProgress');
+    const toast = (m, t) => { if (window.toast) window.toast(m, t); };
+    const TOTAL = 5;
+    let step = 1, fromSignup = false;
+    const sel = { tipo: 'Persona jurídica (J)', actividad: 'comercial' };
+
+    // Selección de tarjetas (single por grupo)
+    scrim.querySelectorAll('.wiz-choice').forEach((grp) => {
+      grp.querySelectorAll('.choice-card').forEach((card) => card.addEventListener('click', () => {
+        grp.querySelectorAll('.choice-card').forEach((c) => (c.dataset.sel = 'false'));
+        card.dataset.sel = 'true';
+        sel[grp.dataset.choice] = card.dataset.val;
+      }));
+    });
+    // Toggle de obligaciones
+    scrim.querySelectorAll('.oblig-check').forEach((o) => o.addEventListener('click', () => { o.dataset.on = o.dataset.on === 'true' ? 'false' : 'true'; }));
+
+    // Tipo de entidad → campos condicionales y armado de razón social
+    const TG = { 'Persona jurídica (J)': 'std', 'Persona natural (V/E)': 'std', 'Firma Personal (F.P.)': 'fp', 'Emprendimiento (J)': 'emp' };
+    const RIFLETRA = { 'Persona jurídica (J)': 'J', 'Persona natural (V/E)': 'V', 'Firma Personal (F.P.)': 'V', 'Emprendimiento (J)': 'J' };
+    const tgActual = () => TG[sel.tipo] || 'std';
+    function razonSocial() {
+      const tg = tgActual();
+      if (tg === 'fp') {
+        const n = document.getElementById('cwFpNombre').value.trim();
+        const c = document.getElementById('cwFpComercial').value.trim();
+        if (!n) return '';
+        return (n + ' (' + (c || 'Nombre comercial') + ', F.P.)').toUpperCase();
+      }
+      if (tg === 'emp') {
+        const n = document.getElementById('cwEmpNombre').value.trim();
+        const a = document.getElementById('cwEmpApellido').value.trim();
+        const num = ((document.getElementById('cwEmpNum') || {}).value || '').trim();
+        if (!n || !a) return '';
+        return ('EMPRENDIMIENTO ' + n + ' ' + a + (num ? ' ' + num : '')).toUpperCase();
+      }
+      return document.getElementById('cwNombre').value.trim().toUpperCase();
+    }
+    function updatePreview() { const prev = document.getElementById('cwPreview'); if (prev) prev.textContent = razonSocial() || '—'; }
+    function updateTipoFields() {
+      const tg = tgActual();
+      const form = document.getElementById('cwForm');
+      if (form) form.querySelectorAll('[data-tg]').forEach((el) => { el.style.display = el.dataset.tg.split(' ').indexOf(tg) >= 0 ? '' : 'none'; });
+      const rif = document.getElementById('cwRif');
+      if (rif) rif.placeholder = (RIFLETRA[sel.tipo] || 'J') + '000000000 (sin guiones)';
+      updatePreview();
+    }
+    ['cwFpNombre', 'cwFpComercial', 'cwEmpNombre', 'cwEmpApellido', 'cwEmpNum'].forEach((id) => {
+      const el = document.getElementById(id); if (el) el.addEventListener('input', updatePreview);
+    });
+
+    // Adjuntar RIF → el Agente OCR lo procesará (la lectura real requiere backend)
+    const ocrBox = document.getElementById('cwOcr');
+    function resetOcr() {
+      if (!ocrBox) return;
+      ocrBox.classList.remove('loading', 'done');
+      ocrBox.querySelector('.cw-ocr-txt strong').textContent = '¿Tienes el RIF a la mano?';
+      ocrBox.querySelector('.cw-ocr-txt span').textContent = 'Adjúntalo (PDF o foto) y el Agente OCR leerá los datos.';
+      const ff = document.getElementById('cwRifFile'); if (ff) ff.value = '';
+    }
+    function leerRif() {
+      const ff = document.getElementById('cwRifFile');
+      const nombreArchivo = (ff && ff.files && ff.files[0]) ? ff.files[0].name : 'documento.pdf';
+      ocrBox.classList.add('loading');
+      ocrBox.querySelector('.cw-ocr-txt strong').textContent = 'Procesando el RIF…';
+      ocrBox.querySelector('.cw-ocr-txt span').textContent = 'El Agente OCR está leyendo ' + nombreArchivo + '.';
+      drawIcons();
+      setTimeout(() => {
+        ocrBox.classList.remove('loading'); ocrBox.classList.add('done');
+        ocrBox.querySelector('.cw-ocr-txt strong').textContent = 'RIF adjunto ✓ · ' + nombreArchivo;
+        ocrBox.querySelector('.cw-ocr-txt span').textContent = 'El Agente OCR extraerá los datos al activar el backend. Por ahora, complétalos abajo.';
+        if (window.toast) window.toast('RIF adjunto · será procesado por el Agente OCR', 'success');
+        drawIcons();
+      }, 1000);
+    }
+    const rifBtn = document.getElementById('cwRifBtn');
+    if (rifBtn) rifBtn.addEventListener('click', () => document.getElementById('cwRifFile').click());
+    const rifFile = document.getElementById('cwRifFile');
+    if (rifFile) rifFile.addEventListener('change', (e) => { if (e.target.files && e.target.files.length) leerRif(); });
+
+    function showPane(s) { panes.forEach((p) => (p.dataset.active = p.dataset.step === String(s) ? 'true' : 'false')); drawIcons(); }
+    function updateSteps() { steps.forEach((st) => { const n = parseInt(st.dataset.step, 10); st.dataset.state = n < step ? 'done' : n === step ? 'active' : ''; }); }
+    function buildReview() {
+      const v = (id) => (document.getElementById(id).value || '—');
+      const obs = [...scrim.querySelectorAll('.oblig-check[data-on="true"]')].map((o) => o.dataset.ob).join(', ') || 'Ninguna';
+      const actLabel = { comercial: 'Comercial', manufactura: 'Manufactura', servicios: 'Servicios' }[sel.actividad] || sel.actividad;
+      document.getElementById('cwReview').innerHTML = [
+        ['Tipo de entidad', sel.tipo, ''], ['Razón social', razonSocial() || '—', ''], ['RIF', v('cwRif'), 'mono'],
+        ['Condición', v('cwCond'), ''], ['Actividad', actLabel, ''], ['Domicilio fiscal', v('cwDom'), ''],
+        ['Obligaciones', obs, ''],
+      ].map((r) => '<div class="rev-item"><div class="rl">' + r[0] + '</div><div class="rv' + (r[2] ? ' ' + r[2] : '') + '">' + r[1] + '</div></div>').join('');
+    }
+    function goStep(s) {
+      step = s; showPane(s); updateSteps();
+      back.hidden = s === 1;
+      progress.textContent = 'Paso ' + s + ' de ' + TOTAL;
+      next.textContent = s === TOTAL ? 'Crear empresa' : 'Continuar';
+      if (s === 2) updateTipoFields();
+      if (s === 5) buildReview();
+    }
+    function validar2() {
+      const tg = tgActual();
+      if (tg === 'fp') {
+        if (!document.getElementById('cwFpNombre').value.trim()) { toast('Indica el nombre completo de la persona', 'error'); return false; }
+        if (!document.getElementById('cwFpComercial').value.trim()) { toast('Indica el nombre comercial', 'error'); return false; }
+      } else if (tg === 'emp') {
+        if (!document.getElementById('cwEmpNombre').value.trim() || !document.getElementById('cwEmpApellido').value.trim()) { toast('Indica el nombre y apellido del emprendedor', 'error'); return false; }
+      } else if (!document.getElementById('cwNombre').value.trim()) { toast('Indica la razón social o nombre', 'error'); return false; }
+      if (!document.getElementById('cwRif').value.trim()) { toast('Indica el RIF', 'error'); return false; }
+      const wsp = document.getElementById('cwWhatsapp');
+      const eml = document.getElementById('cwEmail');
+      if (wsp && !wsp.value.trim()) { toast('Indica el WhatsApp de la empresa', 'error'); return false; }
+      if (eml && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(eml.value.trim())) { toast('Indica un correo válido de la empresa', 'error'); return false; }
+      return true;
+    }
+    function finish() {
+      const nombre = razonSocial() || 'Nueva Empresa, C.A.';
+      const rif = (document.getElementById('cwRif').value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      const cond = document.getElementById('cwCond').value;
+      // Alta en la base de contactos (CRM / email marketing)
+      if (window.__registrarContacto) window.__registrarContacto({ tipo: 'Empresa', nombre: nombre, doc: rif, email: (document.getElementById('cwEmail') || {}).value || '', whatsapp: (document.getElementById('cwWhatsapp') || {}).value || '', segmento: 'empresas', origen: 'Onboarding' });
+      const ini = (nombre.replace(/[^A-Za-zÁÉÍÓÚÑ ]/g, '').trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join('') || 'NE').toUpperCase();
+      const dd = document.getElementById('entityDropdown');
+      const addBtn = document.getElementById('entityAddBtn');
+      if (dd && addBtn) {
+        const opt = document.createElement('div');
+        opt.className = 'entity-option';
+        opt.dataset.name = nombre; opt.dataset.avatar = ini; opt.dataset.rif = rif;
+        opt.dataset.type = /especial/i.test(cond) ? 'especial' : 'ordinario';
+        opt.innerHTML = '<div class="ea" style="background:var(--da-navy-500);color:#fff">' + ini + '</div>'
+          + '<div class="eo-info"><div class="eo-name">' + nombre + '</div><div class="eo-meta">' + rif + ' · ' + cond + '</div></div>'
+          + '<i data-lucide="check" class="eo-check" style="width:16px;height:16px;"></i>';
+        dd.insertBefore(opt, addBtn);
+        if (window.__bindEntityOption) window.__bindEntityOption(opt);
+      }
+      document.getElementById('cwOkTitle').textContent = '¡' + nombre + ' registrada!';
+      showPane('done');
+      steps.forEach((s) => (s.dataset.state = 'done'));
+      progress.textContent = 'Completado';
+      back.hidden = true;
+      next.textContent = fromSignup ? 'Ir al sistema' : 'Listo';
+      step = 'done';
+      drawIcons();
+    }
+    function close() { scrim.dataset.open = 'false'; }
+
+    document.getElementById('cwClose').addEventListener('click', close);
+    back.addEventListener('click', () => { if (typeof step === 'number' && step > 1) goStep(step - 1); });
+    next.addEventListener('click', () => {
+      if (step === 'done') { close(); toast('Empresa lista en DigiAccount', 'success'); return; }
+      if (step === 2 && !validar2()) return;
+      if (step < TOTAL) { goStep(step + 1); return; }
+      finish();
+    });
+
+    window.openCompanyWizard = function (opts) {
+      fromSignup = !!(opts && opts.fromSignup);
+      ['cwNombre', 'cwRif', 'cwDom', 'cwTel', 'cwWhatsapp', 'cwEmail', 'cwFpNombre', 'cwFpComercial', 'cwEmpNombre', 'cwEmpApellido', 'cwEmpNum'].forEach((id) => { const e = document.getElementById(id); if (e) e.value = ''; });
+      resetOcr();
+      goStep(1);
+      scrim.dataset.open = 'true';
+      drawIcons();
+    };
+    const addBtn = document.getElementById('entityAddBtn');
+    if (addBtn) addBtn.addEventListener('click', () => window.openCompanyWizard());
+  })();
+
+  /* =========================================================
+     PLAN GATING — cada plan habilita/bloquea módulos
+     ========================================================= */
+  (function planGating() {
+    const toast = (m, t) => { if (window.toast) window.toast(m, t); };
+    // Módulos operativos sujetos a plan (los transversales —dashboard, terceros,
+    // usuarios, plataforma— están siempre disponibles).
+    const TODOS = ['ventas', 'tesoreria', 'inventario', 'nomina', 'contabilidad', 'fiscal', 'agentes'];
+    const PLAN_MODULOS = {
+      'Contador Básico': ['contabilidad', 'fiscal'],
+      'Contador PRO': TODOS,
+      'Firma Contable': TODOS,
+      'Emprendimientos y PYME': ['tesoreria', 'inventario'],
+      'Empresa Completa': TODOS,
+      'Grupo Empresarial': TODOS,
+    };
+    const NOMBRE_VIEW = {
+      ventas: 'Ventas y Facturación', tesoreria: 'Tesorería', inventario: 'Inventario',
+      nomina: 'Nómina y RRHH', contabilidad: 'Contabilidad', fiscal: 'Módulo Fiscal', agentes: 'Centro de Agentes IA',
+    };
+    let planActivo = 'Firma Contable'; // por defecto: acceso completo
+
+    function aplicarPlan(plan, prueba) {
+      planActivo = plan;
+      window.__planActivo = plan;
+      const incluidos = PLAN_MODULOS[plan] || TODOS;
+      // Agentes IA: durante la prueba se habilitan en modo DEMO aunque el plan no los incluya
+      const demoAgentes = !!prueba && incluidos.indexOf('agentes') < 0;
+      window.__demoAgentes = demoAgentes;
+      TODOS.forEach((v) => {
+        const item = document.querySelector('.nav-item[data-view="' + v + '"]');
+        if (!item) return;
+        let locked = incluidos.indexOf(v) < 0;
+        if (v === 'agentes' && demoAgentes) locked = false; // demo durante la prueba
+        item.classList.toggle('locked', locked);
+        // candado a la derecha (reemplaza/añade indicador)
+        let lk = item.querySelector('.nav-lock');
+        if (locked && !lk) { lk = document.createElement('i'); lk.setAttribute('data-lucide', 'lock'); lk.className = 'nav-lock'; item.appendChild(lk); }
+        else if (!locked && lk) lk.remove();
+        // badge "Demo" en Agentes IA durante la prueba
+        if (v === 'agentes') {
+          let demoB = item.querySelector('.nav-demo');
+          if (demoAgentes && !demoB) { demoB = document.createElement('span'); demoB.className = 'nav-demo'; demoB.textContent = 'Demo'; item.appendChild(demoB); }
+          else if (!demoAgentes && demoB) demoB.remove();
+        }
+      });
+      // Banner de demo en la vista de Agentes
+      const demoBanner = document.getElementById('agDemoBanner');
+      if (demoBanner) demoBanner.hidden = !demoAgentes;
+      // indicador del plan activo
+      const badge = document.getElementById('planActivoBadge');
+      if (badge) badge.textContent = plan;
+      // badge de prueba (días restantes) — visible solo en modo prueba
+      window.__prueba = prueba ? { plan: plan, dias: prueba.dias || 14 } : null;
+      const trial = document.getElementById('planTrial');
+      if (trial) {
+        trial.hidden = !prueba;
+        if (prueba) trial.textContent = 'Prueba · ' + window.__prueba.dias + ' días';
+      }
+      // Botón "Activar / Pagar" visible solo durante la prueba
+      const actBtn = document.getElementById('planActivarBtn');
+      if (actBtn) actBtn.hidden = !prueba;
+      if (window.__syncTrialBanner) window.__syncTrialBanner();
+      if (window.lucide) window.lucide.createIcons();
+    }
+    window.aplicarPlan = aplicarPlan;
+    // Inicia el plan en modo prueba (14 días) — usado por el onboarding
+    window.__iniciarPrueba = function (plan, dias) { aplicarPlan(plan, { dias: dias || 14 }); };
+    // Botón "Ver planes" del banner de demo de Agentes
+    const demoBtn = document.querySelector('#agDemoBanner [data-view="planes"]');
+    if (demoBtn) demoBtn.addEventListener('click', () => { if (window.showView) window.showView('planes', 'Planes y Precios'); });
+    // Botón "Activar / Pagar plan" del indicador de prueba → checkout
+    const actBtn = document.getElementById('planActivarBtn');
+    if (actBtn) actBtn.addEventListener('click', () => { if (window.openCheckout) window.openCheckout(window.__planActivo); });
+
+    window.__mostrarUpgrade = function (item) {
+      const nombre = NOMBRE_VIEW[item.dataset.view] || (item.querySelector('.lbl') || {}).textContent || 'Este módulo';
+      window.openFormModal && window.openFormModal({
+        title: 'Módulo no incluido en tu plan', saveLabel: 'Ver planes',
+        fields: [{ name: 'x', label: ' ', col: 2, type: 'static', html: '<div style="font-size:13px;line-height:1.6;color:var(--fg-body);">'
+          + 'El módulo <strong>' + nombre + '</strong> no está incluido en tu plan actual (<strong>' + planActivo + '</strong>).<br><br>'
+          + 'Mejora tu plan para desbloquear este y otros módulos.</div>' }],
+        onSave: () => { if (window.showView) window.showView('planes', 'Planes y Precios'); },
+      });
+    };
+
+    // Aplicar el plan por defecto al cargar
+    aplicarPlan(planActivo);
+  })();
+
+  /* Render final de iconos (incluye los inyectados) */
+  drawIcons();
+
+  /* =========================================================
+     SERVICE WORKER — registro (PWA · instalable + offline)
+     Se registra aquí (y no inline en el HTML) para cumplir la CSP.
+     ========================================================= */
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('sw.js').catch(function (e) { console.warn('SW no registrado:', e); });
+    });
+  }
+})();
+

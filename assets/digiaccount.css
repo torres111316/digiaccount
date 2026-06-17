@@ -1,0 +1,298 @@
+/* =========================================================
+   DigiAccount — Colors & Type
+   Brand: AI automation agency + accounting & tax firm
+   Aesthetic: angular precision, navy-grounded, cyan-activated
+   ========================================================= */
+
+/* ---------- Webfonts ----------
+   Brand specimen ("FUENTES DEL SISTEMA: Sans-Serif Geométrica")
+   shows a bold geometric sans with:
+     • two-story 'a', single-story 'g'
+     • 'M' apex not touching baseline, vertical legs
+     • rounded 'D' with subtle angle
+     • horizontal bar in 'G', open apertures on c/e/s
+     • oval '0', rounded '3' and '6'
+   Closest Google Fonts match: POPPINS (geometric, full weight
+   range, excellent Latin extended support for ñ/á/é/í/ó/ú).
+   Used for both display and body — hierarchy by weight, not
+   family. Mono pair: JetBrains Mono (for numeric tables,
+   data callouts, code snippets in marketing surfaces).
+*/
+/* Fuentes auto-hospedadas (privacidad + offline + sin dependencia de Google).
+   Los .woff2 viven en assets/fonts/ y se declaran en assets/fonts.css */
+@import url('fonts.css');
+
+:root {
+  /* ============== CORE COLORS ==============
+     Sourced from paleta de colores.jpeg (canonical brand values).
+     Companion mid-tones from the written brief in parentheses. */
+
+  /* Navy — primary 60% */
+  --da-navy-900:        #001b34;     /* darkest hero surfaces */
+  --da-navy-800:        #00264a;     /* dark surface bg */
+  --da-navy-700:        #003057;     /* Sapphire Blue — official primary */
+  --da-navy-600:        #0d2644;     /* "dark surface" from brief */
+  --da-navy-500:        #1a3f6f;     /* brief's mid-navy / headings */
+  --da-navy-400:        #2c5689;     /* hover lift on navy */
+  --da-navy-300:        #6f8aab;     /* inactive icons on light */
+  --da-navy-100:        #d6e0ec;     /* subtle navy tints / dividers */
+  --da-navy-50:         #eef3f9;     /* surface tint */
+
+  /* Cyan — accent 10% */
+  --da-cyan-700:        #008ec7;     /* pressed / link visited */
+  --da-cyan-600:        #00aeef;     /* brief tagline cyan */
+  --da-cyan-500:        #00bfff;     /* Tech/CTA Blue — primary accent */
+  --da-cyan-400:        #4dd2ff;     /* hover on cyan */
+  --da-cyan-100:        #cdf1ff;     /* badge fills, focus rings */
+  --da-cyan-50:         #ecf9ff;     /* tint backgrounds */
+
+  /* Slate / steel grey — secondary 30% */
+  --da-slate-900:       #1f2933;     /* near-black text on white */
+  --da-slate-800:       #2d3a48;
+  --da-slate-700:       #4a5a6a;     /* body text (brief) */
+  --da-slate-600:       #545e67;     /* Dark Slate Grey (official, A-mark) */
+  --da-slate-500:       #6b7b8d;     /* secondary text (brief) */
+  --da-slate-400:       #8a98a8;     /* placeholders, muted icons */
+  --da-slate-300:       #b8c2cf;     /* borders, hairlines */
+  --da-slate-200:       #d8dee6;     /* dividers */
+  --da-slate-100:       #eceff3;     /* surface alt */
+  --da-slate-50:        #f5f7fa;     /* page tint */
+
+  /* Pure */
+  --da-white:           #ffffff;
+  --da-black:           #0a0f15;
+
+  /* Semantic */
+  --da-success:         #1c8f5a;
+  --da-success-tint:    #e3f5ec;
+  --da-warning:         #c97a14;
+  --da-warning-tint:    #fbeed7;
+  --da-danger:          #c0392b;
+  --da-danger-tint:     #fbe6e3;
+  --da-info:            var(--da-cyan-500);
+  --da-info-tint:       var(--da-cyan-50);
+
+  /* ============== SEMANTIC ROLES ============== */
+  --bg-canvas:          var(--da-white);
+  --bg-surface:         var(--da-white);
+  --bg-surface-alt:     var(--da-slate-50);
+  --bg-surface-tint:    var(--da-navy-50);
+  --bg-dark:            var(--da-navy-600);          /* hero / inverted */
+  --bg-darker:          var(--da-navy-900);
+
+  /* gradients — only the navy-to-dark-navy hero gradient is permitted */
+  --grad-hero:          linear-gradient(135deg, #0d2644 0%, #001b34 100%);
+  --grad-hero-soft:     linear-gradient(180deg, #003057 0%, #001b34 100%);
+
+  --fg-primary:         var(--da-navy-700);          /* headings on light */
+  --fg-body:            var(--da-slate-700);         /* body on light */
+  --fg-muted:           var(--da-slate-500);
+  --fg-subtle:          var(--da-slate-400);
+  --fg-accent:          var(--da-cyan-600);          /* tagline / accent copy */
+  --fg-on-dark:         var(--da-white);
+  --fg-on-dark-muted:   #b8c5d4;
+  --fg-on-dark-accent:  var(--da-cyan-500);
+  --fg-link:            var(--da-cyan-700);
+
+  --border-default:     var(--da-slate-200);
+  --border-strong:      var(--da-slate-300);
+  --border-on-dark:     rgba(255,255,255,0.12);
+  --border-focus:       var(--da-cyan-500);
+
+  /* ============== ELEVATION (sharp, not soft) ============== */
+  --shadow-hairline:    inset 0 0 0 1px var(--da-slate-200);
+  --shadow-sm:          0 1px 0 rgba(10,24,48,0.06), 0 1px 2px rgba(10,24,48,0.04);
+  --shadow-md:          0 2px 4px rgba(10,24,48,0.06), 0 8px 16px rgba(10,24,48,0.06);
+  --shadow-lg:          0 4px 8px rgba(10,24,48,0.08), 0 16px 32px rgba(10,24,48,0.10);
+  --shadow-cta:         0 2px 0 rgba(0,40,80,0.20);     /* sharp drop on cyan buttons */
+  --shadow-focus:       0 0 0 3px rgba(0,191,255,0.30);
+
+  /* ============== RADIUS ============== */
+  --radius-none:        0;
+  --radius-xs:          2px;
+  --radius-sm:          4px;          /* default cards & buttons */
+  --radius-md:          6px;          /* upper bound — never larger */
+  --radius-pill:        999px;        /* reserved for tag chips only */
+
+  /* ============== SPACING — 8pt scale ============== */
+  --space-0:            0;
+  --space-1:            4px;
+  --space-2:            8px;
+  --space-3:            12px;
+  --space-4:            16px;
+  --space-5:            24px;
+  --space-6:            32px;
+  --space-7:            48px;
+  --space-8:            64px;
+  --space-9:            96px;
+  --space-10:           128px;
+
+  /* ============== LAYOUT ============== */
+  --container-max:      1280px;
+  --container-gutter:   24px;
+  --grid-columns:       12;
+
+  /* ============== TYPOGRAPHY ============== */
+  --font-display:       "Poppins", "Helvetica Neue", "Arial", sans-serif;
+  --font-body:          "Poppins", "Helvetica Neue", "Arial", sans-serif;
+  --font-mono:          "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  /* Weight scale — display uses 700/800; body uses 400/500/600 */
+  --fw-regular:         400;
+  --fw-medium:          500;
+  --fw-semibold:        600;
+  --fw-bold:            700;
+  --fw-extrabold:       800;
+  --fw-black:           900;
+
+  /* Type sizes — clamped for responsive scale */
+  --fs-display-1:       clamp(48px, 5.5vw, 84px);   /* hero */
+  --fs-display-2:       clamp(36px, 4vw, 60px);
+  --fs-h1:              clamp(32px, 3vw, 44px);
+  --fs-h2:              clamp(26px, 2.4vw, 34px);
+  --fs-h3:              22px;
+  --fs-h4:              18px;
+  --fs-h5:              16px;
+  --fs-overline:        12px;
+  --fs-body-lg:         18px;
+  --fs-body:            16px;
+  --fs-body-sm:         14px;
+  --fs-caption:         13px;
+  --fs-micro:           11px;
+
+  /* Tracking */
+  --tracking-display:   -0.02em;      /* tight on display */
+  --tracking-tight:     -0.01em;
+  --tracking-normal:    0;
+  --tracking-tagline:   0.04em;       /* moderate on tagline */
+  --tracking-overline:  0.12em;       /* uppercase eyebrows */
+
+  /* Line height */
+  --lh-display:         1.04;
+  --lh-heading:         1.18;
+  --lh-body:            1.55;
+  --lh-tight:           1.30;
+
+  /* Motion — quick, restrained, no bounces */
+  --ease-out:           cubic-bezier(0.22, 0.61, 0.36, 1);
+  --ease-in-out:        cubic-bezier(0.65, 0.05, 0.36, 1);
+  --dur-fast:           120ms;
+  --dur-base:           180ms;
+  --dur-slow:           260ms;
+}
+
+/* =========================================================
+   BASE STYLES
+   ========================================================= */
+
+html {
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  font-family: var(--font-body);
+  font-weight: var(--fw-regular);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  color: var(--fg-body);
+  background: var(--bg-canvas);
+  letter-spacing: var(--tracking-normal);
+}
+
+/* ----- Headings ----- */
+.h-display-1,
+.h-display-2,
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+  color: var(--fg-primary);
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--tracking-tight);
+  line-height: var(--lh-heading);
+  margin: 0;
+  text-wrap: balance;
+}
+
+.h-display-1 {
+  font-size: var(--fs-display-1);
+  font-weight: var(--fw-extrabold);
+  letter-spacing: var(--tracking-display);
+  line-height: var(--lh-display);
+}
+.h-display-2 {
+  font-size: var(--fs-display-2);
+  font-weight: var(--fw-extrabold);
+  letter-spacing: var(--tracking-display);
+  line-height: var(--lh-display);
+}
+h1, .h1 { font-size: var(--fs-h1); font-weight: var(--fw-extrabold); }
+h2, .h2 { font-size: var(--fs-h2); font-weight: var(--fw-bold); }
+h3, .h3 { font-size: var(--fs-h3); font-weight: var(--fw-bold); }
+h4, .h4 { font-size: var(--fs-h4); font-weight: var(--fw-semibold); }
+h5, .h5 { font-size: var(--fs-h5); font-weight: var(--fw-semibold); }
+
+/* ----- Body & utility text ----- */
+p { margin: 0; text-wrap: pretty; }
+.lead    { font-size: var(--fs-body-lg); line-height: var(--lh-body); color: var(--fg-body); }
+.body    { font-size: var(--fs-body);    line-height: var(--lh-body); }
+.body-sm { font-size: var(--fs-body-sm); line-height: var(--lh-body); }
+.caption { font-size: var(--fs-caption); line-height: var(--lh-tight); color: var(--fg-muted); }
+.micro   { font-size: var(--fs-micro);   line-height: var(--lh-tight); }
+
+.overline {
+  font-size: var(--fs-overline);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--tracking-overline);
+  text-transform: uppercase;
+  color: var(--fg-accent);
+}
+
+.tagline {
+  font-family: var(--font-display);
+  color: var(--fg-accent);
+  font-weight: var(--fw-medium);
+  letter-spacing: var(--tracking-tagline);
+}
+
+/* ----- Brand wordmark (two-tone DigiAccount) ----- */
+.brand-wordmark {
+  font-family: var(--font-display);
+  font-weight: var(--fw-extrabold);
+  letter-spacing: var(--tracking-display);
+  color: var(--fg-primary);
+}
+.brand-wordmark .digi    { color: var(--da-navy-700); }
+.brand-wordmark .account { color: var(--da-slate-600); }
+
+/* ----- Inline elements ----- */
+a {
+  color: var(--fg-link);
+  text-decoration: none;
+  transition: color var(--dur-fast) var(--ease-out);
+}
+a:hover { color: var(--da-cyan-500); }
+a:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
+code, kbd, samp, pre {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+}
+
+strong, b { font-weight: var(--fw-bold); color: var(--fg-primary); }
+em        { font-style: italic; }
+
+hr {
+  border: 0;
+  border-top: 1px solid var(--border-default);
+  margin: var(--space-5) 0;
+}
+
+::selection {
+  background: var(--da-cyan-100);
+  color: var(--da-navy-700);
+}

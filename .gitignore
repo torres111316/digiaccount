@@ -1,0 +1,20 @@
+# === Secretos y variables de entorno (NUNCA subir claves) ===
+.env
+.env.*
+*.key
+*.pem
+
+# === Dependencias (se reinstalan, no se respaldan) ===
+node_modules/
+
+# === Archivos del sistema operativo ===
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# === Editores ===
+.vscode/
+.idea/
+
+# === Logs ===
+*.log
