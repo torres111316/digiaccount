@@ -202,7 +202,7 @@
       <a class="nav-item" data-view="terceros" data-title="Terceros · Clientes y Proveedores" href="#terceros">
         <span class="ico"><i data-lucide="contact-round"></i></span>
         <span class="lbl">Terceros</span>
-        <span class="badge">48</span>
+        <span class="badge" id="navTercerosBadge" style="display:none">0</span>
       </a>
 
       <div class="nav-section-label">Cumplimiento</div>
@@ -3041,17 +3041,17 @@
         <section class="kpi-row">
           <div class="kpi">
             <div class="kpi-head"><span class="label">Valor del inventario</span><span class="kpi-icon success"><i data-lucide="boxes"></i></span></div>
-            <div class="kpi-value"><span class="currency">Bs</span> 8.412.300</div>
+            <div class="kpi-value"><span class="currency">Bs</span> <span id="invKpiValor">8.412.300</span></div>
             <div class="kpi-sub"><span class="meta">Equiv. <strong style="color:var(--fg-primary)">$ 231.700</strong> · costo prom.</span><span class="delta"><i data-lucide="trending-up"></i> +3,2%</span></div>
           </div>
           <div class="kpi">
             <div class="kpi-head"><span class="label">Artículos activos</span><span class="kpi-icon"><i data-lucide="package"></i></span></div>
-            <div class="kpi-value">268</div>
+            <div class="kpi-value" id="invKpiArticulos">268</div>
             <div class="kpi-sub"><span class="meta">Mercancía para reventa</span><span class="delta"><i data-lucide="trending-up"></i> +8</span></div>
           </div>
           <div class="kpi">
             <div class="kpi-head"><span class="label">Stock crítico</span><span class="kpi-icon danger"><i data-lucide="alert-triangle"></i></span></div>
-            <div class="kpi-value">4</div>
+            <div class="kpi-value" id="invKpiCritico">4</div>
             <div class="kpi-sub"><span class="kpi-alert"><i data-lucide="package-x"></i> SKU-01 · 3 días cobertura</span><span class="delta down">Reponer</span></div>
           </div>
           <div class="kpi">
@@ -3062,7 +3062,7 @@
         </section>
 
         <div class="subtabs" id="invTabsCom">
-          <button data-active="true" data-tab="articulos"><i data-lucide="package"></i> Artículos <span class="count">268</span></button>
+          <button data-active="true" data-tab="articulos"><i data-lucide="package"></i> Artículos <span class="count" id="invTabArticulos">268</span></button>
           <button data-tab="kardex"><i data-lucide="history"></i> Kardex</button>
           <button data-tab="critico"><i data-lucide="alert-triangle"></i> Stock crítico <span class="count">4</span></button>
           <button data-tab="almacenes"><i data-lucide="warehouse"></i> Almacenes <span class="count">3</span></button>
@@ -3091,7 +3091,7 @@
                 </tbody>
               </table>
             </div>
-            <div class="table-footer"><div class="count">Mostrando <strong>6</strong> de <strong>268</strong> productos</div><div class="pager"><button><i data-lucide="chevron-left"></i></button><button data-active="true">1</button><button>2</button><button>3</button><button>…</button><button>39</button><button><i data-lucide="chevron-right"></i></button></div></div>
+            <div class="table-footer"><div class="count">Mostrando <strong id="invShown">6</strong> de <strong id="invTotal">268</strong> productos</div><div class="pager"><button><i data-lucide="chevron-left"></i></button><button data-active="true">1</button><button>2</button><button>3</button><button>…</button><button>39</button><button><i data-lucide="chevron-right"></i></button></div></div>
           </div>
         </div>
 
@@ -4976,7 +4976,7 @@
           </table>
         </div>
         <div class="table-footer">
-          <div class="count">Mostrando <strong id="tercerosShown">8</strong> de <strong>48</strong> terceros</div>
+          <div class="count">Mostrando <strong id="tercerosShown">8</strong> de <strong id="tercerosTotal">48</strong> terceros</div>
           <div class="pager"><button><i data-lucide="chevron-left"></i></button><button data-active="true">1</button><button>2</button><button>…</button><button>6</button><button><i data-lucide="chevron-right"></i></button></div>
         </div>
       </div>

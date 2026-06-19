@@ -6217,6 +6217,8 @@
   .fv-lines-head span.num { text-align: right; }
   .fv-line { margin-bottom: 8px; }
   .fv-line input { height: 36px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); padding: 0 10px; font-size: 13px; color: var(--fg-primary); background: var(--da-white); font-family: inherit; }
+  .fv-line select.fv-desc { height: 36px; width: 100%; min-width: 0; border: 1px solid var(--border-default); border-radius: var(--radius-sm); padding: 0 10px; font-size: 13px; color: var(--fg-primary); background: var(--da-white); font-family: inherit; cursor: pointer; }
+  .fv-line select.fv-desc:focus { outline: none; border-color: var(--da-cyan-500); box-shadow: 0 0 0 3px var(--da-cyan-50); }
   .fv-line .fv-cant, .fv-line .fv-precio { text-align: right; font-family: var(--font-mono); }
   .fv-line input:focus { outline: none; border-color: var(--da-cyan-500); box-shadow: 0 0 0 3px var(--da-cyan-50); }
   .fv-line .fv-monto { text-align: right; font-family: var(--font-mono); font-size: 12.5px; color: var(--fg-primary); font-weight: var(--fw-semibold); }

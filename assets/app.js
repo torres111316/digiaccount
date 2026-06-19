@@ -1876,6 +1876,41 @@
       return pane ? pane.querySelector('table.data-table tbody') : null;
     }
 
+    // Construye el HTML de una fila de artículo a partir de un registro de la base
+    function filaArticulo(p) {
+      const stock = Number(p.stock) || 0, min = Number(p.stock_min) || 0, costo = Number(p.costo) || 0;
+      const estado = stock <= min ? (stock < min / 2 ? '<span class="tag danger">Crítico</span>' : '<span class="tag warn">Bajo</span>') : '<span class="tag success">Óptimo</span>';
+      const tag = p.alicuota === 'Exento' ? '<span class="tag slate">Exento</span>' : '<span class="tag navy">' + (p.alicuota || '16%') + '</span>';
+      const nombre = p.nombre || '', sku = p.sku || '', cat = p.categoria || '';
+      return '<td><div class="prod-cell"><div class="prod-thumb"><i data-lucide="package"></i></div><div class="info"><div class="n">' + nombre + '</div><div class="sku">' + sku + '</div></div></div></td>'
+        + '<td>' + cat + '</td>'
+        + '<td><div class="stock-cell"><div class="qty">' + stock + ' <span class="unit">uds</span></div><div class="stock-bar"><span style="width:60%"></span></div><div class="min-note">Mín. ' + min + '</div></div></td>'
+        + '<td class="num">' + fmt(costo) + '</td><td class="num">' + fmt(Number(p.precio) || 0) + '</td><td>' + tag + '</td>'
+        + '<td class="num">' + fmt(stock * costo) + '</td><td>' + estado + '</td>';
+    }
+    // Carga los artículos reales (modo comercial) desde Supabase y los pinta
+    async function cargarProductos() {
+      if (!window.sb) return;
+      const tb = tbodyOf('invpane-com', 'articulos'); if (!tb) return;
+      const { data, error } = await window.sb.from('productos').select('*').order('nombre');
+      if (error) { console.warn('[DigiAccount] No se pudieron cargar productos:', error.message); return; }
+      const arr = data || [];
+      window.__PRODUCTOS = arr;   // disponible para el recibo (selector de productos)
+      tb.innerHTML = arr.map((p) => '<tr>' + filaArticulo(p) + '</tr>').join('');
+      // Actualizar KPIs y contadores con datos reales
+      const total = arr.length;
+      const valor = arr.reduce((s, p) => s + (Number(p.stock) || 0) * (Number(p.costo) || 0), 0);
+      const critico = arr.filter((p) => (Number(p.stock) || 0) <= (Number(p.stock_min) || 0)).length;
+      const setTxt = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
+      setTxt('invKpiArticulos', total); setTxt('invKpiValor', fmt(valor)); setTxt('invKpiCritico', critico);
+      setTxt('invTabArticulos', total); setTxt('invShown', total); setTxt('invTotal', total);
+      console.log('[DigiAccount] Productos cargados:', total);
+      if (window.lucide) window.lucide.createIcons();
+    }
+    window.cargarProductos = cargarProductos;
+    window.__getProductos = () => window.__PRODUCTOS || [];
+    cargarProductos();
+
     // ---- Nuevo artículo (comercial) ----
     function nuevoArticulo() {
       window.openFormModal && window.openFormModal({
@@ -1891,21 +1926,19 @@
         ],
         onSave: (v) => {
           if (!v.nombre) return 'Indica el nombre del artículo.';
-          const tb = tbodyOf('invpane-com', 'articulos'); if (!tb) return;
-          const sku = 'SKU-' + String(skuSeq++).padStart(2, '0');
-          const stock = Number(v.stock) || 0, min = Number(v.min) || 0, costo = Number(v.costo) || 0;
-          const estado = stock <= min ? (stock < min / 2 ? '<span class="tag danger">Crítico</span>' : '<span class="tag warn">Bajo</span>') : '<span class="tag success">Óptimo</span>';
-          const tag = v.alic === 'Exento' ? '<span class="tag slate">Exento</span>' : '<span class="tag navy">' + v.alic + '</span>';
-          const ic = ICONS[Math.floor(Math.random() * ICONS.length)];
-          const tr = document.createElement('tr');
-          tr.innerHTML = '<td><div class="prod-cell"><div class="prod-thumb"><i data-lucide="' + ic + '"></i></div><div class="info"><div class="n">' + v.nombre + '</div><div class="sku">' + sku + '</div></div></div></td>'
-            + '<td>' + v.cat + '</td>'
-            + '<td><div class="stock-cell"><div class="qty">' + stock + ' <span class="unit">uds</span></div><div class="stock-bar"><span style="width:60%"></span></div><div class="min-note">Mín. ' + min + '</div></div></td>'
-            + '<td class="num">' + fmt(costo) + '</td><td class="num">' + fmt(Number(v.precio) || 0) + '</td><td>' + tag + '</td>'
-            + '<td class="num">' + fmt(stock * costo) + '</td><td>' + estado + '</td>';
-          tb.insertBefore(tr, tb.firstChild);
-          if (window.lucide) window.lucide.createIcons();
-          toast('Artículo "' + v.nombre + '" creado · ' + sku, 'success');
+          if (!window.sb || !window.__CUENTA_ID) return 'No hay sesión activa. Inicia sesión de nuevo.';
+          const sku = 'SKU-' + String(Date.now()).slice(-5);
+          const fila = {
+            cuenta_id: window.__CUENTA_ID,
+            nombre: v.nombre, sku: sku, categoria: v.cat, alicuota: v.alic,
+            stock: Number(v.stock) || 0, stock_min: Number(v.min) || 0,
+            costo: Number(v.costo) || 0, precio: Number(v.precio) || 0,
+          };
+          window.sb.from('productos').insert(fila).then(({ error }) => {
+            if (error) { toast('No se pudo guardar: ' + error.message, 'error'); return; }
+            toast('Artículo "' + v.nombre + '" creado · ' + sku, 'success');
+            cargarProductos();
+          });
         },
       });
     }
@@ -2949,17 +2982,19 @@
       const receptor = f.tipo === 'venta' ? f.parte : EMPRESA;
       currentFac = { num: num, f: f, emisor: emisor, receptor: receptor };
       const alicLabel = (f.alic * 100).toLocaleString('es-VE') + '%';
-      modalTitle.textContent = (f.tipo === 'venta' ? 'Factura de venta · ' : 'Factura de compra · ') + num;
+      const _rec = window.__esRecibo ? window.__esRecibo() : true;
+      modalTitle.textContent = (f.tipo === 'venta' ? ((_rec ? 'Recibo' : 'Factura') + ' de venta · ') : 'Factura de compra · ') + num;
 
       const itemRows = f.items.map((it, i) =>
-        '<tr><td class="mono">ART-' + String(i + 1).padStart(3, '0') + '</td><td>' + it.d + '</td><td class="num">' + it.c + '</td><td class="num">' + fmt(it.p) + '</td><td class="ctr">' + alicLabel + '</td><td class="num">' + fmt(it.c * it.p) + '</td></tr>'
+        '<tr><td class="mono">ART-' + String(i + 1).padStart(3, '0') + '</td><td>' + it.d + '</td><td class="num">' + it.c + '</td><td class="num">' + fmt(it.p) + '</td>' + (_rec ? '' : '<td class="ctr">' + alicLabel + '</td>') + '<td class="num">' + fmt(it.c * it.p) + '</td></tr>'
       ).join('');
 
       const letras = window.__montoEnLetras ? cap(window.__montoEnLetras(t.total)) : ('Bs ' + fmt(t.total));
 
       // Medio de emisión: adapta el título y el pie legal de la factura
-      const medio = window.medioEmision || 'forma-libre';
-      const tituloDoc = medio === 'electronica' ? 'FACTURA ELECTRÓNICA'
+      const medio = _rec ? 'forma-libre' : (window.medioEmision || 'forma-libre');
+      const tituloDoc = _rec ? 'RECIBO DE VENTA'
+        : medio === 'electronica' ? 'FACTURA ELECTRÓNICA'
         : medio === 'maquina-fiscal' ? 'FACTURA · MÁQ. FISCAL' : 'FACTURA';
       const ctrlDigital = num.replace(/\D/g, '') + '-' + f.fecha.replace(/\D/g, '');
       let pieMedio;
@@ -2968,11 +3003,41 @@
       } else if (medio === 'electronica') {
         pieMedio = '<div class="fac-legal-e"><div class="fle-qr">' + qrSvg(num + ctrlDigital) + '</div>'
           + '<div class="fle-txt"><strong>Factura Electrónica</strong> · Certificada por ' + ELEC.prov + ' (RIF ' + ELEC.rif + ') · Autorización ' + ELEC.prov_aut + '.<br>N° de control digital: <span class="mono">' + ctrlDigital + '</span>. Verifique la validez de este documento escaneando el código QR en el portal del SENIAT. Emitido conforme a la Providencia Administrativa SNAT/2024/00102. El IGTF (3%) aplica a pagos en moneda extranjera o criptoactivos.</div></div>';
+      } else if (_rec) {
+        pieMedio = '<div class="fac-legal"><strong>RECIBO DE VENTA — Documento no fiscal.</strong> Este comprobante no constituye una factura ni genera crédito fiscal. Emitido por DigiAccount. El IGTF (3%) aplica a pagos en moneda extranjera o criptoactivos (Decreto Constituyente).</div>';
       } else {
         pieMedio = '<div class="fac-legal">Imprenta autorizada: <strong>' + IMPRENTA.n + '</strong> · RIF ' + IMPRENTA.rif + ' · Providencia N° ' + IMPRENTA.prov + ' · Facturas autorizadas del N° ' + IMPRENTA.desde + ' al ' + IMPRENTA.hasta + '. Documento emitido conforme a la Providencia Administrativa SNAT/2024/00102 sobre las normas generales de emisión de facturas y otros documentos. El IGTF (3%) aplica a pagos en moneda extranjera o criptoactivos (Decreto Constituyente). Generado por DigiAccount.</div>';
       }
 
-      if (medio === 'maquina-fiscal') {
+      if (_rec) {
+        // ===== RECIBO DE CAJA (rollo angosto, NO fiscal) =====
+        const tkItems = f.items.map((it) =>
+          '<div class="tk-item"><div class="tk-item-d">' + it.d.toUpperCase() + '</div>'
+          + '<div class="tk-item-l"><span>' + it.c + ' x ' + fmt(it.p) + '</span><span>' + fmt(it.c * it.p) + '</span></div></div>'
+        ).join('');
+        doc.innerHTML =
+          '<div class="fac-ticket">'
+          + '<div class="tk-head"><div class="tk-co">' + emisor.n.toUpperCase() + '</div>'
+          + '<div class="tk-line">RIF: ' + emisor.rif + '</div>'
+          + (emisor.dom ? '<div class="tk-line">' + emisor.dom + '</div>' : '') + '</div>'
+          + '<div class="tk-sep"></div>'
+          + '<div class="tk-doc">RECIBO DE VENTA</div>'
+          + '<div class="tk-row"><span>N°</span><span>' + num + '</span></div>'
+          + '<div class="tk-row"><span>FECHA</span><span>' + f.fecha + '</span></div>'
+          + '<div class="tk-line">CLIENTE: ' + receptor.n + '</div>'
+          + '<div class="tk-line">RIF/CI: ' + receptor.rif + '</div>'
+          + '<div class="tk-sep dashed"></div>'
+          + tkItems
+          + '<div class="tk-sep dashed"></div>'
+          + '<div class="tk-total"><span>TOTAL Bs</span><span>' + fmt(t.total) + '</span></div>'
+          + '<div class="tk-sep"></div>'
+          + '<div class="tk-words">SON: ' + letras + '</div>'
+          + '<div class="tk-sep dashed"></div>'
+          + '<div class="tk-line tk-center">Documento no fiscal · no constituye una factura</div>'
+          + '<div class="tk-thanks">¡GRACIAS POR SU COMPRA!</div>'
+          + '<div class="tk-line tk-center">Generado por DigiAccount</div>'
+          + '</div>';
+      } else if (medio === 'maquina-fiscal') {
         // ===== Formato TICKET de impresora fiscal (rollo angosto) =====
         const hora = new Date().toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' });
         const tasaLetra = f.alic === 0.16 ? 'T' : f.alic === 0.08 ? 'R' : 'E';
@@ -3024,7 +3089,7 @@
           + '<div class="fac-meta"><span class="mono">RIF ' + emisor.rif + '</span>' + (emisor.cond ? ' · ' + emisor.cond : '') + '<br>' + emisor.dom + '</div></div></div>'
           + '<div class="fac-num"><div class="t">' + tituloDoc + '</div>'
           + '<div class="r"><span>N°</span><strong>' + num + '</strong></div>'
-          + '<div class="c"><span>N° de Control</span><strong>' + f.control + '</strong></div></div>'
+          + (_rec ? '' : '<div class="c"><span>N° de Control</span><strong>' + f.control + '</strong></div>') + '</div>'
           + '</div>'
           + '<div class="fac-cliente"><div class="fc-grid">'
           + '<div class="fc-f"><span class="l">Nombre o Razón Social</span><span class="v">' + receptor.n + '</span></div>'
@@ -3033,13 +3098,13 @@
           + '<div class="fc-f"><span class="l">Condición de Pago</span><span class="v">' + f.cond + '</span></div>'
           + '<div class="fc-f wide"><span class="l">Domicilio Fiscal</span><span class="v">' + receptor.dom + '</span></div>'
           + '</div></div>'
-          + '<table class="fac-table"><thead><tr><th>Cód.</th><th>Descripción</th><th class="num">Cant.</th><th class="num">P. Unitario</th><th class="ctr">Alíc.</th><th class="num">Monto</th></tr></thead>'
+          + '<table class="fac-table"><thead><tr><th>Cód.</th><th>Descripción</th><th class="num">Cant.</th><th class="num">P. Unitario</th>' + (_rec ? '' : '<th class="ctr">Alíc.</th>') + '<th class="num">Monto</th></tr></thead>'
           + '<tbody>' + itemRows + '</tbody></table>'
           + '<div class="fac-bottom">'
           + '<div class="fac-words">Son: <strong>' + letras + '</strong></div>'
           + '<div class="fac-tot">'
-          + '<div class="ft-row"><span>Base imponible (' + alicLabel + ')</span><span class="mono">' + fmt(t.subtotal) + '</span></div>'
-          + '<div class="ft-row"><span>IVA (' + alicLabel + ')</span><span class="mono">' + fmt(t.iva) + '</span></div>'
+          + (_rec ? '' : '<div class="ft-row"><span>Base imponible (' + alicLabel + ')</span><span class="mono">' + fmt(t.subtotal) + '</span></div>')
+          + (_rec ? '' : '<div class="ft-row"><span>IVA (' + alicLabel + ')</span><span class="mono">' + fmt(t.iva) + '</span></div>')
           + (f.igtf ? '<div class="ft-row"><span>IGTF (3%)</span><span class="mono">' + fmt(t.igtf) + '</span></div>' : '')
           + '<div class="ft-row total"><span>TOTAL A PAGAR</span><span class="mono">Bs ' + fmt(t.total) + '</span></div>'
           + '</div></div>'
@@ -3048,16 +3113,25 @@
           + '</div>';
       }
 
-      lastText = (f.tipo === 'venta' ? 'FACTURA DE VENTA' : 'FACTURA DE COMPRA') + ' N° ' + num + ' (Control ' + f.control + ')\r\n'
-        + 'Emisor: ' + emisor.n + ' - RIF ' + emisor.rif + '\r\n'
-        + (f.tipo === 'venta' ? 'Cliente: ' : 'Proveedor: ') + receptor.n + ' - RIF ' + receptor.rif + '\r\n'
-        + 'Fecha: ' + f.fecha + '\r\n----------------------------------------\r\n'
-        + f.items.map((it) => '  ' + it.d + '  ' + it.c + ' x ' + fmt(it.p) + ' = ' + fmt(it.c * it.p)).join('\r\n')
-        + '\r\n----------------------------------------\r\n'
-        + 'Base imponible: Bs ' + fmt(t.subtotal) + '\r\n'
-        + 'IVA (' + alicLabel + '): Bs ' + fmt(t.iva) + '\r\n'
-        + (f.igtf ? 'IGTF (3%): Bs ' + fmt(t.igtf) + '\r\n' : '')
-        + 'TOTAL: Bs ' + fmt(t.total) + '\r\n';
+      lastText = _rec
+        ? ('RECIBO DE VENTA N° ' + num + '\r\n'
+          + 'Emisor: ' + emisor.n + ' - RIF ' + emisor.rif + '\r\n'
+          + 'Cliente: ' + receptor.n + ' - RIF ' + receptor.rif + '\r\n'
+          + 'Fecha: ' + f.fecha + '\r\n----------------------------------------\r\n'
+          + f.items.map((it) => '  ' + it.d + '  ' + it.c + ' x ' + fmt(it.p) + ' = ' + fmt(it.c * it.p)).join('\r\n')
+          + '\r\n----------------------------------------\r\n'
+          + 'TOTAL: Bs ' + fmt(t.total) + '\r\n'
+          + 'Documento no fiscal - no constituye una factura\r\n')
+        : ((f.tipo === 'venta' ? 'FACTURA DE VENTA' : 'FACTURA DE COMPRA') + ' N° ' + num + ' (Control ' + f.control + ')\r\n'
+          + 'Emisor: ' + emisor.n + ' - RIF ' + emisor.rif + '\r\n'
+          + (f.tipo === 'venta' ? 'Cliente: ' : 'Proveedor: ') + receptor.n + ' - RIF ' + receptor.rif + '\r\n'
+          + 'Fecha: ' + f.fecha + '\r\n----------------------------------------\r\n'
+          + f.items.map((it) => '  ' + it.d + '  ' + it.c + ' x ' + fmt(it.p) + ' = ' + fmt(it.c * it.p)).join('\r\n')
+          + '\r\n----------------------------------------\r\n'
+          + 'Base imponible: Bs ' + fmt(t.subtotal) + '\r\n'
+          + 'IVA (' + alicLabel + '): Bs ' + fmt(t.iva) + '\r\n'
+          + (f.igtf ? 'IGTF (3%): Bs ' + fmt(t.igtf) + '\r\n' : '')
+          + 'TOTAL: Bs ' + fmt(t.total) + '\r\n');
       lastName = 'Factura_' + num + '.txt';
 
       overlay.dataset.open = 'true';
@@ -3182,20 +3256,34 @@
       function fillCliente(c) { rifEl.value = c ? c.rif : ''; idEl.value = c ? (c.id || idSis(c.rif)) : ''; }
 
       function addLine() {
+        const prods = (window.__getProductos ? window.__getProductos() : []);
+        const opts = '<option value="">Elegir producto…</option>' + prods.map((p) =>
+          '<option value="' + p.id + '" data-precio="' + (Number(p.precio) || 0) + '" data-stock="' + (Number(p.stock) || 0) + '" data-nombre="' + String(p.nombre || '').replace(/"/g, '&quot;') + '">' + (p.nombre || '') + ' (stock ' + (Number(p.stock) || 0) + ')</option>').join('');
         const row = document.createElement('div');
         row.className = 'fv-line';
-        row.innerHTML = '<input type="text" class="fv-desc" placeholder="Producto o servicio">'
+        row.innerHTML = '<select class="fv-desc">' + opts + '</select>'
           + '<input type="number" class="fv-cant" placeholder="0" step="any">'
           + '<input type="number" class="fv-precio" placeholder="0.00" step="0.01">'
           + '<span class="fv-monto">Bs 0,00</span>'
           + '<button class="fv-del" title="Eliminar"><i data-lucide="trash-2"></i></button>';
+        const sel = row.querySelector('.fv-desc');
+        sel.addEventListener('change', () => {
+          const o = sel.options[sel.selectedIndex];
+          row.dataset.pid = sel.value || '';
+          row.dataset.pname = o ? (o.getAttribute('data-nombre') || '') : '';
+          row.dataset.stock = o ? (o.getAttribute('data-stock') || '') : '';
+          const precio = o ? parseFloat(o.getAttribute('data-precio')) : 0;
+          row.querySelector('.fv-precio').value = precio ? precio : '';   // precio normal autocompletado (editable por recibo)
+          recalc();
+        });
         row.querySelector('.fv-del').addEventListener('click', () => { row.remove(); recalc(); });
         row.querySelectorAll('input').forEach((i) => i.addEventListener('input', recalc));
         linesEl.appendChild(row);
         drawIcons();
       }
       function recalc() {
-        const alic = parseFloat(document.getElementById('fvAlic').value) || 0;
+        const rec = window.__esRecibo ? window.__esRecibo() : true;
+        const alic = rec ? 0 : (parseFloat(document.getElementById('fvAlic').value) || 0);
         let base = 0;
         linesEl.querySelectorAll('.fv-line').forEach((r) => {
           const c = parseFloat(r.querySelector('.fv-cant').value) || 0;
@@ -3204,10 +3292,10 @@
           r.querySelector('.fv-monto').textContent = 'Bs ' + fmt(m);
           base += m;
         });
-        const iva = base * alic, igtf = igtfChk.checked ? base * 0.03 : 0;
+        const iva = base * alic, igtf = (!rec && igtfChk.checked) ? base * 0.03 : 0;
         document.getElementById('fvBase').textContent = 'Bs ' + fmt(base);
         document.getElementById('fvIva').textContent = 'Bs ' + fmt(iva);
-        document.getElementById('fvIgtfRow').hidden = !igtfChk.checked;
+        document.getElementById('fvIgtfRow').hidden = rec || !igtfChk.checked;
         document.getElementById('fvIgtfVal').textContent = 'Bs ' + fmt(igtf);
         document.getElementById('fvTotal').textContent = 'Bs ' + fmt(base + iva + igtf);
       }
@@ -3242,22 +3330,56 @@
         const cli = clientes[parseInt(selCli.value, 10)];
         if (!cli) return setMsg('Selecciona un cliente.');
         const items = [];
+        let stockError = '';
         linesEl.querySelectorAll('.fv-line').forEach((r) => {
-          const d = r.querySelector('.fv-desc').value.trim();
+          const pid = r.dataset.pid || '';
+          const d = (r.dataset.pname || '').trim();
           const c = parseFloat(r.querySelector('.fv-cant').value) || 0;
           const p = parseFloat(r.querySelector('.fv-precio').value) || 0;
-          if (d && c > 0 && p > 0) items.push({ d: d, c: c, p: p });
+          if (d && c > 0 && p > 0) {
+            if (pid && r.dataset.stock !== '' && r.dataset.stock != null && c > parseFloat(r.dataset.stock)) {
+              stockError = 'No hay stock suficiente de "' + d + '" (disponible: ' + parseFloat(r.dataset.stock) + ').';
+            }
+            items.push({ d: d, c: c, p: p, pid: pid });
+          }
         });
-        if (!items.length) return setMsg('Agrega al menos un renglón con descripción, cantidad y precio.');
-        const nums = Object.keys(DB).filter((k) => /^A-/.test(k)).map((k) => parseInt(k.slice(2), 10));
-        const num = 'A-' + String((nums.length ? Math.max(...nums) : 12841) + 1).padStart(8, '0');
-        const ctrls = Object.values(DB).map((f) => parseInt((f.control || '').replace(/\D/g, ''), 10)).filter((n) => !isNaN(n));
-        const ctrl = '00-' + String((ctrls.length ? Math.max(...ctrls) : 31284) + 1).padStart(6, '0');
+        if (!items.length) return setMsg('Agrega al menos un renglón: elige un producto, una cantidad y un precio.');
+        if (stockError) return setMsg(stockError);
+        const esRec = window.__esRecibo ? window.__esRecibo() : true;
+        let num, ctrl;
+        if (esRec) {
+          const recs = Object.keys(DB).filter((k) => /^REC-/.test(k)).map((k) => parseInt(k.slice(4), 10)).filter((n) => !isNaN(n));
+          num = 'REC-' + String((recs.length ? Math.max(...recs) : 0) + 1).padStart(6, '0');
+          ctrl = '';
+        } else {
+          const nums = Object.keys(DB).filter((k) => /^A-/.test(k)).map((k) => parseInt(k.slice(2), 10));
+          num = 'A-' + String((nums.length ? Math.max(...nums) : 12841) + 1).padStart(8, '0');
+          const ctrls = Object.values(DB).map((f) => parseInt((f.control || '').replace(/\D/g, ''), 10)).filter((n) => !isNaN(n));
+          ctrl = '00-' + String((ctrls.length ? Math.max(...ctrls) : 31284) + 1).padStart(6, '0');
+        }
         const fechaRaw = document.getElementById('fvFecha').value;
         const fecha = fechaRaw ? fechaRaw.split('-').reverse().join('/') : '31/05/2026';
-        const alic = parseFloat(document.getElementById('fvAlic').value) || 0;
-        DB[num] = { tipo: 'venta', control: ctrl, fecha: fecha, parte: { n: cli.n, rif: cli.rif, dom: cli.dom || '' }, alic: alic, igtf: igtfChk.checked, cond: document.getElementById('fvCond').value, items: items };
+        const alic = esRec ? 0 : (parseFloat(document.getElementById('fvAlic').value) || 0);
+        DB[num] = { tipo: 'venta', control: ctrl, fecha: fecha, parte: { n: cli.n, rif: cli.rif, dom: cli.dom || '' }, alic: alic, igtf: (!esRec && igtfChk.checked), cond: document.getElementById('fvCond').value, items: items };
         const t = calcFactura(DB[num]);
+        // Guardar la factura REAL en Supabase
+        if (window.sb && window.__CUENTA_ID) {
+          window.sb.from('facturas').insert({
+            cuenta_id: window.__CUENTA_ID, numero: num, control: ctrl, tipo: 'venta', fecha: fecha,
+            cliente_nombre: cli.n, cliente_rif: cli.rif, cliente_dom: cli.dom || '',
+            alicuota: alic, igtf: (!esRec && igtfChk.checked), condicion: document.getElementById('fvCond').value,
+            items: items, subtotal: t.subtotal, iva: t.iva, igtf_monto: t.igtf, total: t.total, estado: 'Por cobrar',
+          }).then(({ error }) => {
+            if (error) { console.warn('[DigiAccount] No se pudo guardar la factura:', error.message); if (window.toast) window.toast('No se pudo guardar en la base: ' + error.message, 'error'); }
+          });
+          // Descontar el stock del inventario por cada producto vendido
+          const ups = items.filter((it) => it.pid).map((it) => {
+            const prod = (window.__getProductos ? window.__getProductos() : []).find((x) => x.id === it.pid);
+            const nuevo = (Number(prod ? prod.stock : 0) || 0) - it.c;
+            return window.sb.from('productos').update({ stock: nuevo }).eq('id', it.pid);
+          });
+          if (ups.length) Promise.all(ups).then(() => { if (window.cargarProductos) window.cargarProductos(); });
+        }
         const tb = document.querySelector('.ventas-tab[data-tab="facturas"] table.data-table tbody');
         if (tb) {
           const fc = fecha.slice(0, 6) + fecha.slice(8); // dd/mm/yy
@@ -3270,7 +3392,7 @@
           tr.querySelector('[data-ver-factura]').addEventListener('click', () => openFactura(num));
           drawIcons();
         }
-        if (window.toast) window.toast('Factura ' + num + ' emitida · Bs ' + fmt(t.total), 'success');
+        if (window.toast) window.toast((esRec ? 'Recibo ' : 'Factura ') + num + (esRec ? ' emitido · Bs ' : ' emitida · Bs ') + fmt(t.total), 'success');
         close();
         openFactura(num);
       });
@@ -3288,6 +3410,53 @@
       return { num: num, f: f, emisor: em, receptor: re };
     };
     window.__listaFacturasVenta = Object.keys(DB).filter((k) => DB[k].tipo === 'venta').map((k) => ({ num: k, cliente: DB[k].parte.n }));
+
+    // Carga las facturas de venta reales desde Supabase y las pinta en la tabla de Ventas
+    async function cargarFacturas() {
+      if (!window.sb) return;
+      const { data, error } = await window.sb.from('facturas').select('*').eq('tipo', 'venta').order('creado_en', { ascending: false });
+      if (error) { console.warn('[DigiAccount] No se pudieron cargar facturas:', error.message); return; }
+      const tb = document.querySelector('.ventas-tab[data-tab="facturas"] table.data-table tbody');
+      if (tb) tb.innerHTML = '';
+      (data || []).forEach((f) => {
+        DB[f.numero] = { tipo: 'venta', control: f.control, fecha: f.fecha, parte: { n: f.cliente_nombre, rif: f.cliente_rif, dom: f.cliente_dom || '' }, alic: Number(f.alicuota) || 0, igtf: !!f.igtf, cond: f.condicion, items: Array.isArray(f.items) ? f.items : [] };
+        if (tb) {
+          const fc = (f.fecha || '').slice(0, 6) + (f.fecha || '').slice(8);
+          const tr = document.createElement('tr');
+          tr.innerHTML = '<td>' + fc + '</td><td class="mono">' + f.numero + '</td><td class="mono">' + (f.control || '') + '</td>'
+            + '<td class="primary">' + (f.cliente_nombre || '') + '</td><td class="mono">' + (f.cliente_rif || '') + '</td>'
+            + '<td class="num">' + fmt(Number(f.total) || 0) + '</td><td><span class="tag cyan">' + (f.estado || 'Por cobrar') + '</span></td>'
+            + '<td><button class="btn btn-ghost" data-ver-factura="' + f.numero + '" style="height:26px;font-size:11px;padding:0 9px;white-space:nowrap;"><i data-lucide="eye"></i> Ver</button></td>';
+          tb.appendChild(tr);
+          tr.querySelector('[data-ver-factura]').addEventListener('click', () => openFactura(f.numero));
+        }
+      });
+      console.log('[DigiAccount] Facturas cargadas:', (data || []).length);
+      drawIcons();
+    }
+    window.cargarFacturas = cargarFacturas;
+
+    // Aplica el modo de documento. En 'recibo' (por defecto) cambia los textos visibles
+    // a "Recibo" y oculta lo fiscal. En 'factura' (al homologar) deja los textos originales.
+    function aplicarModoDoc() {
+      if (!(window.__esRecibo ? window.__esRecibo() : true)) return; // modo factura = textos fiscales originales
+      const nb = document.getElementById('nuevaFacturaBtn'); if (nb) nb.innerHTML = '<i data-lucide="plus"></i> Nuevo recibo';
+      const mb = document.getElementById('medioEmisionBtn'); if (mb) mb.style.display = 'none';
+      document.querySelectorAll('#view-ventas .overline').forEach((ov) => { if (/Facturaci/i.test(ov.textContent)) ov.textContent = 'Recibos de venta'; });
+      const ft = document.querySelector('.fv-title'); if (ft) ft.textContent = 'Emitir recibo de venta';
+      const fs = document.querySelector('.fv-subtitle'); if (fs) fs.textContent = 'Genera el N° de recibo automáticamente';
+      const fe = document.getElementById('fvEmitir'); if (fe) fe.innerHTML = '<i data-lucide="check"></i> Emitir recibo';
+      const tabla = document.querySelector('.ventas-tab[data-tab="facturas"] table.data-table');
+      if (tabla) tabla.querySelectorAll('thead th').forEach((th) => { const t = th.textContent.trim(); if (t === 'N° Factura') th.textContent = 'N° Recibo'; else if (t === 'N° Control') th.textContent = ''; });
+      // Un recibo no desglosa impuestos: ocultar Alícuota IVA, IGTF y las filas de Base/IVA
+      const al = document.getElementById('fvAlic'); if (al && al.closest('.fv-f')) al.closest('.fv-f').style.display = 'none';
+      const ig = document.querySelector('.fv-igtf'); if (ig) ig.style.display = 'none';
+      const baseEl = document.getElementById('fvBase'); if (baseEl && baseEl.closest('.fv-tot-row')) baseEl.closest('.fv-tot-row').style.display = 'none';
+      const ivaEl = document.getElementById('fvIva'); if (ivaEl && ivaEl.closest('.fv-tot-row')) ivaEl.closest('.fv-tot-row').style.display = 'none';
+      if (window.lucide) window.lucide.createIcons();
+    }
+    aplicarModoDoc();
+    cargarFacturas();
     drawIcons();
   })();
 
@@ -4467,6 +4636,8 @@
       const perfil = await cargarPerfilActual();
       if (window.cargarEmpresas) await window.cargarEmpresas();
       if (window.cargarTerceros) window.cargarTerceros();
+      if (window.cargarProductos) window.cargarProductos();
+      if (window.cargarFacturas) window.cargarFacturas();
       if (perfil) {
         const plan = perfil.cuentas && perfil.cuentas.planes ? perfil.cuentas.planes.nombre : '';
         toast('Bienvenido, ' + String(perfil.nombre || '').split(' ')[0] + (plan ? ' · ' + plan : ''), 'success');
@@ -4507,6 +4678,8 @@
       await cargarPerfilActual();
       if (window.cargarEmpresas) window.cargarEmpresas();
       if (window.cargarTerceros) window.cargarTerceros();
+      if (window.cargarProductos) window.cargarProductos();
+      if (window.cargarFacturas) window.cargarFacturas();
       toast('Cuenta creada · ¡bienvenido, ' + name.split(' ')[0] + '!', 'success');
       // Funnel: cuenta creada → elegir plan → onboarding de empresa → sistema
       if (window.openPlanOnboarding) setTimeout(() => window.openPlanOnboarding(segmento, name), 350);
@@ -4529,7 +4702,7 @@
 
     // Si ya hay una sesión activa (p. ej. tras recargar), entra directo a la app
     window.sb.auth.getSession().then(async ({ data }) => {
-      if (data && data.session) { showApp(); await cargarPerfilActual(); if (window.cargarEmpresas) await window.cargarEmpresas(); if (window.cargarTerceros) window.cargarTerceros(); }
+      if (data && data.session) { showApp(); await cargarPerfilActual(); if (window.cargarEmpresas) await window.cargarEmpresas(); if (window.cargarTerceros) window.cargarTerceros(); if (window.cargarProductos) window.cargarProductos(); if (window.cargarFacturas) window.cargarFacturas(); }
     });
   })();
 
@@ -4616,6 +4789,7 @@
           + '<td><button class="btn btn-ghost" data-ver-tercero="' + idx + '" style="height:26px;font-size:11px;padding:0 9px;white-space:nowrap;"><i data-lucide="eye"></i> Ficha</button></td></tr>';
       }).join('');
       const shown = document.getElementById('tercerosShown'); if (shown) shown.textContent = vis.length;
+      const totalEl = document.getElementById('tercerosTotal'); if (totalEl) totalEl.textContent = DB.length;
       tbody.querySelectorAll('[data-ver-tercero]').forEach((b) => b.addEventListener('click', () => openFicha(DB[parseInt(b.dataset.verTercero, 10)])));
       if (window.lucide) window.lucide.createIcons();
     }
@@ -4625,6 +4799,7 @@
       set('terKpiCli', DB.filter((t) => t.cli).length);
       set('terKpiProv', DB.filter((t) => t.prov).length);
       set('terKpiAmbos', DB.filter((t) => t.cli && t.prov).length);
+      const nb = document.getElementById('navTercerosBadge'); if (nb) { nb.textContent = DB.length; nb.style.display = DB.length ? '' : 'none'; }
     }
 
     // Mapea una fila de Supabase a la forma que usa este módulo

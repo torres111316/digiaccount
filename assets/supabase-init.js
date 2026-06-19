@@ -13,4 +13,11 @@
   window.sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
   console.log('[DigiAccount] Cliente Supabase listo ✓');
+
+  // === Modo del documento de venta ===
+  //  'recibo'  = por defecto. DigiAccount aún sin homologación SENIAT → emite RECIBOS (no fiscales).
+  //  'factura' = al homologar ante el SENIAT → reactiva TODO el comportamiento fiscal
+  //              (factura, N° de control, máquina fiscal, formato electrónico) que ya existe en el sistema.
+  window.__MODO_DOC = window.__MODO_DOC || 'recibo';
+  window.__esRecibo = function () { return (window.__MODO_DOC || 'recibo') !== 'factura'; };
 })();
