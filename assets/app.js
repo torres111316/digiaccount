@@ -72,6 +72,46 @@
     window.__bindEntityOption = bindEntityOption;
   }
 
+  // Carga las empresas REALES de la cuenta desde Supabase y reconstruye el selector
+  async function cargarEmpresas() {
+    const dd = document.getElementById('entityDropdown');
+    const addBtn = document.getElementById('entityAddBtn');
+    if (!window.sb || !dd || !addBtn) return;
+    const { data, error } = await window.sb
+      .from('empresas')
+      .select('nombre, rif, condicion_fiscal')
+      .order('nombre');
+    if (error) { console.warn('[DigiAccount] No se pudieron cargar las empresas:', error.message); return; }
+    // Quitar las opciones de ejemplo (hardcodeadas) y sus etiquetas de grupo
+    dd.querySelectorAll('.entity-option, .group-label').forEach((el) => el.remove());
+    const lbl = document.createElement('div');
+    lbl.className = 'group-label';
+    lbl.textContent = 'Empresas (Persona Jurídica)';
+    dd.insertBefore(lbl, addBtn);
+    (data || []).forEach((emp) => {
+      const nombre = emp.nombre || 'Empresa';
+      const rif = emp.rif || '';
+      const cond = emp.condicion_fiscal || 'ordinario';
+      const ini = (nombre.replace(/[^A-Za-zÁÉÍÓÚÑ ]/g, '').trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join('') || 'EM').toUpperCase();
+      const condTxt = cond.charAt(0).toUpperCase() + cond.slice(1);
+      const opt = document.createElement('div');
+      opt.className = 'entity-option';
+      opt.dataset.name = nombre; opt.dataset.avatar = ini; opt.dataset.rif = rif;
+      opt.dataset.type = /especial/i.test(cond) ? 'especial' : 'ordinario';
+      opt.innerHTML = '<div class="ea" style="background:var(--da-navy-500);color:#fff">' + ini + '</div>'
+        + '<div class="eo-info"><div class="eo-name">' + nombre + '</div><div class="eo-meta">' + rif + ' · Contribuyente ' + condTxt + '</div></div>'
+        + '<i data-lucide="check" class="eo-check" style="width:16px;height:16px;"></i>';
+      dd.insertBefore(opt, addBtn);
+      if (window.__bindEntityOption) window.__bindEntityOption(opt);
+    });
+    const first = dd.querySelector('.entity-option');
+    if (first) first.click();          // activa la primera empresa (nombre, RIF, badge)
+    dd.dataset.open = 'false';
+    drawIcons();
+    console.log('[DigiAccount] Empresas cargadas:', (data || []).length);
+  }
+  window.cargarEmpresas = cargarEmpresas;
+
   function setText(id, val) {
     const el = document.getElementById(id);
     if (el && val != null) el.textContent = val;
@@ -680,7 +720,7 @@
       nuevoAsiento.addEventListener('click', open);
       document.getElementById('amClose').addEventListener('click', close);
       document.getElementById('amCancel').addEventListener('click', close);
-      overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+      // Clic fuera NO cierra (evita perder datos del formulario). Usa Cancelar o la X.
       document.getElementById('amAddLine').addEventListener('click', () => addLine());
 
       document.getElementById('amSave').addEventListener('click', () => {
@@ -3194,7 +3234,7 @@
       document.getElementById('fvAddLine').addEventListener('click', addLine);
       document.getElementById('fvClose').addEventListener('click', close);
       document.getElementById('fvCancel').addEventListener('click', close);
-      overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+      // Clic fuera NO cierra (evita perder datos del formulario). Usa Cancelar o la X.
 
       document.getElementById('fvEmitir').addEventListener('click', () => {
         const setMsg = (m) => { msgEl.textContent = m; msgEl.classList.add('error'); };
@@ -3602,7 +3642,7 @@
     });
     cancelBtn.addEventListener('click', close);
     closeBtn.addEventListener('click', close);
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+    // Clic fuera NO cierra (evita perder datos del formulario). Usa Cancelar o la X.
   })();
 
   /* =========================================================
@@ -4386,6 +4426,23 @@
     function showAuth() { body.classList.remove('authed'); setTab('login'); window.scrollTo(0, 0); drawIcons(); }
     window.__showAuth = showAuth;
 
+    // Carga el perfil del usuario conectado (nombre, rol, cuenta y plan) desde Supabase
+    async function cargarPerfilActual() {
+      const { data: u } = await window.sb.auth.getUser();
+      if (!u || !u.user) return null;
+      const { data, error } = await window.sb
+        .from('perfiles')
+        .select('cuenta_id, nombre, rol, cuentas(nombre, planes(nombre))')
+        .eq('id', u.user.id)
+        .single();
+      if (error) { console.warn('[DigiAccount] No se pudo cargar el perfil:', error.message); return null; }
+      window.__PERFIL = data;            // queda disponible para el resto de la app
+      window.__CUENTA_ID = data.cuenta_id; // para crear empresas/datos en la cuenta correcta
+      console.log('[DigiAccount] Perfil cargado:', data);
+      return data;
+    }
+    window.cargarPerfilActual = cargarPerfilActual;
+
     tabs.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => setTab(b.dataset.tab)));
     screen.querySelectorAll('[data-goauth]').forEach((a) => a.addEventListener('click', (e) => { e.preventDefault(); setTab(a.dataset.goauth); }));
     const fl = document.getElementById('forgotLink');
@@ -4397,16 +4454,31 @@
       if (inp) inp.type = inp.type === 'password' ? 'text' : 'password';
     }));
 
-    document.getElementById('loginForm').addEventListener('submit', (e) => {
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
       e.preventDefault();
-      if (!document.getElementById('loginEmail').value.trim()) return toast('Ingresa tu correo electrónico', 'error');
-      showApp(); toast('Bienvenido a DigiAccount', 'success');
+      const email = document.getElementById('loginEmail').value.trim();
+      const pass = document.getElementById('loginPass').value;
+      if (!email) return toast('Ingresa tu correo electrónico', 'error');
+      if (!pass) return toast('Ingresa tu contraseña', 'error');
+      // Autenticación REAL contra Supabase Auth
+      const { data, error } = await window.sb.auth.signInWithPassword({ email: email, password: pass });
+      if (error) { toast('Correo o contraseña incorrectos', 'error'); return; }
+      showApp();
+      const perfil = await cargarPerfilActual();
+      if (window.cargarEmpresas) await window.cargarEmpresas();
+      if (window.cargarTerceros) window.cargarTerceros();
+      if (perfil) {
+        const plan = perfil.cuentas && perfil.cuentas.planes ? perfil.cuentas.planes.nombre : '';
+        toast('Bienvenido, ' + String(perfil.nombre || '').split(' ')[0] + (plan ? ' · ' + plan : ''), 'success');
+      } else {
+        toast('Bienvenido a DigiAccount', 'success');
+      }
     });
     // Acceso con Google — simulado en el prototipo (será Supabase Auth OAuth en producción)
     screen.querySelectorAll('.auth-sso').forEach((b) => b.addEventListener('click', () => {
       showApp(); toast('Acceso con Google (demo) · bienvenido', 'success');
     }));
-    document.getElementById('signupForm').addEventListener('submit', (e) => {
+    document.getElementById('signupForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const name = document.getElementById('suName').value.trim();
       const cedula = document.getElementById('suCedula').value.trim();
@@ -4420,9 +4492,21 @@
       if ((pass || '').length < 8) return toast('La contraseña debe tener al menos 8 caracteres', 'error');
       if (!document.getElementById('suTerms').checked) return toast('Debes aceptar los términos', 'error');
       const segmento = (document.getElementById('suSegmento') || {}).value || 'empresas';
+      // Registro REAL en Supabase Auth — el trigger 'on_auth_user_created' crea la cuenta + el perfil
+      const { data, error } = await window.sb.auth.signUp({
+        email: email,
+        password: pass,
+        options: { data: { nombre: name, cedula: cedula, whatsapp: whatsapp, segmento: segmento } }
+      });
+      if (error) { toast('No se pudo crear la cuenta: ' + error.message, 'error'); return; }
       // Registro en la base de contactos (para CRM / email marketing)
       if (window.__registrarContacto) window.__registrarContacto({ tipo: 'Usuario', nombre: name, doc: cedula, email: email, whatsapp: whatsapp, segmento: segmento, origen: 'Registro de cuenta' });
+      // Si Supabase aún exige confirmar el correo, no hay sesión todavía
+      if (!data.session) { toast('Te enviamos un correo para confirmar tu cuenta. Revísalo para entrar.', 'success'); setTab('login'); return; }
       showApp();
+      await cargarPerfilActual();
+      if (window.cargarEmpresas) window.cargarEmpresas();
+      if (window.cargarTerceros) window.cargarTerceros();
       toast('Cuenta creada · ¡bienvenido, ' + name.split(' ')[0] + '!', 'success');
       // Funnel: cuenta creada → elegir plan → onboarding de empresa → sistema
       if (window.openPlanOnboarding) setTimeout(() => window.openPlanOnboarding(segmento, name), 350);
@@ -4434,11 +4518,19 @@
       setTab('login');
     });
     const logoutBtn = document.getElementById('logoutBtn');
-    if (logoutBtn) logoutBtn.addEventListener('click', () => { showAuth(); toast('Sesión cerrada'); });
+    if (logoutBtn) logoutBtn.addEventListener('click', async () => {
+      await window.sb.auth.signOut();   // cierra la sesión real
+      showAuth(); toast('Sesión cerrada');
+    });
 
     // Estado inicial: pantalla de acceso
     body.classList.remove('authed');
     setTab('login');
+
+    // Si ya hay una sesión activa (p. ej. tras recargar), entra directo a la app
+    window.sb.auth.getSession().then(async ({ data }) => {
+      if (data && data.session) { showApp(); await cargarPerfilActual(); if (window.cargarEmpresas) await window.cargarEmpresas(); if (window.cargarTerceros) window.cargarTerceros(); }
+    });
   })();
 
   /* =========================================================
@@ -4529,11 +4621,37 @@
     }
     function updateKPIs() {
       const set = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
-      set('terKpiTotal', DB.length + 40);
-      set('terKpiCli', DB.filter((t) => t.cli).length + 23);
-      set('terKpiProv', DB.filter((t) => t.prov).length + 17);
-      set('terKpiAmbos', DB.filter((t) => t.cli && t.prov).length + 4);
+      set('terKpiTotal', DB.length);
+      set('terKpiCli', DB.filter((t) => t.cli).length);
+      set('terKpiProv', DB.filter((t) => t.prov).length);
+      set('terKpiAmbos', DB.filter((t) => t.cli && t.prov).length);
     }
+
+    // Mapea una fila de Supabase a la forma que usa este módulo
+    function fromRow(r) {
+      return {
+        _id: r.id,
+        tipo: r.tipo_persona || 'Persona jurídica (J)',
+        rif: r.rif || '', nombre: r.nombre || '',
+        cli: !!r.es_cliente, prov: !!r.es_proveedor,
+        fiscal: r.condicion_fiscal || 'Contribuyente ordinario',
+        agenteRet: r.agente_retencion ? 'Sí' : 'No',
+        tel: r.telefono || '', email: r.email || '', dom: r.domicilio || '',
+        cxc: Number(r.cxc) || 0, cxp: Number(r.cxp) || 0,
+        cont: Array.isArray(r.contactos) ? r.contactos : []
+      };
+    }
+    // Carga los terceros reales de la cuenta desde Supabase
+    async function cargarTerceros() {
+      if (!window.sb) return;
+      const { data, error } = await window.sb.from('terceros').select('*').order('nombre');
+      if (error) { console.warn('[DigiAccount] No se pudieron cargar terceros:', error.message); return; }
+      DB.length = 0;
+      (data || []).forEach((r) => DB.push(fromRow(r)));
+      console.log('[DigiAccount] Terceros cargados:', DB.length);
+      render(); updateKPIs();
+    }
+    window.cargarTerceros = cargarTerceros;
 
     // ---- Filtros y búsqueda ----
     document.getElementById('tercerosFilters').querySelectorAll('button').forEach((b) => {
@@ -4611,7 +4729,7 @@
     document.getElementById('nuevoTerceroBtn').addEventListener('click', () => openFicha(null));
     document.getElementById('terClose').addEventListener('click', close);
     document.getElementById('terCancel').addEventListener('click', close);
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+    // Clic fuera del cuadro NO cierra (evita perder el registro por accidente). Usa Cancelar o la X.
 
     document.getElementById('terSave').addEventListener('click', () => {
       const msg = document.getElementById('terMsg');
@@ -4630,16 +4748,27 @@
         n: r.querySelector('[data-c="n"]').value.trim(), cargo: r.querySelector('[data-c="cargo"]').value.trim(),
         tel: r.querySelector('[data-c="tel"]').value.trim(), email: r.querySelector('[data-c="email"]').value.trim(),
       })).filter((c) => c.n);
-      const data = {
-        tipo: get('tipo').value, rif: rif, nombre: nombre, cli: cli, prov: prov,
-        fiscal: get('fiscalCond').value, agenteRet: get('agenteRet') ? get('agenteRet').value : 'No',
-        tel: get('tel').value.trim(), email: get('email').value.trim(),
-        dom: get('dom').value.trim().toUpperCase(), cont: cont,
-        cxc: editIdx != null ? DB[editIdx].cxc : 0, cxp: editIdx != null ? DB[editIdx].cxp : 0,
+      if (!window.sb || !window.__CUENTA_ID) return setMsg('No hay sesión activa. Inicia sesión de nuevo.');
+      const fila = {
+        cuenta_id: window.__CUENTA_ID,
+        tipo_persona: get('tipo').value,
+        rif: rif, nombre: nombre,
+        es_cliente: cli, es_proveedor: prov,
+        condicion_fiscal: get('fiscalCond').value,
+        agente_retencion: !!(get('agenteRet') && get('agenteRet').value === 'Sí'),
+        telefono: get('tel').value.trim(), email: get('email').value.trim(),
+        domicilio: get('dom').value.trim().toUpperCase(),
+        contactos: cont,
       };
-      if (editIdx != null) { DB[editIdx] = data; toast('Tercero "' + nombre + '" actualizado'); }
-      else { DB.unshift(data); toast('Tercero "' + nombre + '" registrado · ' + (cli && prov ? 'cliente y proveedor' : cli ? 'cliente' : 'proveedor')); }
-      render(); updateKPIs(); close();
+      const accion = (editIdx != null && DB[editIdx] && DB[editIdx]._id)
+        ? window.sb.from('terceros').update(fila).eq('id', DB[editIdx]._id)
+        : window.sb.from('terceros').insert(fila);
+      accion.then(({ error }) => {
+        if (error) { setMsg('No se pudo guardar: ' + error.message); return; }
+        toast('Tercero "' + nombre + '" ' + (editIdx != null ? 'actualizado' : 'registrado'));
+        if (window.cargarTerceros) window.cargarTerceros();
+        close();
+      });
     });
 
     // Exportar CSV
@@ -4664,6 +4793,7 @@
     };
 
     render(); updateKPIs();
+    cargarTerceros();
   })();
 
   /* =========================================================
@@ -4823,7 +4953,7 @@
     function closeAuto() { autoModal.hidden = true; }
     document.getElementById('agAutoClose').addEventListener('click', closeAuto);
     document.getElementById('agAutoCancel').addEventListener('click', closeAuto);
-    autoModal.addEventListener('click', (e) => { if (e.target === autoModal) closeAuto(); });
+    // Clic fuera NO cierra (evita perder datos del formulario). Usa Cancelar o la X.
     document.getElementById('agAutoSave').addEventListener('click', () => {
       const sel = autoModal.querySelector('input[name="agLevel"]:checked');
       if (sel && autoAgent) { autoAgent.auto = sel.value; renderGrid(); toast(autoAgent.n + ' → ' + AUTO_LABEL[sel.value]); }
@@ -5352,7 +5482,7 @@
 
     document.getElementById('payClose').addEventListener('click', close);
     document.getElementById('payCancel').addEventListener('click', close);
-    scrim.addEventListener('click', (e) => { if (e.target === scrim) close(); });
+    // Clic fuera NO cierra (evita perder datos del formulario). Usa Cancelar o la X.
 
     document.getElementById('payConfirm').addEventListener('click', () => {
       const METODOS = window.__METODOS_PAGO || {};
@@ -6303,19 +6433,25 @@
       const cond = document.getElementById('cwCond').value;
       // Alta en la base de contactos (CRM / email marketing)
       if (window.__registrarContacto) window.__registrarContacto({ tipo: 'Empresa', nombre: nombre, doc: rif, email: (document.getElementById('cwEmail') || {}).value || '', whatsapp: (document.getElementById('cwWhatsapp') || {}).value || '', segmento: 'empresas', origen: 'Onboarding' });
-      const ini = (nombre.replace(/[^A-Za-zÁÉÍÓÚÑ ]/g, '').trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join('') || 'NE').toUpperCase();
-      const dd = document.getElementById('entityDropdown');
-      const addBtn = document.getElementById('entityAddBtn');
-      if (dd && addBtn) {
-        const opt = document.createElement('div');
-        opt.className = 'entity-option';
-        opt.dataset.name = nombre; opt.dataset.avatar = ini; opt.dataset.rif = rif;
-        opt.dataset.type = /especial/i.test(cond) ? 'especial' : 'ordinario';
-        opt.innerHTML = '<div class="ea" style="background:var(--da-navy-500);color:#fff">' + ini + '</div>'
-          + '<div class="eo-info"><div class="eo-name">' + nombre + '</div><div class="eo-meta">' + rif + ' · ' + cond + '</div></div>'
-          + '<i data-lucide="check" class="eo-check" style="width:16px;height:16px;"></i>';
-        dd.insertBefore(opt, addBtn);
-        if (window.__bindEntityOption) window.__bindEntityOption(opt);
+      // Guardar la empresa REAL en Supabase, y refrescar el selector desde la base
+      if (window.sb && window.__CUENTA_ID) {
+        const condFiscal = /especial/i.test(cond) ? 'especial' : (/formal/i.test(cond) ? 'formal' : 'ordinario');
+        window.sb.from('empresas').insert({
+          cuenta_id: window.__CUENTA_ID,
+          nombre: nombre,
+          rif: rif,
+          condicion_fiscal: condFiscal
+        }).then(({ error }) => {
+          if (error) {
+            console.warn('[DigiAccount] No se pudo guardar la empresa:', error.message);
+            if (window.toast) window.toast('No se pudo guardar la empresa: ' + error.message, 'error');
+            return;
+          }
+          if (window.cargarEmpresas) window.cargarEmpresas();   // recarga la lista real
+          if (window.toast) window.toast('Empresa guardada en la base de datos ✓', 'success');
+        });
+      } else {
+        console.warn('[DigiAccount] Falta la sesión o el cuenta_id; la empresa no se guardó en la base.');
       }
       document.getElementById('cwOkTitle').textContent = '¡' + nombre + ' registrada!';
       showPane('done');
