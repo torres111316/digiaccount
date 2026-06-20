@@ -984,10 +984,76 @@
       if (window.lucide) window.lucide.createIcons();
     }
 
+    // Saldo según naturaleza: Activo/Costo/Gasto (1,5,6) = debe−haber; Pasivo/Patrimonio/Ingreso (2,3,4) = haber−debe
+    function saldoNatural(c) {
+      const g = c.code.charAt(0);
+      return (g === '1' || g === '5' || g === '6') ? (c.debe - c.haber) : (c.haber - c.debe);
+    }
+
+    function renderEstadoResultados(map) {
+      const tab = view.querySelector('.conta-tab[data-tab="resultados"]');
+      if (!tab) return 0;
+      const cuentas = Array.from(map.values()).filter((c) => c.debe !== 0 || c.haber !== 0);
+      const porGrupo = (g) => cuentas.filter((c) => c.code.charAt(0) === g).sort((a, b) => a.code.localeCompare(b.code));
+      const sum = (arr) => arr.reduce((s, c) => s + saldoNatural(c), 0);
+      const ing = porGrupo('4'), cos = porGrupo('5'), gas = porGrupo('6');
+      const totIng = sum(ing), totCos = sum(cos), totGas = sum(gas);
+      const utilBruta = totIng - totCos, utilOper = utilBruta - totGas, utilNeta = utilOper;
+      const linea = (c) => '<tr class="line-detail"><td class="label"><span class="sub-acc">' + c.code + '</span>' + c.nombre + '</td><td class="amount">' + fmt2(Math.abs(saldoNatural(c))) + '</td><td class="amount pct"></td></tr>';
+      const sh = (t) => '<tr class="section-head"><td class="label">' + t + '</td><td class="amount"></td><td class="amount pct"></td></tr>';
+      const st = (t, v) => '<tr class="subtotal"><td class="label">' + t + '</td><td class="amount">' + fmt2(v) + '</td><td class="amount pct"></td></tr>';
+      let html = sh('Ingresos') + (ing.map(linea).join('') || '<tr class="line-detail"><td class="label">Sin ingresos</td><td class="amount">—</td><td class="amount pct"></td></tr>') + st('Total ingresos', totIng);
+      html += sh('Costo de ventas') + (cos.map(linea).join('') || '<tr class="line-detail"><td class="label">Sin costos</td><td class="amount">—</td><td class="amount pct"></td></tr>') + st('Utilidad bruta', utilBruta);
+      html += sh('Gastos') + (gas.map(linea).join('') || '<tr class="line-detail"><td class="label">Sin gastos</td><td class="amount">—</td><td class="amount pct"></td></tr>') + st('Total gastos', totGas);
+      html += '<tr class="grand-total"><td class="label">' + (utilNeta >= 0 ? 'Utilidad' : 'Pérdida') + ' neta del ejercicio</td><td class="amount">' + fmt2(Math.abs(utilNeta)) + '</td><td class="amount pct"></td></tr>';
+      const tbody = tab.querySelector('.fin-table tbody'); if (tbody) tbody.innerHTML = html;
+      const hv = tab.querySelectorAll('.fin-hi .v'), hd = tab.querySelectorAll('.fin-hi .d');
+      if (hv[0]) hv[0].textContent = 'Bs ' + fmt2(totIng);
+      if (hv[1]) hv[1].textContent = 'Bs ' + fmt2(utilBruta);
+      if (hv[2]) hv[2].textContent = 'Bs ' + fmt2(utilOper);
+      if (hv[3]) hv[3].textContent = 'Bs ' + fmt2(utilNeta);
+      hd.forEach((d) => (d.innerHTML = ''));
+      const co = tab.querySelector('.fin-statement-head .co');
+      if (co && window.__EMPRESA_ACTIVA) co.textContent = window.__EMPRESA_ACTIVA.n + ' · ' + (window.__EMPRESA_ACTIVA.rif || '');
+      return utilNeta;
+    }
+
+    function renderBalanceGeneral(map, utilNeta) {
+      const tab = view.querySelector('.conta-tab[data-tab="general"]');
+      if (!tab) return;
+      const cuentas = Array.from(map.values()).filter((c) => c.debe !== 0 || c.haber !== 0);
+      const byPfx = (p) => cuentas.filter((c) => c.code.indexOf(p) === 0).sort((a, b) => a.code.localeCompare(b.code));
+      const sum = (arr) => arr.reduce((s, c) => s + saldoNatural(c), 0);
+      const aC = byPfx('1.1'), aNC = byPfx('1.2'), pC = byPfx('2.1'), pNC = byPfx('2.2'), pat = cuentas.filter((c) => c.code.charAt(0) === '3').sort((a, b) => a.code.localeCompare(b.code));
+      const tAC = sum(aC), tANC = sum(aNC), tAct = tAC + tANC, tPC = sum(pC), tPNC = sum(pNC), tPas = tPC + tPNC, tPat = sum(pat) + utilNeta;
+      const linea = (c) => '<tr class="line-detail"><td class="label"><span class="sub-acc">' + c.code + '</span>' + c.nombre + '</td><td class="amount">' + fmt2(Math.abs(saldoNatural(c))) + '</td></tr>';
+      const sh = (t) => '<tr class="section-head"><td class="label">' + t + '</td><td class="amount"></td></tr>';
+      const st = (t, v) => '<tr class="subtotal"><td class="label">' + t + '</td><td class="amount">' + fmt2(v) + '</td></tr>';
+      const gt = (t, v) => '<tr class="grand-total"><td class="label">' + t + '</td><td class="amount">' + fmt2(v) + '</td></tr>';
+      let hA = sh('Activo Corriente') + aC.map(linea).join('') + st('Total activo corriente', tAC) + sh('Activo No Corriente') + aNC.map(linea).join('') + st('Total activo no corriente', tANC) + gt('Total activo', tAct);
+      let hP = sh('Pasivo Corriente') + pC.map(linea).join('') + st('Total pasivo corriente', tPC) + sh('Pasivo No Corriente') + pNC.map(linea).join('') + st('Total pasivo', tPas);
+      hP += sh('Patrimonio') + pat.map(linea).join('') + '<tr class="line-detail"><td class="label"><span class="sub-acc">3.2.3</span>' + (utilNeta >= 0 ? 'Utilidad' : 'Pérdida') + ' del ejercicio</td><td class="amount">' + fmt2(Math.abs(utilNeta)) + '</td></tr>' + st('Total patrimonio', tPat) + gt('Pasivo + Patrimonio', tPas + tPat);
+      const tbs = tab.querySelectorAll('.fin-two-col .fin-statement .fin-table tbody');
+      if (tbs[0]) tbs[0].innerHTML = hA;
+      if (tbs[1]) tbs[1].innerHTML = hP;
+      const cuadra = Math.abs(tAct - (tPas + tPat)) < 0.009;
+      const banner = tab.querySelector('.balance-check-banner');
+      if (banner) banner.innerHTML = (cuadra ? '<i data-lucide="check-circle-2"></i> Ecuación contable cuadrada · ' : '<i data-lucide="alert-circle"></i> Descuadrado · ') + 'Activo Bs ' + fmt2(tAct) + ' = Pasivo Bs ' + fmt2(tPas) + ' + Patrimonio Bs ' + fmt2(tPat);
+      const hv = tab.querySelectorAll('.fin-hi .v'), hd = tab.querySelectorAll('.fin-hi .d');
+      if (hv[0]) hv[0].textContent = 'Bs ' + fmt2(tAct);
+      if (hv[1]) hv[1].textContent = 'Bs ' + fmt2(tPas);
+      if (hv[2]) hv[2].textContent = 'Bs ' + fmt2(tPat);
+      if (hv[3]) hv[3].textContent = (tPC ? (tAC / tPC).toFixed(2) : '—') + '×';
+      hd.forEach((d) => (d.innerHTML = ''));
+    }
+
     function renderReportes() {
       const map = agregarPorCuenta();
       renderBalance(map);
       renderMayorTree(map);
+      const utilNeta = renderEstadoResultados(map);
+      renderBalanceGeneral(map, utilNeta || 0);
+      if (window.lucide) window.lucide.createIcons();
     }
 
     // ---- Registrar activo fijo ----
