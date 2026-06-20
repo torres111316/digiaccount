@@ -73,6 +73,7 @@
         }
         dd.dataset.open = 'false';
         if (window.cargarAsientos) window.cargarAsientos();   // recarga los asientos de la empresa elegida
+        if (window.cargarCuentasContables) window.cargarCuentasContables();
       });
     }
     document.querySelectorAll('.entity-option[data-name]').forEach(bindEntityOption);
@@ -861,21 +862,41 @@
             const raiz = (esRaiz ? cod : v.padre).charAt(0);
             nat = ['1', '5', '6'].includes(raiz) ? 'Deudora' : 'Acreedora';
           }
-          const tagTipo = v.tipo === 'Grupo' ? 'navy' : 'slate';
-          const nivel = cod.split('.').length - 1;
-          const indent = '&nbsp;'.repeat(nivel * 3);
-          const filaHtml = '<tr><td class="mono">' + cod + '</td><td class="primary">' + indent + v.nombre + '</td>'
-            + '<td><span class="tag ' + tagTipo + '">' + v.tipo + '</span></td><td>' + nat + '</td>'
-            + '<td class="num">0,00</td><td><span class="tag cyan">Nueva</span></td></tr>';
-          // Insertar debajo de la cuenta padre (o al inicio si es raíz)
-          const padreObj = plan.find((c) => c.code === v.padre);
-          if (padreObj && padreObj.tr) padreObj.tr.insertAdjacentHTML('afterend', filaHtml);
-          else tbody.insertAdjacentHTML('afterbegin', filaHtml);
-          if (window.refreshTables) window.refreshTables();
-          toast('Cuenta ' + cod + ' creada' + (esRaiz ? ' como grupo principal' : ' bajo ' + v.padre));
+          if (!window.sb || !window.__CUENTA_ID || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) return 'No hay una empresa activa seleccionada.';
+          window.sb.from('cuentas_contables').insert({
+            cuenta_id: window.__CUENTA_ID, empresa_id: window.__EMPRESA_ACTIVA.id,
+            codigo: cod, nombre: v.nombre, tipo: v.tipo, naturaleza: nat,
+          }).then(({ error }) => {
+            if (error) { toast('No se pudo guardar la cuenta: ' + error.message, 'error'); return; }
+            if (window.cargarCuentasContables) window.cargarCuentasContables();
+            toast('Cuenta ' + cod + ' creada' + (esRaiz ? ' como grupo principal' : ' bajo ' + v.padre));
+          });
         },
       });
     });
+
+    // ---- Plan de cuentas: cuentas PROPIAS de la empresa (persisten en Supabase) ----
+    function filaCuentaCustom(c) {
+      const tagTipo = c.tipo === 'Grupo' ? 'navy' : 'slate';
+      const nivel = (c.codigo || '').split('.').length - 1;
+      const indent = '&nbsp;'.repeat(nivel * 3);
+      return '<tr data-custom="1"><td class="mono">' + (c.codigo || '') + '</td><td class="primary">' + indent + (c.nombre || '') + '</td>'
+        + '<td><span class="tag ' + tagTipo + '">' + (c.tipo || 'Cuenta') + '</span></td><td>' + (c.naturaleza || '') + '</td>'
+        + '<td class="num">0,00</td><td><span class="tag cyan">Propia</span></td></tr>';
+    }
+    async function cargarCuentasContables() {
+      if (!window.sb || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) return;
+      const tbody = view.querySelector('.conta-tab[data-tab="plan"] table.data-table tbody');
+      if (!tbody) return;
+      tbody.querySelectorAll('tr[data-custom]').forEach((tr) => tr.remove());   // limpia las de la empresa anterior
+      const { data, error } = await window.sb.from('cuentas_contables').select('*').eq('empresa_id', window.__EMPRESA_ACTIVA.id).order('codigo');
+      if (error) { console.warn('[DigiAccount] No se pudieron cargar cuentas contables:', error.message); return; }
+      (data || []).forEach((c) => tbody.insertAdjacentHTML('beforeend', filaCuentaCustom(c)));
+      console.log('[DigiAccount] Cuentas contables propias:', (data || []).length);
+      if (window.refreshTables) window.refreshTables();
+      drawIcons();
+    }
+    window.cargarCuentasContables = cargarCuentasContables;
 
     // ---- Registrar activo fijo ----
     const registrarActivo = document.getElementById('registrarActivoBtn');
