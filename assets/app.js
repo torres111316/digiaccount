@@ -672,6 +672,7 @@
 
     // ---- Nuevo asiento (partida doble) ----
     let asientoNum = 313;
+    let asientosData = [];   // asientos cargados desde Supabase (para Mayor y Balance)
     // ===== Modal de asiento (partida doble multi-línea) =====
     (function asientoModal() {
       const overlay = document.getElementById('asientoModal');
@@ -804,6 +805,8 @@
         let maxNum = 0;
         (data || []).forEach((a) => { if (a.numero > maxNum) maxNum = a.numero; journal.insertAdjacentHTML('beforeend', asientoHTML(a)); });
         asientoNum = maxNum;
+        asientosData = data || [];
+        if (typeof renderReportes === 'function') renderReportes();   // recalcula Mayor y Balance
         console.log('[DigiAccount] Asientos cargados:', (data || []).length);
         drawIcons();
       }
@@ -897,6 +900,95 @@
       drawIcons();
     }
     window.cargarCuentasContables = cargarCuentasContables;
+
+    // ======= ETAPA 3: Libro Mayor + Balance de Comprobación (de los asientos reales) =======
+    const parseCta = (s) => { const i = (s || '').indexOf(' · '); return i < 0 ? { c: '—', n: s || '' } : { c: s.slice(0, i), n: s.slice(i + 3) }; };
+
+    // Agrupa los movimientos por cuenta (debe, haber y lista de movimientos)
+    function agregarPorCuenta() {
+      const map = new Map();
+      (asientosData || []).forEach((a) => {
+        (Array.isArray(a.lineas) ? a.lineas : []).forEach((l) => {
+          const p = parseCta(l.cta);
+          if (!map.has(p.c)) map.set(p.c, { code: p.c, nombre: p.n, debe: 0, haber: 0, movs: [] });
+          const e = map.get(p.c);
+          const d = Number(l.debe) || 0, h = Number(l.haber) || 0;
+          e.debe += d; e.haber += h;
+          e.movs.push({ fecha: a.fecha, num: a.numero, desc: a.descripcion, ref: a.referencia, d: d, h: h });
+        });
+      });
+      return map;
+    }
+
+    function renderBalance(map) {
+      const tbody = view.querySelector('.conta-tab[data-tab="balance"] table.balance-table tbody');
+      const tfoot = view.querySelector('.conta-tab[data-tab="balance"] table.balance-table tfoot');
+      if (!tbody) return;
+      const cuentas = Array.from(map.values()).filter((c) => c.debe !== 0 || c.haber !== 0).sort((a, b) => a.code.localeCompare(b.code));
+      let tDebe = 0, tHaber = 0, tSD = 0, tSA = 0;
+      tbody.innerHTML = cuentas.map((c) => {
+        const saldo = c.debe - c.haber, sd = saldo > 0 ? saldo : 0, sa = saldo < 0 ? -saldo : 0;
+        tDebe += c.debe; tHaber += c.haber; tSD += sd; tSA += sa;
+        return '<tr><td class="mono">' + c.code + '</td><td class="primary">' + c.nombre + '</td><td class="num">—</td>'
+          + '<td class="num">' + (c.debe ? fmt2(c.debe) : '—') + '</td><td class="num">' + (c.haber ? fmt2(c.haber) : '—') + '</td>'
+          + '<td class="num">' + (sd ? fmt2(sd) : '—') + '</td><td class="num">' + (sa ? fmt2(sa) : '—') + '</td></tr>';
+      }).join('') || '<tr><td colspan="7" style="text-align:center;color:var(--fg-muted);padding:14px;">Aún no hay movimientos. Registra asientos en el Libro Diario.</td></tr>';
+      if (tfoot) tfoot.innerHTML = '<tr><td colspan="3" class="lbl-cell">Totales</td>'
+        + '<td class="num" style="text-align:right;">' + fmt2(tDebe) + '</td><td class="num" style="text-align:right;">' + fmt2(tHaber) + '</td>'
+        + '<td class="num" style="text-align:right;">' + fmt2(tSD) + '</td><td class="num" style="text-align:right;">' + fmt2(tSA) + '</td></tr>';
+      const ok = Math.abs(tDebe - tHaber) < 0.009 && Math.abs(tSD - tSA) < 0.009;
+      const okEl = view.querySelector('.conta-tab[data-tab="balance"] .balance-ok');
+      if (okEl) okEl.innerHTML = ok ? '<i data-lucide="check-circle-2"></i> Sumas iguales · cuadrado' : '<i data-lucide="alert-circle"></i> Descuadrado';
+      const cnt = view.querySelector('.conta-tab[data-tab="balance"] .table-footer .count');
+      if (cnt) cnt.innerHTML = cuentas.length + ' cuentas con movimiento · <strong>Débitos = Créditos</strong> y <strong>Saldos deudores = acreedores</strong>';
+    }
+
+    function renderMayorLedger(code, map) {
+      const c = map.get(code); if (!c) return;
+      const setTxt = (id, t) => { const e = document.getElementById(id); if (e) e.textContent = t; };
+      const saldo = c.debe - c.haber;
+      setTxt('mayorBadge', c.code); setTxt('mayorTitle', c.nombre);
+      setTxt('mayorSub', 'Naturaleza ' + (saldo >= 0 ? 'deudora' : 'acreedora'));
+      setTxt('mayorSaldoLbl', saldo >= 0 ? 'Saldo final deudor' : 'Saldo final acreedor');
+      setTxt('mayorSaldoVal', 'Bs ' + fmt2(Math.abs(saldo)));
+      const tbody = document.getElementById('mayorBody');
+      let run = 0;
+      const rows = (c.movs || []).map((m) => {
+        run += (m.d || 0) - (m.h || 0);
+        return '<tr><td>' + (m.fecha || '') + '</td><td class="mono">#0' + m.num + '</td><td class="primary">' + (m.desc || '') + '</td>'
+          + '<td class="mono">' + (m.ref || '—') + '</td><td class="num">' + (m.d ? fmt2(m.d) : '—') + '</td><td class="num">' + (m.h ? fmt2(m.h) : '—') + '</td>'
+          + '<td class="saldo">' + fmt2(Math.abs(run)) + '</td></tr>';
+      }).join('');
+      if (tbody) tbody.innerHTML = rows || '<tr><td colspan="7" style="text-align:center;color:var(--fg-muted);padding:14px;">Sin movimientos</td></tr>';
+      setTxt('mayorTotDeb', fmt2(c.debe)); setTxt('mayorTotHaber', fmt2(c.haber)); setTxt('mayorTotSaldo', fmt2(Math.abs(saldo)));
+    }
+
+    function renderMayorTree(map) {
+      const body = view.querySelector('.conta-tab[data-tab="mayor"] .account-tree-body');
+      if (!body) return;
+      const cuentas = Array.from(map.values()).filter((c) => c.debe !== 0 || c.haber !== 0).sort((a, b) => a.code.localeCompare(b.code));
+      const grupos = { '1': '1 · Activo', '2': '2 · Pasivo', '3': '3 · Patrimonio', '4': '4 · Ingresos', '5': '5 · Costos', '6': '6 · Gastos' };
+      let html = '', lastG = '';
+      cuentas.forEach((c) => {
+        const g = c.code.charAt(0);
+        if (g !== lastG) { html += '<div class="acc-group-label">' + (grupos[g] || g) + '</div>'; lastG = g; }
+        html += '<div class="acc-item" data-code="' + c.code + '"><span class="code">' + c.code + '</span><span class="nm">' + c.nombre + '</span><span class="bal">' + fmt2(Math.abs(c.debe - c.haber)) + '</span></div>';
+      });
+      body.innerHTML = html || '<div class="acc-group-label">Sin movimientos aún</div>';
+      body.querySelectorAll('.acc-item').forEach((it) => it.addEventListener('click', () => {
+        body.querySelectorAll('.acc-item').forEach((x) => x.removeAttribute('data-active'));
+        it.dataset.active = 'true'; renderMayorLedger(it.dataset.code, map);
+      }));
+      const first = body.querySelector('.acc-item');
+      if (first) { first.dataset.active = 'true'; renderMayorLedger(first.dataset.code, map); }
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    function renderReportes() {
+      const map = agregarPorCuenta();
+      renderBalance(map);
+      renderMayorTree(map);
+    }
 
     // ---- Registrar activo fijo ----
     const registrarActivo = document.getElementById('registrarActivoBtn');
