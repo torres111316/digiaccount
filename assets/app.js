@@ -53,6 +53,12 @@
         opt.dataset.active = 'true';
 
         const { name, avatar, rif, type } = opt.dataset;
+        const cond = opt.dataset.cond || '';
+        // Empresa activa = emisor de los recibos/facturas
+        window.__EMPRESA_ACTIVA = {
+          n: name, rif: rif, dom: '',
+          cond: /especial/i.test(cond) ? 'Contribuyente Especial' : /formal/i.test(cond) ? 'Contribuyente Formal' : (type === 'natural' ? 'Persona Natural' : 'Contribuyente Ordinario'),
+        };
         setText('entityName', name);
         setText('entityAvatar', avatar);
         setText('companyTitle', name);
@@ -98,6 +104,7 @@
       opt.className = 'entity-option';
       opt.dataset.name = nombre; opt.dataset.avatar = ini; opt.dataset.rif = rif;
       opt.dataset.type = /especial/i.test(cond) ? 'especial' : 'ordinario';
+      opt.dataset.cond = cond;
       opt.innerHTML = '<div class="ea" style="background:var(--da-navy-500);color:#fff">' + ini + '</div>'
         + '<div class="eo-info"><div class="eo-name">' + nombre + '</div><div class="eo-meta">' + rif + ' · Contribuyente ' + condTxt + '</div></div>'
         + '<i data-lucide="check" class="eo-check" style="width:16px;height:16px;"></i>';
@@ -2978,7 +2985,7 @@
       const f = DB[num];
       if (!f) return;
       const t = calcFactura(f);
-      const emisor = f.tipo === 'venta' ? EMPRESA : f.parte;
+      const emisor = f.tipo === 'venta' ? (window.__EMPRESA_ACTIVA || EMPRESA) : f.parte;
       const receptor = f.tipo === 'venta' ? f.parte : EMPRESA;
       currentFac = { num: num, f: f, emisor: emisor, receptor: receptor };
       const alicLabel = (f.alic * 100).toLocaleString('es-VE') + '%';
@@ -3029,6 +3036,8 @@
           + '<div class="tk-sep dashed"></div>'
           + tkItems
           + '<div class="tk-sep dashed"></div>'
+          + (f.igtf ? '<div class="tk-row"><span>SUBTOTAL Bs</span><span>' + fmt(t.subtotal) + '</span></div>' : '')
+          + (f.igtf ? '<div class="tk-row"><span>IGTF 3% Bs</span><span>' + fmt(t.igtf) + '</span></div>' : '')
           + '<div class="tk-total"><span>TOTAL Bs</span><span>' + fmt(t.total) + '</span></div>'
           + '<div class="tk-sep"></div>'
           + '<div class="tk-words">SON: ' + letras + '</div>'
@@ -3120,6 +3129,7 @@
           + 'Fecha: ' + f.fecha + '\r\n----------------------------------------\r\n'
           + f.items.map((it) => '  ' + it.d + '  ' + it.c + ' x ' + fmt(it.p) + ' = ' + fmt(it.c * it.p)).join('\r\n')
           + '\r\n----------------------------------------\r\n'
+          + (f.igtf ? ('Subtotal: Bs ' + fmt(t.subtotal) + '\r\n' + 'IGTF 3%: Bs ' + fmt(t.igtf) + '\r\n') : '')
           + 'TOTAL: Bs ' + fmt(t.total) + '\r\n'
           + 'Documento no fiscal - no constituye una factura\r\n')
         : ((f.tipo === 'venta' ? 'FACTURA DE VENTA' : 'FACTURA DE COMPRA') + ' N° ' + num + ' (Control ' + f.control + ')\r\n'
@@ -3292,10 +3302,10 @@
           r.querySelector('.fv-monto').textContent = 'Bs ' + fmt(m);
           base += m;
         });
-        const iva = base * alic, igtf = (!rec && igtfChk.checked) ? base * 0.03 : 0;
+        const iva = base * alic, igtf = igtfChk.checked ? base * 0.03 : 0;
         document.getElementById('fvBase').textContent = 'Bs ' + fmt(base);
         document.getElementById('fvIva').textContent = 'Bs ' + fmt(iva);
-        document.getElementById('fvIgtfRow').hidden = rec || !igtfChk.checked;
+        document.getElementById('fvIgtfRow').hidden = !igtfChk.checked;
         document.getElementById('fvIgtfVal').textContent = 'Bs ' + fmt(igtf);
         document.getElementById('fvTotal').textContent = 'Bs ' + fmt(base + iva + igtf);
       }
@@ -3360,14 +3370,14 @@
         const fechaRaw = document.getElementById('fvFecha').value;
         const fecha = fechaRaw ? fechaRaw.split('-').reverse().join('/') : '31/05/2026';
         const alic = esRec ? 0 : (parseFloat(document.getElementById('fvAlic').value) || 0);
-        DB[num] = { tipo: 'venta', control: ctrl, fecha: fecha, parte: { n: cli.n, rif: cli.rif, dom: cli.dom || '' }, alic: alic, igtf: (!esRec && igtfChk.checked), cond: document.getElementById('fvCond').value, items: items };
+        DB[num] = { tipo: 'venta', control: ctrl, fecha: fecha, parte: { n: cli.n, rif: cli.rif, dom: cli.dom || '' }, alic: alic, igtf: igtfChk.checked, cond: document.getElementById('fvCond').value, items: items };
         const t = calcFactura(DB[num]);
         // Guardar la factura REAL en Supabase
         if (window.sb && window.__CUENTA_ID) {
           window.sb.from('facturas').insert({
             cuenta_id: window.__CUENTA_ID, numero: num, control: ctrl, tipo: 'venta', fecha: fecha,
             cliente_nombre: cli.n, cliente_rif: cli.rif, cliente_dom: cli.dom || '',
-            alicuota: alic, igtf: (!esRec && igtfChk.checked), condicion: document.getElementById('fvCond').value,
+            alicuota: alic, igtf: igtfChk.checked, condicion: document.getElementById('fvCond').value,
             items: items, subtotal: t.subtotal, iva: t.iva, igtf_monto: t.igtf, total: t.total, estado: 'Por cobrar',
           }).then(({ error }) => {
             if (error) { console.warn('[DigiAccount] No se pudo guardar la factura:', error.message); if (window.toast) window.toast('No se pudo guardar en la base: ' + error.message, 'error'); }
@@ -3450,7 +3460,6 @@
       if (tabla) tabla.querySelectorAll('thead th').forEach((th) => { const t = th.textContent.trim(); if (t === 'N° Factura') th.textContent = 'N° Recibo'; else if (t === 'N° Control') th.textContent = ''; });
       // Un recibo no desglosa impuestos: ocultar Alícuota IVA, IGTF y las filas de Base/IVA
       const al = document.getElementById('fvAlic'); if (al && al.closest('.fv-f')) al.closest('.fv-f').style.display = 'none';
-      const ig = document.querySelector('.fv-igtf'); if (ig) ig.style.display = 'none';
       const baseEl = document.getElementById('fvBase'); if (baseEl && baseEl.closest('.fv-tot-row')) baseEl.closest('.fv-tot-row').style.display = 'none';
       const ivaEl = document.getElementById('fvIva'); if (ivaEl && ivaEl.closest('.fv-tot-row')) ivaEl.closest('.fv-tot-row').style.display = 'none';
       if (window.lucide) window.lucide.createIcons();
@@ -6676,6 +6685,11 @@
       'Empresa Completa': TODOS,
       'Grupo Empresarial': TODOS,
     };
+    // Nombre del plan → código (id) de la tabla 'planes' en Supabase
+    const PLAN_SLUG = {
+      'Contador Básico': 'contador_basico', 'Contador PRO': 'contador_pro', 'Firma Contable': 'firma_contable',
+      'Emprendimientos y PYME': 'pyme', 'Empresa Completa': 'empresa_completa', 'Grupo Empresarial': 'grupo_empresarial',
+    };
     const NOMBRE_VIEW = {
       ventas: 'Ventas y Facturación', tesoreria: 'Tesorería', inventario: 'Inventario',
       nomina: 'Nómina y RRHH', contabilidad: 'Contabilidad', fiscal: 'Módulo Fiscal', agentes: 'Centro de Agentes IA',
@@ -6723,6 +6737,13 @@
       const actBtn = document.getElementById('planActivarBtn');
       if (actBtn) actBtn.hidden = !prueba;
       if (window.__syncTrialBanner) window.__syncTrialBanner();
+      // Persistir el plan elegido en la cuenta (Supabase)
+      if (window.sb && window.__CUENTA_ID && PLAN_SLUG[plan]) {
+        window.sb.from('cuentas').update({ plan_id: PLAN_SLUG[plan], estado: prueba ? 'prueba' : 'activa' }).eq('id', window.__CUENTA_ID).then(({ error }) => {
+          if (error) console.warn('[DigiAccount] No se pudo guardar el plan en la cuenta:', error.message);
+          else console.log('[DigiAccount] Plan guardado en la cuenta:', PLAN_SLUG[plan], '· estado', prueba ? 'prueba' : 'activa');
+        });
+      }
       if (window.lucide) window.lucide.createIcons();
     }
     window.aplicarPlan = aplicarPlan;
