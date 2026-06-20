@@ -54,9 +54,9 @@
 
         const { name, avatar, rif, type } = opt.dataset;
         const cond = opt.dataset.cond || '';
-        // Empresa activa = emisor de los recibos/facturas
+        // Empresa activa = emisor de los recibos/facturas + dueña de sus libros contables
         window.__EMPRESA_ACTIVA = {
-          n: name, rif: rif, dom: '',
+          id: opt.dataset.empresaId || '', n: name, rif: rif, dom: '',
           cond: /especial/i.test(cond) ? 'Contribuyente Especial' : /formal/i.test(cond) ? 'Contribuyente Formal' : (type === 'natural' ? 'Persona Natural' : 'Contribuyente Ordinario'),
         };
         setText('entityName', name);
@@ -72,6 +72,7 @@
           else { badge.className = 'contrib-badge'; lbl.textContent = 'Contribuyente Ordinario'; }
         }
         dd.dataset.open = 'false';
+        if (window.cargarAsientos) window.cargarAsientos();   // recarga los asientos de la empresa elegida
       });
     }
     document.querySelectorAll('.entity-option[data-name]').forEach(bindEntityOption);
@@ -85,7 +86,7 @@
     if (!window.sb || !dd || !addBtn) return;
     const { data, error } = await window.sb
       .from('empresas')
-      .select('nombre, rif, condicion_fiscal')
+      .select('id, nombre, rif, condicion_fiscal')
       .order('nombre');
     if (error) { console.warn('[DigiAccount] No se pudieron cargar las empresas:', error.message); return; }
     // Quitar las opciones de ejemplo (hardcodeadas) y sus etiquetas de grupo
@@ -105,6 +106,7 @@
       opt.dataset.name = nombre; opt.dataset.avatar = ini; opt.dataset.rif = rif;
       opt.dataset.type = /especial/i.test(cond) ? 'especial' : 'ordinario';
       opt.dataset.cond = cond;
+      opt.dataset.empresaId = emp.id || '';
       opt.innerHTML = '<div class="ea" style="background:var(--da-navy-500);color:#fff">' + ini + '</div>'
         + '<div class="eo-info"><div class="eo-name">' + nombre + '</div><div class="eo-meta">' + rif + ' · Contribuyente ' + condTxt + '</div></div>'
         + '<i data-lucide="check" class="eo-check" style="width:16px;height:16px;"></i>';
@@ -681,13 +683,16 @@
       const msgEl = document.getElementById('amMsg');
       const split = (s) => { const i = s.indexOf(' · '); return i < 0 ? { c: '—', n: s } : { c: s.slice(0, i), n: s.slice(i + 3) }; };
 
-      function optsHtml() {
-        return '<option value="">— Seleccionar cuenta —</option>' + getCuentas().map((o) => '<option value="' + o.value + '">' + o.label + '</option>').join('');
+      // Lista de autocompletado de cuentas (se busca por código o por nombre al escribir)
+      function buildDatalist() {
+        let dl = document.getElementById('amCuentasList');
+        if (!dl) { dl = document.createElement('datalist'); dl.id = 'amCuentasList'; overlay.appendChild(dl); }
+        dl.innerHTML = getCuentas().map((o) => '<option value="' + o.value.replace(/"/g, '&quot;') + '"></option>').join('');
       }
       function addLine(tipo) {
         const row = document.createElement('div');
         row.className = 'am-line';
-        row.innerHTML = '<select class="am-cta">' + optsHtml() + '</select>'
+        row.innerHTML = '<input class="am-cta" list="amCuentasList" placeholder="Código o nombre de la cuenta…" autocomplete="off">'
           + '<input type="number" class="am-debe" step="0.01" placeholder="0,00"' + (tipo === 'haber' ? ' disabled' : '') + '>'
           + '<input type="number" class="am-haber" step="0.01" placeholder="0,00"' + (tipo === 'debe' ? ' disabled' : '') + '>'
           + '<button class="am-del" title="Eliminar línea"><i data-lucide="trash-2"></i></button>';
@@ -718,6 +723,7 @@
         document.getElementById('amRef').value = '';
         document.getElementById('amDesc').value = '';
         msgEl.textContent = '';
+        buildDatalist();
         addLine('debe'); addLine('haber');
         recalc();
         overlay.hidden = false;
@@ -741,7 +747,7 @@
           const d = parseFloat(r.querySelector('.am-debe').value) || 0;
           const h = parseFloat(r.querySelector('.am-haber').value) || 0;
           if (d <= 0 && h <= 0) return;
-          if (!cta) { faltaCuenta = true; return; }
+          if (!cta || cta.indexOf(' · ') < 0) { faltaCuenta = true; return; }
           lineas.push({ cta: cta, d: d, h: h });
           totD += d; totH += h;
         });
@@ -750,31 +756,57 @@
         if (lineas.length < 2) return setMsg('El asiento requiere al menos dos líneas con monto.');
         if (faltaCuenta) return setMsg('Hay líneas con monto pero sin cuenta seleccionada.');
         if (Math.abs(totD - totH) > 0.009) return setMsg('El asiento no cuadra: Debe ' + fmt2(totD) + ' ≠ Haber ' + fmt2(totH) + '.');
-        const journal = view.querySelector('.conta-tab[data-tab="diario"] .journal');
-        if (journal) {
-          asientoNum++;
-          const fecha = fechaRaw ? fechaRaw.split('-').reverse().join('/') : '31/05/2026';
-          const rows = lineas.map((l) => {
-            const s = split(l.cta);
-            const esHaber = l.h > 0;
-            return '<tr><td class="acc-code">' + s.c + '</td><td class="acc-name' + (esHaber ? ' haber-indent' : '') + '">' + s.n + '</td>'
-              + '<td class="deb' + (l.d ? '' : ' zero') + '">' + (l.d ? fmt2(l.d) : '—') + '</td>'
-              + '<td class="haber' + (l.h ? '' : ' zero') + '">' + (l.h ? fmt2(l.h) : '—') + '</td></tr>';
-          }).join('');
-          journal.insertAdjacentHTML('afterbegin',
-            '<div class="asiento"><div class="asiento-head">'
-            + '<span class="asiento-num">#0' + asientoNum + '</span>'
-            + '<span class="asiento-date"><i data-lucide="calendar"></i> ' + fecha + '</span>'
-            + '<span class="asiento-desc">' + desc + '</span>'
-            + '<span class="asiento-ref">Ref: ' + (ref || '—') + '</span>'
-            + '<span class="asiento-origin manual"><i data-lucide="pencil"></i> Manual</span></div>'
-            + '<table class="ledger-lines"><tbody>' + rows
-            + '</tbody><tfoot><tr class="asiento-foot"><td colspan="2" class="total-label">Sumas iguales</td><td class="deb">' + fmt2(totD) + '</td><td class="haber">' + fmt2(totH) + '</td></tr></tfoot></table></div>');
-          drawIcons();
-        }
-        toast('Asiento #0' + asientoNum + ' registrado · ' + lineas.length + ' líneas · cuadra en Bs ' + fmt2(totD));
-        close();
+        if (!window.sb || !window.__CUENTA_ID || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) return setMsg('No hay sesión o empresa activa. Selecciona una empresa arriba.');
+        const fecha = fechaRaw ? fechaRaw.split('-').reverse().join('/') : '';
+        const numero = (asientoNum || 0) + 1;
+        const lineasDB = lineas.map((l) => ({ cta: l.cta, debe: l.d, haber: l.h }));
+        window.sb.from('asientos').insert({
+          cuenta_id: window.__CUENTA_ID, empresa_id: window.__EMPRESA_ACTIVA.id,
+          numero: numero, fecha: fecha, descripcion: desc, referencia: ref, origen: 'manual',
+          lineas: lineasDB, total: totD,
+        }).then(({ error }) => {
+          if (error) { setMsg('No se pudo guardar: ' + error.message); return; }
+          toast('Asiento #0' + numero + ' registrado · ' + lineas.length + ' líneas · cuadra en Bs ' + fmt2(totD));
+          if (window.cargarAsientos) window.cargarAsientos();
+          close();
+        });
       });
+
+      // Pinta un asiento (registro de Supabase) como bloque del Libro Diario
+      function asientoHTML(a) {
+        const lineas = Array.isArray(a.lineas) ? a.lineas : [];
+        const rows = lineas.map((l) => {
+          const s = split(l.cta); const d = Number(l.debe) || 0, h = Number(l.haber) || 0; const esHaber = h > 0;
+          return '<tr><td class="acc-code">' + s.c + '</td><td class="acc-name' + (esHaber ? ' haber-indent' : '') + '">' + s.n + '</td>'
+            + '<td class="deb' + (d ? '' : ' zero') + '">' + (d ? fmt2(d) : '—') + '</td>'
+            + '<td class="haber' + (h ? '' : ' zero') + '">' + (h ? fmt2(h) : '—') + '</td></tr>';
+        }).join('');
+        const tot = Number(a.total) || 0;
+        return '<div class="asiento"><div class="asiento-head">'
+          + '<span class="asiento-num">#0' + a.numero + '</span>'
+          + '<span class="asiento-date"><i data-lucide="calendar"></i> ' + (a.fecha || '') + '</span>'
+          + '<span style="flex:1"></span>'
+          + '<span class="asiento-ref">Ref: ' + (a.referencia || '—') + '</span>'
+          + '<span class="asiento-origin manual"><i data-lucide="pencil"></i> ' + (a.origen === 'manual' ? 'Manual' : (a.origen || 'Manual')) + '</span></div>'
+          + '<table class="ledger-lines"><tbody>' + rows
+          + '</tbody><tfoot><tr class="asiento-foot"><td colspan="2" class="total-label">Sumas iguales</td><td class="deb">' + fmt2(tot) + '</td><td class="haber">' + fmt2(tot) + '</td></tr></tfoot></table>'
+          + '<div class="asiento-glosa"><strong>Concepto:</strong> ' + (a.descripcion || '') + '</div></div>';
+      }
+      // Carga los asientos reales de la empresa activa desde Supabase
+      async function cargarAsientos() {
+        if (!window.sb || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) return;
+        const journal = view.querySelector('.conta-tab[data-tab="diario"] .journal');
+        if (!journal) return;
+        const { data, error } = await window.sb.from('asientos').select('*').eq('empresa_id', window.__EMPRESA_ACTIVA.id).order('numero', { ascending: false });
+        if (error) { console.warn('[DigiAccount] No se pudieron cargar asientos:', error.message); return; }
+        journal.innerHTML = '';
+        let maxNum = 0;
+        (data || []).forEach((a) => { if (a.numero > maxNum) maxNum = a.numero; journal.insertAdjacentHTML('beforeend', asientoHTML(a)); });
+        asientoNum = maxNum;
+        console.log('[DigiAccount] Asientos cargados:', (data || []).length);
+        drawIcons();
+      }
+      window.cargarAsientos = cargarAsientos;
     })();
 
     // ---- Nueva cuenta (ubicación amigable por cuenta padre) ----

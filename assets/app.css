@@ -2090,6 +2090,14 @@
     flex: 1;
     min-width: 160px;
   }
+  .asiento-glosa {
+    padding: 9px 16px;
+    font-size: 12px;
+    color: var(--fg-body);
+    border-top: 1px solid var(--border-default);
+    background: var(--da-slate-50);
+  }
+  .asiento-glosa strong { color: var(--fg-primary); font-weight: var(--fw-semibold); }
   .asiento-ref {
     font-family: var(--font-mono);
     font-size: 11px;
@@ -6243,7 +6251,7 @@
      ========================================================= */
   .asiento-overlay { position: fixed; inset: 0; z-index: 1300; background: rgba(15, 23, 42, .55); display: flex; align-items: flex-start; justify-content: center; padding: 40px 20px; overflow-y: auto; backdrop-filter: blur(2px); }
   .asiento-overlay[hidden] { display: none; }
-  .asiento-modal { background: var(--bg-subtle); border-radius: var(--radius-lg); box-shadow: var(--shadow-xl); width: 100%; max-width: 760px; overflow: hidden; }
+  .asiento-modal { background: var(--da-white); border: 1px solid var(--border-default); border-radius: var(--radius-lg); box-shadow: var(--shadow-xl); width: 100%; max-width: 760px; overflow: hidden; }
   .am-bar { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; border-bottom: 1px solid var(--border-default); background: var(--da-white); }
   .am-bar .am-title { display: flex; align-items: center; gap: 9px; font-family: var(--font-display); font-weight: var(--fw-bold); font-size: 15px; color: var(--fg-primary); }
   .am-bar .am-title i { width: 17px; height: 17px; color: var(--da-cyan-600); }
@@ -6263,6 +6271,7 @@
   .am-line select, .am-line input { height: 36px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); padding: 0 10px; font-size: 13px; color: var(--fg-primary); background: var(--da-white); font-family: inherit; }
   .am-line select { width: 100%; }
   .am-line input { text-align: right; font-family: var(--font-mono); }
+  .am-line input.am-cta { text-align: left; font-family: inherit; width: 100%; }
   .am-line input:disabled { background: var(--bg-surface-alt); color: var(--fg-subtle); }
   .am-line select:focus, .am-line input:focus { outline: none; border-color: var(--da-cyan-500); box-shadow: 0 0 0 3px var(--da-cyan-50); }
   .am-line .am-del { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--da-white); color: var(--fg-muted); cursor: pointer; }
