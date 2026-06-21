@@ -75,6 +75,7 @@
         if (window.cargarAsientos) window.cargarAsientos();   // recarga los asientos de la empresa elegida
         if (window.cargarCuentasContables) window.cargarCuentasContables();
         if (window.cargarActivosFijos) window.cargarActivosFijos();
+        if (window.cargarCriptoactivos) window.cargarCriptoactivos();
       });
     }
     document.querySelectorAll('.entity-option[data-name]').forEach(bindEntityOption);
@@ -814,6 +815,21 @@
       }
       window.cargarAsientos = cargarAsientos;
     })();
+
+    // Ayudante reutilizable: cualquier módulo puede generar un asiento contable (depreciación, cripto, etc.)
+    window.__postAsiento = async function (descripcion, referencia, lineas, origen) {
+      if (!window.sb || !window.__CUENTA_ID || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) return { error: { message: 'No hay una empresa activa' } };
+      const total = (lineas || []).reduce((s, l) => s + (Number(l.debe) || 0), 0);
+      const hoy = new Date();
+      const fecha = String(hoy.getDate()).padStart(2, '0') + '/' + String(hoy.getMonth() + 1).padStart(2, '0') + '/' + hoy.getFullYear();
+      const res = await window.sb.from('asientos').insert({
+        cuenta_id: window.__CUENTA_ID, empresa_id: window.__EMPRESA_ACTIVA.id,
+        numero: (asientoNum || 0) + 1, fecha: fecha, descripcion: descripcion, referencia: referencia || '', origen: origen || 'auto',
+        lineas: lineas, total: total,
+      });
+      if (!res.error && window.cargarAsientos) await window.cargarAsientos();
+      return res;
+    };
 
     // ---- Nueva cuenta (ubicación amigable por cuenta padre) ----
     const nuevaCuenta = document.getElementById('nuevaCuentaBtn');
@@ -4812,15 +4828,41 @@
         setOut('cxOri', fmt(ori));
         setOut('cxResultado', fmt(Math.abs(perdida)));
       }
+      let pendienteAsiento = null;
+      async function cargarCriptoactivos() {
+        const tbody = cxTable.querySelector('tbody');
+        if (!tbody) return;
+        if (!window.sb || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) { tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--fg-muted);padding:14px;">Sin criptoactivos registrados.</td></tr>'; recalc(); return; }
+        const { data, error } = await window.sb.from('criptoactivos').select('*').eq('empresa_id', window.__EMPRESA_ACTIVA.id).order('creado_en');
+        if (error) { console.warn('[DigiAccount] No se pudieron cargar criptoactivos:', error.message); tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--fg-muted);padding:14px;">No se pudieron cargar (¿creaste la tabla?).</td></tr>'; recalc(); return; }
+        const arr = data || [];
+        if (!arr.length) { tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--fg-muted);padding:14px;">Sin criptoactivos registrados. Usa "Registrar criptoactivo".</td></tr>'; recalc(); return; }
+        tbody.innerHTML = arr.map((x) => {
+          const costo = Number(x.costo) || 0, vr = Number(x.valor_razonable) || 0, varTot = vr - costo;
+          const tag = x.clasificacion === 'Corriente' ? 'cyan' : 'slate';
+          const color = varTot > 0 ? 'var(--da-success)' : varTot < 0 ? 'var(--da-danger)' : 'var(--fg-muted)';
+          return '<tr data-cripto data-id="' + x.id + '" data-costo="' + costo + '" data-vr="' + vr + '">'
+            + '<td><div class="prod-cell"><div class="prod-thumb"><i data-lucide="coins"></i></div><div class="info"><div class="n">' + (x.nombre || '') + '</div><div class="sku">' + (x.simbolo || '') + '</div></div></div></td>'
+            + '<td class="mono">' + (x.wallet || '—') + '</td><td class="num">' + (x.cantidad || '0') + '</td>'
+            + '<td class="num cx-costo">' + fmt(costo) + '</td><td class="num cx-vr">' + fmt(vr) + '</td>'
+            + '<td class="num cx-var" style="color:' + color + ';">' + (varTot >= 0 ? '+' : '') + fmt(varTot) + '</td>'
+            + '<td><span class="tag ' + tag + '">' + (x.clasificacion || 'No corriente') + '</span></td><td><span class="tag navy">' + (x.nivel || 'Nivel 1') + '</span></td>'
+            + '<td><input type="number" class="cx-newvr" value="' + vr + '" step="0.01" style="width:120px;height:30px;border:1px solid var(--border-default);border-radius:6px;padding:0 8px;text-align:right;font-family:var(--font-mono);font-size:12px;"></td></tr>';
+        }).join('');
+        recalc();
+        if (window.lucide) window.lucide.createIcons();
+      }
+      window.cargarCriptoactivos = cargarCriptoactivos;
+      cargarCriptoactivos();
       const medir = document.getElementById('criptoMedir');
-      if (medir) medir.addEventListener('click', () => {
-        const lineas = [];
+      if (medir) medir.addEventListener('click', async () => {
+        let totalGan = 0, totalPer = 0;
+        const updates = [];
         cxTable.querySelectorAll('tr[data-cripto]').forEach((tr) => {
-          const inp = tr.querySelector('.cx-newvr');
+          const inp = tr.querySelector('.cx-newvr'); if (!inp) return;
           const nuevoVr = parseFloat(inp.value) || 0;
           const vrPrev = parseFloat(tr.dataset.vr) || 0;
           const costo = parseFloat(tr.dataset.costo) || 0;
-          const nombre = (tr.querySelector('.prod-cell .n') || {}).textContent || '';
           const delta = nuevoVr - vrPrev;
           tr.dataset.vr = nuevoVr;
           tr.querySelector('.cx-vr').textContent = fmt(nuevoVr);
@@ -4828,30 +4870,38 @@
           const varEl = tr.querySelector('.cx-var');
           varEl.textContent = (varTotal >= 0 ? '+' : '') + fmt(varTotal);
           varEl.style.color = varTotal > 0 ? 'var(--da-success)' : varTotal < 0 ? 'var(--da-danger)' : 'var(--fg-muted)';
-          if (Math.abs(delta) >= 0.005) {
-            if (delta > 0) lineas.push({ d: nombre, debe: '1.1.6.01 Criptoactivos', haber: '3.2.5.01 Ganancia por tenencia (ORI)', monto: delta });
-            else lineas.push({ d: nombre, debe: '6.3.1.01 Pérdida por tenencia de criptoactivos', haber: '1.1.6.01 Criptoactivos', monto: -delta });
-          }
+          if (delta > 0.005) totalGan += delta; else if (delta < -0.005) totalPer += -delta;
+          if (tr.dataset.id && window.sb) updates.push(window.sb.from('criptoactivos').update({ valor_razonable: nuevoVr }).eq('id', tr.dataset.id));
         });
         recalc();
+        if (updates.length) await Promise.all(updates);
+        // Asiento de medición VEN-NIF 12: ganancia → ORI, pérdida → resultado
+        const lineas = [];
+        if (totalGan > 0.005) { lineas.push({ cta: '1.1.6 · Criptoactivos', debe: totalGan, haber: 0 }); lineas.push({ cta: '3.2.5.01 · Ganancia por tenencia de criptoactivos (ORI)', debe: 0, haber: totalGan }); }
+        if (totalPer > 0.005) { lineas.push({ cta: '6.3.1.01 · Pérdida por tenencia de criptoactivos', debe: totalPer, haber: 0 }); lineas.push({ cta: '1.1.6 · Criptoactivos', debe: 0, haber: totalPer }); }
         const body = document.getElementById('cxAsientoBody');
         const wrap = document.getElementById('cxAsiento');
-        if (!lineas.length) { toast('No hay variación en el valor razonable', 'info'); if (wrap) wrap.hidden = true; return; }
-        let html = '<table class="cxa-table"><thead><tr><th>Cuenta</th><th>Detalle</th><th class="num">Debe</th><th class="num">Haber</th></tr></thead><tbody>';
-        let tot = 0;
-        lineas.forEach((l) => {
-          html += '<tr><td>' + l.debe + '</td><td class="caption">' + l.d + '</td><td class="num">' + fmt(l.monto) + '</td><td class="num">—</td></tr>';
-          html += '<tr><td style="padding-left:22px;color:var(--fg-muted);">' + l.haber + '</td><td class="caption">' + l.d + '</td><td class="num">—</td><td class="num">' + fmt(l.monto) + '</td></tr>';
-          tot += l.monto;
-        });
-        html += '</tbody><tfoot><tr><td colspan="2">Totales</td><td class="num">' + fmt(tot) + '</td><td class="num">' + fmt(tot) + '</td></tr></tfoot></table>';
+        if (!lineas.length) { pendienteAsiento = null; toast('No hay variación en el valor razonable', 'info'); if (wrap) wrap.hidden = true; return; }
+        pendienteAsiento = lineas;
+        let html = '<table class="cxa-table"><thead><tr><th>Cuenta</th><th class="num">Debe</th><th class="num">Haber</th></tr></thead><tbody>';
+        let tD = 0, tH = 0;
+        lineas.forEach((l) => { html += '<tr><td>' + l.cta + '</td><td class="num">' + (l.debe ? fmt(l.debe) : '—') + '</td><td class="num">' + (l.haber ? fmt(l.haber) : '—') + '</td></tr>'; tD += l.debe; tH += l.haber; });
+        html += '</tbody><tfoot><tr><td>Totales</td><td class="num">' + fmt(tD) + '</td><td class="num">' + fmt(tH) + '</td></tr></tfoot></table>';
         body.innerHTML = html;
         wrap.hidden = false;
         if (window.lucide) window.lucide.createIcons();
         toast('Medición aplicada · valor razonable actualizado', 'success');
       });
       const post = document.getElementById('cxAsientoPost');
-      if (post) post.addEventListener('click', () => { document.getElementById('cxAsiento').hidden = true; toast('Asiento de medición contabilizado', 'success'); });
+      if (post) post.addEventListener('click', async () => {
+        if (!pendienteAsiento || !pendienteAsiento.length) { document.getElementById('cxAsiento').hidden = true; return; }
+        if (!window.__postAsiento) { toast('No disponible', 'error'); return; }
+        const res = await window.__postAsiento('Medición de criptoactivos a valor razonable (VEN-NIF 12)', 'CRIPTO', pendienteAsiento, 'auto');
+        if (res && res.error) { toast('No se pudo contabilizar: ' + res.error.message, 'error'); return; }
+        document.getElementById('cxAsiento').hidden = true;
+        pendienteAsiento = null;
+        toast('Asiento de medición contabilizado · fluye a la contabilidad', 'success');
+      });
       const nuevo = document.getElementById('criptoNuevo');
       if (nuevo) nuevo.addEventListener('click', () => {
         window.openFormModal && window.openFormModal({
@@ -4866,21 +4916,17 @@
           ],
           onSave: (v) => {
             if (!v.nombre) return 'Indica el criptoactivo.';
+            if (!window.sb || !window.__CUENTA_ID || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) return 'No hay una empresa activa seleccionada.';
             const costo = parseFloat(v.costo) || 0;
-            const tag = v.clasif === 'Corriente' ? 'cyan' : 'slate';
-            const tr = document.createElement('tr');
-            tr.setAttribute('data-cripto', '');
-            tr.dataset.costo = costo; tr.dataset.vr = costo;
-            tr.innerHTML = '<td><div class="prod-cell"><div class="prod-thumb"><i data-lucide="coins"></i></div><div class="info"><div class="n">' + v.nombre + '</div><div class="sku">' + (v.simbolo || '') + '</div></div></div></td>'
-              + '<td class="mono">' + (v.wallet || '—') + '</td><td class="num">' + (v.cantidad || '0') + '</td>'
-              + '<td class="num cx-costo">' + fmt(costo) + '</td><td class="num cx-vr">' + fmt(costo) + '</td>'
-              + '<td class="num cx-var" style="color:var(--fg-muted);">0,00</td>'
-              + '<td><span class="tag ' + tag + '">' + v.clasif + '</span></td><td><span class="tag navy">Nivel 1</span></td>'
-              + '<td><input type="number" class="cx-newvr" value="' + costo + '" step="0.01" style="width:120px;height:30px;border:1px solid var(--border-default);border-radius:6px;padding:0 8px;text-align:right;font-family:var(--font-mono);font-size:12px;"></td>';
-            cxTable.querySelector('tbody').appendChild(tr);
-            if (window.lucide) window.lucide.createIcons();
-            recalc();
-            toast('Criptoactivo ' + v.nombre + ' registrado al costo', 'success');
+            window.sb.from('criptoactivos').insert({
+              cuenta_id: window.__CUENTA_ID, empresa_id: window.__EMPRESA_ACTIVA.id,
+              nombre: v.nombre, simbolo: v.simbolo, wallet: v.wallet, cantidad: parseFloat(v.cantidad) || 0,
+              costo: costo, valor_razonable: costo, clasificacion: v.clasif, nivel: 'Nivel 1',
+            }).then(({ error }) => {
+              if (error) { toast('No se pudo guardar: ' + error.message, 'error'); return; }
+              if (window.cargarCriptoactivos) window.cargarCriptoactivos();
+              toast('Criptoactivo ' + v.nombre + ' registrado al costo', 'success');
+            });
           },
         });
       });
