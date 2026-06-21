@@ -1047,12 +1047,69 @@
       hd.forEach((d) => (d.innerHTML = ''));
     }
 
+    // Flujo de Efectivo (método directo): clasifica los movimientos de caja/bancos por su contrapartida
+    function renderFlujo() {
+      const tab = view.querySelector('.conta-tab[data-tab="flujo"]');
+      if (!tab) return;
+      const esCaja = (code) => code.indexOf('1.1.1') === 0;
+      const cats = { op: new Map(), inv: new Map(), fin: new Map() };
+      let efectivoFinal = 0;
+      (asientosData || []).forEach((a) => {
+        const lineas = (Array.isArray(a.lineas) ? a.lineas : []).map((l) => { const p = parseCta(l.cta); return { code: p.c, nombre: p.n, d: Number(l.debe) || 0, h: Number(l.haber) || 0 }; });
+        lineas.forEach((l) => { if (esCaja(l.code)) efectivoFinal += l.d - l.h; });
+        const cajaLines = lineas.filter((l) => esCaja(l.code));
+        const counters = lineas.filter((l) => !esCaja(l.code));
+        if (!cajaLines.length || !counters.length) return;
+        const netCash = cajaLines.reduce((s, l) => s + (l.d - l.h), 0);
+        const codes = counters.map((c) => c.code);
+        let cat = 'op';
+        if (codes.some((c) => c.indexOf('1.2') === 0)) cat = 'inv';
+        else if (codes.some((c) => c.charAt(0) === '3' || c.indexOf('2.2') === 0)) cat = 'fin';
+        const primary = counters.reduce((x, y) => ((y.d + y.h) > (x.d + x.h) ? y : x), counters[0]);
+        const m = cats[cat];
+        if (!m.has(primary.code)) m.set(primary.code, { nombre: primary.nombre, monto: 0 });
+        m.get(primary.code).monto += netCash;
+      });
+      const fmtM = (v) => v < 0 ? '(' + fmt2(Math.abs(v)) + ')' : fmt2(v);
+      const clsM = (v) => v < 0 ? 'amount fin-neg' : 'amount fin-pos';
+      function seccion(titulo, m, nombreFlujo) {
+        let h = '<tr class="section-head"><td class="label">' + titulo + '</td><td class="amount"></td></tr>';
+        let tot = 0;
+        const ent = Array.from(m.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+        if (!ent.length) h += '<tr class="line-detail"><td class="label">Sin movimientos</td><td class="amount">—</td></tr>';
+        ent.forEach((kv) => { tot += kv[1].monto; h += '<tr class="line-detail"><td class="label">' + kv[1].nombre + '</td><td class="' + clsM(kv[1].monto) + '">' + fmtM(kv[1].monto) + '</td></tr>'; });
+        h += '<tr class="subtotal"><td class="label">Flujo neto de ' + nombreFlujo + '</td><td class="' + clsM(tot) + '">' + fmtM(tot) + '</td></tr>';
+        return { h: h, tot: tot };
+      }
+      const sOp = seccion('Actividades de operación', cats.op, 'operación');
+      const sInv = seccion('Actividades de inversión', cats.inv, 'inversión');
+      const sFin = seccion('Actividades de financiamiento', cats.fin, 'financiamiento');
+      const variacion = sOp.tot + sInv.tot + sFin.tot, inicial = 0, final = inicial + variacion;
+      let html = sOp.h + sInv.h + sFin.h;
+      html += '<tr class="subtotal"><td class="label">Aumento neto de efectivo</td><td class="' + clsM(variacion) + '">' + fmtM(variacion) + '</td></tr>';
+      html += '<tr class="line-detail"><td class="label">Efectivo al inicio del período</td><td class="amount">' + fmt2(inicial) + '</td></tr>';
+      html += '<tr class="grand-total"><td class="label">Efectivo al final del período</td><td class="amount">' + fmt2(final) + '</td></tr>';
+      const tbody = tab.querySelector('.fin-table tbody'); if (tbody) tbody.innerHTML = html;
+      const hv = tab.querySelectorAll('.fin-hi .v'), hd = tab.querySelectorAll('.fin-hi .d');
+      if (hv[0]) hv[0].textContent = 'Bs ' + fmt2(inicial);
+      if (hv[1]) hv[1].textContent = 'Bs ' + fmt2(sOp.tot);
+      if (hv[2]) hv[2].textContent = 'Bs ' + fmt2(variacion);
+      if (hv[3]) hv[3].textContent = 'Bs ' + fmt2(final);
+      hd.forEach((d) => (d.innerHTML = ''));
+      const co = tab.querySelector('.fin-statement-head .co');
+      if (co && window.__EMPRESA_ACTIVA) co.textContent = window.__EMPRESA_ACTIVA.n + ' · ' + (window.__EMPRESA_ACTIVA.rif || '');
+      const per = tab.querySelector('.fin-statement-head .period'); if (per) per.textContent = 'Método directo';
+      const banner = tab.querySelector('.balance-check-banner');
+      if (banner) banner.innerHTML = '<i data-lucide="check-circle-2"></i> Conciliado · Efectivo final Bs ' + fmt2(final) + ' coincide con el saldo de Caja y Bancos.';
+    }
+
     function renderReportes() {
       const map = agregarPorCuenta();
       renderBalance(map);
       renderMayorTree(map);
       const utilNeta = renderEstadoResultados(map);
       renderBalanceGeneral(map, utilNeta || 0);
+      renderFlujo();
       if (window.lucide) window.lucide.createIcons();
     }
 
