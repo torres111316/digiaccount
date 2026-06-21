@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <!-- Seguridad: política de contenido (CSP) — solo recursos propios + fuentes de Google -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; connect-src 'self' https://esnicjnuymqgktqoueyq.supabase.co wss://esnicjnuymqgktqoueyq.supabase.co; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; connect-src 'self' https://esnicjnuymqgktqoueyq.supabase.co wss://esnicjnuymqgktqoueyq.supabase.co https://cdn.jsdelivr.net; object-src 'none'; base-uri 'self'; form-action 'self'">
 <title>DigiAccount ERP — Dashboard Central</title>
 <!-- PWA -->
 <link rel="manifest" href="manifest.json">
@@ -3996,7 +3996,7 @@
         <button data-tab="general"><i data-lucide="building-2"></i> Balance General</button>
         <button data-tab="flujo"><i data-lucide="waves"></i> Flujo de Efectivo</button>
         <button data-tab="plan"><i data-lucide="list-tree"></i> Plan de Cuentas</button>
-        <button data-tab="activos"><i data-lucide="building"></i> Activos Fijos <span class="count">24</span></button>
+        <button data-tab="activos"><i data-lucide="building"></i> Activos Fijos <span class="count">0</span></button>
         <button data-tab="cripto"><i data-lucide="bitcoin"></i> Criptoactivos <span class="tag cyan" style="margin-left:4px;font-size:9px;padding:1px 5px;">VEN-NIF 12</span></button>
         <button data-tab="diferido"><i data-lucide="scale"></i> Impuesto Diferido <span class="tag cyan" style="margin-left:4px;font-size:9px;padding:1px 5px;">VEN-NIF 11</span></button>
       </div>
@@ -4757,25 +4757,25 @@
         <div class="recon-stats">
           <div class="recon-stat">
             <div class="l"><i data-lucide="building"></i> Costo de adquisición</div>
-            <div class="v"><small>Bs</small> 8.940.000<small>,00</small></div>
+            <div class="v"><small>Bs</small> 0<small>,00</small></div>
           </div>
           <div class="recon-stat">
             <div class="l"><i data-lucide="trending-down"></i> Depreciación acumulada</div>
-            <div class="v" style="color:var(--da-danger);"><small>Bs</small> 3.412.500<small>,00</small></div>
+            <div class="v" style="color:var(--da-danger);"><small>Bs</small> 0<small>,00</small></div>
           </div>
           <div class="recon-stat accent">
             <div class="l"><i data-lucide="scale"></i> Valor neto en libros</div>
-            <div class="v"><small>Bs</small> 5.527.500<small>,00</small></div>
+            <div class="v"><small>Bs</small> 0<small>,00</small></div>
           </div>
           <div class="recon-stat">
             <div class="l"><i data-lucide="calendar-clock"></i> Depreciación del mes</div>
-            <div class="v"><small>Bs</small> 148.750<small>,00</small></div>
+            <div class="v"><small>Bs</small> 0<small>,00</small></div>
           </div>
         </div>
 
         <!-- Aviso de cálculo pendiente -->
-        <div class="recon-status-bar pending" id="deprStatusBar" style="margin-top:0;margin-bottom:16px;">
-          <div class="msg"><i data-lucide="calendar-clock"></i> <span id="deprStatusMsg">Depreciación de mayo 2026 pendiente de contabilizar · 24 activos · Bs 148.750,00</span></div>
+        <div class="recon-status-bar" id="deprStatusBar" style="margin-top:0;margin-bottom:16px;">
+          <div class="msg"><i data-lucide="calendar-clock"></i> <span id="deprStatusMsg">Sin depreciación pendiente</span></div>
           <button class="btn btn-primary" style="height:32px;font-size:12px;" id="deprRunBtn"><i data-lucide="play"></i> Calcular y contabilizar mes</button>
         </div>
 
@@ -4810,95 +4810,12 @@
                 </tr>
               </thead>
               <tbody>
-                <tr>
-                  <td class="mono">AF-001</td>
-                  <td class="primary">Vehículo de reparto · Hilux 4x4</td>
-                  <td><span class="tag slate">Vehículos</span></td>
-                  <td>15/03/2023</td>
-                  <td class="num">4.200.000,00</td>
-                  <td>5 años</td>
-                  <td>Línea recta</td>
-                  <td class="num">2.590.000,00</td>
-                  <td class="num">1.610.000,00</td>
-                  <td><span class="depr-bar"><span class="warn" style="width:62%"></span></span><span class="depr-pct">62%</span></td>
-                </tr>
-                <tr>
-                  <td class="mono">AF-002</td>
-                  <td class="primary">Galpón industrial · Sede Valle</td>
-                  <td><span class="tag slate">Inmuebles</span></td>
-                  <td>01/06/2021</td>
-                  <td class="num">3.000.000,00</td>
-                  <td>20 años</td>
-                  <td>Línea recta</td>
-                  <td class="num">735.000,00</td>
-                  <td class="num">2.265.000,00</td>
-                  <td><span class="depr-bar"><span style="width:24%"></span></span><span class="depr-pct">24%</span></td>
-                </tr>
-                <tr>
-                  <td class="mono">AF-003</td>
-                  <td class="primary">Línea de empaque automatizada</td>
-                  <td><span class="tag slate">Maquinaria</span></td>
-                  <td>10/01/2024</td>
-                  <td class="num">980.000,00</td>
-                  <td>10 años</td>
-                  <td>Línea recta</td>
-                  <td class="num">228.667,00</td>
-                  <td class="num">751.333,00</td>
-                  <td><span class="depr-bar"><span style="width:23%"></span></span><span class="depr-pct">23%</span></td>
-                </tr>
-                <tr>
-                  <td class="mono">AF-004</td>
-                  <td class="primary">Servidores y equipos de red</td>
-                  <td><span class="tag slate">Equipos</span></td>
-                  <td>20/08/2024</td>
-                  <td class="num">420.000,00</td>
-                  <td>3 años</td>
-                  <td>Línea recta</td>
-                  <td class="num">245.000,00</td>
-                  <td class="num">175.000,00</td>
-                  <td><span class="depr-bar"><span class="warn" style="width:58%"></span></span><span class="depr-pct">58%</span></td>
-                </tr>
-                <tr>
-                  <td class="mono">AF-005</td>
-                  <td class="primary">Mobiliario de oficina</td>
-                  <td><span class="tag slate">Mobiliario</span></td>
-                  <td>05/02/2022</td>
-                  <td class="num">180.000,00</td>
-                  <td>10 años</td>
-                  <td>Línea recta</td>
-                  <td class="num">73.500,00</td>
-                  <td class="num">106.500,00</td>
-                  <td><span class="depr-bar"><span style="width:41%"></span></span><span class="depr-pct">41%</span></td>
-                </tr>
-                <tr>
-                  <td class="mono">AF-006</td>
-                  <td class="primary">Montacargas eléctrico</td>
-                  <td><span class="tag slate">Maquinaria</span></td>
-                  <td>12/11/2020</td>
-                  <td class="num">160.000,00</td>
-                  <td>8 años</td>
-                  <td>Línea recta</td>
-                  <td class="num">109.000,00</td>
-                  <td class="num">51.000,00</td>
-                  <td><span class="depr-bar"><span class="warn" style="width:68%"></span></span><span class="depr-pct">68%</span></td>
-                </tr>
-                <tr style="opacity:0.7;">
-                  <td class="mono">AF-007</td>
-                  <td class="primary">Equipos de cómputo (lote 2021)</td>
-                  <td><span class="tag slate">Equipos</span></td>
-                  <td>18/04/2021</td>
-                  <td class="num">120.000,00</td>
-                  <td>3 años</td>
-                  <td>Línea recta</td>
-                  <td class="num">120.000,00</td>
-                  <td class="num">0,00</td>
-                  <td><span class="depr-bar"><span class="full" style="width:100%"></span></span><span class="depr-pct">Depreciado</span></td>
-                </tr>
+                <tr><td colspan="10" style="text-align:center;color:var(--fg-muted);padding:14px;">Sin activos registrados. Usa "Registrar activo fijo".</td></tr>
               </tbody>
             </table>
           </div>
           <div class="table-footer">
-            <div class="count">Mostrando <strong>7</strong> de <strong>24</strong> activos · Costo total Bs 8.940.000,00</div>
+            <div class="count">0 activos registrados</div>
             <div class="pager">
               <button><i data-lucide="chevron-left"></i></button>
               <button data-active="true">1</button>
@@ -4912,23 +4829,16 @@
         <!-- Cédula de depreciación del mes + asiento -->
         <div class="recon-cuadre" style="margin-top:16px;">
           <div class="cuadre-card">
-            <div class="ch"><i data-lucide="calculator"></i> Cédula de depreciación · Mayo 2026</div>
-            <div class="cuadre-line base"><span class="lbl">Vehículos</span><span class="amt">70.000,00</span></div>
-            <div class="cuadre-line"><span class="lbl">Inmuebles</span><span class="amt">12.500,00</span></div>
-            <div class="cuadre-line"><span class="lbl">Maquinaria</span><span class="amt">9.833,00</span></div>
-            <div class="cuadre-line"><span class="lbl">Equipos</span><span class="amt">45.250,00</span></div>
-            <div class="cuadre-line"><span class="lbl">Mobiliario</span><span class="amt">11.167,00</span></div>
-            <div class="cuadre-line total"><span class="lbl">Total depreciación del mes</span><span class="amt">148.750,00</span></div>
+            <div class="ch"><i data-lucide="calculator"></i> Cédula de depreciación del mes</div>
+            <div class="cuadre-line total"><span class="lbl">Total depreciación pendiente</span><span class="amt" id="deprCedulaTotal">0,00</span></div>
           </div>
           <div class="cuadre-card">
             <div class="ch"><i data-lucide="book-text"></i> Asiento contable a generar</div>
-            <div class="cuadre-line base"><span class="lbl">Fecha · 31/05/2026</span><span class="amt" id="deprAsientoNum">Borrador</span></div>
-            <div class="cuadre-line"><span class="lbl">6.4.01 Gasto de depreciación<small>Débito</small></span><span class="amt">148.750,00</span></div>
-            <div class="cuadre-line"><span class="lbl">1.2.9 Depreciación acumulada<small>Crédito</small></span><span class="amt neg">(148.750,00)</span></div>
+            <div class="cuadre-line"><span class="lbl">6.1.1.06 Gasto de depreciación<small>Débito</small></span><span class="amt" id="deprAsientoDebe">0,00</span></div>
+            <div class="cuadre-line"><span class="lbl">1.2.1.06 Depreciación acumulada<small>Crédito</small></span><span class="amt neg" id="deprAsientoHaber">(0,00)</span></div>
             <div class="cuadre-line total"><span class="lbl">Partida doble</span><span class="amt" style="color:var(--da-success);">Cuadrada · 0,00</span></div>
-            <div style="padding:14px 16px;display:flex;gap:8px;">
-              <button class="btn btn-ghost" style="flex:1;justify-content:center;height:34px;font-size:12px;" id="deprViewBtn"><i data-lucide="eye"></i> Ver detalle</button>
-              <button class="btn btn-primary" style="flex:1;justify-content:center;height:34px;font-size:12px;" id="deprPostBtn"><i data-lucide="check"></i> Contabilizar asiento</button>
+            <div style="padding:14px 16px;">
+              <span class="caption" style="font-size:11px;color:var(--fg-muted);">Usa el botón <strong>"Calcular y contabilizar mes"</strong> de arriba para generar el asiento.</span>
             </div>
           </div>
         </div>

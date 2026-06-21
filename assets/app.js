@@ -74,6 +74,7 @@
         dd.dataset.open = 'false';
         if (window.cargarAsientos) window.cargarAsientos();   // recarga los asientos de la empresa elegida
         if (window.cargarCuentasContables) window.cargarCuentasContables();
+        if (window.cargarActivosFijos) window.cargarActivosFijos();
       });
     }
     document.querySelectorAll('.entity-option[data-name]').forEach(bindEntityOption);
@@ -673,6 +674,7 @@
     // ---- Nuevo asiento (partida doble) ----
     let asientoNum = 313;
     let asientosData = [];   // asientos cargados desde Supabase (para Mayor y Balance)
+    let activosData = [];    // activos fijos cargados desde Supabase
     // ===== Modal de asiento (partida doble multi-línea) =====
     (function asientoModal() {
       const overlay = document.getElementById('asientoModal');
@@ -1132,33 +1134,103 @@
           const costo = parseFloat(v.costo);
           if (!v.cod || !v.nombre) return 'El código y el nombre del activo son obligatorios.';
           if (!(costo > 0)) return 'El costo debe ser mayor a cero.';
-          const tbody = view.querySelector('.conta-tab[data-tab="activos"] table.data-table tbody');
-          if (tbody) {
-            const fecha = v.fecha ? v.fecha.split('-').reverse().join('/') : '31/05/2026';
-            tbody.insertAdjacentHTML('afterbegin',
-              '<tr><td class="mono">' + v.cod + '</td><td class="primary">' + v.nombre + '</td>'
-              + '<td><span class="tag slate">' + v.cat + '</span></td><td>' + fecha + '</td>'
-              + '<td class="num">' + fmt2(costo) + '</td><td>' + (v.vida || '5') + ' años</td><td>' + v.metodo + '</td>'
-              + '<td class="num">0,00</td><td class="num">' + fmt2(costo) + '</td>'
-              + '<td><span class="depr-bar"><span style="width:0%"></span></span><span class="depr-pct">0%</span></td></tr>');
-            if (window.refreshTables) window.refreshTables();
-          }
-          toast('Activo ' + v.cod + ' registrado · valor neto Bs ' + fmt2(costo));
+          if (!window.sb || !window.__CUENTA_ID || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) return 'No hay una empresa activa seleccionada.';
+          const fecha = v.fecha ? v.fecha.split('-').reverse().join('/') : '';
+          window.sb.from('activos_fijos').insert({
+            cuenta_id: window.__CUENTA_ID, empresa_id: window.__EMPRESA_ACTIVA.id,
+            codigo: v.cod, nombre: v.nombre, categoria: v.cat, fecha_adq: fecha,
+            costo: costo, vida_util: parseInt(v.vida, 10) || 5, metodo: v.metodo,
+          }).then(({ error }) => {
+            if (error) { toast('No se pudo guardar: ' + error.message, 'error'); return; }
+            if (window.cargarActivosFijos) window.cargarActivosFijos();
+            toast('Activo ' + v.cod + ' registrado · valor neto Bs ' + fmt2(costo));
+          });
         },
       });
     });
 
-    // ---- Depreciación del mes ----
-    const deprBtn = document.getElementById('deprRunBtn');
-    if (deprBtn) deprBtn.addEventListener('click', () => {
-      const bar = document.getElementById('deprStatusBar');
-      const msg = document.getElementById('deprStatusMsg');
-      if (msg) msg.textContent = 'Depreciación de mayo 2026 contabilizada · asiento generado por Bs 148.750,00';
-      if (bar) bar.classList.remove('pending');
-      deprBtn.disabled = true;
-      deprBtn.innerHTML = '<i data-lucide="check"></i> Contabilizada';
+    // Carga los activos fijos de la empresa activa y arma la tabla (con depreciación y valor neto)
+    async function cargarActivosFijos() {
+      const tbody = view.querySelector('.conta-tab[data-tab="activos"] table.data-table tbody');
+      if (!tbody) return;
+      const setStats = (costo, dep, neto, mes) => {
+        const vs = view.querySelectorAll('.conta-tab[data-tab="activos"] .recon-stats .recon-stat .v');
+        if (vs[0]) vs[0].innerHTML = '<small>Bs</small> ' + fmt2(costo);
+        if (vs[1]) vs[1].innerHTML = '<small>Bs</small> ' + fmt2(dep);
+        if (vs[2]) vs[2].innerHTML = '<small>Bs</small> ' + fmt2(neto);
+        if (vs[3]) vs[3].innerHTML = '<small>Bs</small> ' + fmt2(mes);
+      };
+      const footer = view.querySelector('.conta-tab[data-tab="activos"] .table-footer .count');
+      const dmsg = document.getElementById('deprStatusMsg');
+      const tabCount = document.querySelector('#contaTabs button[data-tab="activos"] .count');
+      const setDepPreview = (v) => {
+        const ced = document.getElementById('deprCedulaTotal'); if (ced) ced.textContent = fmt2(v);
+        const deb = document.getElementById('deprAsientoDebe'); if (deb) deb.textContent = fmt2(v);
+        const hab = document.getElementById('deprAsientoHaber'); if (hab) hab.textContent = '(' + fmt2(v) + ')';
+      };
+      const vacio = (txt) => {
+        tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--fg-muted);padding:14px;">' + txt + '</td></tr>';
+        setStats(0, 0, 0, 0); setDepPreview(0);
+        if (footer) footer.textContent = '0 activos registrados';
+        if (dmsg) dmsg.textContent = 'Sin depreciación pendiente';
+        if (tabCount) tabCount.textContent = '0';
+      };
+      if (!window.sb || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) { activosData = []; vacio('Sin activos registrados.'); return; }
+      const { data, error } = await window.sb.from('activos_fijos').select('*').eq('empresa_id', window.__EMPRESA_ACTIVA.id).order('codigo');
+      if (error) { console.warn('[DigiAccount] No se pudieron cargar activos fijos:', error.message); activosData = []; vacio('No se pudieron cargar los activos (¿creaste la tabla?).'); return; }
+      activosData = data || [];
+      if (!activosData.length) { vacio('Sin activos registrados. Usa "Registrar activo fijo".'); if (window.refreshTables) window.refreshTables(); return; }
+      let cTot = 0, dTot = 0, mesTot = 0;
+      tbody.innerHTML = activosData.map((a) => {
+        const costo = Number(a.costo) || 0, dep = Number(a.depreciacion_acum) || 0, neto = costo - dep, vida = Number(a.vida_util) || 5;
+        cTot += costo; dTot += dep; mesTot += Math.min(vida > 0 ? costo / (vida * 12) : 0, Math.max(0, costo - dep));
+        const pct = costo ? Math.round(dep / costo * 100) : 0;
+        return '<tr><td class="mono">' + (a.codigo || '') + '</td><td class="primary">' + (a.nombre || '') + '</td>'
+          + '<td><span class="tag slate">' + (a.categoria || '') + '</span></td><td>' + (a.fecha_adq || '') + '</td>'
+          + '<td class="num">' + fmt2(costo) + '</td><td>' + (a.vida_util || 5) + ' años</td><td>' + (a.metodo || 'Línea recta') + '</td>'
+          + '<td class="num">' + fmt2(dep) + '</td><td class="num">' + fmt2(neto) + '</td>'
+          + '<td><span class="depr-bar"><span style="width:' + pct + '%"></span></span><span class="depr-pct">' + pct + '%</span></td></tr>';
+      }).join('');
+      setStats(cTot, dTot, cTot - dTot, mesTot);
+      if (footer) footer.textContent = activosData.length + ' activos · Costo total Bs ' + fmt2(cTot);
+      if (dmsg) dmsg.textContent = mesTot > 0.009 ? ('Depreciación pendiente de contabilizar · ' + activosData.length + ' activos · Bs ' + fmt2(mesTot)) : 'Sin depreciación pendiente';
+      if (tabCount) tabCount.textContent = String(activosData.length);
+      setDepPreview(mesTot);
+      if (window.refreshTables) window.refreshTables();
       drawIcons();
-      toast('Depreciación del mes contabilizada · Bs 148.750,00');
+    }
+    window.cargarActivosFijos = cargarActivosFijos;
+    cargarActivosFijos();   // limpia los activos de ejemplo al cargar la página
+
+    // ---- Depreciación del mes (genera asiento contable real) ----
+    const deprBtn = document.getElementById('deprRunBtn');
+    if (deprBtn) deprBtn.addEventListener('click', async () => {
+      if (!window.sb || !window.__CUENTA_ID || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) { toast('No hay una empresa activa', 'error'); return; }
+      let total = 0; const updates = [];
+      (activosData || []).forEach((a) => {
+        const costo = Number(a.costo) || 0, dep = Number(a.depreciacion_acum) || 0, vida = Number(a.vida_util) || 5;
+        const mensual = vida > 0 ? costo / (vida * 12) : 0;       // línea recta
+        const cuota = Math.min(mensual, Math.max(0, costo - dep)); // sin pasar del costo
+        if (cuota > 0.009) { total += cuota; updates.push(window.sb.from('activos_fijos').update({ depreciacion_acum: dep + cuota }).eq('id', a.id)); }
+      });
+      if (total < 0.009) { toast('No hay depreciación pendiente este mes', 'info'); return; }
+      const hoy = new Date();
+      const fecha = String(hoy.getDate()).padStart(2, '0') + '/' + String(hoy.getMonth() + 1).padStart(2, '0') + '/' + hoy.getFullYear();
+      const { error: eAsi } = await window.sb.from('asientos').insert({
+        cuenta_id: window.__CUENTA_ID, empresa_id: window.__EMPRESA_ACTIVA.id,
+        numero: (asientoNum || 0) + 1, fecha: fecha, descripcion: 'Depreciación del período', referencia: 'DEPR', origen: 'auto',
+        lineas: [{ cta: '6.1.1.06 · Depreciación', debe: total, haber: 0 }, { cta: '1.2.1.06 · Depreciación acumulada (−)', debe: 0, haber: total }],
+        total: total,
+      });
+      if (eAsi) { toast('No se pudo generar el asiento: ' + eAsi.message, 'error'); return; }
+      await Promise.all(updates);
+      const msg = document.getElementById('deprStatusMsg');
+      if (msg) msg.textContent = 'Depreciación contabilizada · asiento generado por Bs ' + fmt2(total);
+      const bar = document.getElementById('deprStatusBar'); if (bar) bar.classList.remove('pending');
+      if (window.cargarAsientos) window.cargarAsientos();        // refresca Diario, Mayor, Balance, Estados
+      if (window.cargarActivosFijos) window.cargarActivosFijos();
+      drawIcons();
+      toast('Depreciación del mes contabilizada · Bs ' + fmt2(total));
     });
 
     // ---- Exportar (libro diario) ----
