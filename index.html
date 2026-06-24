@@ -181,15 +181,18 @@
         <span class="ico"><i data-lucide="layout-dashboard"></i></span>
         <span class="lbl">Dashboard Central</span>
       </a>
-      <a class="nav-item" data-view="ventas" data-title="Ventas y Facturación" href="#ventas">
+      <a class="nav-item" data-view="ventas" data-title="Ventas y Cuentas por Cobrar" href="#ventas">
         <span class="ico"><i data-lucide="receipt"></i></span>
-        <span class="lbl">Ventas y Facturación</span>
-        <span class="badge" style="background:var(--da-success);color:#fff;">218</span>
+        <span class="lbl">Ventas y CxC</span>
+      </a>
+      <a class="nav-item" data-view="compras" data-title="Compras y Cuentas por Pagar" href="#compras">
+        <span class="ico"><i data-lucide="shopping-cart"></i></span>
+        <span class="lbl">Compras y CxP</span>
+        <span class="badge" id="cxpTabCount" style="background:#b42318;color:#fff;display:none;">0</span>
       </a>
       <a class="nav-item" data-view="tesoreria" data-title="Tesorería" href="#tesoreria">
         <span class="ico"><i data-lucide="wallet"></i></span>
         <span class="lbl">Tesorería</span>
-        <span class="badge">12</span>
       </a>
       <a class="nav-item" data-view="inventario" data-title="Catálogo e Inventario" href="#inventario">
         <span class="ico"><i data-lucide="package"></i></span>
@@ -210,7 +213,7 @@
         <span class="ico"><i data-lucide="book-open"></i></span>
         <span class="lbl">Contabilidad</span>
       </a>
-      <a class="nav-item" data-view="fiscal" data-title="Módulo Fiscal · SENIAT" href="#fiscal">
+      <a class="nav-item" id="navFiscal" data-view="fiscal" data-title="Módulo Fiscal · SENIAT" href="#fiscal" hidden>
         <span class="ico"><i data-lucide="file-text"></i></span>
         <span class="lbl">Módulo Fiscal · SENIAT</span>
         <span class="badge" style="background:#c97a14;color:#fff;">3</span>
@@ -408,6 +411,13 @@
             <span class="contrib-badge especial" id="contribBadge">
               <i data-lucide="shield-check"></i>
               <span id="contribLabel">Contribuyente Especial</span>
+            </span>
+            <span class="contrib-badge" id="fiscalToggleBadge" title="Módulo Fiscal (libros y declaraciones formales). Si está activo, la contabilidad toma las ventas del Libro; si no, de los Recibos." style="gap:6px;">
+              <i data-lucide="landmark"></i>
+              <select id="fiscalActivoSel" style="border:0;background:transparent;font:inherit;color:inherit;cursor:pointer;outline:none;">
+                <option value="off">Fiscal: Inactivo (recibos)</option>
+                <option value="on">Fiscal: Activo (libros)</option>
+              </select>
             </span>
           </div>
         </div>
@@ -2500,9 +2510,33 @@
       <!-- Sub-tabs -->
       <div class="subtabs" id="ventasTabs">
         <button data-active="true" data-tab="facturas"><i data-lucide="receipt"></i> Facturas <span class="count">218</span></button>
+        <button data-tab="cxc"><i data-lucide="arrow-down-to-line"></i> Cuentas por Cobrar <span class="count" id="cxcTabCount" style="display:none;">0</span></button>
         <button data-tab="despachos"><i data-lucide="truck"></i> Despachos <span class="count" id="despachosCount">3</span></button>
         <button data-tab="notas"><i data-lucide="file-minus-2"></i> Notas de Crédito / Débito <span class="count">4</span></button>
         <button class="ventas-link" data-goto-fiscaltab="ventas"><i data-lucide="book-open"></i> Libro de Ventas →</button>
+      </div>
+
+      <!-- TAB: Cuentas por Cobrar (recibos con saldo) -->
+      <div class="ventas-tab" data-tab="cxc">
+        <div class="data-table-wrap">
+          <div class="table-toolbar">
+            <span style="font-size:12px;font-weight:600;">Cuentas por Cobrar · recibos de venta con saldo pendiente</span>
+            <div class="right">
+              <span style="font-size:11px;color:var(--fg-muted);">Total por cobrar: <strong id="cxcTotalSum" style="color:#0a7a44;font-family:var(--font-mono);">Bs 0,00</strong></span>
+            </div>
+          </div>
+          <div class="table-scroll">
+            <table class="data-table" style="min-width:900px;">
+              <thead>
+                <tr><th>Cliente</th><th>RIF</th><th>N° Recibo</th><th>Fecha</th><th class="num">Total</th><th class="num">Cobrado</th><th class="num">Pendiente</th><th>Estado</th></tr>
+              </thead>
+              <tbody id="cxcBody">
+                <tr><td colspan="8" style="text-align:center;color:var(--fg-muted);padding:24px;">Sin datos. Emite recibos de venta y registra sus cobros.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="table-footer"><div class="count" id="cxcCount">Sin facturas</div></div>
+        </div>
       </div>
 
       <!-- TAB: Facturas -->
@@ -2617,6 +2651,49 @@
   </div>
 </div>
 
+    <section class="view" id="view-compras">
+      <header class="dash-header">
+        <div class="dash-title-block">
+          <div class="overline">Compras · Cuentas por Pagar</div>
+          <div class="dash-title-row">
+            <h1 class="dash-title">Compras y CxP</h1>
+            <span class="contrib-badge"><i data-lucide="shopping-cart"></i> Lo que le debes a tus proveedores</span>
+          </div>
+        </div>
+        <div class="dash-actions">
+          <button class="btn btn-primary" id="comprasRegBtn"><i data-lucide="plus"></i> Registrar compra</button>
+        </div>
+      </header>
+
+      <section class="kpi-row">
+        <div class="kpi">
+          <div class="kpi-head"><span class="label">Total por pagar</span><span class="kpi-icon warning"><i data-lucide="arrow-up-from-line"></i></span></div>
+          <div class="kpi-value"><span class="currency">Bs</span> <span id="cxpKpiTotal">0,00</span></div>
+          <div class="kpi-sub"><span class="meta" id="cxpKpiMeta">Sin facturas pendientes</span></div>
+        </div>
+      </section>
+
+      <div class="data-table-wrap">
+        <div class="table-toolbar">
+          <span style="font-size:12px;font-weight:600;">Cuentas por Pagar · facturas de compra con saldo pendiente</span>
+          <div class="right">
+            <span style="font-size:11px;color:var(--fg-muted);">Total por pagar: <strong id="cxpTotalSum" style="color:#b42318;font-family:var(--font-mono);">Bs 0,00</strong></span>
+          </div>
+        </div>
+        <div class="table-scroll">
+          <table class="data-table" style="min-width:900px;">
+            <thead>
+              <tr><th>Proveedor</th><th>RIF</th><th>N° Factura</th><th>Fecha</th><th class="num">Total</th><th class="num">Pagado</th><th class="num">Pendiente</th><th>Estado</th></tr>
+            </thead>
+            <tbody id="cxpBody">
+              <tr><td colspan="8" style="text-align:center;color:var(--fg-muted);padding:24px;">Sin datos. Registra una compra para empezar.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="table-footer"><div class="count" id="cxpCount">Sin facturas</div></div>
+      </div>
+    </section><!-- /view-compras -->
+
     <section class="view" id="view-tesoreria">
 
       <header class="dash-header">
@@ -2675,9 +2752,6 @@
       <!-- Sub-tabs -->
       <div class="subtabs" id="tesoTabs">
         <button data-active="true" data-tab="resumen"><i data-lucide="layout-grid"></i> Resumen</button>
-        <button data-tab="compras"><i data-lucide="shopping-cart"></i> Compras <span class="count">142</span></button>
-        <button data-tab="cxc"><i data-lucide="arrow-down-to-line"></i> Cuentas por Cobrar <span class="count" id="cxcTabCount">0</span></button>
-        <button data-tab="cxp"><i data-lucide="arrow-up-from-line"></i> Cuentas por Pagar <span class="count" id="cxpTabCount">0</span></button>
         <button data-tab="concil"><i data-lucide="check-check"></i> Conciliación</button>
       </div>
 
@@ -2739,80 +2813,6 @@
             </div>
           </div>
         </section>
-      </div>
-
-      <!-- TAB: Ventas -->
-      <!-- TAB: Compras -->
-      <div class="teso-tab" data-tab="compras">
-        <div class="data-table-wrap">
-          <div class="table-toolbar">
-            <label class="quick-search"><i data-lucide="search"></i><input type="text" placeholder="Buscar proveedor, factura, RIF…"></label>
-            <button class="filter-chip active">Mayo 2026 <i data-lucide="x"></i></button>
-            <button class="filter-chip"><i data-lucide="circle-dot"></i> Estado: Todos</button>
-            <div class="right">
-              <span style="font-size:11px;color:var(--fg-muted);">Total comprado: <strong style="color:var(--fg-primary);font-family:var(--font-mono);">Bs 0,00</strong></span>
-            </div>
-          </div>
-          <div class="table-scroll">
-            <table class="data-table" style="min-width:840px;">
-              <thead>
-                <tr><th>Fecha</th><th>N° Factura</th><th>Proveedor</th><th>RIF</th><th class="num">Total</th><th>Pago</th><th>Estado</th><th></th></tr>
-              </thead>
-              <tbody>
-                <tr><td colspan="8" style="text-align:center;color:var(--fg-muted);padding:24px;">Sin datos. Esta vista se conectará a las compras reales del Libro de Compras / Cuentas por Pagar.</td></tr>
-              </tbody>
-            </table>
-          </div>
-          <div class="table-footer">
-            <div class="count">Sin facturas</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- TAB: CxC -->
-      <div class="teso-tab" data-tab="cxc">
-        <div class="data-table-wrap">
-          <div class="table-toolbar">
-            <span style="font-size:12px;font-weight:600;">Cuentas por Cobrar · recibos de venta con saldo pendiente</span>
-            <div class="right">
-              <span style="font-size:11px;color:var(--fg-muted);">Total por cobrar: <strong id="cxcTotalSum" style="color:#0a7a44;font-family:var(--font-mono);">Bs 0,00</strong></span>
-            </div>
-          </div>
-          <div class="table-scroll">
-            <table class="data-table" style="min-width:880px;">
-              <thead>
-                <tr><th>Cliente</th><th>RIF</th><th>N° Recibo</th><th>Fecha</th><th class="num">Total</th><th class="num">Cobrado</th><th class="num">Pendiente</th><th>Estado</th></tr>
-              </thead>
-              <tbody id="cxcBody">
-                <tr><td colspan="8" style="text-align:center;color:var(--fg-muted);padding:24px;">Sin datos. Emite recibos de venta y registra sus cobros en Tesorería.</td></tr>
-              </tbody>
-            </table>
-          </div>
-          <div class="table-footer"><div class="count" id="cxcCount">Sin facturas</div></div>
-        </div>
-      </div>
-
-      <!-- TAB: CxP -->
-      <div class="teso-tab" data-tab="cxp">
-        <div class="data-table-wrap">
-          <div class="table-toolbar">
-            <span style="font-size:12px;font-weight:600;">Cuentas por Pagar · facturas de compra con saldo pendiente</span>
-            <div class="right">
-              <span style="font-size:11px;color:var(--fg-muted);">Total por pagar: <strong id="cxpTotalSum" style="color:#b42318;font-family:var(--font-mono);">Bs 0,00</strong></span>
-            </div>
-          </div>
-          <div class="table-scroll">
-            <table class="data-table" style="min-width:880px;">
-              <thead>
-                <tr><th>Proveedor</th><th>RIF</th><th>N° Factura</th><th>Fecha</th><th class="num">Total</th><th class="num">Pagado</th><th class="num">Pendiente</th><th>Estado</th></tr>
-              </thead>
-              <tbody id="cxpBody">
-                <tr><td colspan="8" style="text-align:center;color:var(--fg-muted);padding:24px;">Sin datos. Registra compras en el Libro de Compras y sus pagos en Tesorería.</td></tr>
-              </tbody>
-            </table>
-          </div>
-          <div class="table-footer"><div class="count" id="cxpCount">Sin facturas</div></div>
-        </div>
       </div>
 
       <!-- TAB: Conciliación -->

@@ -55,10 +55,14 @@
         const { name, avatar, rif, type } = opt.dataset;
         const cond = opt.dataset.cond || '';
         // Empresa activa = emisor de los recibos/facturas + dueña de sus libros contables
+        const fiscalActivo = opt.dataset.fiscal === 'true';
         window.__EMPRESA_ACTIVA = {
           id: opt.dataset.empresaId || '', n: name, rif: rif, dom: '',
           cond: /especial/i.test(cond) ? 'Contribuyente Especial' : /formal/i.test(cond) ? 'Contribuyente Formal' : (type === 'natural' ? 'Persona Natural' : 'Contribuyente Ordinario'),
+          fiscalActivo: fiscalActivo,
+          modo: fiscalActivo ? 'libro' : 'recibos', // DERIVADO del módulo Fiscal: activo→libros, inactivo→recibos
         };
+        aplicarFiscal(fiscalActivo);
         setText('entityName', name);
         setText('entityAvatar', avatar);
         setText('companyTitle', name);
@@ -86,6 +90,38 @@
     }
     document.querySelectorAll('.entity-option[data-name]').forEach(bindEntityOption);
     window.__bindEntityOption = bindEntityOption;
+
+    // Muestra/oculta el módulo Fiscal y sincroniza el toggle de la cabecera
+    function aplicarFiscal(activo) {
+      const nav = document.getElementById('navFiscal');
+      if (nav) nav.hidden = !activo;
+      const sel = document.getElementById('fiscalActivoSel');
+      if (sel) sel.value = activo ? 'on' : 'off';
+      // Si se desactiva mientras se está viendo Fiscal, salir a la primera vista visible
+      if (!activo) {
+        const cur = document.querySelector('.nav-item.active[data-view="fiscal"]');
+        if (cur) { const first = document.querySelector('.nav-item:not([hidden])'); if (first) first.click(); }
+      }
+    }
+    window.__aplicarFiscal = aplicarFiscal;
+
+    // Toggle "Módulo Fiscal" por empresa: activa los libros formales y deriva el modo contable
+    const fiscalSel = document.getElementById('fiscalActivoSel');
+    if (fiscalSel) fiscalSel.addEventListener('change', async () => {
+      const emp = window.__EMPRESA_ACTIVA;
+      if (!emp || !emp.id) return;
+      const activo = fiscalSel.value === 'on';
+      emp.fiscalActivo = activo;
+      emp.modo = activo ? 'libro' : 'recibos';
+      const opt = document.querySelector('.entity-option[data-empresa-id="' + emp.id + '"]');
+      if (opt) opt.dataset.fiscal = String(activo);
+      aplicarFiscal(activo);
+      if (window.sb) {
+        const { error } = await window.sb.from('empresas').update({ fiscal_activo: activo }).eq('id', emp.id);
+        if (error) { if (window.toast) window.toast('No se pudo guardar: ' + error.message, 'error'); return; }
+      }
+      if (window.toast) window.toast(activo ? 'Módulo Fiscal activado · contabiliza desde el Libro de Ventas' : 'Módulo Fiscal desactivado · contabiliza desde los Recibos', 'success');
+    });
   }
 
   // Carga las empresas REALES de la cuenta desde Supabase y reconstruye el selector
@@ -95,7 +131,7 @@
     if (!window.sb || !dd || !addBtn) return;
     const { data, error } = await window.sb
       .from('empresas')
-      .select('id, nombre, rif, condicion_fiscal')
+      .select('id, nombre, rif, condicion_fiscal, fiscal_activo')
       .order('nombre');
     if (error) { console.warn('[DigiAccount] No se pudieron cargar las empresas:', error.message); return; }
     // Quitar las opciones de ejemplo (hardcodeadas) y sus etiquetas de grupo
@@ -116,6 +152,7 @@
       opt.dataset.type = /especial/i.test(cond) ? 'especial' : 'ordinario';
       opt.dataset.cond = cond;
       opt.dataset.empresaId = emp.id || '';
+      opt.dataset.fiscal = String(!!emp.fiscal_activo);
       opt.innerHTML = '<div class="ea" style="background:var(--da-navy-500);color:#fff">' + ini + '</div>'
         + '<div class="eo-info"><div class="eo-name">' + nombre + '</div><div class="eo-meta">' + rif + ' · Contribuyente ' + condTxt + '</div></div>'
         + '<i data-lucide="check" class="eo-check" style="width:16px;height:16px;"></i>';
@@ -2377,17 +2414,27 @@
         return { f: f, total: total, pag: pag, pend: pend };
       }).sort((a, b) => b.pend - a.pend);
       let totalPend = 0, pendientes = 0;
+      const esVenta = tipo === 'venta';
       const html = rows.map((r) => {
         if (r.pend > 0.01) { pendientes++; totalPend += r.pend; }
         const estado = r.pend <= 0.01 ? badge('Pagada', '#0a7a44', '#d5f0e0') : (r.pag > 0.01 ? badge('Parcial', '#9a6700', '#fdf0d0') : badge('Pendiente', '#b42318', '#fde0dd'));
+        let accion = '';
+        if (r.pend > 0.01) {
+          accion = ' <button class="btn btn-ghost" data-cx-accion="' + (esVenta ? 'cobrar' : 'pagar') + '" data-ref="' + esc(r.f.ref || '') + '" data-terc="' + esc(r.f.tercero_nombre || '') + '" data-pend="' + r.pend.toFixed(2) + '" style="height:22px;font-size:10px;padding:0 9px;margin-left:6px;">' + (esVenta ? 'Cobrar' : 'Pagar') + '</button>';
+        }
         return '<tr><td class="primary">' + esc(r.f.tercero_nombre || '—') + '</td><td class="mono">' + esc(r.f.tercero_rif || '') + '</td><td>' + esc(r.f.ref || '') + '</td><td>' + esc(r.f.fecha || '') + '</td>'
           + '<td class="num">' + fmt(r.total) + '</td><td class="num" style="color:#0a7a44;">' + fmt(r.pag) + '</td>'
-          + '<td class="num" style="font-weight:700;' + (r.pend > 0.01 ? 'color:#b42318;' : 'color:var(--fg-muted);') + '">' + fmt(r.pend) + '</td><td>' + estado + '</td></tr>';
+          + '<td class="num" style="font-weight:700;' + (r.pend > 0.01 ? 'color:#b42318;' : 'color:var(--fg-muted);') + '">' + fmt(r.pend) + '</td><td style="white-space:nowrap;">' + estado + accion + '</td></tr>';
       });
-      body.innerHTML = html.length ? html.join('') : '<tr><td colspan="8" style="text-align:center;color:var(--fg-muted);padding:24px;">' + (tipo === 'venta' ? 'Sin recibos de venta emitidos.' : 'Sin facturas de compra registradas.') + '</td></tr>';
+      body.innerHTML = html.length ? html.join('') : '<tr><td colspan="8" style="text-align:center;color:var(--fg-muted);padding:24px;">' + (esVenta ? 'Sin recibos de venta emitidos.' : 'Sin facturas de compra registradas.') + '</td></tr>';
       const tEl = document.getElementById(totalId); if (tEl) tEl.textContent = 'Bs ' + fmt(totalPend);
       const cEl = document.getElementById(countId); if (cEl) cEl.innerHTML = '<strong>' + pendientes + '</strong> con saldo pendiente · ' + rows.length + ' factura' + (rows.length === 1 ? '' : 's') + ' en total';
-      const tc = document.getElementById(tabCountId); if (tc) tc.textContent = String(pendientes);
+      const tc = document.getElementById(tabCountId); if (tc) { tc.textContent = String(pendientes); tc.style.display = pendientes > 0 ? '' : 'none'; }
+      // KPI de la vista Compras y CxP
+      if (!esVenta) {
+        const k = document.getElementById('cxpKpiTotal'); if (k) k.textContent = fmt(totalPend);
+        const km = document.getElementById('cxpKpiMeta'); if (km) km.textContent = pendientes + ' factura' + (pendientes === 1 ? '' : 's') + ' pendiente' + (pendientes === 1 ? '' : 's');
+      }
     }
     function renderCxCxP() {
       renderCxList('venta', 'cxcBody', 'cxcTotalSum', 'cxcCount', 'cxcTabCount');
@@ -2517,7 +2564,27 @@
               cuenta_id: window.__CUENTA_ID, empresa_id: window.__EMPRESA_ACTIVA.id, cuenta_teso_id: cuentaId,
               fecha: fecha, concepto: v.concepto, tipo: v.tipo, referencia: v.referencia, monto: monto, comprobante_path: comprobante_path || null,
               tercero_nombre: v.tercero || null, tercero_rif: tercRif || null, factura_ref: v.factura || null,
-            }).then(({ error }) => { if (error) { toast('No se pudo guardar: ' + error.message, 'error'); return; } toast((v.tipo === 'ingreso' ? 'Ingreso (cobro)' : 'Egreso (pago)') + ' registrado' + (comprobante_path ? ' con comprobante' : ''), 'success'); cargarTesoreria(); });
+            }).then(({ error }) => {
+              if (error) { toast('No se pudo guardar: ' + error.message, 'error'); return; }
+              toast((v.tipo === 'ingreso' ? 'Ingreso (cobro)' : 'Egreso (pago)') + ' registrado' + (comprobante_path ? ' con comprobante' : ''), 'success');
+              // Asiento contable automático: solo si el movimiento está vinculado a un recibo/factura
+              if (v.factura && v.tercero && window.__postAsiento) {
+                const cta = _cuentas.find((c) => c.id === cuentaId);
+                const esCaja = cta && /efectivo|caja/i.test((cta.tipo || '') + ' ' + (cta.nombre || ''));
+                const ctaCash = esCaja ? '1.1.1.01 · Caja' : '1.1.1.03 · Bancos';
+                const cashName = cta ? cta.nombre : (esCaja ? 'Caja' : 'Bancos');
+                let lineas, desc;
+                if (v.tipo === 'ingreso') {
+                  lineas = [{ cta: ctaCash, debe: monto, haber: 0 }, { cta: '1.1.2.01 · Cuentas por cobrar comerciales', debe: 0, haber: monto }];
+                  desc = 'Cobro recibo ' + v.factura + ' · ' + v.tercero + ' (' + cashName + ')';
+                } else {
+                  lineas = [{ cta: '2.1.1.01 · Cuentas por pagar comerciales', debe: monto, haber: 0 }, { cta: ctaCash, debe: 0, haber: monto }];
+                  desc = 'Pago factura ' + v.factura + ' · ' + v.tercero + ' (' + cashName + ')';
+                }
+                window.__postAsiento(desc, v.factura, lineas, 'auto').then((r) => { if (r && r.error) console.warn('[DigiAccount] No se pudo contabilizar el movimiento:', r.error.message); });
+              }
+              cargarTesoreria();
+            });
           };
           const proceder = (cuentaId) => {
             if (file) {
@@ -2543,6 +2610,12 @@
     const movBtn = document.getElementById('tesoMovBtn'); if (movBtn) movBtn.addEventListener('click', () => registrarMovimiento());
     // Permite registrar un cobro/pago prefilleado desde otro módulo (p. ej. botón "Cobrar" del recibo de venta)
     window.__registrarCobro = (pre) => registrarMovimiento(pre);
+    // Botones "Cobrar" (CxC en Ventas) y "Pagar" (CxP en Compras): abren el movimiento prefilleado
+    document.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-cx-accion]');
+      if (!b) return;
+      registrarMovimiento({ tipo: b.dataset.cxAccion === 'cobrar' ? 'ingreso' : 'egreso', tercero: b.dataset.terc, factura: b.dataset.ref, monto: b.dataset.pend });
+    });
     cargarTesoreria();
   })();
 
@@ -4839,6 +4912,16 @@
             items: items, subtotal: t.subtotal, iva: t.iva, igtf_monto: t.igtf, total: t.total, estado: 'Por cobrar',
           }).then(({ error }) => {
             if (error) { console.warn('[DigiAccount] No se pudo guardar la factura:', error.message); if (window.toast) window.toast('No se pudo guardar en la base: ' + error.message, 'error'); return; }
+            // Asiento contable de la venta: Debe CxC / Haber Ingresos (+ IVA débito / IGTF por pagar).
+            // Solo en modo "recibos" (empresa). En modo "libro" (contador) la venta la contabiliza el Libro de Ventas.
+            const _modo = (window.__EMPRESA_ACTIVA && window.__EMPRESA_ACTIVA.modo) || 'recibos';
+            if (window.__postAsiento && _modo !== 'libro') {
+              const ln = [{ cta: '1.1.2.01 · Cuentas por cobrar comerciales', debe: t.total, haber: 0 },
+                { cta: '4.1.1.01 · Ventas / Ingresos por servicios', debe: 0, haber: t.subtotal }];
+              if (t.iva > 0.005) ln.push({ cta: '2.1.3.01 · IVA débito fiscal', debe: 0, haber: t.iva });
+              if (t.igtf > 0.005) ln.push({ cta: '2.1.4.03 · IGTF por pagar', debe: 0, haber: t.igtf });
+              window.__postAsiento('Venta s/' + (esRec ? 'recibo ' : 'factura ') + num + ' · ' + cli.n, num, ln, 'auto').then((r) => { if (r && r.error) console.warn('[DigiAccount] No se pudo contabilizar la venta:', r.error.message); });
+            }
             if (window.cargarTesoreria) window.cargarTesoreria(); // refresca CxC con el nuevo recibo
           });
           // Descontar el stock del inventario por cada producto vendido
@@ -5562,6 +5645,24 @@
             if (error) { toast('No se pudo guardar: ' + error.message, 'error'); return; }
             if (window.cargarLibroFiscal) window.cargarLibroFiscal(tipo);
             toast((esCompra ? 'Compra' : 'Venta') + ' registrada en el libro · Bs ' + fmtF(total), 'success');
+            // Asiento contable de la COMPRA: Debe Inventario + IVA crédito / Haber CxP.
+            // (Las ventas NO se contabilizan desde el libro: eso lo hace el RECIBO. El libro es solo para declarar.)
+            if (esCompra && window.__postAsiento) {
+              const ln = [{ cta: '1.1.4.01 · Inventario de mercancías', debe: base + exento, haber: 0 }];
+              if (iva > 0.005) ln.push({ cta: '1.1.3.01 · IVA crédito fiscal', debe: iva, haber: 0 });
+              ln.push({ cta: '2.1.1.01 · Cuentas por pagar comerciales', debe: 0, haber: total });
+              window.__postAsiento('Compra s/factura ' + v.numFactura + ' · ' + v.nombre, v.numFactura, ln, 'auto').then((r) => { if (r && r.error) console.warn('[DigiAccount] No se pudo contabilizar la compra:', r.error.message); });
+            }
+            // VENTA en el Libro: solo contabiliza si la empresa está en modo "libro" (contador).
+            // En modo "recibos" la venta la contabiliza el recibo, no el libro (este es solo para declarar).
+            if (!esCompra && window.__postAsiento && ((window.__EMPRESA_ACTIVA && window.__EMPRESA_ACTIVA.modo) === 'libro')) {
+              const ln = [{ cta: '1.1.2.01 · Cuentas por cobrar comerciales', debe: total, haber: 0 },
+                { cta: '4.1.1.01 · Ventas / Ingresos por servicios', debe: 0, haber: base + exento }];
+              if (iva > 0.005) ln.push({ cta: '2.1.3.01 · IVA débito fiscal', debe: 0, haber: iva });
+              window.__postAsiento('Venta s/libro · factura ' + v.numFactura + ' · ' + v.nombre, v.numFactura, ln, 'auto').then((r) => { if (r && r.error) console.warn('[DigiAccount] No se pudo contabilizar la venta del libro:', r.error.message); });
+            }
+            // Refresca Compras y CxP (y CxC) con la nueva factura
+            if (window.cargarTesoreria) window.cargarTesoreria();
             // Si se indicó retención de IVA, registra el comprobante de retención asociado a esta factura
             const retPctNum = v.retPct === '100%' ? 100 : v.retPct === '75%' ? 75 : 0;
             if (retPctNum && iva > 0) {
@@ -5725,6 +5826,10 @@
     if (regCompraBtn) regCompraBtn.addEventListener('click', () => registrarMov('compra'));
     const regVentaBtn = document.getElementById('regVentaBtn');
     if (regVentaBtn) regVentaBtn.addEventListener('click', () => registrarMov('venta'));
+    // El módulo "Compras y CxP" reutiliza el mismo registro de compra (la factura del proveedor es formal)
+    window.__registrarCompra = () => registrarMov('compra');
+    const comprasRegBtn = document.getElementById('comprasRegBtn');
+    if (comprasRegBtn) comprasRegBtn.addEventListener('click', () => registrarMov('compra'));
     cargarLibroFiscal('compra');
     cargarLibroFiscal('venta');
 
@@ -6421,12 +6526,13 @@
       if (!u || !u.user) return null;
       const { data, error } = await window.sb
         .from('perfiles')
-        .select('cuenta_id, nombre, rol, cuentas(nombre, planes(nombre))')
+        .select('cuenta_id, nombre, rol, cuentas(nombre, tipo, planes(nombre))')
         .eq('id', u.user.id)
         .single();
       if (error) { console.warn('[DigiAccount] No se pudo cargar el perfil:', error.message); return null; }
       window.__PERFIL = data;            // queda disponible para el resto de la app
       window.__CUENTA_ID = data.cuenta_id; // para crear empresas/datos en la cuenta correcta
+      window.__CUENTA_TIPO = (data.cuentas && data.cuentas.tipo) || 'empresa'; // 'empresa' | 'contador'
       console.log('[DigiAccount] Perfil cargado:', data);
       return data;
     }
@@ -7040,7 +7146,7 @@
         desc: 'Para empresas que implementan DigiAccount para su propia gestión.',
         planes: [
           { nombre: 'Emprendimientos y PYME', sub: 'Contribuyentes Ordinarios', precio: 29, popular: false, cta: 'Elegir plan', features: [
-            { t: '1 empresa', ok: true }, { t: 'Módulos: Tesorería e Inventario', ok: true },
+            { t: '1 empresa', ok: true }, { t: 'Módulos: Ventas y CxC, Compras y CxP, Tesorería e Inventario', ok: true },
             { t: 'Soporte por email', ok: true }, { t: 'Onboarding', ok: false }] },
           { nombre: 'Empresa Completa', precio: 99, popular: true, cta: 'Elegir plan', features: [
             { t: '1 empresa · usuarios ilimitados', ok: true }, { t: 'Todos los módulos', ok: true },
@@ -8437,7 +8543,8 @@
           cuenta_id: window.__CUENTA_ID,
           nombre: nombre,
           rif: rif,
-          condicion_fiscal: condFiscal
+          condicion_fiscal: condFiscal,
+          fiscal_activo: (window.__CUENTA_TIPO === 'contador'), // contador: Fiscal ON por defecto; empresa: OFF
         }).then(({ error }) => {
           if (error) {
             console.warn('[DigiAccount] No se pudo guardar la empresa:', error.message);
