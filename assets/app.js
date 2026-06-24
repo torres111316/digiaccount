@@ -80,6 +80,7 @@
         if (window.__renderDPP) window.__renderDPP();
         if (window.__renderIGP) window.__renderIGP();
         if (window.cargarBoveda) window.cargarBoveda();
+        if (window.cargarTesoreria) window.cargarTesoreria();
         if (window.cargarRetenciones) window.cargarRetenciones();
       });
     }
@@ -2276,6 +2277,276 @@
   })();
 
   /* =========================================================
+     TESORERÍA — cuentas bancarias/caja y movimientos (por empresa, Supabase)
+     ========================================================= */
+  (function tesoreriaModule() {
+    const view = document.getElementById('view-tesoreria');
+    if (!view) return;
+    const toast = (m, t) => { if (window.toast) window.toast(m, t); };
+    const fmt = (n) => Number(n || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const fechaKey = (f) => { const p = (f || '').split('/'); if (p.length < 3) return 0; const yy = p[2].length === 2 ? '20' + p[2] : p[2]; return parseInt(yy + (p[1] || '').padStart(2, '0') + (p[0] || '').padStart(2, '0'), 10) || 0; };
+    const PALETA = ['#003057', '#00aeef', '#1c8f5a', '#c0392b', '#c97a14', '#6f4cb8', '#0f766e', '#545e67'];
+    let _cuentas = [], _movs = [], _facturas = [];
+
+    function saldoDe(cid) {
+      const c = _cuentas.find((x) => x.id === cid);
+      let s = c ? Number(c.saldo_inicial) || 0 : 0;
+      _movs.filter((m) => m.cuenta_teso_id === cid).forEach((m) => { s += (m.tipo === 'ingreso' ? 1 : -1) * (Number(m.monto) || 0); });
+      return s;
+    }
+
+    async function cargarTesoreria() {
+      const emp = window.__EMPRESA_ACTIVA;
+      const rifEl = document.getElementById('tesoRif'); if (rifEl) rifEl.textContent = (emp && emp.rif) || '—';
+      if (!window.sb || !emp || !emp.id) { _cuentas = []; _movs = []; _facturas = []; render(); return; }
+      const [r1, r2, r3, r4] = await Promise.all([
+        window.sb.from('cuentas_tesoreria').select('*').eq('empresa_id', emp.id).order('creado_en'),
+        window.sb.from('movimientos_tesoreria').select('*').eq('empresa_id', emp.id),
+        // Ventas = RECIBOS emitidos (control de cobros). NO el libro de ventas (ese es solo para declarar).
+        window.sb.from('facturas').select('numero, cliente_nombre, cliente_rif, total, fecha, estado, condicion').eq('tipo', 'venta'),
+        // Compras = facturas registradas en el Libro de Compras (lo que le debes al proveedor).
+        window.sb.from('libro_fiscal').select('numero_factura, tercero_nombre, tercero_rif, total, fecha').eq('empresa_id', emp.id).eq('tipo', 'compra'),
+      ]);
+      if (r1.error) { console.warn('[DigiAccount] Tesorería:', r1.error.message); }
+      _cuentas = r1.data || []; _movs = r2.data || [];
+      const ventas = (r3.data || []).map((f) => ({ ref: f.numero, tercero_nombre: f.cliente_nombre, tercero_rif: f.cliente_rif, total: f.total, fecha: f.fecha, tipo: 'venta', condicion: f.condicion, estado: f.estado }));
+      const compras = (r4.data || []).map((f) => ({ ref: f.numero_factura, tercero_nombre: f.tercero_nombre, tercero_rif: f.tercero_rif, total: f.total, fecha: f.fecha, tipo: 'compra' }));
+      _facturas = ventas.concat(compras);
+      render();
+    }
+    window.cargarTesoreria = cargarTesoreria;
+    // Cuánto se ha cobrado de un recibo (suma de ingresos vinculados por factura_ref). Lo usa el botón "Cobrar".
+    window.__cobradoDe = (ref) => _movs.filter((m) => m.tipo === 'ingreso' && (m.factura_ref || '').trim() === String(ref || '').trim()).reduce((s, m) => s + (Number(m.monto) || 0), 0);
+
+    function render() {
+      const cont = document.getElementById('tesoBankCards');
+      if (cont) {
+        cont.innerHTML = _cuentas.length ? _cuentas.map((c, i) => {
+          const saldo = saldoDe(c.id);
+          const esCaja = /efectivo|caja/i.test((c.tipo || '') + ' ' + (c.nombre || ''));
+          const ini = ((c.banco || c.nombre || '?').replace(/[^A-Za-zÁÉÍÓÚÑ ]/g, '').trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join('') || 'CT').toUpperCase();
+          const logo = esCaja
+            ? '<div class="bank-logo" style="background:#1c8f5a;"><i data-lucide="wallet" style="width:16px;height:16px;color:#fff;"></i></div>'
+            : '<div class="bank-logo" style="background:' + esc(c.color || PALETA[i % PALETA.length]) + ';">' + esc(ini) + '</div>';
+          const nmov = _movs.filter((m) => m.cuenta_teso_id === c.id).length;
+          return '<div class="bank-card"><div class="bank-card-head">' + logo
+            + '<button class="status-pill paused" data-teso-delcuenta="' + esc(c.id) + '" title="Eliminar cuenta" style="font-size:9px;cursor:pointer;border:0;"><i data-lucide="trash-2" style="width:11px;height:11px;"></i></button></div>'
+            + '<div><div class="acct-type">' + esc(c.nombre) + '</div><div class="acct-num">' + esc(esCaja ? (c.numero || 'Efectivo en caja') : (c.numero || c.tipo || '')) + '</div></div>'
+            + '<div class="acct-bal"><span class="cur">' + esc(c.moneda || 'Bs') + '</span> ' + fmt(saldo) + '</div>'
+            + '<div class="acct-foot"><span>' + esc(esCaja ? 'Caja · Efectivo' : (c.tipo || '')) + '</span><span class="usd">' + nmov + ' mov.</span></div></div>';
+        }).join('') : '<div style="padding:18px;color:var(--fg-muted);font-size:13px;">Aún no hay cuentas. Usa "Agregar cuenta".</div>';
+      }
+      const dispBs = _cuentas.filter((c) => (c.moneda || 'Bs') !== 'USD').reduce((s, c) => s + saldoDe(c.id), 0);
+      const dEl = document.getElementById('tesoDisponible'); if (dEl) dEl.textContent = fmt(dispBs);
+      const neto = _movs.reduce((s, m) => s + (m.tipo === 'ingreso' ? 1 : -1) * (Number(m.monto) || 0), 0);
+      const pEl = document.getElementById('tesoPosicion'); if (pEl) pEl.textContent = fmt(neto);
+      const cc = document.getElementById('tesoCuentasCount'); if (cc) cc.textContent = String(_cuentas.length);
+      const tb = document.getElementById('tesoMovBody');
+      if (tb) {
+        const cmap = {}; _cuentas.forEach((c) => { cmap[c.id] = c; });
+        const asc = _movs.slice().sort((a, b) => (fechaKey(a.fecha) - fechaKey(b.fecha)) || ((a.creado_en || '') < (b.creado_en || '') ? -1 : 1));
+        const run = {};
+        asc.forEach((m) => { if (run[m.cuenta_teso_id] == null) run[m.cuenta_teso_id] = cmap[m.cuenta_teso_id] ? Number(cmap[m.cuenta_teso_id].saldo_inicial) || 0 : 0; run[m.cuenta_teso_id] += (m.tipo === 'ingreso' ? 1 : -1) * (Number(m.monto) || 0); m.__saldo = run[m.cuenta_teso_id]; });
+        const desc = asc.slice().reverse();
+        tb.innerHTML = desc.length ? desc.map((m) => {
+          const c = cmap[m.cuenta_teso_id]; const ing = m.tipo === 'ingreso';
+          const clip = m.comprobante_path ? '<button class="btn btn-ghost" data-teso-vercomp="' + esc(m.comprobante_path) + '" title="Ver comprobante" style="height:22px;font-size:10px;padding:0 6px;color:var(--da-cyan-700);"><i data-lucide="paperclip" style="width:11px;height:11px;"></i></button> ' : '';
+          return '<tr><td>' + esc(m.fecha || '') + '</td><td class="primary">' + esc(m.concepto || '') + (m.comprobante_path ? ' <i data-lucide="paperclip" style="width:11px;height:11px;color:var(--da-cyan-700);vertical-align:middle;"></i>' : '') + '</td><td>' + esc(c ? c.nombre : '—') + '</td>'
+            + '<td class="mono">' + esc(m.referencia || '') + '</td><td class="num" style="color:var(--da-' + (ing ? 'success' : 'danger') + ');">' + (ing ? '+ ' : '− ') + fmt(m.monto) + '</td>'
+            + '<td class="num">' + fmt(m.__saldo) + ' ' + clip + '<button class="btn btn-ghost" data-teso-delmov="' + esc(m.id) + '" title="Eliminar" style="height:22px;font-size:10px;padding:0 6px;color:#c0392b;"><i data-lucide="x" style="width:11px;height:11px;"></i></button></td></tr>';
+        }).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--fg-muted);padding:16px;">Sin movimientos. Usa "Registrar movimiento".</td></tr>';
+      }
+      const cf = view.querySelector('.teso-tab[data-tab="resumen"] .table-footer .count');
+      if (cf) cf.innerHTML = 'Mostrando <strong>' + _movs.length + '</strong> movimiento' + (_movs.length === 1 ? '' : 's');
+      renderCxCxP();
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    // Cuánto se ha cobrado/pagado de una factura: suma de movimientos vinculados por factura_ref
+    function pagadoDe(fac) {
+      const ref = (fac.ref || '').trim(); if (!ref) return 0;
+      const wantTipo = fac.tipo === 'venta' ? 'ingreso' : 'egreso';
+      return _movs.filter((m) => m.tipo === wantTipo && (m.factura_ref || '').trim() === ref).reduce((s, m) => s + (Number(m.monto) || 0), 0);
+    }
+    function badge(txt, color, bg) { return '<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;color:' + color + ';background:' + bg + ';">' + txt + '</span>'; }
+    function renderCxList(tipo, bodyId, totalId, countId, tabCountId) {
+      const body = document.getElementById(bodyId); if (!body) return;
+      const rows = _facturas.filter((f) => f.tipo === tipo).map((f) => {
+        const total = Number(f.total) || 0; const pag = pagadoDe(f); const pend = Math.max(0, total - pag);
+        return { f: f, total: total, pag: pag, pend: pend };
+      }).sort((a, b) => b.pend - a.pend);
+      let totalPend = 0, pendientes = 0;
+      const html = rows.map((r) => {
+        if (r.pend > 0.01) { pendientes++; totalPend += r.pend; }
+        const estado = r.pend <= 0.01 ? badge('Pagada', '#0a7a44', '#d5f0e0') : (r.pag > 0.01 ? badge('Parcial', '#9a6700', '#fdf0d0') : badge('Pendiente', '#b42318', '#fde0dd'));
+        return '<tr><td class="primary">' + esc(r.f.tercero_nombre || '—') + '</td><td class="mono">' + esc(r.f.tercero_rif || '') + '</td><td>' + esc(r.f.ref || '') + '</td><td>' + esc(r.f.fecha || '') + '</td>'
+          + '<td class="num">' + fmt(r.total) + '</td><td class="num" style="color:#0a7a44;">' + fmt(r.pag) + '</td>'
+          + '<td class="num" style="font-weight:700;' + (r.pend > 0.01 ? 'color:#b42318;' : 'color:var(--fg-muted);') + '">' + fmt(r.pend) + '</td><td>' + estado + '</td></tr>';
+      });
+      body.innerHTML = html.length ? html.join('') : '<tr><td colspan="8" style="text-align:center;color:var(--fg-muted);padding:24px;">' + (tipo === 'venta' ? 'Sin recibos de venta emitidos.' : 'Sin facturas de compra registradas.') + '</td></tr>';
+      const tEl = document.getElementById(totalId); if (tEl) tEl.textContent = 'Bs ' + fmt(totalPend);
+      const cEl = document.getElementById(countId); if (cEl) cEl.innerHTML = '<strong>' + pendientes + '</strong> con saldo pendiente · ' + rows.length + ' factura' + (rows.length === 1 ? '' : 's') + ' en total';
+      const tc = document.getElementById(tabCountId); if (tc) tc.textContent = String(pendientes);
+    }
+    function renderCxCxP() {
+      renderCxList('venta', 'cxcBody', 'cxcTotalSum', 'cxcCount', 'cxcTabCount');
+      renderCxList('compra', 'cxpBody', 'cxpTotalSum', 'cxpCount', 'cxpTabCount');
+    }
+
+    view.addEventListener('click', async (e) => {
+      const dc = e.target.closest('[data-teso-delcuenta]');
+      const dm = e.target.closest('[data-teso-delmov]');
+      const vc = e.target.closest('[data-teso-vercomp]');
+      if (vc) {
+        const { data, error } = await window.sb.storage.from('comprobantes-tesoreria').createSignedUrl(vc.dataset.tesoVercomp, 120);
+        if (error || !data) { toast('No se pudo abrir el comprobante: ' + (error && error.message), 'error'); return; }
+        window.open(data.signedUrl, '_blank'); return;
+      }
+      if (dc) {
+        if (!window.confirm('¿Eliminar esta cuenta y TODOS sus movimientos? No se puede deshacer.')) return;
+        const { error } = await window.sb.from('cuentas_tesoreria').delete().eq('id', dc.dataset.tesoDelcuenta);
+        if (error) { toast('No se pudo eliminar: ' + error.message, 'error'); return; }
+        toast('Cuenta eliminada', 'success'); cargarTesoreria();
+      } else if (dm) {
+        if (!window.confirm('¿Eliminar este movimiento?')) return;
+        const { error } = await window.sb.from('movimientos_tesoreria').delete().eq('id', dm.dataset.tesoDelmov);
+        if (error) { toast('No se pudo eliminar: ' + error.message, 'error'); return; }
+        toast('Movimiento eliminado', 'success'); cargarTesoreria();
+      }
+    });
+
+    function agregarCuenta() {
+      window.openFormModal && window.openFormModal({
+        title: 'Agregar cuenta de tesorería', saveLabel: 'Agregar',
+        fields: [
+          { name: 'nombre', label: 'Nombre de la cuenta', col: 2, placeholder: 'Ej. Banesco · Corriente Bs' },
+          { name: 'banco', label: 'Banco / Entidad', placeholder: 'Banesco' },
+          { name: 'tipo', label: 'Tipo', type: 'select', options: ['Corriente', 'Ahorro', 'Divisas', 'Efectivo / Caja'] },
+          { name: 'moneda', label: 'Moneda', type: 'select', options: ['Bs', 'USD'] },
+          { name: 'numero', label: 'N° de cuenta / referencia', placeholder: '0134····4782' },
+          { name: 'saldoInicial', label: 'Saldo inicial', type: 'number', step: '0.01', placeholder: '0.00' },
+        ],
+        onSave: (v) => {
+          if (!window.sb || !window.__CUENTA_ID || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) return 'No hay una empresa activa seleccionada.';
+          if (!v.nombre) return 'Indica el nombre de la cuenta.';
+          window.sb.from('cuentas_tesoreria').insert({
+            cuenta_id: window.__CUENTA_ID, empresa_id: window.__EMPRESA_ACTIVA.id,
+            nombre: v.nombre, banco: v.banco, tipo: v.tipo, moneda: v.moneda, numero: v.numero,
+            saldo_inicial: parseFloat(v.saldoInicial) || 0, color: PALETA[_cuentas.length % PALETA.length],
+          }).then(({ error }) => { if (error) { toast('No se pudo guardar: ' + error.message, 'error'); return; } toast('Cuenta agregada', 'success'); cargarTesoreria(); });
+        },
+      });
+    }
+    async function registrarMovimiento(pre) {
+      pre = pre || {};
+      let fileEl = null;
+      // El selector incluye bancos Y la Caja (efectivo). Si no hay caja, se crea sola al usarla.
+      const cajaExist = _cuentas.find((c) => /efectivo|caja/i.test((c.tipo || '') + ' ' + (c.nombre || '')));
+      const cuentaOpts = _cuentas.map((c) => ({ value: c.id, label: c.nombre }));
+      if (!cajaExist) cuentaOpts.push({ value: '__caja__', label: '💵 Caja (Efectivo) — se crea automáticamente' });
+      // Terceros (clientes/proveedores) y documentos para VINCULAR el movimiento.
+      // ventas = RECIBOS (cobros) · compras = libro de compras (pagos). Ya cargados en _facturas.
+      const terceros = (window.__getTerceros ? window.__getTerceros() : []);
+      const facturas = _facturas;
+      window.openFormModal && window.openFormModal({
+        title: pre.factura ? 'Registrar cobro · ' + pre.factura : 'Registrar movimiento',
+        saveLabel: 'Registrar',
+        fields: [
+          { name: 'cuenta', label: 'Cuenta / Caja (banco o efectivo)', col: 2, type: 'select', options: cuentaOpts },
+          { name: 'tipo', label: 'Tipo de movimiento', type: 'select', value: pre.tipo || 'ingreso', options: [{ value: 'ingreso', label: 'Ingreso · cobro de una venta' }, { value: 'egreso', label: 'Egreso · pago de una compra' }] },
+          { name: 'fecha', label: 'Fecha', type: 'date', value: '2026-06-01' },
+          { name: 'tercero', label: 'Cliente (a quién le cobras)', col: 2, type: 'datalist', value: pre.tercero || '', options: [], placeholder: 'Escribe las iniciales y elige' },
+          { name: 'factura', label: 'Recibo de venta asociado', type: 'datalist', value: pre.factura || '', options: [], placeholder: 'Elige primero el cliente' },
+          { name: 'concepto', label: 'Concepto', col: 2, placeholder: 'Se completa solo al elegir la factura' },
+          { name: 'referencia', label: 'Referencia (N° transferencia, pago móvil…)', placeholder: 'Ej. 0123456789' },
+          { name: 'monto', label: 'Monto a cobrar/pagar (Bs) — edítalo si es un abono parcial', type: 'number', step: '0.01', value: pre.monto != null ? String(pre.monto) : '', placeholder: '0.00' },
+          { name: 'comprobante', label: 'Comprobante · foto/capture del pago (opcional)', col: 2, type: 'file' },
+        ],
+        afterRender: (body) => {
+          fileEl = body.querySelector('[data-name="comprobante"]');
+          const tipoSel = body.querySelector('[data-name="tipo"]');
+          const terc = body.querySelector('[data-name="tercero"]');
+          const tercDl = document.getElementById('fm-dl-tercero');
+          const fact = body.querySelector('[data-name="factura"]');
+          const factDl = document.getElementById('fm-dl-factura');
+          const montoEl = body.querySelector('[data-name="monto"]');
+          const concEl = body.querySelector('[data-name="concepto"]');
+          if (!tipoSel || !terc) return;
+          const esIng = () => /ingreso/i.test(tipoSel.value);
+          const setLbl = (el, txt) => { const w = el && el.closest('.fm-field'); const l = w && w.querySelector('.fm-lbl'); if (l) l.textContent = txt; };
+          const refrescarTerceros = () => {
+            const lista = terceros.filter((t) => (esIng() ? t.cli : t.prov) && t.nombre);
+            if (tercDl) tercDl.innerHTML = lista.map((t) => '<option value="' + esc(t.nombre) + '"></option>').join('');
+            setLbl(terc, esIng() ? 'Cliente (a quién le cobras)' : 'Proveedor (a quién le pagas)');
+            terc.placeholder = esIng() ? 'Cliente…' : 'Proveedor…';
+            setLbl(fact, esIng() ? 'Recibo de venta asociado' : 'Factura de compra asociada');
+          };
+          const facturasDe = () => {
+            const tipoDoc = esIng() ? 'venta' : 'compra';
+            const nom = (terc.value || '').trim().toLowerCase();
+            return facturas.filter((f) => f.tipo === tipoDoc && nom && (f.tercero_nombre || '').toLowerCase() === nom);
+          };
+          const refrescarFacturas = () => {
+            const fs = facturasDe();
+            const docW = esIng() ? 'recibo' : 'factura';
+            if (factDl) factDl.innerHTML = fs.map((f) => '<option value="' + esc(f.ref || '') + '">' + esc((f.ref || '(sin N°)') + ' · Bs ' + fmt(Number(f.total) || 0)) + '</option>').join('');
+            if (fact) fact.placeholder = fs.length ? 'Elige entre ' + fs.length + ' ' + docW + '(s)…' : 'Sin ' + docW + 's de este tercero';
+          };
+          const autollenar = () => {
+            const f = facturasDe().find((x) => (x.ref || '') === fact.value.trim());
+            if (!f) return;
+            if (montoEl && !montoEl.value) montoEl.value = (Number(f.total) || 0).toFixed(2);
+            if (concEl) concEl.value = (esIng() ? 'Cobro · ' : 'Pago · ') + (terc.value || '') + (esIng() ? ' · Recibo ' : ' · Factura ') + (f.ref || '');
+          };
+          tipoSel.addEventListener('change', () => { refrescarTerceros(); refrescarFacturas(); });
+          terc.addEventListener('change', refrescarFacturas); terc.addEventListener('input', refrescarFacturas);
+          fact.addEventListener('change', autollenar); fact.addEventListener('input', autollenar);
+          refrescarTerceros(); refrescarFacturas(); autollenar();
+        },
+        onSave: (v) => {
+          if (!window.sb || !window.__CUENTA_ID || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) return 'No hay una empresa activa seleccionada.';
+          if (!v.cuenta) return 'Elige la cuenta o caja.';
+          const monto = parseFloat(v.monto) || 0; if (monto <= 0) return 'Indica un monto mayor a cero.';
+          const p = (v.fecha || '').split('-'); const fecha = p.length === 3 ? (p[2] + '/' + p[1] + '/' + p[0].slice(2)) : '';
+          const file = fileEl && fileEl.files && fileEl.files[0];
+          const t = terceros.find((x) => x.nombre.toLowerCase() === (v.tercero || '').trim().toLowerCase());
+          const tercRif = t ? t.rif : '';
+          const insertar = (cuentaId, comprobante_path) => {
+            window.sb.from('movimientos_tesoreria').insert({
+              cuenta_id: window.__CUENTA_ID, empresa_id: window.__EMPRESA_ACTIVA.id, cuenta_teso_id: cuentaId,
+              fecha: fecha, concepto: v.concepto, tipo: v.tipo, referencia: v.referencia, monto: monto, comprobante_path: comprobante_path || null,
+              tercero_nombre: v.tercero || null, tercero_rif: tercRif || null, factura_ref: v.factura || null,
+            }).then(({ error }) => { if (error) { toast('No se pudo guardar: ' + error.message, 'error'); return; } toast((v.tipo === 'ingreso' ? 'Ingreso (cobro)' : 'Egreso (pago)') + ' registrado' + (comprobante_path ? ' con comprobante' : ''), 'success'); cargarTesoreria(); });
+          };
+          const proceder = (cuentaId) => {
+            if (file) {
+              const safe = (s) => (s || '').replace(/[^a-zA-Z0-9._-]/g, '_');
+              const path = window.__CUENTA_ID + '/' + window.__EMPRESA_ACTIVA.id + '/' + Date.now() + '_' + safe(file.name);
+              window.sb.storage.from('comprobantes-tesoreria').upload(path, file, { upsert: false, contentType: file.type || undefined }).then(({ error }) => {
+                if (error) { toast('No se pudo subir el comprobante: ' + error.message, 'error'); return; }
+                insertar(cuentaId, path);
+              });
+            } else { insertar(cuentaId, null); }
+          };
+          // Si eligió "Caja" y no existe, la crea primero y luego registra el movimiento
+          if (v.cuenta === '__caja__') {
+            window.sb.from('cuentas_tesoreria').insert({ cuenta_id: window.__CUENTA_ID, empresa_id: window.__EMPRESA_ACTIVA.id, nombre: 'Caja (Efectivo)', tipo: 'Efectivo / Caja', moneda: 'Bs', saldo_inicial: 0, color: '#1c8f5a' }).select().single().then(({ data, error }) => {
+              if (error || !data) { toast('No se pudo crear la Caja: ' + (error && error.message), 'error'); return; }
+              proceder(data.id);
+            });
+          } else { proceder(v.cuenta); }
+        },
+      });
+    }
+    const addBtn = document.getElementById('tesoAddCuentaBtn'); if (addBtn) addBtn.addEventListener('click', agregarCuenta);
+    const movBtn = document.getElementById('tesoMovBtn'); if (movBtn) movBtn.addEventListener('click', () => registrarMovimiento());
+    // Permite registrar un cobro/pago prefilleado desde otro módulo (p. ej. botón "Cobrar" del recibo de venta)
+    window.__registrarCobro = (pre) => registrarMovimiento(pre);
+    cargarTesoreria();
+  })();
+
+  /* =========================================================
      RELACIÓN DE NÓMINA DEL PERÍODO — modal imprimible
      ========================================================= */
   (function relacionNomina() {
@@ -4313,11 +4584,29 @@
           + 'TOTAL: Bs ' + fmt(t.total) + '\r\n');
       lastName = 'Factura_' + num + '.txt';
 
+      // Botón "Cobrar": solo en recibos de venta con saldo pendiente
+      const cobrarBtn = document.getElementById('facturaCobrar');
+      if (cobrarBtn) {
+        const cobrado = window.__cobradoDe ? window.__cobradoDe(num) : 0;
+        const pend = Math.max(0, t.total - cobrado);
+        if (f.tipo === 'venta' && pend > 0.01) { cobrarBtn.hidden = false; cobrarBtn.dataset.pend = pend.toFixed(2); }
+        else cobrarBtn.hidden = true;
+      }
+
       overlay.dataset.open = 'true';
       drawIcons();
     }
 
     function close() { overlay.dataset.open = 'false'; }
+    // Cobrar: abre el registro de cobro prefilleado con el cliente, el recibo y el saldo pendiente
+    const cobrarBtnEl = document.getElementById('facturaCobrar');
+    if (cobrarBtnEl) cobrarBtnEl.addEventListener('click', () => {
+      if (!currentFac) return;
+      const pre = { tipo: 'ingreso', tercero: currentFac.receptor.n, factura: currentFac.num, monto: cobrarBtnEl.dataset.pend };
+      close();
+      if (window.__registrarCobro) window.__registrarCobro(pre);
+      else if (window.toast) window.toast('Abre el módulo de Tesorería para registrar el cobro.', 'error');
+    });
     const cb = document.getElementById('facturaClose');
     if (cb) cb.addEventListener('click', close);
     // Despachar: genera la Guía de Despacho a partir de la factura abierta
@@ -4549,7 +4838,8 @@
             alicuota: alic, igtf: igtfChk.checked, condicion: document.getElementById('fvCond').value,
             items: items, subtotal: t.subtotal, iva: t.iva, igtf_monto: t.igtf, total: t.total, estado: 'Por cobrar',
           }).then(({ error }) => {
-            if (error) { console.warn('[DigiAccount] No se pudo guardar la factura:', error.message); if (window.toast) window.toast('No se pudo guardar en la base: ' + error.message, 'error'); }
+            if (error) { console.warn('[DigiAccount] No se pudo guardar la factura:', error.message); if (window.toast) window.toast('No se pudo guardar en la base: ' + error.message, 'error'); return; }
+            if (window.cargarTesoreria) window.cargarTesoreria(); // refresca CxC con el nuevo recibo
           });
           // Descontar el stock del inventario por cada producto vendido
           const ups = items.filter((it) => it.pid).map((it) => {
@@ -5547,21 +5837,8 @@
       },
     }));
 
-    const regMov = find('.dash-actions .btn', /registrar movimiento/i);
-    if (regMov) regMov.addEventListener('click', () => window.openFormModal && window.openFormModal({
-      title: 'Registrar movimiento bancario', saveLabel: 'Registrar',
-      fields: [
-        { name: 'cuenta', label: 'Cuenta', type: 'select', options: CUENTAS },
-        { name: 'tipo', label: 'Tipo', type: 'select', options: ['Ingreso', 'Egreso'] },
-        { name: 'fecha', label: 'Fecha', type: 'date', value: '2026-05-31' },
-        { name: 'monto', label: 'Monto (Bs)', type: 'number', step: '0.01', placeholder: '0.00' },
-        { name: 'concepto', label: 'Concepto', col: 2, placeholder: 'Descripción del movimiento' },
-      ],
-      onSave: (v) => {
-        if (!(parseFloat(v.monto) > 0)) return 'Indica un monto válido.';
-        toast('Movimiento (' + v.tipo + ') registrado · Bs ' + Number(v.monto).toLocaleString('es-VE', { minimumFractionDigits: 2 }));
-      },
-    }));
+    // "Registrar movimiento" lo maneja el módulo real de Tesorería (tesoreriaModule):
+    // incluye bancos Y la Caja, con foto del comprobante. No bindear aquí (evita el modal mock de solo bancos).
 
     // Registrar compra
     const regCompra = find('.teso-tab[data-tab="compras"] .btn', /registrar compra/i);
