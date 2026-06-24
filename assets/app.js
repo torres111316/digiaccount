@@ -76,6 +76,8 @@
         if (window.cargarCuentasContables) window.cargarCuentasContables();
         if (window.cargarActivosFijos) window.cargarActivosFijos();
         if (window.cargarCriptoactivos) window.cargarCriptoactivos();
+        if (window.cargarLibroFiscal) { window.cargarLibroFiscal('compra'); window.cargarLibroFiscal('venta'); }
+        if (window.cargarRetenciones) window.cargarRetenciones();
       });
     }
     document.querySelectorAll('.entity-option[data-name]').forEach(bindEntityOption);
@@ -348,6 +350,7 @@
       let shown = 0, total = 0;
       rows().forEach((tr) => {
         const t = tr.dataset.rettype;
+        if (!t) { tr.hidden = false; return; } // fila de estado vacío
         const visible = curFilter === 'todos' || curFilter === t;
         tr.hidden = !visible;
         total++;
@@ -361,6 +364,7 @@
     function refreshSummary() {
       let ivaT = 0, ivaC = 0, islrT = 0, islrC = 0, ivaPct = '75%', islrPct = '3%';
       rows().forEach((tr) => {
+        if (!tr.dataset.rettype) return; // fila de estado vacío
         const tds = tr.querySelectorAll('td');
         const monto = parseNum(tds[8].textContent);
         const pct = tds[7].textContent.trim();
@@ -460,9 +464,484 @@
       if (portal) portal.innerHTML = '';
     });
 
+    /* ---- Datos reales: registrar y cargar comprobantes de retención ---- */
+    const normRif = (s) => (s || '').toUpperCase().replace(/[\s.\-]/g, '');
+    function rowHtml(r) {
+      const esIva = r.tipo === 'iva';
+      const tag = esIva ? '<span class="tag cyan">IVA</span>' : '<span class="tag navy">ISLR</span>';
+      const pct = Number(r.pct) || 0;
+      const pctTxt = (Number.isInteger(pct) ? pct : pct.toFixed(2)) + '%';
+      return '<tr data-rettype="' + (esIva ? 'iva' : 'islr') + '" data-id="' + esc(String(r.id)) + '" style="cursor:pointer;" title="Clic para editar o eliminar">'
+        + '<td>' + esc(r.fecha || '') + '</td><td class="mono">' + esc(r.comprobante || '') + '</td><td>' + tag + '</td>'
+        + '<td class="mono">' + esc(r.tercero_rif || '') + '</td><td class="primary">' + esc(r.tercero_nombre || '') + '</td>'
+        + '<td class="mono">' + esc(r.factura || '') + '</td><td class="num">' + fmt(Number(r.base) || 0) + '</td>'
+        + '<td class="num">' + pctTxt + '</td><td class="num">' + fmt(Number(r.monto) || 0) + '</td>'
+        + '<td><span class="tag success">' + esc(r.estado || 'Registrado') + '</span></td></tr>';
+    }
+    function pintar(dir, arr) {
+      const v = document.querySelector('.ret-view[data-retview="' + dir + '"]');
+      const tb = v && v.querySelector('tbody');
+      if (!tb) return;
+      tb.innerHTML = arr.length ? arr.map(rowHtml).join('')
+        : '<tr class="ret-empty"><td colspan="10" style="text-align:center;color:var(--fg-muted);padding:16px;">Sin retenciones registradas. Usa “Registrar retención”.</td></tr>';
+    }
+    let _retData = []; // últimas retenciones cargadas (para editar/eliminar por id)
+
+    // Mini-cuadro de retenciones dentro de una Forma 30 (compras=practicadas, ventas=sufridas)
+    function renderMini(tableEl, arr) {
+      if (!tableEl) return;
+      const tb = tableEl.querySelector('tbody');
+      if (tb) tb.innerHTML = arr.length ? arr.map((r) => {
+        const esIva = r.tipo === 'iva';
+        const pct = Number(r.pct) || 0;
+        return '<tr><td class="mono">' + esc(r.comprobante || '') + '</td><td class="mono">' + esc(r.factura || '') + '</td>'
+          + '<td><span class="op-tag ' + (esIva ? 'cyan' : 'navy') + '">' + (esIva ? 'IVA' : 'ISLR') + '</span></td>'
+          + '<td class="num">' + fmt(Number(r.base) || 0) + '</td><td class="num">' + (Number.isInteger(pct) ? pct : pct.toFixed(2)) + '%</td>'
+          + '<td class="num">' + fmt(Number(r.monto) || 0) + '</td></tr>';
+      }).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--fg-muted);padding:14px;">Sin retenciones registradas en el período</td></tr>';
+      const ivaT = arr.filter((r) => r.tipo === 'iva').reduce((s, r) => s + (Number(r.monto) || 0), 0);
+      const islrT = arr.filter((r) => r.tipo === 'islr').reduce((s, r) => s + (Number(r.monto) || 0), 0);
+      const setFoot = (cls, val) => { const c = tableEl.querySelector('tfoot .' + cls + ' td:last-child'); if (c) c.textContent = fmt(val); };
+      setFoot('t-iva', ivaT); setFoot('t-islr', islrT); setFoot('t-tot', ivaT + islrT);
+    }
+
+    // Traslada las retenciones de IVA SUFRIDAS (las que nos retienen los clientes) a la
+    // autoliquidación de la Forma 30 Ventas (ítem 66/38 → reduce el Total a Pagar) y
+    // refleja el detalle en los mini-cuadros de cada Forma 30.
+    function aplicarAForma30(arr) {
+      arr = arr || [];
+      const ivaSuf = arr.filter((r) => r.direccion === 'sufrida' && r.tipo === 'iva').reduce((s, r) => s + (Number(r.monto) || 0), 0);
+      window.__RET_IVA_SUFRIDA = ivaSuf;
+      if (window.__recalcAutoliq) window.__recalcAutoliq();
+      renderMini(document.querySelector('.fiscal-tab[data-tab="compras"] table.ret-mini'), arr.filter((r) => r.direccion === 'practicada'));
+      renderMini(document.querySelector('.ventas-view[data-ventasmode="facturas"] table.ret-mini'), arr.filter((r) => r.direccion === 'sufrida'));
+      // Resumen de retenciones ISLR practicadas (panel del generador XML)
+      const islrBody = document.getElementById('islrResumenBody');
+      if (islrBody) {
+        const islrP = arr.filter((r) => r.tipo === 'islr' && r.direccion === 'practicada');
+        let tOp = 0, tRet = 0;
+        islrBody.innerHTML = islrP.length ? islrP.map((r, i) => {
+          const op = Number(r.base) || 0, ret = Number(r.monto) || 0; tOp += op; tRet += ret;
+          const pctT = Number.isInteger(Number(r.pct)) ? Number(r.pct) : Number(r.pct).toFixed(2);
+          return '<tr><td class="ctr">' + (i + 1) + '</td><td class="mono">' + esc(r.tercero_rif || '') + '</td><td class="primary">' + esc(r.tercero_nombre || '') + '</td><td class="mono">' + esc(r.factura || '') + '</td><td class="mono">' + esc(r.numero_control || '') + '</td><td>' + esc(r.fecha || '') + '</td><td class="ctr">' + esc(r.concepto_codigo || '') + '</td><td class="num">' + fmt(op) + '</td><td class="ctr">' + pctT + '%</td><td class="num">' + fmt(ret) + '</td></tr>';
+        }).join('') : '<tr><td colspan="10" style="text-align:center;color:var(--fg-muted);padding:14px;">Sin retenciones de ISLR practicadas. Regístralas en la pestaña Retenciones.</td></tr>';
+        const setT = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = fmt(v); };
+        setT('islrResumenOp', tOp); setT('islrResumenRet', tRet);
+        const c = document.getElementById('islrResumenCount'); if (c) c.textContent = String(islrP.length);
+      }
+      // Resumen de retenciones IVA practicadas (panel del generador TXT)
+      const ivaP = arr.filter((r) => r.tipo === 'iva' && r.direccion === 'practicada');
+      const setT2 = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
+      const ivaBase = ivaP.reduce((s, r) => s + (Number(r.base) || 0), 0);
+      const ivaRet = ivaP.reduce((s, r) => s + (Number(r.monto) || 0), 0);
+      setT2('ivaResumenCount', String(ivaP.length));
+      setT2('ivaResumenNota', String(ivaP.length));
+      setT2('ivaResumenBase', fmt(ivaBase));
+      setT2('ivaResumenRet', fmt(ivaRet));
+    }
+    async function cargarRetenciones() {
+      const vacio = () => { _retData = []; pintar('practicadas', []); pintar('sufridas', []); refreshSummary(); applyFilter(); aplicarAForma30([]); };
+      if (!window.sb || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) return vacio();
+      const { data, error } = await window.sb.from('retenciones').select('*').eq('empresa_id', window.__EMPRESA_ACTIVA.id).order('fecha', { ascending: false });
+      if (error) { console.warn('[DigiAccount] No se pudieron cargar retenciones:', error.message); return vacio(); }
+      const arr = data || [];
+      _retData = arr;
+      pintar('practicadas', arr.filter((r) => r.direccion === 'practicada'));
+      pintar('sufridas', arr.filter((r) => r.direccion === 'sufrida'));
+      refreshSummary(); applyFilter();
+      aplicarAForma30(arr);
+    }
+    window.cargarRetenciones = cargarRetenciones;
+    window.__getRetenciones = () => _retData.slice(); // para el generador XML de ISLR
+
+    // El % de retención depende del impuesto: IVA = dropdown estricto 0/75/100;
+    // ISLR = entrada libre con sugerencias comunes (varía por concepto del Decreto 1.808).
+    function setupPctField(body) {
+      const tipoSel = body.querySelector('[data-name="tipo"]');
+      const pctEl = body.querySelector('[data-name="pct"]');
+      const wrap = pctEl ? pctEl.closest('.fm-field') : null;
+      if (!tipoSel || !wrap) return;
+      const render = () => {
+        const esIva = /iva/i.test(tipoSel.value);
+        const curEl = wrap.querySelector('[data-name="pct"]');
+        const cur = curEl ? String(curEl.value).replace('%', '').trim() : '';
+        const lbl = wrap.querySelector('.fm-lbl');
+        const lblHtml = lbl ? lbl.outerHTML : '<span class="fm-lbl">% de retención</span>';
+        if (esIva) {
+          wrap.innerHTML = lblHtml + '<select data-name="pct">' + ['0', '75', '100'].map((o) =>
+            '<option value="' + o + '%"' + ((cur === o || (cur === '' && o === '75')) ? ' selected' : '') + '>' + o + '%</option>').join('') + '</select>';
+        } else {
+          wrap.innerHTML = lblHtml + '<input data-name="pct" type="number" step="0.01" list="fm-dl-pctislr" placeholder="3" value="' + esc(cur) + '">'
+            + '<datalist id="fm-dl-pctislr"><option value="1"></option><option value="2"></option><option value="3"></option><option value="5"></option></datalist>';
+        }
+      };
+      tipoSel.addEventListener('change', render);
+      render();
+    }
+
+    // ===== ISLR: Anexo 6.1 (Decreto 1.808) — set curado con códigos y % oficiales =====
+    // v: por tipo de sujeto → [códigoConcepto, %] (% null = escalonado 15/22/34, se coloca a mano)
+    const UT_BS = 43; // Unidad Tributaria vigente 2026 (confirmado por Luis)
+    const SUSTRAENDO_CODS = ['002', '006', '010', '012', '014', '018', '025', '049', '053', '057', '061', '071', '073', '075', '077', '079', '083'];
+    const CONCEPTOS_ISLR = [
+      { act: 'Honorarios profesionales no mercantiles', v: { PNR: ['002', 3], PNNR: ['003', 34], PJD: ['004', 5], PJND: ['005', null] } },
+      { act: 'Comisiones por venta de inmuebles', v: { PNR: ['014', 3], PNNR: ['015', 34], PJD: ['016', 5], PJND: ['017', 5] } },
+      { act: 'Otras comisiones', v: { PNR: ['018', 3], PNNR: ['019', 34], PJD: ['020', 5], PJND: ['021', 5] } },
+      { act: 'Intereses pagados por PJ a cualquier persona', v: { PNR: ['025', 3], PNNR: ['026', 34], PJD: ['027', 5], PJND: ['028', null] } },
+      { act: 'Contratistas / subcontratistas (obras o servicios)', v: { PNR: ['053', 1], PNNR: ['054', 34], PJD: ['055', 2], PJND: ['056', null] } },
+      { act: 'Arrendamiento de inmuebles', v: { PNR: ['057', 3], PNNR: ['058', 34], PJD: ['059', 5], PJND: ['060', null] } },
+      { act: 'Arrendamiento de bienes muebles', v: { PNR: ['061', 3], PNNR: ['062', 34], PJD: ['063', 5], PJND: ['064', 5] } },
+      { act: 'Tarjetas de crédito (venta de bienes/servicios)', v: { PNR: ['065', 3], PNNR: ['066', 34], PJD: ['067', 5], PJND: ['068', 5] } },
+      { act: 'Fletes / transporte de carga', v: { PNR: ['071', 1], PJD: ['072', 3] } },
+      { act: 'Seguros / corretaje / reaseguros (servicios)', v: { PNR: ['073', 3], PJD: ['074', 5] } },
+      { act: 'Adquisición de fondos de comercio', v: { PNR: ['079', 3], PNNR: ['080', 34], PJD: ['081', 5], PJND: ['082', 5] } },
+      { act: 'Publicidad y propaganda', v: { PNR: ['083', 3], PJD: ['084', 5], PJND: ['085', 5] } },
+    ];
+    // Variante (código y %) según el concepto + tipo de sujeto seleccionados
+    function variantIslr(actividad, sujeto) {
+      const c = CONCEPTOS_ISLR.find((x) => x.act === actividad);
+      return c && c.v[sujeto] ? c.v[sujeto] : null;
+    }
+    function calcSustraendo(cod, sujeto, pct) {
+      if (sujeto !== 'PNR' || SUSTRAENDO_CODS.indexOf(cod) < 0 || pct == null) return 0;
+      return (pct / 100) * 83.3334 * UT_BS;
+    }
+    // En ISLR muestra concepto/sujeto/sustraendo y autollena código, % y sustraendo.
+    // En IVA los oculta (no aplican).
+    function setupIslrFields(body) {
+      const tipoSel = body.querySelector('[data-name="tipo"]');
+      const concSel = body.querySelector('[data-name="concepto"]');
+      const sujSel = body.querySelector('[data-name="sujeto"]');
+      if (!tipoSel || !concSel || !sujSel) return;
+      const hide = (name, on) => { const el = body.querySelector('[data-name="' + name + '"]'); const w = el && el.closest('.fm-field'); if (w) w.style.display = on ? 'none' : ''; };
+      const aplicar = () => {
+        const esIslr = /islr/i.test(tipoSel.value);
+        hide('concepto', !esIslr); hide('sujeto', !esIslr); hide('sustraendo', !esIslr);
+        if (!esIslr) return;
+        const variant = variantIslr(concSel.value, sujSel.value);
+        const pctEl = body.querySelector('[data-name="pct"]');
+        const sustEl = body.querySelector('[data-name="sustraendo"]');
+        if (variant) {
+          const cod = variant[0], pct = variant[1];
+          if (pctEl && pct != null) pctEl.value = pct;
+          if (sustEl) { const s = calcSustraendo(cod, sujSel.value, pct); sustEl.value = s ? s.toFixed(2) : '0'; }
+        }
+      };
+      tipoSel.addEventListener('change', aplicar);
+      concSel.addEventListener('change', aplicar);
+      sujSel.addEventListener('change', aplicar);
+      aplicar();
+    }
+
+    async function registrarRetencion() {
+      const terceros = (window.__getTerceros ? window.__getTerceros() : []);
+      // Facturas reales registradas en los libros (compras + ventas) de la empresa activa,
+      // para ofrecerlas a elegir según la dirección y el tercero de la retención.
+      let facturas = [];
+      if (window.sb && window.__EMPRESA_ACTIVA && window.__EMPRESA_ACTIVA.id) {
+        const { data } = await window.sb.from('libro_fiscal')
+          .select('numero_factura, numero_control, tercero_nombre, tercero_rif, base, iva, tipo')
+          .eq('empresa_id', window.__EMPRESA_ACTIVA.id).order('fecha', { ascending: false });
+        facturas = data || [];
+      }
+      window.openFormModal && window.openFormModal({
+        title: curDir === 'sufridas' ? 'Registrar retención sufrida (un cliente me retuvo)' : 'Registrar retención practicada (yo retengo)',
+        saveLabel: 'Registrar',
+        fields: [
+          { name: 'direccion', label: 'Dirección', type: 'select', options: ['Practicada (yo retengo a un proveedor)', 'Sufrida (un cliente me retiene)'], value: curDir === 'sufridas' ? 'Sufrida (un cliente me retiene)' : 'Practicada (yo retengo a un proveedor)' },
+          { name: 'tipo', label: 'Impuesto', type: 'select', options: ['IVA', 'ISLR'] },
+          { name: 'concepto', label: 'Concepto de retención (ISLR)', col: 2, type: 'select', options: CONCEPTOS_ISLR.map((c) => c.act) },
+          { name: 'sujeto', label: 'Tipo de sujeto (ISLR)', type: 'select', options: [{ value: 'PNR', label: 'PN Residente' }, { value: 'PNNR', label: 'PN No Residente' }, { value: 'PJD', label: 'PJ Domiciliada' }, { value: 'PJND', label: 'PJ No Domiciliada' }] },
+          { name: 'fecha', label: 'Fecha', type: 'date', value: '2026-06-01' },
+          { name: 'nombre', label: 'Tercero (escribe iniciales y elige)', col: 2, type: 'datalist', options: terceros.map((t) => t.nombre), placeholder: 'Proveedor o cliente…' },
+          { name: 'rif', label: 'RIF (mayúscula, sin guiones)', upper: true, placeholder: 'J123456789' },
+          { name: 'factura', label: 'Factura afectada (elige una registrada)', type: 'datalist', options: [], placeholder: 'Primero elige el tercero…' },
+          { name: 'numControl', label: 'N° de Control (se llena de la factura)', placeholder: '00-00000000' },
+          { name: 'comprobante', label: 'N° Comprobante (vacío = nuevo · o elige uno para agrupar)', type: 'datalist', options: [], placeholder: 'Se genera automáticamente' },
+          { name: 'base', label: 'Base imponible / monto del pago (Bs)', type: 'number', step: '0.01', placeholder: '0.00' },
+          { name: 'pct', label: '% de retención', type: 'number', step: '0.01', placeholder: '75' },
+          { name: 'sustraendo', label: 'Sustraendo (ISLR, automático)', type: 'number', step: '0.01', placeholder: '0.00' },
+        ],
+        afterRender: (body) => {
+          const dirSel = body.querySelector('[data-name="direccion"]');
+          const tipoSel = body.querySelector('[data-name="tipo"]');
+          const prov = body.querySelector('[data-name="nombre"]');
+          const rif = body.querySelector('[data-name="rif"]');
+          const factInput = body.querySelector('[data-name="factura"]');
+          const baseInput = body.querySelector('[data-name="base"]');
+          const dl = document.getElementById('fm-dl-factura');
+          if (!prov) return;
+          // Limitar terceros por dirección: practicada → solo proveedores; sufrida → solo clientes
+          const tercDl = document.getElementById('fm-dl-nombre');
+          const refrescarTerceros = () => {
+            if (!tercDl) return;
+            const esPract = dirSel && /^practicada/i.test(dirSel.value);
+            const lista = terceros.filter((t) => (esPract ? t.prov : t.cli) && t.nombre);
+            tercDl.innerHTML = lista.map((t) => '<option value="' + esc(t.nombre) + '"></option>').join('');
+            prov.placeholder = esPract ? 'Proveedor… (escribe iniciales)' : 'Cliente… (escribe iniciales)';
+            const lbl = prov.closest('.fm-field') && prov.closest('.fm-field').querySelector('.fm-lbl');
+            if (lbl) lbl.textContent = (esPract ? 'Proveedor' : 'Cliente') + ' (escribe iniciales y elige)';
+          };
+          const autollenarRif = () => { const t = terceros.find((x) => x.nombre.toLowerCase() === prov.value.trim().toLowerCase()); if (t && rif) rif.value = normRif(t.rif); };
+          const facturasFiltradas = () => {
+            const esPract = dirSel && /^practicada/i.test(dirSel.value);
+            const tipoLibro = esPract ? 'compra' : 'venta';
+            const nom = (prov.value || '').trim().toLowerCase();
+            const rifN = normRif(rif && rif.value);
+            return facturas.filter((f) => f.tipo === tipoLibro
+              && ((nom && (f.tercero_nombre || '').toLowerCase() === nom) || (rifN && normRif(f.tercero_rif) === rifN)));
+          };
+          const refrescarFacturas = () => {
+            if (!dl) return;
+            const fs = facturasFiltradas();
+            dl.innerHTML = fs.map((f) => '<option value="' + esc(f.numero_factura || '') + '">' + esc((f.numero_factura || '(sin N°)') + ' · base ' + fmt(Number(f.base) || 0)) + '</option>').join('');
+            if (factInput) factInput.placeholder = fs.length ? 'Elige entre ' + fs.length + ' factura(s)…' : 'Sin facturas registradas de este tercero';
+          };
+          const ctrlInput = body.querySelector('[data-name="numControl"]');
+          const autollenarBase = () => {
+            if (!factInput) return;
+            const f = facturasFiltradas().find((x) => (x.numero_factura || '') === factInput.value.trim());
+            if (!f) return;
+            const esIva = !tipoSel || /iva/i.test(tipoSel.value);
+            if (baseInput) baseInput.value = (esIva ? (Number(f.iva) || 0) : (Number(f.base) || 0)).toFixed(2);
+            if (ctrlInput && f.numero_control) ctrlInput.value = f.numero_control;
+          };
+          prov.addEventListener('change', () => { autollenarRif(); refrescarFacturas(); });
+          prov.addEventListener('input', () => { autollenarRif(); refrescarFacturas(); });
+          if (dirSel) dirSel.addEventListener('change', () => { refrescarTerceros(); prov.value = ''; if (rif) rif.value = ''; refrescarFacturas(); });
+          if (tipoSel) tipoSel.addEventListener('change', autollenarBase);
+          if (factInput) { factInput.addEventListener('change', autollenarBase); factInput.addEventListener('input', autollenarBase); }
+          // Sugerir comprobantes EXISTENTES del mismo proveedor (mismo tipo/dirección) para agrupar
+          const compDl = document.getElementById('fm-dl-comprobante');
+          const compInput = body.querySelector('[data-name="comprobante"]');
+          const refrescarComprobantes = () => {
+            if (!compDl) return;
+            const rifN = normRif(rif && rif.value);
+            const nom = (prov.value || '').trim().toLowerCase();
+            const dir = (dirSel && /^practicada/i.test(dirSel.value)) ? 'practicada' : 'sufrida';
+            const tip = (tipoSel && /islr/i.test(tipoSel.value)) ? 'islr' : 'iva';
+            const seen = {};
+            const list = _retData.filter((x) => x.tipo === tip && x.direccion === dir && (x.comprobante || '')
+              && ((rifN && normRif(x.tercero_rif) === rifN) || (nom && (x.tercero_nombre || '').toLowerCase() === nom)))
+              .filter((x) => { if (seen[x.comprobante]) return false; seen[x.comprobante] = true; return true; });
+            compDl.innerHTML = list.map((x) => '<option value="' + esc(x.comprobante) + '">' + esc(x.comprobante + ' · ' + (x.fecha || '')) + '</option>').join('');
+            if (compInput) compInput.placeholder = list.length ? 'Vacío = nuevo N° · o elige uno existente para agrupar' : 'Se genera automáticamente';
+          };
+          prov.addEventListener('change', refrescarComprobantes); prov.addEventListener('input', refrescarComprobantes);
+          if (dirSel) dirSel.addEventListener('change', refrescarComprobantes);
+          if (tipoSel) tipoSel.addEventListener('change', refrescarComprobantes);
+          refrescarTerceros();
+          refrescarFacturas();
+          refrescarComprobantes();
+          setupPctField(body);
+          setupIslrFields(body);
+        },
+        onSave: (v) => {
+          if (!window.sb || !window.__CUENTA_ID || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) return 'No hay una empresa activa seleccionada.';
+          if (!v.nombre) return 'Indica el tercero.';
+          const esIslr = /islr/i.test(v.tipo);
+          const base = parseFloat(v.base) || 0, pct = parseFloat(v.pct) || 0;
+          let cod = '', suj = '', sust = 0, monto;
+          if (esIslr) {
+            suj = v.sujeto || '';
+            const variant = variantIslr(v.concepto, suj);
+            cod = variant ? variant[0] : '';
+            sust = parseFloat(v.sustraendo) || 0;
+            monto = Math.max(0, base * pct / 100 - sust);
+          } else {
+            monto = base * pct / 100;
+          }
+          const p = (v.fecha || '').split('-');
+          const fecha = p.length === 3 ? (p[2] + '/' + p[1] + '/' + p[0].slice(2)) : '';
+          const dir = /^practicada/i.test(v.direccion) ? 'practicada' : 'sufrida';
+          // N° de comprobante: ISLR = correlativo simple; IVA = formato AAAAMM+correlativo
+          let comp = v.comprobante;
+          if (!comp) {
+            if (esIslr) { const n = _retData.filter((x) => x.tipo === 'islr').length + 1; comp = String(n).padStart(8, '0'); }
+            else { const seq = _retData.filter((x) => x.tipo === 'iva').length + 1; comp = (p.length === 3 ? (p[0] + p[1] + String(seq).padStart(8, '0')) : String(seq).padStart(14, '0')); }
+          }
+          window.sb.from('retenciones').insert({
+            cuenta_id: window.__CUENTA_ID, empresa_id: window.__EMPRESA_ACTIVA.id,
+            direccion: dir, tipo: (v.tipo || 'IVA').toLowerCase(), fecha: fecha, comprobante: comp,
+            tercero_nombre: v.nombre, tercero_rif: normRif(v.rif), factura: v.factura, numero_control: v.numControl || null,
+            base: base, pct: pct, monto: monto, estado: 'Registrado',
+            concepto: esIslr ? v.concepto : null, concepto_codigo: esIslr ? cod : null, sujeto: esIslr ? suj : null, sustraendo: sust,
+          }).then(({ error }) => {
+            if (error) { if (window.toast) window.toast('No se pudo guardar: ' + error.message, 'error'); return; }
+            if (window.cargarRetenciones) window.cargarRetenciones();
+            if (window.toast) window.toast('Retención registrada · Bs ' + fmt(monto), 'success');
+          });
+        },
+      });
+    }
+    const addBtn = document.getElementById('retAddBtn');
+    if (addBtn) addBtn.addEventListener('click', registrarRetencion);
+
+    // Comprobante de retención: clona el template OFICIAL completo (#compIva/#compIslr)
+    // y lo llena con datos reales (firmas, partes, base legal SNAT/2025/000054 o Decreto 1.808).
+    async function imprimirComprobante(r) {
+      const emp = window.__EMPRESA_ACTIVA || {};
+      const esIslr = r.tipo === 'islr';
+      const esPract = r.direccion === 'practicada';
+      // El agente retiene; el sujeto retenido recibe. Se invierten según la dirección.
+      const agente = esPract ? { n: emp.n, rif: emp.rif } : { n: r.tercero_nombre, rif: r.tercero_rif };
+      const sujeto = esPract ? { n: r.tercero_nombre, rif: r.tercero_rif } : { n: emp.n, rif: emp.rif };
+      // Cada comprobante tiene su propio N° correlativo (control MANUAL del contador). Se agrupan
+      // SOLO las retenciones que comparten el mismo N° de comprobante (varias facturas en uno);
+      // por defecto cada retención = su propio comprobante con su propio número.
+      const ncomp = (r.comprobante || '').trim();
+      let grupo = (ncomp ? _retData.filter((x) => x.tipo === r.tipo && x.direccion === r.direccion && (x.comprobante || '').trim() === ncomp) : []);
+      if (!grupo.length) grupo = [r];
+      grupo.sort((a, b) => ((a.fecha || '').split('/').reverse().join('')).localeCompare((b.fecha || '').split('/').reverse().join('')));
+      // Lookup de las facturas del período (montos exactos)
+      const facMap = {};
+      if (window.sb && emp.id) {
+        const { data } = await window.sb.from('libro_fiscal')
+          .select('numero_factura, total, base, exento, alicuota, iva')
+          .eq('empresa_id', emp.id).eq('tipo', esPract ? 'compra' : 'venta');
+        (data || []).forEach((f) => { facMap[(f.numero_factura || '').trim()] = f; });
+      }
+      const tmpl = document.getElementById(esIslr ? 'compIslr' : 'compIva');
+      if (!tmpl) return;
+      const node = tmpl.cloneNode(true);
+      node.removeAttribute('id'); node.style.display = '';
+      const set = (sel, val) => { const el = node.querySelector(sel); if (el != null) el.textContent = val; };
+      const setN = (sel, i, val) => { const els = node.querySelectorAll(sel); if (els[i]) els[i].textContent = val; };
+      const pctTxt = Number.isInteger(Number(r.pct)) ? String(Number(r.pct)) : Number(r.pct).toFixed(2);
+      const p = (r.fecha || '').split('/');
+      const anio = p.length === 3 ? (p[2].length === 2 ? '20' + p[2] : p[2]) : '';
+      const mes = p.length === 3 ? p[1] : '';
+      set('.comp-agent .agent-name', agente.n || '');
+      const meta = node.querySelector('.comp-agent .agent-meta');
+      if (meta) meta.innerHTML = '<span class="mono">RIF ' + esc(agente.rif || '') + '</span><br>'
+        + esc(emp.cond || 'Contribuyente') + ' · ' + (esIslr ? 'Decreto 1.808 (Reglamento ISLR)' : 'Providencia SNAT/2025/000054');
+      set('.comp-doc-title .num-box .v', r.comprobante || '');
+      setN('.comp-meta-strip .cell .v', 0, r.fecha || '');
+      setN('.comp-meta-strip .cell .v', 1, esIslr ? ('Ejercicio ' + anio) : ('Año ' + anio + ' · Mes ' + mes));
+      setN('.comp-meta-strip .cell .v', 2, pctTxt + '%');
+      setN('.comp-party-grid .pf .v', 0, sujeto.n || '');
+      setN('.comp-party-grid .pf .v', 1, sujeto.rif || '');
+      setN('.comp-party-grid .pf .v', 2, emp.dom && !esPract ? emp.dom : '—');
+      const sujMap = { PNR: 'Natural Residente', PNNR: 'Natural No Residente', PJD: 'Jurídica Domiciliada', PJND: 'Jurídica No Domiciliada' };
+      setN('.comp-party-grid .pf .v', 3, esIslr ? (sujMap[r.sujeto] || '—') : 'Contribuyente');
+      const tb = node.querySelector('.comp-detail tbody');
+      const tf = node.querySelector('.comp-detail tfoot');
+      const words = node.querySelector('.comp-amount-words');
+      let rowsHtml = '', tMonto = 0, tBase = 0, tTotal = 0, tIva = 0;
+      grupo.forEach((rr) => {
+        const pctT = Number.isInteger(Number(rr.pct)) ? String(Number(rr.pct)) : Number(rr.pct).toFixed(2);
+        const monto = Number(rr.monto) || 0;
+        if (esIslr) {
+          const base = Number(rr.base) || 0;
+          tBase += base; tMonto += monto;
+          rowsHtml += '<tr><td class="ctr">' + esc(rr.fecha || '') + '</td><td class="ctr mono">—</td><td class="ctr">FACT</td>'
+            + '<td class="ctr mono">' + esc(rr.factura || '—') + '</td><td class="ctr mono">' + esc(rr.numero_control || '—') + '</td>'
+            + '<td class="num">' + fmt(base) + '</td><td class="num">' + fmt(base) + '</td><td class="num">' + fmt(base) + '</td>'
+            + '<td class="ctr">' + pctT.replace('.', ',') + '</td>'
+            + '<td class="concepto">' + esc(rr.concepto || '') + (rr.concepto_codigo ? ' (Cód. ' + esc(rr.concepto_codigo) + ')' : '') + '</td>'
+            + '<td class="num">' + fmt(monto) + '</td></tr>';
+        } else {
+          const fac = facMap[(rr.factura || '').trim()] || null;
+          const alic = fac && Number(fac.alicuota) ? Number(fac.alicuota) * 100 : 16;
+          const ivaFact = fac ? (Number(fac.iva) || (Number(rr.base) || 0)) : (Number(rr.base) || 0);
+          const baseImp = fac ? (Number(fac.base) || 0) : (alic ? ivaFact / (alic / 100) : 0);
+          const exento = fac ? (Number(fac.exento) || 0) : 0;
+          const total = fac ? (Number(fac.total) || (baseImp + ivaFact + exento)) : (baseImp + ivaFact + exento);
+          tTotal += total; tBase += baseImp; tIva += ivaFact; tMonto += monto;
+          rowsHtml += '<tr><td>' + esc(rr.fecha || '') + '</td><td class="mono">' + esc(rr.factura || '—') + '</td>'
+            + '<td class="mono">' + esc(rr.numero_control || '—') + '</td><td></td><td></td>'
+            + '<td class="num">' + fmt(total) + '</td><td class="num"></td><td class="num">' + fmt(baseImp) + '</td>'
+            + '<td class="ctr">' + alic + '%</td><td class="num">' + fmt(ivaFact) + '</td><td class="ctr">' + pctT + '%</td>'
+            + '<td class="num">' + fmt(monto) + '</td></tr>';
+        }
+      });
+      if (tb) tb.innerHTML = rowsHtml;
+      if (esIslr) {
+        if (tf) tf.innerHTML = '<tr><td colspan="7" style="text-align:right;">Totales</td><td class="num">' + fmt(tBase) + '</td><td></td><td></td><td class="num highlight">' + fmt(tMonto) + '</td></tr>';
+        if (words) words.innerHTML = 'Total ISLR retenido: <strong>Bs ' + fmt(tMonto) + '</strong> · ' + grupo.length + ' operación(es) en este comprobante.';
+      } else {
+        if (tf) tf.innerHTML = '<tr><td colspan="5" style="text-align:right;">Totales</td><td class="num">' + fmt(tTotal) + '</td><td class="num">0,00</td><td class="num">' + fmt(tBase) + '</td><td></td><td class="num">' + fmt(tIva) + '</td><td></td><td class="num highlight">' + fmt(tMonto) + '</td></tr>';
+        if (words) words.innerHTML = 'Total IVA retenido: <strong>Bs ' + fmt(tMonto) + '</strong> · ' + grupo.length + ' factura(s) en este comprobante. Monto neto a cancelar: <strong>Bs ' + fmt(Math.max(0, tTotal - tMonto)) + '</strong>.';
+      }
+      let portal = document.getElementById('printPortal');
+      if (!portal) { portal = document.createElement('div'); portal.id = 'printPortal'; document.body.appendChild(portal); }
+      portal.innerHTML = '';
+      portal.appendChild(node);
+      document.body.classList.add('printing-comp');
+      if (window.lucide) window.lucide.createIcons();
+      window.print();
+    }
+
+    // Editar / eliminar: clic en cualquier fila de retención
+    function editRetencion(id) {
+      const r = _retData.find((x) => String(x.id) === String(id));
+      if (!r) return;
+      window.openFormModal && window.openFormModal({
+        title: 'Editar retención',
+        saveLabel: 'Guardar cambios',
+        fields: [
+          { name: 'direccion', label: 'Dirección', type: 'select', options: ['Practicada (yo retengo a un proveedor)', 'Sufrida (un cliente me retiene)'], value: r.direccion === 'practicada' ? 'Practicada (yo retengo a un proveedor)' : 'Sufrida (un cliente me retiene)' },
+          { name: 'tipo', label: 'Impuesto', type: 'select', options: ['IVA', 'ISLR'], value: r.tipo === 'islr' ? 'ISLR' : 'IVA' },
+          { name: 'concepto', label: 'Concepto de retención (ISLR)', col: 2, type: 'select', options: CONCEPTOS_ISLR.map((c) => c.act), value: r.concepto || CONCEPTOS_ISLR[0].act },
+          { name: 'sujeto', label: 'Tipo de sujeto (ISLR)', type: 'select', options: [{ value: 'PNR', label: 'PN Residente' }, { value: 'PNNR', label: 'PN No Residente' }, { value: 'PJD', label: 'PJ Domiciliada' }, { value: 'PJND', label: 'PJ No Domiciliada' }], value: r.sujeto || 'PNR' },
+          { name: 'fecha', label: 'Fecha (dd/mm/aa)', value: r.fecha || '' },
+          { name: 'nombre', label: 'Tercero', col: 2, value: r.tercero_nombre || '' },
+          { name: 'rif', label: 'RIF', upper: true, value: r.tercero_rif || '' },
+          { name: 'factura', label: 'Factura afectada', value: r.factura || '' },
+          { name: 'numControl', label: 'N° de Control', value: r.numero_control || '' },
+          { name: 'comprobante', label: 'N° Comprobante', value: r.comprobante || '' },
+          { name: 'base', label: 'Base imponible / monto del pago (Bs)', type: 'number', step: '0.01', value: r.base != null ? String(r.base) : '' },
+          { name: 'pct', label: '% de retención', type: 'number', step: '0.01', value: r.pct != null ? String(r.pct) : '' },
+          { name: 'sustraendo', label: 'Sustraendo (ISLR)', type: 'number', step: '0.01', value: r.sustraendo != null ? String(r.sustraendo) : '0' },
+        ],
+        afterRender: (body) => { setupPctField(body); setupIslrFields(body); },
+        extraLabel: 'Comprobante',
+        onExtra: () => imprimirComprobante(r),
+        onSave: (v) => {
+          if (!window.sb) return 'Sin conexión.';
+          if (!v.nombre) return 'Indica el tercero.';
+          const esIslr = /islr/i.test(v.tipo);
+          const base = parseFloat(v.base) || 0, pct = parseFloat(v.pct) || 0;
+          let cod = '', suj = '', sust = 0, monto;
+          if (esIslr) {
+            suj = v.sujeto || '';
+            const variant = variantIslr(v.concepto, suj);
+            cod = variant ? variant[0] : '';
+            sust = parseFloat(v.sustraendo) || 0;
+            monto = Math.max(0, base * pct / 100 - sust);
+          } else {
+            monto = base * pct / 100;
+          }
+          const dir = /^practicada/i.test(v.direccion) ? 'practicada' : 'sufrida';
+          window.sb.from('retenciones').update({
+            direccion: dir, tipo: (v.tipo || 'IVA').toLowerCase(), fecha: v.fecha,
+            comprobante: v.comprobante, tercero_nombre: v.nombre, tercero_rif: normRif(v.rif),
+            factura: v.factura, numero_control: v.numControl || null, base: base, pct: pct, monto: monto,
+            concepto: esIslr ? v.concepto : null, concepto_codigo: esIslr ? cod : null, sujeto: esIslr ? suj : null, sustraendo: sust,
+          }).eq('id', id).then(({ error }) => {
+            if (error) { if (window.toast) window.toast('No se pudo actualizar: ' + error.message, 'error'); return; }
+            if (window.cargarRetenciones) window.cargarRetenciones();
+            if (window.toast) window.toast('Retención actualizada · Bs ' + fmt(monto), 'success');
+          });
+        },
+        onDelete: (closeModal) => {
+          if (!window.confirm('¿Eliminar esta retención? Esta acción no se puede deshacer.')) return;
+          window.sb.from('retenciones').delete().eq('id', id).then(({ error }) => {
+            if (error) { if (window.toast) window.toast('No se pudo eliminar: ' + error.message, 'error'); return; }
+            if (window.cargarRetenciones) window.cargarRetenciones();
+            if (window.toast) window.toast('Retención eliminada', 'success');
+          });
+          closeModal();
+        },
+      });
+    }
+    views.forEach((v) => v.addEventListener('click', (e) => {
+      const tr = e.target.closest('tr[data-id]');
+      if (tr) editRetencion(tr.dataset.id);
+    }));
+
     // Estado inicial
-    refreshSummary();
-    applyFilter();
+    cargarRetenciones();
   })();
 
   /* =========================================================
@@ -1542,6 +2021,47 @@
   })();
 
   /* =========================================================
+     IGTF (Forma 21) — declaración quincenal · 3% (divisas/cripto, del Libro de Ventas) + 2% (Bs, manual)
+     ========================================================= */
+  (function igtfModule() {
+    const view = document.getElementById('view-fiscal');
+    if (!view) return;
+    const fmt = (n) => Number(n || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const $ = (id) => document.getElementById(id);
+    function render() {
+      const v = window.__IGTF_VENTAS || { base: 0, ops: 0, monto: 0 };
+      const base2 = parseFloat(($('igtf2BaseInput') || {}).value) || 0;
+      const ops2 = parseInt(($('igtf2OpsInput') || {}).value, 10) || 0;
+      const monto2 = base2 * 0.02;
+      const total = (Number(v.monto) || 0) + monto2;
+      const set = (id, t) => { const e = $(id); if (e) e.textContent = t; };
+      set('igtf3BaseDoc', fmt(v.base)); set('igtf3OpsDoc', String(v.ops || 0)); set('igtf3MontoDoc', fmt(v.monto)); set('igtf3MontoMini', fmt(v.monto));
+      set('igtf2BaseDoc', fmt(base2)); set('igtf2OpsDoc', String(ops2)); set('igtf2MontoDoc', fmt(monto2)); set('igtf2MontoMini', fmt(monto2));
+      set('igtfTotalDoc', fmt(total)); set('igtfTotalMini', fmt(total));
+      const emp = window.__EMPRESA_ACTIVA || {};
+      set('igtfDocCo', emp.n || 'Empresa'); set('igtfDocRif', 'RIF ' + (emp.rif || '—'));
+      const perEl = $('igtfPerSel'); if (perEl) set('igtfDocPeriodo', (perEl.textContent || '').trim());
+    }
+    window.__renderIGTF = render;
+    ['igtf2BaseInput', 'igtf2OpsInput'].forEach((id) => { const e = $(id); if (e) e.addEventListener('input', render); });
+    function imprimir() {
+      const doc = $('igtfDoc'); if (!doc) return;
+      let portal = $('printPortal');
+      if (!portal) { portal = document.createElement('div'); portal.id = 'printPortal'; document.body.appendChild(portal); }
+      portal.innerHTML = '';
+      const clon = doc.cloneNode(true); clon.classList.add('dpp-print'); portal.appendChild(clon);
+      document.body.classList.add('printing-comp');
+      if (window.lucide) window.lucide.createIcons();
+      window.print();
+    }
+    window.addEventListener('afterprint', () => { document.body.classList.remove('printing-comp'); const p = $('printPortal'); if (p) p.innerHTML = ''; });
+    const wire = (id, fn) => { const b = $(id); if (b) b.addEventListener('click', fn); };
+    wire('igtfPrintBtn', imprimir); wire('igtfPdfBtn', imprimir);
+    wire('igtfRegistrarBtn', () => { if (window.toast) window.toast('Declaración de IGTF (Forma 21) registrada · lista para transmitir al portal SENIAT', 'success'); });
+    render();
+  })();
+
+  /* =========================================================
      RELACIÓN DE NÓMINA DEL PERÍODO — modal imprimible
      ========================================================= */
   (function relacionNomina() {
@@ -1615,41 +2135,103 @@
   /* =========================================================
      GENERADOR TXT — descarga real del archivo simulado
      ========================================================= */
+  // Helper: agrega una fila real al historial de archivos generados (con re-descarga)
+  function addRetHistRow(containerId, name, meta, content, mime) {
+    const cont = document.getElementById(containerId);
+    if (!cont) return;
+    const empty = cont.querySelector('.txt-empty'); if (empty) empty.remove();
+    const row = document.createElement('div');
+    row.className = 'txt-row';
+    row.innerHTML = '<div class="ic"><i data-lucide="file-text"></i></div><div class="nm"></div><div class="meta"></div><button class="dl" title="Descargar"><i data-lucide="download"></i></button>';
+    row.querySelector('.nm').textContent = name;
+    row.querySelector('.meta').textContent = meta;
+    row.querySelector('.dl').addEventListener('click', () => {
+      const blob = new Blob([content], { type: mime });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = name;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+    });
+    cont.insertBefore(row, cont.firstChild);
+    if (window.lucide) window.lucide.createIcons();
+  }
+
   (function txtGenerator() {
-    const btn = document.getElementById('txtGenBtn');
-    if (!btn) return;
-    const rif = 'J304567890';
-    // Formato OFICIAL SENIAT retención IVA · 16 columnas (A–P) separadas por TAB
-    // (guía iva_07): A RIF Agente | B Período(AAAAMM) | C Fecha Factura(AAAA-MM-DD) |
-    // D Tipo Operación(C=compra/V=venta) | E Tipo Doc(01=Factura) | F RIF Proveedor |
-    // G N° Documento | H N° Control | I Monto Total | J Base Imponible | K Monto IVA Retenido |
-    // L N° Documento Afectado(0) | M N° Comprobante Retención(14) | N Monto Exento(0.00) |
-    // O Alícuota | P N° Expediente(0)
-    const filas = [
-      [rif, '202605', '2026-05-28', 'C', '01', 'J315678901', '00284716', '00-018472', '214020.00', '184500.00', '22140.00', '0', '20260500000042', '0.00', '16.00', '0'],
-      [rif, '202605', '2026-05-27', 'C', '01', 'J294458217', '00045128', '00-018465', '951200.00', '820000.00', '98400.00', '0', '20260500000041', '0.00', '16.00', '0'],
-      [rif, '202605', '2026-05-24', 'C', '01', 'J287769013', '00731122', '00-018430', '1450000.00', '1250000.00', '150000.00', '0', '20260500000038', '0.00', '16.00', '0'],
-      [rif, '202605', '2026-05-23', 'C', '01', 'J309981225', '00018744', '00-018421', '56422.40', '48640.00', '5836.80', '0', '20260500000037', '0.00', '16.00', '0'],
-      [rif, '202605', '2026-05-22', 'C', '01', 'J293310878', '00045621', '00-018418', '215760.00', '186000.00', '22320.00', '0', '20260500000036', '0.00', '16.00', '0'],
-    ];
-    btn.addEventListener('click', () => {
-      const txt = filas.map((f) => f.join('\t')).join('\r\n') + '\r\n';
+    const btnP = document.getElementById('txtGenBtn');       // 027 · practicadas (agente)
+    const btnS = document.getElementById('txtGen028Btn');    // 028 · sufridas (informativa por proveedor)
+    if (!btnP && !btnS) return;
+    const norm = (s) => (s || '').toUpperCase().replace(/[\s.\-]/g, '');
+    const m2 = (n) => (Number(n) || 0).toFixed(2);
+    const periodoDe = (fecha) => { const p = (fecha || '').split('/'); if (p.length < 3) return ''; const yy = p[2].length === 2 ? '20' + p[2] : p[2]; return yy + (p[1] || '').padStart(2, '0'); };
+    const fechaIso = (fecha) => { const p = (fecha || '').split('/'); if (p.length < 3) return ''; const yy = p[2].length === 2 ? '20' + p[2] : p[2]; return yy + '-' + (p[1] || '').padStart(2, '0') + '-' + (p[0] || '').padStart(2, '0'); };
+    const tipoDocCod = (td) => { const t = (td || 'FC').toUpperCase(); if (t.indexOf('NC') === 0) return '03'; if (t.indexOf('ND') === 0) return '02'; return '01'; };
+    // Formato OFICIAL SENIAT (TRI.GR.03.027/028) · 16 columnas A–P · TAB.
+    // En AMBOS: col 1 = RIF de la empresa, col 6 = RIF del tercero. Difieren: dirección,
+    // tipo de operación (C compra / V venta), libro (compra/venta) y nombre de archivo.
+    async function generar(btn, esPract) {
+      const emp = window.__EMPRESA_ACTIVA || {};
+      const rifEmp = norm(emp.rif);
+      const todas = (window.__getRetenciones ? window.__getRetenciones() : []);
+      const iva = todas.filter((r) => r.tipo === 'iva' && r.direccion === (esPract ? 'practicada' : 'sufrida'));
+      if (!iva.length) { if (window.toast) window.toast('No hay retenciones de IVA ' + (esPract ? 'practicadas' : 'sufridas') + ' para exportar.', 'error'); return; }
+      // Lookup de la factura: compras (practicadas) o ventas (sufridas)
+      let facturas = [];
+      if (window.sb && emp.id) {
+        const { data } = await window.sb.from('libro_fiscal')
+          .select('numero_factura, tercero_rif, total, base, exento, alicuota, tipo_doc')
+          .eq('empresa_id', emp.id).eq('tipo', esPract ? 'compra' : 'venta');
+        facturas = data || [];
+      }
+      const facMap = {};
+      facturas.forEach((f) => { facMap[(f.numero_factura || '').trim() + '|' + norm(f.tercero_rif)] = f; });
+      // Por período: exporta el más reciente
+      const grupos = {};
+      iva.forEach((r) => { const per = periodoDe(r.fecha); (grupos[per] = grupos[per] || []).push(r); });
+      const periodos = Object.keys(grupos).filter(Boolean).sort();
+      const periodo = periodos[periodos.length - 1] || '';
+      const rows = grupos[periodo] || [];
+      const lineas = rows.map((r) => {
+        const f = facMap[(r.factura || '').trim() + '|' + norm(r.tercero_rif)] || null;
+        const ivaDoc = Number(r.base) || 0;   // en IVA, r.base guarda el IVA del documento
+        const ivaRet = Number(r.monto) || 0;  // IVA retenido (col K)
+        let alic, baseImp, exento, total, tipoDoc;
+        if (f) {
+          alic = Number(f.alicuota) ? Number(f.alicuota) * 100 : 16;
+          baseImp = Number(f.base) || 0;
+          exento = Number(f.exento) || 0;
+          total = Number(f.total) || (baseImp + ivaDoc + exento);
+          tipoDoc = tipoDocCod(f.tipo_doc);
+        } else {
+          alic = 16; baseImp = alic ? ivaDoc / (alic / 100) : 0; exento = 0; total = baseImp + ivaDoc + exento; tipoDoc = '01';
+        }
+        return [
+          rifEmp, periodo, fechaIso(r.fecha), (esPract ? 'C' : 'V'), tipoDoc, norm(r.tercero_rif),
+          (r.factura || '0').replace(/\s/g, ''), (r.numero_control || '0').replace(/\s/g, ''),
+          m2(total), m2(baseImp), m2(ivaRet), '0', (r.comprobante || '0').replace(/\D/g, ''),
+          m2(exento), alic.toFixed(2), '0',
+        ].join('\t');
+      });
+      const txt = lineas.join('\r\n') + '\r\n';
+      const fname = (esPract ? 'RET_IVA_' : 'INF_IVA_PROV_') + rifEmp + '_' + periodo + '.txt';
       const blob = new Blob([txt], { type: 'text/plain;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url;
-      a.download = 'RET_IVA_' + rif + '_202605.txt';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      a.href = url; a.download = fname;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
       URL.revokeObjectURL(url);
-
+      const pre = document.getElementById('txtPreviewPre');
+      if (pre) pre.textContent = lineas.slice(0, 8).join('\n') + (lineas.length > 8 ? '\n… (' + (lineas.length - 8) + ' más)' : '');
+      const lh = document.getElementById('txtPreviewLh');
+      if (lh) lh.textContent = 'Vista previa · ' + fname + ' · ' + rows.length + ' línea(s)';
+      addRetHistRow('txtHist', fname, rows.length + ' líneas', txt, 'text/plain;charset=utf-8');
       const orig = btn.innerHTML;
       btn.innerHTML = '<i data-lucide="check"></i> Archivo descargado';
       btn.setAttribute('disabled', '');
       drawIcons();
-      setTimeout(() => { btn.innerHTML = orig; btn.removeAttribute('disabled'); drawIcons(); }, 2200);
-    });
+      if (window.toast) window.toast('TXT IVA ' + (esPract ? '(agente, practicadas)' : '(informativa proveedor, sufridas)') + ' · período ' + periodo + ' · ' + rows.length + ' registro(s)' + (periodos.length > 1 ? ' (hay otros períodos sin exportar)' : ''), 'success');
+      setTimeout(() => { btn.innerHTML = orig; btn.removeAttribute('disabled'); drawIcons(); }, 2400);
+    }
+    if (btnP) btnP.addEventListener('click', () => generar(btnP, true));
+    if (btnS) btnS.addEventListener('click', () => generar(btnS, false));
   })();
 
   /* =========================================================
@@ -1658,45 +2240,62 @@
   (function xmlGenerator() {
     const btn = document.getElementById('xmlGenBtn');
     if (!btn) return;
-    const rif = 'J304567890', periodo = '202605';
-    // Detalle de retenciones (las columnas que arma el XML, como el Excel del SENIAT)
-    const detalle = [
-      { rif: 'J315186225', factura: '0000259539', control: '00386833', fecha: '28-05-2026', concepto: '002', monto: '71428.57', pct: '3.00' },
-      { rif: 'V159982314', factura: '0000102993', control: '00018451', fecha: '26-05-2026', concepto: '002', monto: '240000.00', pct: '3.00' },
-      { rif: 'J301124456', factura: '0000009287', control: '00018442', fecha: '25-05-2026', concepto: '071', monto: '95000.00', pct: '1.00' },
-      { rif: 'J306672210', factura: '0000004410', control: '00018401', fecha: '22-05-2026', concepto: '057', monto: '63000.00', pct: '3.00' },
-    ];
-    function buildXml() {
-      let xml = '<?xml version="1.0" encoding="ISO-8859-1"?>\r\n<RelacionRetencionesISLR>\r\n';
-      xml += '  <RifAgente>' + rif + '</RifAgente>\r\n  <Periodo>' + periodo + '</Periodo>\r\n';
-      detalle.forEach((d, i) => {
+    const norm = (s) => (s || '').toUpperCase().replace(/[\s.\-]/g, '');
+    const fmtMonto = (n) => (Number(n) || 0).toFixed(2);
+    // fecha 'dd/mm/yy' → período 'AAAAMM'
+    const periodoDe = (fecha) => {
+      const p = (fecha || '').split('/');
+      if (p.length < 3) return '';
+      const yy = p[2].length === 2 ? '20' + p[2] : p[2];
+      return yy + (p[1] || '').padStart(2, '0');
+    };
+    const numFactura = (f) => { const s = (f || '').replace(/[^a-zA-Z0-9]/g, ''); return s ? s.slice(-10) : '0'; };
+    const numControl = (c) => { const s = (c || '').replace(/[^a-zA-Z0-9]/g, ''); return s ? s.slice(-8) : 'NA'; };
+    btn.addEventListener('click', () => {
+      const emp = window.__EMPRESA_ACTIVA || {};
+      const rifAgente = norm(emp.rif);
+      const todas = (window.__getRetenciones ? window.__getRetenciones() : []);
+      const islr = todas.filter((r) => r.tipo === 'islr' && r.direccion === 'practicada');
+      if (!islr.length) { if (window.toast) window.toast('No hay retenciones de ISLR practicadas para exportar.', 'error'); return; }
+      // La Relación Informativa es mensual: agrupa por período y exporta el más reciente
+      const grupos = {};
+      islr.forEach((r) => { const per = periodoDe(r.fecha); (grupos[per] = grupos[per] || []).push(r); });
+      const periodos = Object.keys(grupos).filter(Boolean).sort();
+      const periodo = periodos[periodos.length - 1] || '';
+      const rows = grupos[periodo] || [];
+      // Esquema OFICIAL (Manual Técnico TRI.GR.03.0013): RifAgente/Periodo como atributos
+      let xml = '<?xml version="1.0" encoding="utf-8" ?>\r\n';
+      xml += '<RelacionRetencionesISLR RifAgente="' + rifAgente + '" Periodo="' + periodo + '">\r\n';
+      rows.forEach((r) => {
         xml += '  <DetalleRetencion>\r\n'
-          + '    <Secuencial>' + (i + 1) + '</Secuencial>\r\n'
-          + '    <RifRetenido>' + d.rif + '</RifRetenido>\r\n'
-          + '    <NumeroFactura>' + d.factura + '</NumeroFactura>\r\n'
-          + '    <NumeroControl>' + d.control + '</NumeroControl>\r\n'
-          + '    <FechaOperacion>' + d.fecha + '</FechaOperacion>\r\n'
-          + '    <CodigoConcepto>' + d.concepto + '</CodigoConcepto>\r\n'
-          + '    <MontoOperacion>' + d.monto + '</MontoOperacion>\r\n'
-          + '    <PorcentajeRetencion>' + d.pct + '</PorcentajeRetencion>\r\n'
+          + '    <RifRetenido>' + norm(r.tercero_rif) + '</RifRetenido>\r\n'
+          + '    <NumeroFactura>' + numFactura(r.factura) + '</NumeroFactura>\r\n'
+          + '    <NumeroControl>' + numControl(r.numero_control) + '</NumeroControl>\r\n'
+          + '    <CodigoConcepto>' + (r.concepto_codigo || '000') + '</CodigoConcepto>\r\n'
+          + '    <MontoOperacion>' + fmtMonto(r.base) + '</MontoOperacion>\r\n'
+          + '    <PorcentajeRetencion>' + fmtMonto(r.pct) + '</PorcentajeRetencion>\r\n'
           + '  </DetalleRetencion>\r\n';
       });
       xml += '</RelacionRetencionesISLR>\r\n';
-      return xml;
-    }
-    btn.addEventListener('click', () => {
-      const blob = new Blob([buildXml()], { type: 'application/xml;charset=ISO-8859-1' });
+      const fname = 'XML_relacionRetencionesISLR_' + rifAgente + '_' + periodo + '.xml';
+      const blob = new Blob([xml], { type: 'application/xml;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url; a.download = 'RET_ISLR_' + rif + '_' + periodo + '.xml';
+      a.href = url; a.download = fname;
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
       URL.revokeObjectURL(url);
+      // Vista previa + historial con datos REALES
+      const pre = document.getElementById('xmlPreviewPre');
+      if (pre) pre.textContent = xml.length > 1400 ? xml.slice(0, 1400) + '\n…' : xml;
+      const lh = document.getElementById('xmlPreviewLh');
+      if (lh) lh.textContent = 'Vista previa · ' + fname + ' · ' + rows.length + ' registro(s)';
+      addRetHistRow('xmlHist', fname, rows.length + ' registros', xml, 'application/xml;charset=utf-8');
       const orig = btn.innerHTML;
       btn.innerHTML = '<i data-lucide="check"></i> Archivo XML descargado';
       btn.setAttribute('disabled', '');
       drawIcons();
-      if (window.toast) window.toast('Archivo XML de retenciones ISLR generado · ' + detalle.length + ' registros');
-      setTimeout(() => { btn.innerHTML = orig; btn.removeAttribute('disabled'); drawIcons(); }, 2200);
+      if (window.toast) window.toast('XML Relación Informativa ISLR · período ' + periodo + ' · ' + rows.length + ' registro(s)' + (periodos.length > 1 ? ' (hay otros períodos sin exportar)' : ''), 'success');
+      setTimeout(() => { btn.innerHTML = orig; btn.removeAttribute('disabled'); drawIcons(); }, 2400);
     });
   })();
 
@@ -4144,8 +4743,12 @@
         control = '<select data-name="' + esc(f.name) + '">' +
           (f.options || []).map((o) => '<option value="' + esc(o.value != null ? o.value : o) + '"' + ((f.value === (o.value != null ? o.value : o)) ? ' selected' : '') + '>' + esc(o.label || o) + '</option>').join('') +
           '</select>';
+      } else if (f.type === 'datalist') {
+        const listId = 'fm-dl-' + esc(f.name);
+        control = '<input data-name="' + esc(f.name) + '" type="text" list="' + listId + '" value="' + esc(f.value != null ? f.value : '') + '" placeholder="' + esc(f.placeholder || '') + '" autocomplete="off"' + (f.upper ? ' data-upper="1"' : '') + '>'
+          + '<datalist id="' + listId + '">' + (f.options || []).map((o) => '<option value="' + esc(o.value != null ? o.value : o) + '">' + (o.label ? esc(o.label) : '') + '</option>').join('') + '</datalist>';
       } else {
-        control = '<input data-name="' + esc(f.name) + '" type="' + (f.type || 'text') + '" value="' + esc(f.value != null ? f.value : '') + '" placeholder="' + esc(f.placeholder || '') + '"' + (f.step ? ' step="' + f.step + '"' : '') + '>';
+        control = '<input data-name="' + esc(f.name) + '" type="' + (f.type || 'text') + '" value="' + esc(f.value != null ? f.value : '') + '" placeholder="' + esc(f.placeholder || '') + '"' + (f.step ? ' step="' + f.step + '"' : '') + (f.upper ? ' data-upper="1"' : '') + '>';
       }
       return '<label class="fm-field"' + span + '><span class="fm-lbl">' + esc(f.label) + '</span>' + control + '</label>';
     }
@@ -4155,8 +4758,28 @@
       bodyEl.innerHTML = '<div class="fm-grid">' + (cfg.fields || []).map(fieldHtml).join('') + '</div>';
       saveBtn.innerHTML = '<i data-lucide="check"></i> ' + (cfg.saveLabel || 'Guardar');
       onSaveCb = cfg.onSave;
+      // Botón Eliminar (opcional): se muestra solo si el llamador pasa cfg.onDelete
+      const delBtn = document.getElementById('fmDelete');
+      if (delBtn) {
+        if (typeof cfg.onDelete === 'function') { delBtn.hidden = false; delBtn.onclick = () => cfg.onDelete(close); }
+        else { delBtn.hidden = true; delBtn.onclick = null; }
+      }
+      // Botón extra opcional (p. ej. "Imprimir comprobante")
+      const extraBtn = document.getElementById('fmExtra');
+      if (extraBtn) {
+        if (typeof cfg.onExtra === 'function') {
+          extraBtn.hidden = false;
+          const lbl = document.getElementById('fmExtraLbl'); if (lbl) lbl.textContent = cfg.extraLabel || 'Imprimir';
+          extraBtn.onclick = () => cfg.onExtra();
+        } else { extraBtn.hidden = true; extraBtn.onclick = null; }
+      }
       overlay.hidden = false;
       if (window.lucide) window.lucide.createIcons();
+      // Campos en MAYÚSCULAS sin guiones ni espacios (p. ej. RIF: J123456789)
+      bodyEl.querySelectorAll('input[data-upper]').forEach((el) => {
+        el.addEventListener('input', () => { el.value = el.value.toUpperCase().replace(/[\s.\-]/g, ''); });
+      });
+      if (typeof cfg.afterRender === 'function') cfg.afterRender(bodyEl);
       const first = bodyEl.querySelector('input,select');
       if (first) first.focus();
     };
@@ -4308,6 +4931,252 @@
     const view = document.getElementById('view-fiscal');
     if (!view) return;
     const toast = (m, t) => { if (window.toast) window.toast(m, t); };
+
+    // ===== Libros fiscales (registro manual de facturas reales) =====
+    const fmtF = (n) => Number(n).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    let _credF = 0, _debF = 0; // crédito fiscal (compras) y débito fiscal (ventas) del período
+    // Recuadro de ISLR en la Forma 30 de Ventas — depende del régimen de la empresa:
+    //  · Especial  → Anticipo de ISLR (Decreto 3.719): 1% sobre ingresos brutos, se genera
+    //    AUTOMÁTICAMENTE con la declaración de IVA y sigue su periodicidad:
+    //      - persona jurídica (RIF J/G, C.A.): IVA quincenal → anticipo quincenal.
+    //      - firma personal (RIF V/E, persona natural): IVA mensual → anticipo mensual.
+    //  · Ordinario/Formal/Natural → Declaración Estimada (LISLR Art. 82): anual, sobre renta neta
+    //    estimada, pagada en porciones — NO se calcula sobre las ventas del mes.
+    function renderIslrBox(brutos) {
+      const box = document.getElementById('islrEstimBox');
+      if (!box) return;
+      const emp = window.__EMPRESA_ACTIVA || {};
+      const cond = emp.cond || 'Contribuyente Ordinario';
+      if (/especial/i.test(cond)) {
+        const ini = (emp.rif || '').toUpperCase().replace(/[^A-Z]/g, '').charAt(0);
+        const esNatural = ini === 'V' || ini === 'E';
+        const periodo = esNatural ? 'mensual' : 'quincenal';
+        const tipoTxt = esNatural ? 'firma personal (persona natural)' : 'persona jurídica (C.A.)';
+        box.innerHTML = '<div class="op-head"><span class="op-tag teal">Anticipo ISLR</span> Sobre ingresos brutos</div>'
+          + '<div class="op-row"><span>Ingresos brutos del período</span><span class="mono">' + fmtF(brutos) + '</span></div>'
+          + '<div class="op-row"><span>Porcentaje aplicable</span><span class="mono">1%</span></div>'
+          + '<div class="op-row"><span>Periodicidad</span><span class="mono">' + periodo + '</span></div>'
+          + '<div class="op-row total"><span>Anticipo a enterar</span><span class="mono">' + fmtF(brutos * 0.01) + '</span></div>'
+          + '<div class="op-foot">Decreto Constituyente 3.719 · se genera automáticamente con la declaración de IVA (' + periodo + ', por ser ' + tipoTxt + ').</div>';
+      } else {
+        box.innerHTML = '<div class="op-head"><span class="op-tag teal">Estimada ISLR</span> Declaración estimada (anual)</div>'
+          + '<div class="op-row"><span>Base de cálculo</span><span class="mono">Renta neta estimada</span></div>'
+          + '<div class="op-row"><span>Modalidad de pago</span><span class="mono">En porciones</span></div>'
+          + '<div class="op-row total"><span>Sobre ventas del mes</span><span class="mono">No aplica</span></div>'
+          + '<div class="op-foot">LISLR Art. 82 · obligatoria si la renta neta del año anterior supera 1.500 U.T. · se estima sobre la renta neta (≥80% del año anterior) y se paga en porciones, no sobre las ventas brutas.</div>';
+      }
+    }
+    function actualizarAutoliquidacion() {
+      const setN = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = fmtF(v); };
+      const cuota = Math.max(0, _debF - _credF);               // ítem 27: débito − crédito
+      const exced = Math.max(0, _credF - _debF);               // ítem 28: excedente de crédito
+      const retIva = Number(window.__RET_IVA_SUFRIDA) || 0;    // IVA retenido por los clientes (sufrido)
+      const descontadas = Math.min(cuota, retIva);             // solo se descuenta hasta agotar la cuota
+      const saldoRet = retIva - descontadas;                   // retenciones no aplicadas → al mes siguiente
+      const pagar = Math.max(0, cuota - descontadas);          // ítem 48: lo que realmente se paga
+      setN('f30v-cuota', cuota);
+      setN('f30v-exced', exced);
+      setN('f30v-ret66', retIva); setN('f30v-ret74', retIva);
+      setN('f30v-ret55', descontadas); setN('f30v-ret67', saldoRet);
+      setN('f30v-pagar', pagar);
+    }
+    window.__recalcAutoliq = actualizarAutoliquidacion;
+    function registrarMov(tipo) {
+      const esCompra = tipo === 'compra';
+      // Terceros del rol correspondiente (proveedores para compras, clientes para ventas) → autocompletado
+      const terceros = (window.__getTerceros ? window.__getTerceros() : []).filter((t) => (esCompra ? t.prov : t.cli) && t.nombre);
+      const normRif = (s) => (s || '').toUpperCase().replace(/[\s.\-]/g, '');
+      window.openFormModal && window.openFormModal({
+        title: esCompra ? 'Registrar compra (Libro de Compras)' : 'Registrar venta (Libro de Ventas)',
+        saveLabel: 'Registrar en el libro',
+        fields: [
+          { name: 'fecha', label: 'Fecha de la factura', type: 'date', value: '2026-06-01' },
+          { name: 'tipoDoc', label: 'Tipo de documento', type: 'select', options: esCompra ? ['FC (Factura)', 'NC (Nota de crédito)', 'ND (Nota de débito)'] : ['FV (Factura de venta)', 'NC (Nota de crédito)', 'ND (Nota de débito)'] },
+          { name: 'nombre', label: (esCompra ? 'Proveedor' : 'Cliente') + ' (escribe las iniciales y elige)', col: 2, type: 'datalist', options: terceros.map((t) => t.nombre), placeholder: 'Ej. Sum… → Suministros Lara, C.A.' },
+          { name: 'rif', label: 'RIF / C.I. (mayúscula, sin guiones)', upper: true, placeholder: 'J123456789' },
+          { name: 'numFactura', label: 'N° de Factura', placeholder: 'F-00000000' },
+          { name: 'numControl', label: 'N° de Control', placeholder: '00-00000000' },
+          { name: 'base', label: 'Base imponible (Bs)', type: 'number', step: '0.01', placeholder: '0.00' },
+          { name: 'alic', label: 'Alícuota IVA', type: 'select', options: ['16%', '8%', 'Exento'] },
+          { name: 'exento', label: 'Monto exento / sin ' + (esCompra ? 'crédito' : 'débito') + ' (Bs)', type: 'number', step: '0.01', placeholder: '0.00' },
+        ].concat(esCompra ? [] : [{ name: 'igtf', label: 'IGTF 3% (si cobró en divisas, Bs)', type: 'number', step: '0.01', placeholder: '0.00' }]).concat([
+          { name: 'retPct', label: (esCompra ? 'IVA que le retienes al proveedor' : 'IVA que te retuvo el cliente') + ' (opcional)', type: 'select', options: ['Sin retención', '75%', '100%'] },
+          { name: 'retComp', label: 'N° comprobante de retención' + (esCompra ? ' (vacío = se genera)' : ' (el que te dio el cliente)'), placeholder: esCompra ? 'Se genera solo' : 'Ej. 20260600000123' },
+        ]),
+        afterRender: (body) => {
+          const prov = body.querySelector('[data-name="nombre"]');
+          const rif = body.querySelector('[data-name="rif"]');
+          if (!prov) return;
+          const autollenar = () => {
+            const t = terceros.find((x) => x.nombre.toLowerCase() === prov.value.trim().toLowerCase());
+            if (t) {
+              if (rif) rif.value = normRif(t.rif);
+              // foco al siguiente dato faltante: N° de factura
+              const nf = body.querySelector('[data-name="numFactura"]');
+              if (nf) nf.focus();
+            }
+          };
+          prov.addEventListener('change', autollenar);
+          prov.addEventListener('input', autollenar);
+        },
+        onSave: (v) => {
+          if (!window.sb || !window.__CUENTA_ID || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) return 'No hay una empresa activa seleccionada.';
+          if (!v.nombre) return 'Indica el ' + (esCompra ? 'proveedor' : 'cliente') + '.';
+          const base = parseFloat(v.base) || 0, exento = parseFloat(v.exento) || 0, igtf = parseFloat(v.igtf) || 0;
+          const alic = v.alic === '8%' ? 0.08 : v.alic === 'Exento' ? 0 : 0.16;
+          const iva = base * alic, total = base + iva + exento;
+          const p = (v.fecha || '').split('-');
+          const fecha = p.length === 3 ? (p[2] + '/' + p[1] + '/' + p[0].slice(2)) : '';
+          window.sb.from('libro_fiscal').insert({
+            cuenta_id: window.__CUENTA_ID, empresa_id: window.__EMPRESA_ACTIVA.id, tipo: tipo, fecha: fecha,
+            tercero_nombre: v.nombre, tercero_rif: normRif(v.rif), numero_factura: v.numFactura, numero_control: v.numControl,
+            tipo_doc: (v.tipoDoc || (esCompra ? 'FC' : 'FV')).slice(0, 2), exento: exento, base: base, alicuota: alic, iva: iva, igtf: igtf, total: total,
+          }).then(({ error }) => {
+            if (error) { toast('No se pudo guardar: ' + error.message, 'error'); return; }
+            if (window.cargarLibroFiscal) window.cargarLibroFiscal(tipo);
+            toast((esCompra ? 'Compra' : 'Venta') + ' registrada en el libro · Bs ' + fmtF(total), 'success');
+            // Si se indicó retención de IVA, registra el comprobante de retención asociado a esta factura
+            const retPctNum = v.retPct === '100%' ? 100 : v.retPct === '75%' ? 75 : 0;
+            if (retPctNum && iva > 0) {
+              const retMonto = iva * retPctNum / 100;
+              let comp = (v.retComp || '').trim();
+              if (!comp && esCompra && p.length === 3) comp = p[0] + p[1] + String(Date.now()).slice(-8);
+              window.sb.from('retenciones').insert({
+                cuenta_id: window.__CUENTA_ID, empresa_id: window.__EMPRESA_ACTIVA.id,
+                direccion: esCompra ? 'practicada' : 'sufrida', tipo: 'iva', fecha: fecha, comprobante: comp,
+                tercero_nombre: v.nombre, tercero_rif: normRif(v.rif), factura: v.numFactura, numero_control: v.numControl,
+                base: iva, pct: retPctNum, monto: retMonto, estado: 'Registrado',
+              }).then(({ error: e2 }) => {
+                if (e2) { toast('Factura ok, pero la retención no se guardó: ' + e2.message, 'error'); return; }
+                if (window.cargarRetenciones) window.cargarRetenciones();
+                toast('Retención de IVA ' + (esCompra ? 'practicada' : 'sufrida') + ' registrada · Bs ' + fmtF(retMonto), 'success');
+              });
+            }
+          });
+        },
+      });
+    }
+    const _libroData = { compra: [], venta: [] }; // últimas filas cargadas por tipo (para editar/eliminar)
+    async function cargarLibroFiscal(tipo) {
+      const tabName = tipo === 'compra' ? 'compras' : 'ventas';
+      const sel = tipo === 'compra' ? 'table.libro-compras' : 'table.libro-ventas:not(.libro-maquina)';
+      const table = view.querySelector('.fiscal-tab[data-tab="' + tabName + '"] ' + sel);
+      if (!table) return;
+      const esCompra = tipo === 'compra';
+      const tbody = table.querySelector('tbody'), tfoot = table.querySelector('tfoot');
+      const totRow = (tot, ex, base, iva, igtf) => '<tr class="libro-tot"><td colspan="7" style="text-align:right;">TOTALES DEL PERÍODO</td><td class="num">' + fmtF(tot) + '</td><td class="num">' + fmtF(ex) + '</td><td class="num">' + fmtF(base) + '</td><td></td><td class="num">' + fmtF(iva) + '</td>' + (esCompra ? '' : '<td class="num">' + fmtF(igtf) + '</td>') + '</tr>';
+      const setN = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = fmtF(v); };
+      const resetF30c = () => { ['f30c-ex', 'f30c-base16', 'f30c-iva16', 'f30c-base8', 'f30c-iva8', 'f30c-baseTot', 'f30c-ivaTot', 'f30c-ded', 'f30c-dedTot', 'f30c-credTot'].forEach((id) => setN(id, 0)); };
+      const resetF30v = () => { ['f30v-base16', 'f30v-iva16', 'f30v-base8', 'f30v-iva8', 'f30v-baseTot', 'f30v-ivaTot', 'f30v-debTot', 'f30v-igtf', 'f30v-igtfBase'].forEach((id) => setN(id, 0)); renderIslrBox(0); window.__IGTF_VENTAS = { base: 0, ops: 0, monto: 0 }; if (window.__renderIGTF) window.__renderIGTF(); };
+      const vacio = (txt) => {
+        if (tbody) tbody.innerHTML = '<tr><td colspan="' + (esCompra ? 12 : 13) + '" style="text-align:center;color:var(--fg-muted);padding:14px;">' + (txt || ('Sin registros. Usa "Registrar ' + tipo + '".')) + '</td></tr>';
+        if (tfoot) tfoot.innerHTML = totRow(0, 0, 0, 0, 0);
+        if (esCompra) { _credF = 0; resetF30c(); } else { _debF = 0; resetF30v(); }
+        _libroData[tipo] = [];
+        actualizarAutoliquidacion();
+      };
+      if (!window.sb || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) { vacio(); return; }
+      const { data, error } = await window.sb.from('libro_fiscal').select('*').eq('empresa_id', window.__EMPRESA_ACTIVA.id).eq('tipo', tipo).order('fecha');
+      if (error) { console.warn('[DigiAccount] No se pudo cargar el libro fiscal:', error.message); vacio('No se pudieron cargar (¿creaste la tabla libro_fiscal?).'); return; }
+      const arr = data || [];
+      _libroData[tipo] = arr;
+      if (!arr.length) { vacio(); return; }
+      let tTot = 0, tEx = 0, tBase = 0, tIva = 0, tIgtf = 0;
+      let base16 = 0, iva16 = 0, base8 = 0, iva8 = 0;
+      tbody.innerHTML = arr.map((r, i) => {
+        const tot = Number(r.total) || 0, ex = Number(r.exento) || 0, base = Number(r.base) || 0, iva = Number(r.iva) || 0, igtf = Number(r.igtf) || 0, alic = Number(r.alicuota) || 0;
+        tTot += tot; tEx += ex; tBase += base; tIva += iva; tIgtf += igtf;
+        if (alic >= 0.15) { base16 += base; iva16 += iva; } else if (alic > 0) { base8 += base; iva8 += iva; }
+        const alicTxt = alic > 0 ? (Math.round(alic * 100) + '%') : 'Ex.';
+        return '<tr data-id="' + (r.id || '') + '" data-libro="' + tipo + '" style="cursor:pointer;" title="Clic para editar o eliminar"><td class="ctr">' + (i + 1) + '</td><td>' + (r.fecha || '') + '</td><td class="mono">' + (r.tercero_rif || '') + '</td><td class="primary">' + (r.tercero_nombre || '') + '</td>'
+          + '<td class="mono">' + (r.numero_factura || '') + '</td><td class="mono">' + (r.numero_control || '') + '</td><td class="ctr">' + (r.tipo_doc || (esCompra ? 'FC' : 'FV')) + '</td>'
+          + '<td class="num">' + fmtF(tot) + '</td><td class="num">' + fmtF(ex) + '</td><td class="num">' + fmtF(base) + '</td><td class="ctr">' + alicTxt + '</td><td class="num">' + fmtF(iva) + '</td>'
+          + (esCompra ? '' : '<td class="num">' + fmtF(igtf) + '</td>') + '</tr>';
+      }).join('');
+      if (tfoot) tfoot.innerHTML = totRow(tTot, tEx, tBase, tIva, tIgtf);
+      // Traslado a la Forma 30: desglose por alícuota
+      if (esCompra) {
+        _credF = tIva;
+        setN('f30c-ex', tEx);
+        setN('f30c-base16', base16); setN('f30c-iva16', iva16);
+        setN('f30c-base8', base8); setN('f30c-iva8', iva8);
+        setN('f30c-baseTot', base16 + base8 + tEx); setN('f30c-ivaTot', iva16 + iva8);
+        setN('f30c-ded', tIva); setN('f30c-dedTot', tIva); setN('f30c-credTot', tIva);
+      } else {
+        _debF = tIva;
+        setN('f30v-base16', base16); setN('f30v-iva16', iva16);
+        setN('f30v-base8', base8); setN('f30v-iva8', iva8);
+        setN('f30v-baseTot', base16 + base8 + tEx); setN('f30v-ivaTot', iva16 + iva8);
+        setN('f30v-debTot', tIva);
+        setN('f30v-igtf', tIgtf); setN('f30v-igtfBase', tIgtf > 0 ? tIgtf / 0.03 : 0);
+        window.__IGTF_VENTAS = { base: tIgtf > 0 ? tIgtf / 0.03 : 0, ops: arr.filter((r) => Number(r.igtf) > 0).length, monto: tIgtf };
+        if (window.__renderIGTF) window.__renderIGTF();
+        renderIslrBox(tBase + tEx);
+      }
+      actualizarAutoliquidacion();
+    }
+    window.cargarLibroFiscal = cargarLibroFiscal;
+
+    // Editar / eliminar un registro del libro (clic en la fila)
+    function editLibroFiscal(id, tipo) {
+      const r = (_libroData[tipo] || []).find((x) => String(x.id) === String(id));
+      if (!r) return;
+      const esCompra = tipo === 'compra';
+      const alicNum = Number(r.alicuota) || 0;
+      const alicVal = alicNum >= 0.15 ? '16%' : alicNum > 0 ? '8%' : 'Exento';
+      const tdMap = { FC: 'FC (Factura)', FV: 'FV (Factura de venta)', NC: 'NC (Nota de crédito)', ND: 'ND (Nota de débito)' };
+      window.openFormModal && window.openFormModal({
+        title: esCompra ? 'Editar compra (Libro de Compras)' : 'Editar venta (Libro de Ventas)',
+        saveLabel: 'Guardar cambios',
+        fields: [
+          { name: 'fecha', label: 'Fecha (dd/mm/aa)', value: r.fecha || '' },
+          { name: 'tipoDoc', label: 'Tipo de documento', type: 'select', options: esCompra ? ['FC (Factura)', 'NC (Nota de crédito)', 'ND (Nota de débito)'] : ['FV (Factura de venta)', 'NC (Nota de crédito)', 'ND (Nota de débito)'], value: tdMap[r.tipo_doc] || (esCompra ? 'FC (Factura)' : 'FV (Factura de venta)') },
+          { name: 'nombre', label: esCompra ? 'Proveedor' : 'Cliente', col: 2, value: r.tercero_nombre || '' },
+          { name: 'rif', label: 'RIF', upper: true, value: r.tercero_rif || '' },
+          { name: 'numFactura', label: 'N° de Factura', value: r.numero_factura || '' },
+          { name: 'numControl', label: 'N° de Control', value: r.numero_control || '' },
+          { name: 'base', label: 'Base imponible (Bs)', type: 'number', step: '0.01', value: r.base != null ? String(r.base) : '' },
+          { name: 'alic', label: 'Alícuota IVA', type: 'select', options: ['16%', '8%', 'Exento'], value: alicVal },
+          { name: 'exento', label: 'Monto exento / sin ' + (esCompra ? 'crédito' : 'débito') + ' (Bs)', type: 'number', step: '0.01', value: r.exento != null ? String(r.exento) : '' },
+        ].concat(esCompra ? [] : [{ name: 'igtf', label: 'IGTF 3% (Bs)', type: 'number', step: '0.01', value: r.igtf != null ? String(r.igtf) : '' }]),
+        onSave: (v) => {
+          if (!window.sb) return 'Sin conexión.';
+          if (!v.nombre) return 'Indica el ' + (esCompra ? 'proveedor' : 'cliente') + '.';
+          const base = parseFloat(v.base) || 0, exento = parseFloat(v.exento) || 0, igtf = parseFloat(v.igtf) || 0;
+          const alic = v.alic === '8%' ? 0.08 : v.alic === 'Exento' ? 0 : 0.16;
+          const iva = base * alic, total = base + iva + exento;
+          window.sb.from('libro_fiscal').update({
+            fecha: v.fecha, tipo_doc: (v.tipoDoc || '').slice(0, 2), tercero_nombre: v.nombre,
+            tercero_rif: (v.rif || '').toUpperCase().replace(/[\s.\-]/g, ''), numero_factura: v.numFactura, numero_control: v.numControl,
+            exento: exento, base: base, alicuota: alic, iva: iva, igtf: igtf, total: total,
+          }).eq('id', id).then(({ error }) => {
+            if (error) { toast('No se pudo actualizar: ' + error.message, 'error'); return; }
+            cargarLibroFiscal(tipo);
+            toast((esCompra ? 'Compra' : 'Venta') + ' actualizada · Bs ' + fmtF(total), 'success');
+          });
+        },
+        onDelete: (closeModal) => {
+          if (!window.confirm('¿Eliminar este registro del libro? Esta acción no se puede deshacer.')) return;
+          window.sb.from('libro_fiscal').delete().eq('id', id).then(({ error }) => {
+            if (error) { toast('No se pudo eliminar: ' + error.message, 'error'); return; }
+            cargarLibroFiscal(tipo);
+            toast('Registro eliminado', 'success');
+          });
+          closeModal();
+        },
+      });
+    }
+    view.addEventListener('click', (e) => {
+      const tr = e.target.closest('tr[data-id][data-libro]');
+      if (tr) editLibroFiscal(tr.dataset.id, tr.dataset.libro);
+    });
+
+    const regCompraBtn = document.getElementById('regCompraBtn');
+    if (regCompraBtn) regCompraBtn.addEventListener('click', () => registrarMov('compra'));
+    const regVentaBtn = document.getElementById('regVentaBtn');
+    if (regVentaBtn) regVentaBtn.addEventListener('click', () => registrarMov('venta'));
+    cargarLibroFiscal('compra');
+    cargarLibroFiscal('venta');
 
     // Comprobante de retención: emitir y registrar
     const emitir = document.getElementById('compEmitirBtn');
@@ -4856,7 +5725,7 @@
       cargarCriptoactivos();
       const medir = document.getElementById('criptoMedir');
       if (medir) medir.addEventListener('click', async () => {
-        let totalGan = 0, totalPer = 0;
+        let totalGanORI = 0, totalRevORI = 0, totalPerdida = 0;
         const updates = [];
         cxTable.querySelectorAll('tr[data-cripto]').forEach((tr) => {
           const inp = tr.querySelector('.cx-newvr'); if (!inp) return;
@@ -4870,15 +5739,17 @@
           const varEl = tr.querySelector('.cx-var');
           varEl.textContent = (varTotal >= 0 ? '+' : '') + fmt(varTotal);
           varEl.style.color = varTotal > 0 ? 'var(--da-success)' : varTotal < 0 ? 'var(--da-danger)' : 'var(--fg-muted)';
-          if (delta > 0.005) totalGan += delta; else if (delta < -0.005) totalPer += -delta;
+          if (delta > 0.005) { totalGanORI += delta; }
+          else if (delta < -0.005) { const baja = -delta, oriAcum = Math.max(0, vrPrev - costo), rev = Math.min(baja, oriAcum); totalRevORI += rev; totalPerdida += (baja - rev); }
           if (tr.dataset.id && window.sb) updates.push(window.sb.from('criptoactivos').update({ valor_razonable: nuevoVr }).eq('id', tr.dataset.id));
         });
         recalc();
         if (updates.length) await Promise.all(updates);
-        // Asiento de medición VEN-NIF 12: ganancia → ORI, pérdida → resultado
+        // Asiento VEN-NIF 12: incremento → ORI; disminución → resultado PREVIA deducción del incremento en ORI
         const lineas = [];
-        if (totalGan > 0.005) { lineas.push({ cta: '1.1.6 · Criptoactivos', debe: totalGan, haber: 0 }); lineas.push({ cta: '3.2.5.01 · Ganancia por tenencia de criptoactivos (ORI)', debe: 0, haber: totalGan }); }
-        if (totalPer > 0.005) { lineas.push({ cta: '6.3.1.01 · Pérdida por tenencia de criptoactivos', debe: totalPer, haber: 0 }); lineas.push({ cta: '1.1.6 · Criptoactivos', debe: 0, haber: totalPer }); }
+        if (totalGanORI > 0.005) { lineas.push({ cta: '1.1.6 · Criptoactivos', debe: totalGanORI, haber: 0 }); lineas.push({ cta: '3.2.5.01 · Ganancia por tenencia de criptoactivos (ORI)', debe: 0, haber: totalGanORI }); }
+        if (totalRevORI > 0.005) { lineas.push({ cta: '3.2.5.01 · Ganancia por tenencia de criptoactivos (ORI)', debe: totalRevORI, haber: 0 }); lineas.push({ cta: '1.1.6 · Criptoactivos', debe: 0, haber: totalRevORI }); }
+        if (totalPerdida > 0.005) { lineas.push({ cta: '6.3.1.01 · Pérdida por tenencia de criptoactivos', debe: totalPerdida, haber: 0 }); lineas.push({ cta: '1.1.6 · Criptoactivos', debe: 0, haber: totalPerdida }); }
         const body = document.getElementById('cxAsientoBody');
         const wrap = document.getElementById('cxAsiento');
         if (!lineas.length) { pendienteAsiento = null; toast('No hay variación en el valor razonable', 'info'); if (wrap) wrap.hidden = true; return; }
@@ -4965,6 +5836,23 @@
       difPane.addEventListener('input', calcDif);
       difPane.addEventListener('change', calcDif);
       calcDif();
+
+      const difBtn = document.getElementById('difContabilizarBtn');
+      if (difBtn) difBtn.addEventListener('click', async () => {
+        const dt = get('baseContable') - get('baseFiscal');
+        const imp = dt * (get('tasaIslr') / 100);
+        const pol = (difPane.querySelector('input[name="difPol"]:checked') || {}).value || 'omitir';
+        if (pol === 'omitir') { toast('Política "omitir": el impuesto diferido se revela en notas, no se contabiliza (VEN-NIF 11).', 'info'); return; }
+        if (imp <= 0.005) { toast('No hay impuesto diferido que reconocer.', 'info'); return; }
+        if (!window.__postAsiento) { toast('No disponible', 'error'); return; }
+        const lineas = [
+          { cta: '6.3.1.05 · Gasto por impuesto diferido (VEN-NIF 11)', debe: imp, haber: 0 },
+          { cta: '2.2.2 · Impuesto diferido pasivo', debe: 0, haber: imp },
+        ];
+        const res = await window.__postAsiento('Reconocimiento de impuesto diferido pasivo (VEN-NIF 11)', 'IMP-DIF', lineas, 'auto');
+        if (res && res.error) { toast('No se pudo contabilizar: ' + res.error.message, 'error'); return; }
+        toast('Impuesto diferido reconocido · Bs ' + fmt(imp) + ' · fluye a la contabilidad', 'success');
+      });
     }
   })();
 
@@ -5222,6 +6110,8 @@
       render(); updateKPIs();
     }
     window.cargarTerceros = cargarTerceros;
+    // Getter para que otros módulos (Fiscal) ofrezcan los terceros como autocompletado
+    window.__getTerceros = () => DB.map((t) => ({ id: t._id, nombre: t.nombre, rif: t.rif, cli: t.cli, prov: t.prov, fiscal: t.fiscal }));
 
     // ---- Filtros y búsqueda ----
     document.getElementById('tercerosFilters').querySelectorAll('button').forEach((b) => {

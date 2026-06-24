@@ -4944,6 +4944,7 @@
     body.printing-comp .rec-scrim,
     body.printing-comp .pay-scrim,
     body.printing-comp .onb-scrim,
+    body.printing-comp .form-modal-overlay,
     body.printing-comp .fm-overlay { display: none !important; }
     body.printing-comp #printPortal { display: block !important; }
     body.printing-comp #printPortal,
@@ -6884,11 +6885,13 @@
   .fm-check input { width: 17px; height: 17px; flex: none; margin: 0; padding: 0; accent-color: var(--da-cyan-600); cursor: pointer; }
   .fm-foot {
     display: flex; align-items: center; justify-content: space-between;
-    padding: 13px 18px; border-top: 1px solid var(--border-default); gap: 14px;
+    padding: 13px 18px; border-top: 1px solid var(--border-default); gap: 10px; flex-wrap: wrap;
   }
-  .fm-msg { font-size: 12px; color: var(--fg-muted); flex: 1; }
+  .fm-msg { font-size: 12px; color: var(--fg-muted); flex: 1; min-width: 80px; }
   .fm-msg.error { color: var(--da-danger); font-weight: var(--fw-semibold); }
   .fm-actions { display: flex; gap: 9px; }
+  /* El atributo hidden debe ganarle a .btn (display:inline-flex), si no los botones "ocultos" aparecen */
+  .btn[hidden] { display: none !important; }
   @media (max-width: 560px) { .fm-grid { grid-template-columns: 1fr; } }
 
   /* Panel de notificaciones */

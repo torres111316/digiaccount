@@ -907,6 +907,7 @@
         <button data-tab="patrimonios"><i data-lucide="gem"></i> Grandes Patrimonios</button>
         <button data-tab="txt"><i data-lucide="file-down"></i> Retención IVA (TXT)</button>
         <button data-tab="islr"><i data-lucide="file-code-2"></i> Retención ISLR (XML)</button>
+        <button data-tab="igtf"><i data-lucide="coins"></i> IGTF (Forma 21)</button>
       </div>
 
       <!-- TAB: Calendario -->
@@ -1015,6 +1016,7 @@
             <div class="right">
               <button class="btn btn-ghost" style="height:32px;font-size:12px;" data-libro-action="print"><i data-lucide="printer"></i> Imprimir</button>
               <button class="btn btn-ghost" style="height:32px;font-size:12px;" data-libro-action="export"><i data-lucide="download"></i> Exportar</button>
+              <button class="btn btn-primary" style="height:32px;font-size:12px;" id="regCompraBtn"><i data-lucide="plus"></i> Registrar compra</button>
             </div>
           </div>
           <div class="table-scroll">
@@ -1121,23 +1123,23 @@
                 <tr><th class="item">N°</th><th class="concepto"></th><th class="grp" colspan="2">Base Imponible</th><th class="grp" colspan="2">Crédito Fiscal</th></tr>
               </thead>
               <tbody>
-                <tr><td class="item">10</td><td class="concepto">Compras no Gravadas y/o sin Derecho a Crédito Fiscal</td><td class="cod">30</td><td class="num">95.000,00</td><td class="cod"></td><td class="num"></td></tr>
+                <tr><td class="item">10</td><td class="concepto">Compras no Gravadas y/o sin Derecho a Crédito Fiscal</td><td class="cod">30</td><td class="num" id="f30c-ex">0,00</td><td class="cod"></td><td class="num"></td></tr>
                 <tr><td class="item">11</td><td class="concepto">Importación Gravadas por Alícuota General</td><td class="cod">31</td><td class="num">0,00</td><td class="cod">32</td><td class="num">0,00</td></tr>
                 <tr><td class="item">12</td><td class="concepto">Importaciones Gravadas por Alícuota General más Alícuota Adicional</td><td class="cod">312</td><td class="num">0,00</td><td class="cod">322</td><td class="num">0,00</td></tr>
                 <tr><td class="item">13</td><td class="concepto">Importaciones Gravadas por Alícuota Reducida</td><td class="cod">313</td><td class="num">0,00</td><td class="cod">323</td><td class="num">0,00</td></tr>
-                <tr><td class="item">14</td><td class="concepto">Compras Internas Gravadas por Alícuota General</td><td class="cod">33</td><td class="num">2.673.640,00</td><td class="cod">34</td><td class="num">427.782,40</td></tr>
+                <tr><td class="item">14</td><td class="concepto">Compras Internas Gravadas por Alícuota General</td><td class="cod">33</td><td class="num" id="f30c-base16">0,00</td><td class="cod">34</td><td class="num" id="f30c-iva16">0,00</td></tr>
                 <tr><td class="item">15</td><td class="concepto">Compras Internas Gravadas por Alícuota General más Alícuota Adicional</td><td class="cod">332</td><td class="num">0,00</td><td class="cod">342</td><td class="num">0,00</td></tr>
-                <tr><td class="item">16</td><td class="concepto">Compras Internas Gravadas por Alícuota Reducida</td><td class="cod">333</td><td class="num">240.000,00</td><td class="cod">343</td><td class="num">19.200,00</td></tr>
-                <tr class="subtot"><td class="item">17</td><td class="concepto">Total Compras y Créditos Fiscales del Período</td><td class="cod">35</td><td class="num">3.008.640,00</td><td class="cod">36</td><td class="num">446.982,40</td></tr>
-                <tr><td class="item">18</td><td class="concepto">Créditos Fiscales Totalmente Deducibles</td><td class="cod"></td><td class="num"></td><td class="cod">70</td><td class="num">446.982,40</td></tr>
+                <tr><td class="item">16</td><td class="concepto">Compras Internas Gravadas por Alícuota Reducida</td><td class="cod">333</td><td class="num" id="f30c-base8">0,00</td><td class="cod">343</td><td class="num" id="f30c-iva8">0,00</td></tr>
+                <tr class="subtot"><td class="item">17</td><td class="concepto">Total Compras y Créditos Fiscales del Período</td><td class="cod">35</td><td class="num" id="f30c-baseTot">0,00</td><td class="cod">36</td><td class="num" id="f30c-ivaTot">0,00</td></tr>
+                <tr><td class="item">18</td><td class="concepto">Créditos Fiscales Totalmente Deducibles</td><td class="cod"></td><td class="num"></td><td class="cod">70</td><td class="num" id="f30c-ded">0,00</td></tr>
                 <tr><td class="item">19</td><td class="concepto">Créditos Fiscales producto de la Aplicación del porcentaje de la prorrata</td><td class="cod"></td><td class="num"></td><td class="cod">37</td><td class="num">0,00</td></tr>
-                <tr class="subtot"><td class="item">20</td><td class="concepto">Total créditos fiscales deducibles (70 + 37)</td><td class="cod"></td><td class="num"></td><td class="cod">71</td><td class="num">446.982,40</td></tr>
+                <tr class="subtot"><td class="item">20</td><td class="concepto">Total créditos fiscales deducibles (70 + 37)</td><td class="cod"></td><td class="num"></td><td class="cod">71</td><td class="num" id="f30c-dedTot">0,00</td></tr>
                 <tr><td class="item">21</td><td class="concepto">Excedente Créditos Fiscales del mes Anterior (ítem 60 declaración anterior)</td><td class="cod"></td><td class="num"></td><td class="cod">20</td><td class="num">0,00</td></tr>
                 <tr><td class="item">22</td><td class="concepto">Reintegro Solicitado (sólo Exportadores)</td><td class="cod"></td><td class="num"></td><td class="cod">21</td><td class="num">0,00</td></tr>
                 <tr><td class="item">23</td><td class="concepto">Reintegro Solicitado (quien suministre bienes o servicios a entes exonerados)</td><td class="cod"></td><td class="num"></td><td class="cod">81</td><td class="num">0,00</td></tr>
                 <tr><td class="item">24</td><td class="concepto">Ajustes a los Créditos Fiscales de períodos anteriores</td><td class="cod"></td><td class="num"></td><td class="cod">38</td><td class="num">0,00</td></tr>
                 <tr><td class="item">25</td><td class="concepto">Certificados de Débitos Fiscales Exonerados (emitidos por entes exonerados)</td><td class="cod"></td><td class="num"></td><td class="cod">82</td><td class="num">0,00</td></tr>
-                <tr class="total"><td class="item">26</td><td class="concepto">Total Créditos Fiscales</td><td class="cod"></td><td class="num"></td><td class="cod">39</td><td class="num">446.982,40</td></tr>
+                <tr class="total"><td class="item">26</td><td class="concepto">Total Créditos Fiscales</td><td class="cod"></td><td class="num"></td><td class="cod">39</td><td class="num" id="f30c-credTot">0,00</td></tr>
               </tbody>
             </table>
           </div>
@@ -1153,18 +1155,13 @@
                   <th class="num">Base</th><th class="num">%</th><th class="num">Retenido</th>
                 </tr>
               </thead>
-              <tbody>
-                <tr><td class="mono">20260500000042</td><td class="mono">F-00284716</td><td><span class="op-tag cyan">IVA</span></td><td class="num">29.520,00</td><td class="num">75%</td><td class="num">22.140,00</td></tr>
-                <tr><td class="mono">20260500000041</td><td class="mono">F-00045128</td><td><span class="op-tag cyan">IVA</span></td><td class="num">131.200,00</td><td class="num">75%</td><td class="num">98.400,00</td></tr>
-                <tr><td class="mono">20260500000040</td><td class="mono">F-00102993</td><td><span class="op-tag navy">ISLR</span></td><td class="num">240.000,00</td><td class="num">3%</td><td class="num">7.200,00</td></tr>
-                <tr><td class="mono">20260500000038</td><td class="mono">F-00731122</td><td><span class="op-tag cyan">IVA</span></td><td class="num">200.000,00</td><td class="num">75%</td><td class="num">150.000,00</td></tr>
-                <tr><td class="mono">20260500000037</td><td class="mono">F-00018744</td><td><span class="op-tag cyan">IVA</span></td><td class="num">7.782,40</td><td class="num">75%</td><td class="num">5.836,80</td></tr>
-                <tr><td class="mono">20260500000036</td><td class="mono">F-00045621</td><td><span class="op-tag cyan">IVA</span></td><td class="num">29.760,00</td><td class="num">75%</td><td class="num">22.320,00</td></tr>
+              <tbody id="retComprasBody">
+                <tr><td colspan="6" style="text-align:center;color:var(--fg-muted);padding:14px;">Sin retenciones registradas en el período</td></tr>
               </tbody>
               <tfoot>
-                <tr class="t-iva"><td colspan="5">Total IVA retenido (75%) · Prov. 000054</td><td class="num">298.696,80</td></tr>
-                <tr class="t-islr"><td colspan="5">Total ISLR retenido · Decreto 1.808</td><td class="num">7.200,00</td></tr>
-                <tr class="t-tot"><td colspan="5">Total retenido del período</td><td class="num">305.896,80</td></tr>
+                <tr class="t-iva"><td colspan="5">Total IVA retenido (75%)</td><td class="num">0,00</td></tr>
+                <tr class="t-islr"><td colspan="5">Total ISLR retenido · Decreto 1.808</td><td class="num">0,00</td></tr>
+                <tr class="t-tot"><td colspan="5">Total retenido del período</td><td class="num">0,00</td></tr>
               </tfoot>
             </table>
             <a href="#" class="op-link" data-goto-fiscaltab="retenciones">Ver detalle y generar recibo en Retenciones <i data-lucide="arrow-right"></i></a>
@@ -1214,6 +1211,7 @@
             <div class="right">
               <button class="btn btn-ghost" style="height:32px;font-size:12px;" data-libro-action="print"><i data-lucide="printer"></i> Imprimir</button>
               <button class="btn btn-ghost" style="height:32px;font-size:12px;" data-libro-action="export"><i data-lucide="download"></i> Exportar</button>
+              <button class="btn btn-primary" style="height:32px;font-size:12px;" id="regVentaBtn"><i data-lucide="plus"></i> Registrar venta</button>
             </div>
           </div>
           <div class="table-scroll">
@@ -1312,21 +1310,21 @@
               <tbody>
                 <tr><td class="item">1</td><td class="concepto">Ventas Internas no Gravadas</td><td class="cod">40</td><td class="num">0,00</td><td class="cod"></td><td class="num"></td></tr>
                 <tr><td class="item">2</td><td class="concepto">Ventas de Exportación</td><td class="cod">41</td><td class="num">0,00</td><td class="cod"></td><td class="num"></td></tr>
-                <tr><td class="item">3</td><td class="concepto">Ventas Internas Gravadas por Alícuota General</td><td class="cod">42</td><td class="num">3.168.500,00</td><td class="cod">43</td><td class="num">506.960,00</td></tr>
+                <tr><td class="item">3</td><td class="concepto">Ventas Internas Gravadas por Alícuota General</td><td class="cod">42</td><td class="num" id="f30v-base16">0,00</td><td class="cod">43</td><td class="num" id="f30v-iva16">0,00</td></tr>
                 <tr><td class="item">4</td><td class="concepto">Ventas Internas Gravadas por Alícuota General más Alícuota Adicional</td><td class="cod">442</td><td class="num">0,00</td><td class="cod">452</td><td class="num">0,00</td></tr>
-                <tr><td class="item">5</td><td class="concepto">Ventas Internas Gravadas por Alícuota Reducida</td><td class="cod">443</td><td class="num">285.000,00</td><td class="cod">453</td><td class="num">22.800,00</td></tr>
-                <tr class="subtot"><td class="item">6</td><td class="concepto">Total Ventas y Débitos Fiscal para efectos de Determinación</td><td class="cod">46</td><td class="num">3.453.500,00</td><td class="cod">47</td><td class="num">529.760,00</td></tr>
+                <tr><td class="item">5</td><td class="concepto">Ventas Internas Gravadas por Alícuota Reducida</td><td class="cod">443</td><td class="num" id="f30v-base8">0,00</td><td class="cod">453</td><td class="num" id="f30v-iva8">0,00</td></tr>
+                <tr class="subtot"><td class="item">6</td><td class="concepto">Total Ventas y Débitos Fiscal para efectos de Determinación</td><td class="cod">46</td><td class="num" id="f30v-baseTot">0,00</td><td class="cod">47</td><td class="num" id="f30v-ivaTot">0,00</td></tr>
                 <tr><td class="item">7</td><td class="concepto">Ajustes a los Débitos Fiscales de períodos anteriores</td><td class="cod"></td><td class="num"></td><td class="cod">48</td><td class="num">0,00</td></tr>
                 <tr><td class="item">8</td><td class="concepto">Certificados de Débitos Fiscales Exonerados (recibos de entes exonerados)</td><td class="cod"></td><td class="num"></td><td class="cod">80</td><td class="num">0,00</td></tr>
-                <tr class="total"><td class="item">9</td><td class="concepto">Total Débitos Fiscales</td><td class="cod"></td><td class="num"></td><td class="cod">49</td><td class="num">529.760,00</td></tr>
+                <tr class="total"><td class="item">9</td><td class="concepto">Total Débitos Fiscales</td><td class="cod"></td><td class="num"></td><td class="cod">49</td><td class="num" id="f30v-debTot">0,00</td></tr>
                 <tr class="sec"><td colspan="6">Autoliquidación del IVA del Período</td></tr>
-                <tr><td class="item">27</td><td class="concepto">Total Cuota Tributaria del Período (Débitos 49 − Créditos 39)</td><td class="cod"></td><td class="num"></td><td class="cod">53</td><td class="num">82.777,60</td></tr>
-                <tr><td class="item">28</td><td class="concepto">Excedente de Crédito Fiscal para el mes siguiente</td><td class="cod"></td><td class="num"></td><td class="cod">60</td><td class="num">0,00</td></tr>
-                <tr><td class="item">34</td><td class="concepto">Retenciones del Período (IVA retenido por los clientes)</td><td class="cod"></td><td class="num"></td><td class="cod">66</td><td class="num">279.000,00</td></tr>
-                <tr><td class="item">37</td><td class="concepto">Total Retenciones</td><td class="cod"></td><td class="num"></td><td class="cod">74</td><td class="num">279.000,00</td></tr>
-                <tr><td class="item">38</td><td class="concepto">Retenciones Soportadas y Descontadas en esta Declaración</td><td class="cod"></td><td class="num"></td><td class="cod">55</td><td class="num">82.777,60</td></tr>
-                <tr class="excedente"><td class="item">39</td><td class="concepto">Saldo de Retenciones de IVA no aplicado (al mes siguiente)</td><td class="cod"></td><td class="num"></td><td class="cod">67</td><td class="num">196.222,40</td></tr>
-                <tr class="total"><td class="item">48</td><td class="concepto">Total a Pagar</td><td class="cod"></td><td class="num"></td><td class="cod">90</td><td class="num">0,00</td></tr>
+                <tr><td class="item">27</td><td class="concepto">Total Cuota Tributaria del Período (Débitos 49 − Créditos 39)</td><td class="cod"></td><td class="num"></td><td class="cod">53</td><td class="num" id="f30v-cuota">0,00</td></tr>
+                <tr><td class="item">28</td><td class="concepto">Excedente de Crédito Fiscal para el mes siguiente</td><td class="cod"></td><td class="num"></td><td class="cod">60</td><td class="num" id="f30v-exced">0,00</td></tr>
+                <tr><td class="item">34</td><td class="concepto">Retenciones del Período (IVA retenido por los clientes)</td><td class="cod"></td><td class="num"></td><td class="cod">66</td><td class="num" id="f30v-ret66">0,00</td></tr>
+                <tr><td class="item">37</td><td class="concepto">Total Retenciones</td><td class="cod"></td><td class="num"></td><td class="cod">74</td><td class="num" id="f30v-ret74">0,00</td></tr>
+                <tr><td class="item">38</td><td class="concepto">Retenciones Soportadas y Descontadas en esta Declaración</td><td class="cod"></td><td class="num"></td><td class="cod">55</td><td class="num" id="f30v-ret55">0,00</td></tr>
+                <tr class="excedente"><td class="item">39</td><td class="concepto">Saldo de Retenciones de IVA no aplicado (al mes siguiente)</td><td class="cod"></td><td class="num"></td><td class="cod">67</td><td class="num" id="f30v-ret67">0,00</td></tr>
+                <tr class="total"><td class="item">48</td><td class="concepto">Total a Pagar</td><td class="cod"></td><td class="num"></td><td class="cod">90</td><td class="num" id="f30v-pagar">0,00</td></tr>
               </tbody>
             </table>
           </div>
@@ -1344,15 +1342,12 @@
                 </tr>
               </thead>
               <tbody>
-                <tr><td class="mono">20260500001234</td><td class="mono">A-00012841</td><td><span class="op-tag cyan">IVA</span></td><td class="num">77.600,00</td><td class="num">75%</td><td class="num">58.200,00</td></tr>
-                <tr><td class="mono">20260500005678</td><td class="mono">A-00012839</td><td><span class="op-tag cyan">IVA</span></td><td class="num">294.400,00</td><td class="num">75%</td><td class="num">220.800,00</td></tr>
-                <tr><td class="mono">20260500000917</td><td class="mono">A-00012837</td><td><span class="op-tag navy">ISLR</span></td><td class="num">285.000,00</td><td class="num">2%</td><td class="num">5.700,00</td></tr>
-                <tr><td class="mono">20260500000642</td><td class="mono">A-00012830</td><td><span class="op-tag navy">ISLR</span></td><td class="num">410.000,00</td><td class="num">5%</td><td class="num">20.500,00</td></tr>
+                <tr><td colspan="6" style="text-align:center;color:var(--fg-muted);padding:14px;">Sin retenciones registradas en el período</td></tr>
               </tbody>
               <tfoot>
-                <tr class="t-iva"><td colspan="5">IVA retenido por clientes · Forma 30 (casilla 66)</td><td class="num">279.000,00</td></tr>
-                <tr class="t-islr"><td colspan="5">ISLR retenido por clientes · comprobante AR-CV</td><td class="num">26.200,00</td></tr>
-                <tr class="t-tot"><td colspan="5">Total retenido por clientes</td><td class="num">305.200,00</td></tr>
+                <tr class="t-iva"><td colspan="5">IVA retenido por clientes · Forma 30 (casilla 66)</td><td class="num">0,00</td></tr>
+                <tr class="t-islr"><td colspan="5">ISLR retenido por clientes · comprobante AR-CV</td><td class="num">0,00</td></tr>
+                <tr class="t-tot"><td colspan="5">Total retenido por clientes</td><td class="num">0,00</td></tr>
               </tfoot>
             </table>
 
@@ -1360,17 +1355,17 @@
             <div class="op-list">
               <div class="op-item igtf">
                 <div class="op-head"><span class="op-tag amber">IGTF</span> Débito de transacciones financieras</div>
-                <div class="op-row"><span>Base (cobros en divisas / cripto)</span><span class="mono">2.325.000,00</span></div>
+                <div class="op-row"><span>Base (cobros en divisas / cripto)</span><span class="mono" id="f30v-igtfBase">0,00</span></div>
                 <div class="op-row"><span>Alícuota</span><span class="mono">3%</span></div>
-                <div class="op-row total"><span>IGTF cobrado</span><span class="mono">69.750,00</span></div>
-                <div class="op-foot">Ley de IGTF · declaración semanal (Forma 09)</div>
+                <div class="op-row total"><span>IGTF cobrado</span><span class="mono" id="f30v-igtf">0,00</span></div>
+                <div class="op-foot">Ley de IGTF (G.O. 6.687/2022) · declaración quincenal (Forma 21)</div>
               </div>
-              <div class="op-item anticipo">
+              <div class="op-item anticipo" id="islrEstimBox">
                 <div class="op-head"><span class="op-tag teal">Anticipo ISLR</span> Sobre ingresos brutos</div>
-                <div class="op-row"><span>Ingresos brutos del período</span><span class="mono">3.453.500,00</span></div>
+                <div class="op-row"><span>Ingresos brutos del período</span><span class="mono" id="f30v-brutos">0,00</span></div>
                 <div class="op-row"><span>Porcentaje aplicable</span><span class="mono">1%</span></div>
-                <div class="op-row total"><span>Anticipo a enterar</span><span class="mono">34.535,00</span></div>
-                <div class="op-foot">Providencia de anticipos · contribuyentes especiales</div>
+                <div class="op-row total"><span>Anticipo a enterar</span><span class="mono" id="f30v-anticipo">0,00</span></div>
+                <div class="op-foot">Decreto Constituyente 3.719 · Sujetos Pasivos Especiales</div>
               </div>
             </div>
             <a href="#" class="op-link" data-goto-fiscaltab="retenciones">Ver detalle y generar recibo en Retenciones <i data-lucide="arrow-right"></i></a>
@@ -1473,20 +1468,20 @@
               <tbody>
                 <tr><td class="item">1</td><td class="concepto">Ventas Internas no Gravadas</td><td class="cod">40</td><td class="num">0,00</td><td class="cod"></td><td class="num"></td></tr>
                 <tr><td class="item">2</td><td class="concepto">Ventas de Exportación</td><td class="cod">41</td><td class="num">0,00</td><td class="cod"></td><td class="num"></td></tr>
-                <tr><td class="item">3</td><td class="concepto">Ventas Internas Gravadas por Alícuota General</td><td class="cod">42</td><td class="num">3.168.500,00</td><td class="cod">43</td><td class="num">506.960,00</td></tr>
+                <tr><td class="item">3</td><td class="concepto">Ventas Internas Gravadas por Alícuota General</td><td class="cod">42</td><td class="num">0,00</td><td class="cod">43</td><td class="num">0,00</td></tr>
                 <tr><td class="item">4</td><td class="concepto">Ventas Internas Gravadas por Alícuota General más Alícuota Adicional</td><td class="cod">442</td><td class="num">0,00</td><td class="cod">452</td><td class="num">0,00</td></tr>
-                <tr><td class="item">5</td><td class="concepto">Ventas Internas Gravadas por Alícuota Reducida</td><td class="cod">443</td><td class="num">285.000,00</td><td class="cod">453</td><td class="num">22.800,00</td></tr>
-                <tr class="subtot"><td class="item">6</td><td class="concepto">Total Ventas y Débitos Fiscal para efectos de Determinación</td><td class="cod">46</td><td class="num">3.453.500,00</td><td class="cod">47</td><td class="num">529.760,00</td></tr>
+                <tr><td class="item">5</td><td class="concepto">Ventas Internas Gravadas por Alícuota Reducida</td><td class="cod">443</td><td class="num">0,00</td><td class="cod">453</td><td class="num">0,00</td></tr>
+                <tr class="subtot"><td class="item">6</td><td class="concepto">Total Ventas y Débitos Fiscal para efectos de Determinación</td><td class="cod">46</td><td class="num">0,00</td><td class="cod">47</td><td class="num">0,00</td></tr>
                 <tr><td class="item">7</td><td class="concepto">Ajustes a los Débitos Fiscales de períodos anteriores</td><td class="cod"></td><td class="num"></td><td class="cod">48</td><td class="num">0,00</td></tr>
                 <tr><td class="item">8</td><td class="concepto">Certificados de Débitos Fiscales Exonerados (recibos de entes exonerados)</td><td class="cod"></td><td class="num"></td><td class="cod">80</td><td class="num">0,00</td></tr>
-                <tr class="total"><td class="item">9</td><td class="concepto">Total Débitos Fiscales</td><td class="cod"></td><td class="num"></td><td class="cod">49</td><td class="num">529.760,00</td></tr>
+                <tr class="total"><td class="item">9</td><td class="concepto">Total Débitos Fiscales</td><td class="cod"></td><td class="num"></td><td class="cod">49</td><td class="num">0,00</td></tr>
                 <tr class="sec"><td colspan="6">Autoliquidación del IVA del Período</td></tr>
-                <tr><td class="item">27</td><td class="concepto">Total Cuota Tributaria del Período (Débitos 49 − Créditos 39)</td><td class="cod"></td><td class="num"></td><td class="cod">53</td><td class="num">82.777,60</td></tr>
+                <tr><td class="item">27</td><td class="concepto">Total Cuota Tributaria del Período (Débitos 49 − Créditos 39)</td><td class="cod"></td><td class="num"></td><td class="cod">53</td><td class="num">0,00</td></tr>
                 <tr><td class="item">28</td><td class="concepto">Excedente de Crédito Fiscal para el mes siguiente</td><td class="cod"></td><td class="num"></td><td class="cod">60</td><td class="num">0,00</td></tr>
-                <tr><td class="item">34</td><td class="concepto">Retenciones del Período (IVA retenido por los clientes)</td><td class="cod"></td><td class="num"></td><td class="cod">66</td><td class="num">279.000,00</td></tr>
-                <tr><td class="item">37</td><td class="concepto">Total Retenciones</td><td class="cod"></td><td class="num"></td><td class="cod">74</td><td class="num">279.000,00</td></tr>
-                <tr><td class="item">38</td><td class="concepto">Retenciones Soportadas y Descontadas en esta Declaración</td><td class="cod"></td><td class="num"></td><td class="cod">55</td><td class="num">82.777,60</td></tr>
-                <tr class="excedente"><td class="item">39</td><td class="concepto">Saldo de Retenciones de IVA no aplicado (al mes siguiente)</td><td class="cod"></td><td class="num"></td><td class="cod">67</td><td class="num">196.222,40</td></tr>
+                <tr><td class="item">34</td><td class="concepto">Retenciones del Período (IVA retenido por los clientes)</td><td class="cod"></td><td class="num"></td><td class="cod">66</td><td class="num">0,00</td></tr>
+                <tr><td class="item">37</td><td class="concepto">Total Retenciones</td><td class="cod"></td><td class="num"></td><td class="cod">74</td><td class="num">0,00</td></tr>
+                <tr><td class="item">38</td><td class="concepto">Retenciones Soportadas y Descontadas en esta Declaración</td><td class="cod"></td><td class="num"></td><td class="cod">55</td><td class="num">0,00</td></tr>
+                <tr class="excedente"><td class="item">39</td><td class="concepto">Saldo de Retenciones de IVA no aplicado (al mes siguiente)</td><td class="cod"></td><td class="num"></td><td class="cod">67</td><td class="num">0,00</td></tr>
                 <tr class="total"><td class="item">48</td><td class="concepto">Total a Pagar</td><td class="cod"></td><td class="num"></td><td class="cod">90</td><td class="num">0,00</td></tr>
               </tbody>
             </table>
@@ -1505,15 +1500,12 @@
                 </tr>
               </thead>
               <tbody>
-                <tr><td class="mono">20260500001234</td><td class="mono">A-00012841</td><td><span class="op-tag cyan">IVA</span></td><td class="num">77.600,00</td><td class="num">75%</td><td class="num">58.200,00</td></tr>
-                <tr><td class="mono">20260500005678</td><td class="mono">A-00012839</td><td><span class="op-tag cyan">IVA</span></td><td class="num">294.400,00</td><td class="num">75%</td><td class="num">220.800,00</td></tr>
-                <tr><td class="mono">20260500000917</td><td class="mono">A-00012837</td><td><span class="op-tag navy">ISLR</span></td><td class="num">285.000,00</td><td class="num">2%</td><td class="num">5.700,00</td></tr>
-                <tr><td class="mono">20260500000642</td><td class="mono">A-00012830</td><td><span class="op-tag navy">ISLR</span></td><td class="num">410.000,00</td><td class="num">5%</td><td class="num">20.500,00</td></tr>
+                <tr><td colspan="6" style="text-align:center;color:var(--fg-muted);padding:14px;">Sin retenciones registradas en el período</td></tr>
               </tbody>
               <tfoot>
-                <tr class="t-iva"><td colspan="5">IVA retenido por clientes · Forma 30 (casilla 66)</td><td class="num">279.000,00</td></tr>
-                <tr class="t-islr"><td colspan="5">ISLR retenido por clientes · comprobante AR-CV</td><td class="num">26.200,00</td></tr>
-                <tr class="t-tot"><td colspan="5">Total retenido por clientes</td><td class="num">305.200,00</td></tr>
+                <tr class="t-iva"><td colspan="5">IVA retenido por clientes · Forma 30 (casilla 66)</td><td class="num">0,00</td></tr>
+                <tr class="t-islr"><td colspan="5">ISLR retenido por clientes · comprobante AR-CV</td><td class="num">0,00</td></tr>
+                <tr class="t-tot"><td colspan="5">Total retenido por clientes</td><td class="num">0,00</td></tr>
               </tfoot>
             </table>
 
@@ -1521,16 +1513,16 @@
             <div class="op-list">
               <div class="op-item igtf">
                 <div class="op-head"><span class="op-tag amber">IGTF</span> Débito de transacciones financieras</div>
-                <div class="op-row"><span>Base (cobros en divisas / cripto)</span><span class="mono">2.325.000,00</span></div>
+                <div class="op-row"><span>Base (cobros en divisas / cripto)</span><span class="mono">0,00</span></div>
                 <div class="op-row"><span>Alícuota</span><span class="mono">3%</span></div>
-                <div class="op-row total"><span>IGTF cobrado</span><span class="mono">69.750,00</span></div>
-                <div class="op-foot">Ley de IGTF · declaración semanal (Forma 09)</div>
+                <div class="op-row total"><span>IGTF cobrado</span><span class="mono">0,00</span></div>
+                <div class="op-foot">Ley de IGTF (G.O. 6.687/2022) · declaración quincenal (Forma 21)</div>
               </div>
               <div class="op-item anticipo">
                 <div class="op-head"><span class="op-tag teal">Anticipo ISLR</span> Sobre ingresos brutos</div>
-                <div class="op-row"><span>Ingresos brutos del período</span><span class="mono">3.453.500,00</span></div>
+                <div class="op-row"><span>Ingresos brutos del período</span><span class="mono">0,00</span></div>
                 <div class="op-row"><span>Porcentaje aplicable</span><span class="mono">1%</span></div>
-                <div class="op-row total"><span>Anticipo a enterar</span><span class="mono">34.535,00</span></div>
+                <div class="op-row total"><span>Anticipo a enterar</span><span class="mono">0,00</span></div>
                 <div class="op-foot">Providencia de anticipos · contribuyentes especiales</div>
               </div>
             </div>
@@ -1583,8 +1575,9 @@
             <button class="filter-chip ret-fchip" data-retfilter="iva">IVA</button>
             <button class="filter-chip ret-fchip" data-retfilter="islr">ISLR</button>
             <div class="right">
+              <button class="btn btn-primary" style="height:32px;font-size:12px;" id="retAddBtn"><i data-lucide="plus"></i> Registrar retención</button>
               <button class="btn btn-ghost" style="height:32px;font-size:12px;" id="retReciboBtn"><i data-lucide="receipt-text"></i> Generar recibo del período</button>
-              <button class="btn btn-primary" style="height:32px;font-size:12px;" data-goto-fiscaltab="txt"><i data-lucide="file-down"></i> Generar TXT SENIAT</button>
+              <button class="btn btn-ghost" style="height:32px;font-size:12px;" data-goto-fiscaltab="txt"><i data-lucide="file-down"></i> Generar TXT SENIAT</button>
             </div>
           </div>
 
@@ -1710,7 +1703,7 @@
                     <div class="ex-h"><span class="op-tag amber">IGTF</span> Transacciones financieras (3%)</div>
                     <div class="ex-r"><span>Base (cobros en divisas / cripto)</span><span class="mono">2.325.000,00</span></div>
                     <div class="ex-r total"><span>IGTF cobrado</span><span class="mono">69.750,00</span></div>
-                    <div class="ex-f">Ley de IGTF · Forma 09 (semanal)</div>
+                    <div class="ex-f">Ley de IGTF · Forma 21 (quincenal)</div>
                   </div>
                   <div class="rr-ex anticipo">
                     <div class="ex-h"><span class="op-tag teal">Anticipo ISLR</span> Sobre ingresos brutos (1%)</div>
@@ -2110,7 +2103,7 @@
             <div class="txt-gen">
               <div style="background:var(--da-cyan-50);border:1px solid var(--da-cyan-100);border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:14px;font-size:12px;color:var(--da-cyan-700);display:flex;gap:8px;align-items:flex-start;">
                 <i data-lucide="link" style="width:14px;height:14px;flex-shrink:0;margin-top:2px;"></i>
-                <span>El archivo se arma automáticamente con los <strong>22 comprobantes de retención de IVA</strong> del período (solo IVA; el ISLR se entera por otra vía). Cada línea = un comprobante. <a href="#" data-goto-fiscaltab="comprobantes" style="color:var(--da-cyan-700);font-weight:600;text-decoration:underline;">Ver comprobantes →</a></span>
+                <span>El archivo se arma automáticamente con los <strong><span id="ivaResumenNota">0</span> comprobantes de retención de IVA</strong> practicados (solo IVA; el ISLR se entera por otra vía). Cada línea = un comprobante. <a href="#" data-goto-fiscaltab="comprobantes" style="color:var(--da-cyan-700);font-weight:600;text-decoration:underline;">Ver comprobantes →</a></span>
               </div>
               <div class="txt-gen-row">
                 <div class="txt-select">
@@ -2147,36 +2140,16 @@
               </div>
 
               <div class="txt-preview">
-                <div class="lh">Vista previa · RET_IVA_J304567890_202605.txt</div>
-                <pre><span class="key">J304567890</span>	202605	2026-05-28	C	01	<span class="key">J315678901</span>	00284716	00-018472	214020.00	184500.00	22140.00	0	20260500000042	0.00	16.00	0
-<span class="key">J304567890</span>	202605	2026-05-27	C	01	<span class="key">J294458217</span>	00045128	00-018465	951200.00	820000.00	98400.00	0	20260500000041	0.00	16.00	0
-<span class="key">J304567890</span>	202605	2026-05-24	C	01	<span class="key">J287769013</span>	00731122	00-018430	1450000.00	1250000.00	150000.00	0	20260500000038	0.00	16.00	0
-<span class="key">J304567890</span>	202605	2026-05-23	C	01	<span class="key">J309981225</span>	00018744	00-018421	56422.40	48640.00	5836.80	0	20260500000037	0.00	16.00	0
-<span class="key">J304567890</span>	202605	2026-05-22	C	01	<span class="key">J293310878</span>	00045621	00-018418	215760.00	186000.00	22320.00	0	20260500000036	0.00	16.00	0</pre>
+                <div class="lh" id="txtPreviewLh">Vista previa · 16 columnas (A–P) separadas por tabulación</div>
+                <pre id="txtPreviewPre">Presiona "Generar y descargar TXT" para ver aquí la vista previa con tus retenciones de IVA reales del período.</pre>
               </div>
 
-              <button class="btn btn-primary" style="width:100%;justify-content:center;" id="txtGenBtn"><i data-lucide="file-down"></i> Generar y descargar TXT · Retenciones IVA</button>
+              <button class="btn btn-primary" style="width:100%;justify-content:center;" id="txtGenBtn"><i data-lucide="file-down"></i> Generar TXT · Retenciones practicadas (027 · agente)</button>
+              <button class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:8px;" id="txtGen028Btn"><i data-lucide="file-down"></i> Generar TXT · Informativa por proveedor (028 · sufridas)</button>
 
               <div class="txt-history">
                 <div class="lbl">Archivos generados recientemente</div>
-                <div class="txt-row">
-                  <div class="ic"><i data-lucide="file-text"></i></div>
-                  <div class="nm">RET_IVA_J304567890_202605Q1.txt</div>
-                  <div class="meta">15 may · 26 líneas</div>
-                  <button class="dl" title="Descargar"><i data-lucide="download"></i></button>
-                </div>
-                <div class="txt-row">
-                  <div class="ic"><i data-lucide="file-text"></i></div>
-                  <div class="nm">RET_ISLR_J304567890_202605.txt</div>
-                  <div class="meta">10 may · 22 líneas</div>
-                  <button class="dl" title="Descargar"><i data-lucide="download"></i></button>
-                </div>
-                <div class="txt-row">
-                  <div class="ic"><i data-lucide="file-text"></i></div>
-                  <div class="nm">RET_IVA_J304567890_202604Q2.txt</div>
-                  <div class="meta">30 abr · 31 líneas</div>
-                  <button class="dl" title="Descargar"><i data-lucide="download"></i></button>
-                </div>
+                <div id="txtHist"><div class="txt-empty" style="font-size:12px;color:var(--fg-muted);padding:8px;">Aún no has generado archivos en esta sesión.</div></div>
               </div>
             </div>
           </div>
@@ -2191,19 +2164,19 @@
             <div style="padding:8px 20px 18px;">
               <div class="salary-row" style="border-bottom:1px dashed var(--border-default);padding:12px 0;">
                 <span class="lbl">Comprobantes de IVA</span>
-                <span class="val">22</span>
+                <span class="val" id="ivaResumenCount">0</span>
               </div>
               <div class="salary-row" style="border-bottom:1px dashed var(--border-default);padding:12px 0;">
-                <span class="lbl">Base de retención</span>
-                <span class="val">Bs 520.747</span>
+                <span class="lbl">IVA causado (base de retención)</span>
+                <span class="val">Bs <span id="ivaResumenBase">0,00</span></span>
               </div>
               <div class="salary-row" style="border-bottom:1px dashed var(--border-default);padding:12px 0;">
                 <span class="lbl">Alícuota de retención</span>
-                <span class="val">75%</span>
+                <span class="val">75% / 100%</span>
               </div>
               <div class="salary-row total" style="background:var(--da-navy-700);color:var(--da-white);margin:12px -20px -18px;padding:14px 20px;">
                 <span class="lbl" style="color:var(--fg-on-dark-muted);text-transform:uppercase;letter-spacing:var(--tracking-overline);font-size:11px;font-weight:600;">IVA retenido a enterar</span>
-                <span class="val" style="color:var(--da-cyan-500);font-size:20px;">Bs 390.560</span>
+                <span class="val" style="color:var(--da-cyan-500);font-size:20px;">Bs <span id="ivaResumenRet">0,00</span></span>
               </div>
             </div>
           </div>
@@ -2237,57 +2210,29 @@
               </div>
 
               <div class="txt-fields">
-                <div class="txt-fields-title">Estructura del registro XML · campos por retención</div>
+                <div class="txt-fields-title">Estructura del XML · atributos raíz + campos por retención (esquema oficial)</div>
                 <div class="txt-fields-grid">
-                  <span><b>1</b> RIF Agente</span>
-                  <span><b>2</b> Período (AAAAMM)</span>
-                  <span><b>3</b> N° Secuencial</span>
-                  <span><b>4</b> RIF Retenido</span>
-                  <span><b>5</b> N° Factura</span>
-                  <span><b>6</b> N° Control</span>
-                  <span><b>7</b> Fecha Operación</span>
-                  <span><b>8</b> Código Concepto</span>
-                  <span><b>9</b> Monto Operación</span>
-                  <span><b>10</b> % Retención</span>
+                  <span><b>raíz</b> RifAgente</span>
+                  <span><b>raíz</b> Periodo (AAAAMM)</span>
+                  <span><b>1</b> RifRetenido</span>
+                  <span><b>2</b> NumeroFactura</span>
+                  <span><b>3</b> NumeroControl</span>
+                  <span><b>4</b> CodigoConcepto</span>
+                  <span><b>5</b> MontoOperacion</span>
+                  <span><b>6</b> PorcentajeRetencion</span>
                 </div>
               </div>
 
               <div class="txt-preview">
-                <div class="lh">Vista previa · RET_ISLR_J304567890_202605.xml</div>
-                <pre>&lt;?xml version="1.0" encoding="ISO-8859-1"?&gt;
-&lt;<span class="key">RelacionRetencionesISLR</span>&gt;
-  &lt;RifAgente&gt;J304567890&lt;/RifAgente&gt;
-  &lt;Periodo&gt;202605&lt;/Periodo&gt;
-  &lt;DetalleRetencion&gt;
-    &lt;Secuencial&gt;1&lt;/Secuencial&gt;
-    &lt;RifRetenido&gt;<span class="key">J315186225</span>&lt;/RifRetenido&gt;
-    &lt;NumeroFactura&gt;0000259539&lt;/NumeroFactura&gt;
-    &lt;NumeroControl&gt;00386833&lt;/NumeroControl&gt;
-    &lt;FechaOperacion&gt;28-05-2026&lt;/FechaOperacion&gt;
-    &lt;CodigoConcepto&gt;002&lt;/CodigoConcepto&gt;
-    &lt;MontoOperacion&gt;71428.57&lt;/MontoOperacion&gt;
-    &lt;PorcentajeRetencion&gt;3.00&lt;/PorcentajeRetencion&gt;
-  &lt;/DetalleRetencion&gt;
-  &lt;!-- … 3 registros más … --&gt;
-&lt;/<span class="key">RelacionRetencionesISLR</span>&gt;</pre>
+                <div class="lh" id="xmlPreviewLh">Vista previa · XML Relación Informativa (esquema oficial TRI.GR.03.0013)</div>
+                <pre id="xmlPreviewPre">Presiona "Generar y descargar XML" para ver aquí la vista previa con tus retenciones de ISLR reales del período.</pre>
               </div>
 
               <button class="btn btn-primary" style="width:100%;justify-content:center;" id="xmlGenBtn"><i data-lucide="file-code-2"></i> Generar y descargar XML · Retenciones ISLR</button>
 
               <div class="txt-history">
                 <div class="lbl">Archivos generados recientemente</div>
-                <div class="txt-row">
-                  <div class="ic"><i data-lucide="file-code-2"></i></div>
-                  <div class="nm">RET_ISLR_J304567890_202604.xml</div>
-                  <div class="meta">03 may · 5 registros</div>
-                  <button class="dl" title="Descargar"><i data-lucide="download"></i></button>
-                </div>
-                <div class="txt-row">
-                  <div class="ic"><i data-lucide="file-code-2"></i></div>
-                  <div class="nm">RET_ISLR_J304567890_202603.xml</div>
-                  <div class="meta">04 abr · 4 registros</div>
-                  <button class="dl" title="Descargar"><i data-lucide="download"></i></button>
-                </div>
+                <div id="xmlHist"><div class="txt-empty" style="font-size:12px;color:var(--fg-muted);padding:8px;">Aún no has generado archivos en esta sesión.</div></div>
               </div>
             </div>
           </div>
@@ -2298,10 +2243,10 @@
                 <div class="title">Retenciones de ISLR · Mayo 2026</div>
                 <div class="sub">Datos que arma el archivo XML · Salarios y otras (99074)</div>
               </div>
-              <div class="panel-actions"><span class="contrib-badge" style="font-size:10px;"><i data-lucide="hash"></i> 4 registros</span></div>
+              <div class="panel-actions"><span class="contrib-badge" style="font-size:10px;"><i data-lucide="hash"></i> <span id="islrResumenCount">0</span> registros</span></div>
             </div>
             <div class="table-scroll" style="padding:0 4px 4px;">
-              <table class="data-table" style="min-width:880px;">
+              <table class="data-table" id="islrResumenTable" style="min-width:880px;">
                 <thead>
                   <tr>
                     <th class="ctr">N° Sec.</th>
@@ -2316,18 +2261,15 @@
                     <th class="num">Monto Retenido</th>
                   </tr>
                 </thead>
-                <tbody>
-                  <tr><td class="ctr">1</td><td class="mono">J315186225</td><td class="primary">Servicios Técnicos Lara, C.A.</td><td class="mono">0000259539</td><td class="mono">00386833</td><td>28-05-2026</td><td class="ctr">002</td><td class="num">71.428,57</td><td class="ctr">3%</td><td class="num">2.142,86</td></tr>
-                  <tr><td class="ctr">2</td><td class="mono">V159982314</td><td class="primary">Servicios Profesionales JM</td><td class="mono">0000102993</td><td class="mono">00018451</td><td>26-05-2026</td><td class="ctr">002</td><td class="num">240.000,00</td><td class="ctr">3%</td><td class="num">7.200,00</td></tr>
-                  <tr><td class="ctr">3</td><td class="mono">J301124456</td><td class="primary">Transporte Caracas Express</td><td class="mono">0000009287</td><td class="mono">00018442</td><td>25-05-2026</td><td class="ctr">071</td><td class="num">95.000,00</td><td class="ctr">1%</td><td class="num">950,00</td></tr>
-                  <tr><td class="ctr">4</td><td class="mono">J306672210</td><td class="primary">Arrendadora Valle, C.A.</td><td class="mono">0000004410</td><td class="mono">00018401</td><td>22-05-2026</td><td class="ctr">057</td><td class="num">63.000,00</td><td class="ctr">3%</td><td class="num">1.890,00</td></tr>
+                <tbody id="islrResumenBody">
+                  <tr><td colspan="10" style="text-align:center;color:var(--fg-muted);padding:14px;">Sin retenciones de ISLR practicadas. Regístralas en la pestaña Retenciones.</td></tr>
                 </tbody>
                 <tfoot>
                   <tr class="libro-tot">
                     <td colspan="7" style="text-align:right;">TOTAL RETENIDO DEL PERÍODO</td>
-                    <td class="num">469.428,57</td>
+                    <td class="num" id="islrResumenOp">0,00</td>
                     <td></td>
-                    <td class="num">12.182,86</td>
+                    <td class="num" id="islrResumenRet">0,00</td>
                   </tr>
                 </tfoot>
               </table>
@@ -2337,6 +2279,77 @@
             </div>
           </div>
         </section>
+      </div>
+
+      <!-- TAB: IGTF (Forma 21) -->
+      <div class="fiscal-tab" data-tab="igtf">
+        <div class="comprobante-layout">
+          <div class="comp-controls">
+            <div class="comp-controls-head">Declaración quincenal · Forma 21</div>
+            <div class="comp-controls-body">
+              <div class="comp-field">
+                <span class="lbl">Período / Quincena</span>
+                <div class="select-box" id="igtfPerSel">Junio 2026 · 1ra Quincena <i data-lucide="chevron-down"></i></div>
+              </div>
+              <div class="comp-field">
+                <span class="lbl">Tipo de declaración</span>
+                <div class="select-box" id="igtfTipoSel">Originaria <i data-lucide="chevron-down"></i></div>
+              </div>
+              <div class="dpp-mini">
+                <div class="dm-row"><span>IGTF 3% (divisas/cripto)</span><span class="mono" id="igtf3MontoMini">0,00</span></div>
+                <div class="dm-row"><span>IGTF 2% (bolívares)</span><span class="mono" id="igtf2MontoMini">0,00</span></div>
+                <div class="dm-row tot"><span>Total a pagar</span><span class="mono" id="igtfTotalMini">0,00</span></div>
+              </div>
+              <div style="font-size:11px;color:var(--fg-muted);padding:2px;line-height:1.5;">El <strong>3%</strong> se toma automático del <strong>Libro de Ventas</strong> (cobros en divisas/cripto). El <strong>2%</strong> en Bs ingrésalo solo si aplica (poco común).</div>
+              <label class="comp-field">
+                <span class="lbl">2% · Base imponible en Bs (opcional)</span>
+                <input type="number" step="0.01" id="igtf2BaseInput" value="0" style="width:100%;height:34px;padding:0 10px;border:1px solid var(--border-default);border-radius:var(--radius-sm);font-family:inherit;">
+              </label>
+              <label class="comp-field">
+                <span class="lbl">2% · N° de operaciones</span>
+                <input type="number" step="1" id="igtf2OpsInput" value="0" style="width:100%;height:34px;padding:0 10px;border:1px solid var(--border-default);border-radius:var(--radius-sm);font-family:inherit;">
+              </label>
+            </div>
+            <div class="comp-controls-foot">
+              <button class="btn btn-primary" style="width:100%;justify-content:center;" id="igtfRegistrarBtn"><i data-lucide="check"></i> Registrar y declarar</button>
+              <button class="btn btn-ghost" style="width:100%;justify-content:center;" id="igtfPrintBtn"><i data-lucide="printer"></i> Imprimir Forma 21</button>
+              <button class="btn btn-ghost" style="width:100%;justify-content:center;" id="igtfPdfBtn"><i data-lucide="download"></i> Compromiso de Pago (99021)</button>
+              <div style="border-top:1px dashed var(--border-default);margin-top:4px;padding-top:10px;">
+                <a href="#" data-goto-fiscaltab="ventas" style="font-size:11px;color:var(--da-cyan-700);font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:5px;"><i data-lucide="receipt" style="width:13px;height:13px;"></i> Ver el IGTF 3% en el Libro de Ventas →</a>
+              </div>
+            </div>
+          </div>
+
+          <div class="comprobante dpp-doc" id="igtfDoc">
+            <div class="dpp-resumen-head">
+              <div class="dpp-rh-left">
+                <div class="t"><i data-lucide="coins"></i> Declaración de IGTF · Forma 21</div>
+                <div class="s">Ley de IGTF (G.O. 6.687 Extraord. 25/02/2022) · Quincenal · 2% Bs / 3% divisas-cripto</div>
+              </div>
+              <div class="dpp-rh-right">
+                <div class="co" id="igtfDocCo">Empresa</div>
+                <div class="m"><span class="mono" id="igtfDocRif">RIF —</span> · Contribuyente Especial</div>
+                <div class="m">Período: <strong id="igtfDocPeriodo">—</strong></div>
+              </div>
+            </div>
+
+            <div class="lr-title" style="margin:6px 0 8px;"><i data-lucide="clipboard-list"></i> Determinación del IGTF del período</div>
+            <table class="decl-iva-table dpp-decl">
+              <thead>
+                <tr><th class="item">N°</th><th class="concepto">Concepto</th><th class="num">Base imponible (Bs)</th><th class="cod">Oper.</th><th class="cod">Alíc.</th><th class="num">IGTF (Bs)</th></tr>
+              </thead>
+              <tbody>
+                <tr><td class="item">1</td><td class="concepto">Pagos en moneda extranjera, criptomonedas o criptoactivos</td><td class="num" id="igtf3BaseDoc">0,00</td><td class="cod" id="igtf3OpsDoc">0</td><td class="cod">3%</td><td class="num" id="igtf3MontoDoc">0,00</td></tr>
+                <tr><td class="item">2</td><td class="concepto">Transacciones / débitos en bolívares</td><td class="num" id="igtf2BaseDoc">0,00</td><td class="cod" id="igtf2OpsDoc">0</td><td class="cod">2%</td><td class="num" id="igtf2MontoDoc">0,00</td></tr>
+                <tr class="total"><td class="item">III</td><td class="concepto">Total IGTF a pagar del período</td><td class="num"></td><td class="cod"></td><td class="cod"></td><td class="num" id="igtfTotalDoc">0,00</td></tr>
+              </tbody>
+            </table>
+
+            <div class="dpp-note">
+              Declaración del <strong>Impuesto a las Grandes Transacciones Financieras (IGTF) · Forma 21</strong>, conforme a la Ley publicada en Gaceta Oficial N° 6.687 Extraordinario del 25/02/2022. Periodicidad <strong>quincenal</strong> (sujeta al calendario de Retenciones de IVA). El <strong>3%</strong> aplica a los pagos en moneda extranjera, criptomonedas o criptoactivos (tomado del Libro de Ventas); el <strong>2%</strong> a las transacciones en bolívares. Con monto a pagar se genera el <strong>Compromiso de Pago (Forma 99021)</strong>; sin monto, el Certificado Electrónico. El N° de declaración se asigna al transmitir en el portal del SENIAT. Se permite una declaración originaria y hasta seis complementarias por período.
+            </div>
+          </div>
+        </div>
       </div>
 
     </section><!-- /view-fiscal -->
@@ -4606,8 +4619,8 @@
           </div>
           <p class="vennif-intro">Principios de Contabilidad de Aceptación General en Venezuela aplicados por el sistema, conforme al <strong>BA VEN-NIF 8 versión 11</strong> (vigente para ejercicios desde el 01/01/2026). Adopta las <strong>Normas NIIF de Contabilidad</strong> y la <strong>NIIF para las PYMES, edición 2025</strong>.</p>
           <div class="vennif-grid">
-            <div class="vennif-card new"><div class="vc-top"><span class="vc-code">BA VEN-NIF 12</span><span class="tag cyan">Nuevo</span></div><div class="vc-name">Tenencia de Criptoactivos Propios</div><div class="vc-desc">Reconocimiento al costo, medición posterior a valor razonable (ORI / resultado). v1 · abr. 2026</div></div>
-            <div class="vennif-card new"><div class="vc-top"><span class="vc-code">BA VEN-NIF 11</span><span class="tag cyan">Nuevo</span></div><div class="vc-name">Impuesto Diferido Pasivo · Supresión del API Fiscal</div><div class="vc-desc">Tratamiento alternativo para sujetos pasivos especiales. v1 · abr. 2026</div></div>
+            <div class="vennif-card new"><div class="vc-top"><span class="vc-code">BA VEN-NIF 12</span><span class="tag cyan">Nuevo</span></div><div class="vc-name">Tenencia de Criptoactivos Propios</div><div class="vc-desc">Reconocimiento al costo, medición posterior a valor razonable (ORI / resultado). v1 · jun. 2026</div></div>
+            <div class="vennif-card new"><div class="vc-top"><span class="vc-code">BA VEN-NIF 11</span><span class="tag cyan">Nuevo</span></div><div class="vc-name">Impuesto Diferido Pasivo · Supresión del API Fiscal</div><div class="vc-desc">Tratamiento alternativo para sujetos pasivos especiales. v1 · jun. 2026</div></div>
             <div class="vennif-card"><div class="vc-top"><span class="vc-code">BA VEN-NIF 9</span></div><div class="vc-name">Prestaciones Sociales (LOTTT)</div><div class="vc-desc">Régimen de prestaciones e indemnización. v0</div></div>
             <div class="vennif-card"><div class="vc-top"><span class="vc-code">BA VEN-NIF 10</span></div><div class="vc-name">Variaciones en la Tasa de Cambio</div><div class="vc-desc">Pasivos en moneda extranjera. v0</div></div>
             <div class="vennif-card"><div class="vc-top"><span class="vc-code">BA VEN-NIF 2</span></div><div class="vc-name">Reconocimiento de la Inflación</div><div class="vc-desc">Reexpresión de estados financieros. v4</div></div>
@@ -4849,7 +4862,7 @@
       <div class="conta-tab" data-tab="cripto">
         <div class="norma-banner">
           <span class="nb-ic"><i data-lucide="bitcoin"></i></span>
-          <div class="nb-txt"><strong>BA VEN-NIF 12 · Tenencia de Criptoactivos Propios.</strong> Reconocimiento inicial al costo; medición posterior a valor razonable. Los <em>incrementos</em> se reconocen en Otro Resultado Integral (ORI) y las <em>disminuciones</em> en el resultado del período. Sin mercado activo (Nivel 1/2), el valor razonable es cero.</div>
+          <div class="nb-txt"><strong>BA VEN-NIF 12 · Tenencia de Criptoactivos Propios.</strong> Reconocimiento inicial al costo; medición posterior a valor razonable. Los <em>incrementos</em> se reconocen en Otro Resultado Integral (ORI); las <em>disminuciones</em> en el resultado del período, <strong>previa deducción de cualquier ganancia acumulada en ORI</strong>. Sin mercado activo (Nivel 1/2), el valor razonable es cero.</div>
         </div>
 
         <section class="kpi-row">
@@ -4920,6 +4933,9 @@
             <div class="cost-out"><span>Pasivo reconocido en libros</span><strong data-out="difReconocido">—</strong></div>
             <div class="cost-out"><span>Monto NO reconocido (revelación)</span><strong data-out="difNoReconocido">—</strong></div>
             <div class="dif-nota" id="difNota"></div>
+            <div style="padding:12px 16px 4px;">
+              <button class="btn btn-primary" style="width:100%;justify-content:center;height:36px;font-size:12px;" id="difContabilizarBtn"><i data-lucide="check"></i> Contabilizar impuesto diferido</button>
+            </div>
           </div>
         </div>
       </div>
@@ -5488,8 +5504,10 @@
     </div>
     <div class="fm-body" id="fmBody"></div>
     <div class="fm-foot">
+      <button class="btn btn-ghost" id="fmDelete" hidden style="color:#c0392b;"><i data-lucide="trash-2"></i> Eliminar</button>
       <span class="fm-msg" id="fmMsg"></span>
       <div class="fm-actions">
+        <button class="btn btn-ghost" id="fmExtra" hidden><i data-lucide="printer"></i> <span id="fmExtraLbl">Imprimir</span></button>
         <button class="btn btn-ghost" id="fmCancel">Cancelar</button>
         <button class="btn btn-primary" id="fmSave"><i data-lucide="check"></i> Guardar</button>
       </div>
