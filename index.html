@@ -2817,10 +2817,43 @@
 
       <!-- TAB: Conciliación -->
       <div class="teso-tab" data-tab="concil">
-        <div style="text-align:center;color:var(--fg-muted);padding:48px 20px;">
-          <i data-lucide="check-check" style="width:32px;height:32px;opacity:.5;"></i>
-          <div style="font-size:14px;font-weight:600;margin-top:10px;">Conciliación bancaria</div>
-          <div style="font-size:12px;margin-top:4px;">Sin datos. Aquí cruzaremos tu extracto bancario con los movimientos registrados.</div>
+        <div class="data-table-wrap" style="margin-bottom:16px;">
+          <div class="table-toolbar" style="flex-wrap:wrap;gap:10px;">
+            <label style="font-size:12px;display:flex;align-items:center;gap:6px;">Cuenta:
+              <select id="concilCuenta" style="height:32px;border:1px solid var(--border);border-radius:8px;padding:0 8px;font:inherit;background:var(--bg-elev);color:inherit;"></select>
+            </label>
+            <label class="btn btn-ghost" style="height:32px;font-size:12px;cursor:pointer;">
+              <i data-lucide="upload"></i> Elegir extracto (CSV)
+              <input type="file" id="concilFile" accept=".csv,.txt,text/csv" style="display:none;">
+            </label>
+            <span id="concilFileName" style="font-size:11px;color:var(--fg-muted);"></span>
+            <button class="btn btn-primary" id="concilCargarBtn" style="height:32px;font-size:12px;"><i data-lucide="git-compare"></i> Cargar y conciliar</button>
+            <div class="right">
+              <button class="btn btn-ghost" id="concilConfirmBtn" style="height:32px;font-size:12px;" disabled><i data-lucide="check-check"></i> Confirmar conciliación</button>
+            </div>
+          </div>
+          <div id="concilMsg" style="padding:10px 14px;font-size:12px;color:var(--fg-muted);">Elige la cuenta, sube el extracto del banco en <strong>CSV</strong> y pulsa «Cargar y conciliar». Columnas reconocidas: <em>fecha, descripción, referencia, monto</em> (o <em>débito/crédito</em>).</div>
+        </div>
+
+        <section class="kpi-row" id="concilCuadre" hidden>
+          <div class="kpi"><div class="kpi-head"><span class="label">Saldo según tus libros</span><span class="kpi-icon"><i data-lucide="book-open"></i></span></div><div class="kpi-value"><span class="currency">Bs</span> <span id="concilSaldoLibros">0,00</span></div></div>
+          <div class="kpi"><div class="kpi-head"><span class="label">Partidas sin conciliar</span><span class="kpi-icon warning"><i data-lucide="alert-triangle"></i></span></div><div class="kpi-value" id="concilSinConciliar">0</div><div class="kpi-sub"><span class="meta" id="concilSinConciliarMeta">—</span></div></div>
+          <div class="kpi"><div class="kpi-head"><span class="label">Diferencia (banco − libros)</span><span class="kpi-icon"><i data-lucide="scale"></i></span></div><div class="kpi-value"><span class="currency">Bs</span> <span id="concilDiferencia">0,00</span></div><div class="kpi-sub"><span class="meta" id="concilDifMeta"></span></div></div>
+        </section>
+
+        <div id="concilResultados" hidden>
+          <div class="data-table-wrap" style="margin-bottom:16px;">
+            <div class="table-toolbar"><span style="font-size:12px;font-weight:700;color:#b42318;">En el banco, no en tus libros <span id="concilSoloBancoCount" class="count">0</span></span><div class="right"><span style="font-size:11px;color:var(--fg-muted);">Regístralos para cuadrar (comisiones, IGTF, intereses…)</span></div></div>
+            <div class="table-scroll"><table class="data-table" style="min-width:780px;"><thead><tr><th>Fecha</th><th>Descripción</th><th>Referencia</th><th class="num">Monto</th><th></th></tr></thead><tbody id="concilSoloBanco"></tbody></table></div>
+          </div>
+          <div class="data-table-wrap" style="margin-bottom:16px;">
+            <div class="table-toolbar"><span style="font-size:12px;font-weight:700;color:#9a6700;">En tus libros, no en el banco <span id="concilSoloLibrosCount" class="count">0</span></span><div class="right"><span style="font-size:11px;color:var(--fg-muted);">Cheques/pagos no cobrados o depósitos en tránsito</span></div></div>
+            <div class="table-scroll"><table class="data-table" style="min-width:680px;"><thead><tr><th>Fecha</th><th>Concepto</th><th>Referencia</th><th class="num">Monto</th></tr></thead><tbody id="concilSoloLibros"></tbody></table></div>
+          </div>
+          <div class="data-table-wrap">
+            <div class="table-toolbar"><span style="font-size:12px;font-weight:700;color:#0a7a44;">Conciliados (cuadran) <span id="concilMatchedCount" class="count">0</span></span></div>
+            <div class="table-scroll"><table class="data-table" style="min-width:700px;"><thead><tr><th>Fecha</th><th>Concepto</th><th class="num">Monto libros</th><th class="num">Monto banco</th><th>Estado</th></tr></thead><tbody id="concilMatched"></tbody></table></div>
+          </div>
         </div>
       </div>
 

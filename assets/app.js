@@ -2397,6 +2397,7 @@
       const cf = view.querySelector('.teso-tab[data-tab="resumen"] .table-footer .count');
       if (cf) cf.innerHTML = 'Mostrando <strong>' + _movs.length + '</strong> movimiento' + (_movs.length === 1 ? '' : 's');
       renderCxCxP();
+      if (window.__poblarConcilCuentas) window.__poblarConcilCuentas();
       if (window.lucide) window.lucide.createIcons();
     }
 
@@ -2610,6 +2611,178 @@
     const movBtn = document.getElementById('tesoMovBtn'); if (movBtn) movBtn.addEventListener('click', () => registrarMovimiento());
     // Permite registrar un cobro/pago prefilleado desde otro módulo (p. ej. botón "Cobrar" del recibo de venta)
     window.__registrarCobro = (pre) => registrarMovimiento(pre);
+
+    // ===== Conciliación bancaria: cruza el extracto (CSV) contra los movimientos registrados =====
+    (function setupConciliacion() {
+      const cuentaSel = document.getElementById('concilCuenta');
+      const fileEl = document.getElementById('concilFile');
+      const fileName = document.getElementById('concilFileName');
+      const cargarBtn = document.getElementById('concilCargarBtn');
+      const confirmBtn = document.getElementById('concilConfirmBtn');
+      const msgEl = document.getElementById('concilMsg');
+      if (!cargarBtn || !cuentaSel) return;
+      let lineasBanco = [], ultimoMatch = [];
+      const setMsg = (t) => { if (msgEl) msgEl.innerHTML = t; };
+
+      window.__poblarConcilCuentas = () => {
+        const prev = cuentaSel.value;
+        cuentaSel.innerHTML = _cuentas.map((c) => '<option value="' + esc(c.id) + '">' + esc(c.nombre) + '</option>').join('');
+        if (prev && _cuentas.some((c) => c.id === prev)) cuentaSel.value = prev;
+      };
+
+      function num(s) {
+        s = String(s == null ? '' : s).trim().replace(/[^\d.,-]/g, '');
+        if (!s) return 0;
+        if (s.indexOf(',') > -1 && s.indexOf('.') > -1) s = s.replace(/\./g, '').replace(',', '.');
+        else if (s.indexOf(',') > -1) s = s.replace(',', '.');
+        return parseFloat(s) || 0;
+      }
+      function parseCSV(text) {
+        const firstLine = (text.split(/\r?\n/).find((r) => r.trim()) || '');
+        const delim = firstLine.split(';').length > firstLine.split(',').length ? ';' : ',';
+        const rows = text.split(/\r?\n/).filter((r) => r.trim()).map((r) => r.split(delim).map((c) => c.trim().replace(/^"|"$/g, '')));
+        if (!rows.length) return [];
+        const norm = (s) => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+        const head = rows[0].map(norm);
+        const findCol = (...kw) => head.findIndex((h) => kw.some((k) => h.indexOf(k) > -1));
+        let ciFecha = findCol('fecha', 'date');
+        let ciDesc = findCol('descrip', 'concepto', 'detalle');
+        let ciRef = findCol('referencia', 'comprobante', 'documento', 'nro', 'numero', 'ref');
+        let ciMonto = findCol('monto', 'importe', 'valor');
+        const ciDeb = findCol('debito', 'debe', 'cargo', 'retiro');
+        const ciCred = findCol('credito', 'haber', 'abono', 'deposito');
+        const hasHeader = ciFecha > -1 || ciMonto > -1 || (ciDeb > -1 && ciCred > -1);
+        const body = hasHeader ? rows.slice(1) : rows;
+        if (!hasHeader) { ciFecha = 0; ciDesc = 1; ciRef = 2; ciMonto = 3; }
+        return body.map((r) => {
+          let monto;
+          if (ciMonto > -1) monto = num(r[ciMonto]);
+          else { const d = ciDeb > -1 ? num(r[ciDeb]) : 0; const c = ciCred > -1 ? num(r[ciCred]) : 0; monto = c - d; }
+          return { fecha: (ciFecha > -1 && r[ciFecha]) || '', desc: (ciDesc > -1 && r[ciDesc]) || '', ref: (ciRef > -1 && r[ciRef]) || '', monto: monto };
+        }).filter((l) => Math.abs(l.monto) > 0.005);
+      }
+      const montoMov = (m) => (m.tipo === 'ingreso' ? 1 : -1) * (Number(m.monto) || 0);
+
+      function conciliar() {
+        const cid = cuentaSel.value;
+        if (!cid) { setMsg('Elige una cuenta.'); return; }
+        if (!lineasBanco.length) { setMsg('Sube primero el extracto del banco (CSV).'); return; }
+        const movs = _movs.map((m, i) => ({ m: m, i: i })).filter((x) => x.m.cuenta_teso_id === cid);
+        const usados = new Set();
+        const matched = [], soloBanco = [];
+        lineasBanco.forEach((lb) => {
+          const cand = movs.find((x) => !usados.has(x.i) && Math.abs(montoMov(x.m) - lb.monto) < 0.01);
+          if (cand) { usados.add(cand.i); matched.push({ banco: lb, mov: cand.m }); } else soloBanco.push(lb);
+        });
+        const soloLibros = movs.filter((x) => !usados.has(x.i)).map((x) => x.m);
+        ultimoMatch = matched;
+        render(cid, matched, soloBanco, soloLibros);
+      }
+
+      function render(cid, matched, soloBanco, soloLibros) {
+        const cuadre = document.getElementById('concilCuadre'); if (cuadre) cuadre.hidden = false;
+        const res = document.getElementById('concilResultados'); if (res) res.hidden = false;
+        const saldoLibros = saldoDe(cid);
+        const sumBanco = soloBanco.reduce((s, l) => s + l.monto, 0);
+        const sumLibros = soloLibros.reduce((s, m) => s + montoMov(m), 0);
+        const dif = sumBanco - sumLibros;
+        const set = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
+        set('concilSaldoLibros', fmt(saldoLibros));
+        set('concilSinConciliar', String(soloBanco.length + soloLibros.length));
+        set('concilSinConciliarMeta', soloBanco.length + ' en banco · ' + soloLibros.length + ' en libros');
+        set('concilDiferencia', fmt(dif));
+        const difMeta = document.getElementById('concilDifMeta');
+        if (difMeta) difMeta.textContent = (Math.abs(dif) < 0.01 && !soloBanco.length) ? '✓ Conciliado' : 'Registra las partidas del banco para cuadrar';
+        const sb = document.getElementById('concilSoloBanco');
+        if (sb) { sb.__data = soloBanco; sb.innerHTML = soloBanco.length ? soloBanco.map((lb, k) => {
+          const neg = lb.monto < 0;
+          return '<tr><td>' + esc(lb.fecha) + '</td><td class="primary">' + esc(lb.desc || '—') + '</td><td class="mono">' + esc(lb.ref || '') + '</td>'
+            + '<td class="num" style="color:' + (neg ? '#b42318' : '#0a7a44') + ';">' + (neg ? '− ' : '+ ') + fmt(Math.abs(lb.monto)) + '</td>'
+            + '<td><button class="btn btn-primary" data-concil-reg="' + k + '" style="height:24px;font-size:10px;padding:0 9px;">Registrar</button></td></tr>';
+        }).join('') : '<tr><td colspan="5" style="text-align:center;color:var(--fg-muted);padding:14px;">Nada pendiente del banco ✓</td></tr>'; }
+        const sl = document.getElementById('concilSoloLibros');
+        if (sl) sl.innerHTML = soloLibros.length ? soloLibros.map((m) => {
+          const v = montoMov(m), neg = v < 0;
+          return '<tr><td>' + esc(m.fecha || '') + '</td><td class="primary">' + esc(m.concepto || '') + '</td><td class="mono">' + esc(m.referencia || '') + '</td>'
+            + '<td class="num" style="color:' + (neg ? '#b42318' : '#0a7a44') + ';">' + (neg ? '− ' : '+ ') + fmt(Math.abs(v)) + '</td></tr>';
+        }).join('') : '<tr><td colspan="4" style="text-align:center;color:var(--fg-muted);padding:14px;">Nada en tránsito ✓</td></tr>';
+        const mt = document.getElementById('concilMatched');
+        if (mt) mt.innerHTML = matched.length ? matched.map((pr) =>
+          '<tr><td>' + esc(pr.mov.fecha || '') + '</td><td class="primary">' + esc(pr.mov.concepto || '') + '</td>'
+          + '<td class="num">' + fmt(montoMov(pr.mov)) + '</td><td class="num">' + fmt(pr.banco.monto) + '</td>'
+          + '<td>' + badge('Conciliado', '#0a7a44', '#d5f0e0') + '</td></tr>').join('')
+          : '<tr><td colspan="5" style="text-align:center;color:var(--fg-muted);padding:14px;">Aún no hay coincidencias.</td></tr>';
+        set('concilSoloBancoCount', soloBanco.length);
+        set('concilSoloLibrosCount', soloLibros.length);
+        set('concilMatchedCount', matched.length);
+        if (confirmBtn) confirmBtn.disabled = !matched.length;
+        setMsg('Cruzadas <strong>' + lineasBanco.length + '</strong> líneas del banco. <strong>' + matched.length + '</strong> conciliadas, ' + soloBanco.length + ' por registrar.');
+        if (window.lucide) window.lucide.createIcons();
+      }
+
+      function registrarDiferencia(lb, cid) {
+        const cta = _cuentas.find((c) => c.id === cid);
+        const esCaja = cta && /efectivo|caja/i.test((cta.tipo || '') + ' ' + (cta.nombre || ''));
+        const ctaCash = esCaja ? '1.1.1.01 · Caja' : '1.1.1.03 · Bancos';
+        const ingreso = lb.monto > 0;
+        const CONTRA = ingreso
+          ? ['4.2.1.01 · Ingresos financieros', '4.2.2.01 · Ganancia en cambio', '1.1.2.01 · Cuentas por cobrar comerciales']
+          : ['6.3.1.02 · Gastos y comisiones bancarias', '6.3.1.04 · IGTF (gasto)', '6.3.1.03 · Pérdida en cambio', '2.1.1.01 · Cuentas por pagar comerciales'];
+        window.openFormModal && window.openFormModal({
+          title: 'Registrar partida del banco', saveLabel: 'Registrar',
+          fields: [
+            { name: 'concepto', label: 'Concepto', col: 2, value: lb.desc || (ingreso ? 'Abono bancario' : 'Cargo bancario') },
+            { name: 'monto', label: 'Monto (Bs)', type: 'number', step: '0.01', value: Math.abs(lb.monto).toFixed(2) },
+            { name: 'tipo', label: 'Tipo', type: 'select', value: ingreso ? 'ingreso' : 'egreso', options: [{ value: 'ingreso', label: 'Ingreso (abono)' }, { value: 'egreso', label: 'Egreso (cargo)' }] },
+            { name: 'contra', label: 'Contrapartida contable (cuenta del otro lado)', col: 2, type: 'datalist', value: CONTRA[0], options: CONTRA },
+            { name: 'ref', label: 'Referencia', value: lb.ref || '' },
+            { name: 'fecha', label: 'Fecha', type: 'date' },
+          ],
+          onSave: (v) => {
+            if (!window.sb || !window.__CUENTA_ID || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) return 'No hay empresa activa.';
+            const monto = parseFloat(v.monto) || 0; if (monto <= 0) return 'Indica un monto válido.';
+            const p = (v.fecha || '').split('-'); const fecha = p.length === 3 ? (p[2] + '/' + p[1] + '/' + p[0].slice(2)) : (lb.fecha || '');
+            window.sb.from('movimientos_tesoreria').insert({
+              cuenta_id: window.__CUENTA_ID, empresa_id: window.__EMPRESA_ACTIVA.id, cuenta_teso_id: cid,
+              fecha: fecha, concepto: v.concepto, tipo: v.tipo, referencia: v.ref || null, monto: monto, conciliado: true,
+            }).then(({ error }) => {
+              if (error) { toast('No se pudo registrar: ' + error.message, 'error'); return; }
+              if (window.__postAsiento && v.contra) {
+                const ln = v.tipo === 'ingreso'
+                  ? [{ cta: ctaCash, debe: monto, haber: 0 }, { cta: v.contra, debe: 0, haber: monto }]
+                  : [{ cta: v.contra, debe: monto, haber: 0 }, { cta: ctaCash, debe: 0, haber: monto }];
+                window.__postAsiento('Conciliación · ' + (v.concepto || '') + ' (' + (cta ? cta.nombre : '') + ')', v.ref || 'CONC', ln, 'auto');
+              }
+              toast('Partida registrada y conciliada', 'success');
+              cargarTesoreria().then(() => conciliar());
+            });
+          },
+        });
+      }
+
+      const sbBody = document.getElementById('concilSoloBanco');
+      if (sbBody) sbBody.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-concil-reg]'); if (!b) return;
+        const lb = (sbBody.__data || [])[parseInt(b.dataset.concilReg, 10)];
+        if (lb) registrarDiferencia(lb, cuentaSel.value);
+      });
+      if (fileEl) fileEl.addEventListener('change', () => { const f = fileEl.files && fileEl.files[0]; if (fileName) fileName.textContent = f ? f.name : ''; });
+      cargarBtn.addEventListener('click', () => {
+        const f = fileEl && fileEl.files && fileEl.files[0];
+        if (!f) { setMsg('Primero elige el archivo CSV del extracto.'); return; }
+        const reader = new FileReader();
+        reader.onload = () => { lineasBanco = parseCSV(String(reader.result || '')); if (!lineasBanco.length) { setMsg('No pude leer líneas. Revisa que el CSV tenga columnas fecha/monto (o débito/crédito).'); return; } conciliar(); };
+        reader.readAsText(f);
+      });
+      if (confirmBtn) confirmBtn.addEventListener('click', async () => {
+        const ids = ultimoMatch.map((pr) => pr.mov.id).filter(Boolean);
+        if (!ids.length || !window.sb) return;
+        const { error } = await window.sb.from('movimientos_tesoreria').update({ conciliado: true }).in('id', ids);
+        if (error) { toast('No se pudo confirmar: ' + error.message, 'error'); return; }
+        toast(ids.length + ' movimiento(s) marcados como conciliados', 'success');
+        cargarTesoreria();
+      });
+    })();
     // Botones "Cobrar" (CxC en Ventas) y "Pagar" (CxP en Compras): abren el movimiento prefilleado
     document.addEventListener('click', (e) => {
       const b = e.target.closest('[data-cx-accion]');
