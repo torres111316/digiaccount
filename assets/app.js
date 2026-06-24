@@ -2340,8 +2340,8 @@
       const [r1, r2, r3, r4] = await Promise.all([
         window.sb.from('cuentas_tesoreria').select('*').eq('empresa_id', emp.id).order('creado_en'),
         window.sb.from('movimientos_tesoreria').select('*').eq('empresa_id', emp.id),
-        // Ventas = RECIBOS emitidos (control de cobros). NO el libro de ventas (ese es solo para declarar).
-        window.sb.from('facturas').select('numero, cliente_nombre, cliente_rif, total, fecha, estado, condicion').eq('tipo', 'venta'),
+        // Ventas = RECIBOS emitidos (control de cobros), por empresa. NO el libro de ventas (ese es solo para declarar).
+        window.sb.from('facturas').select('numero, cliente_nombre, cliente_rif, total, fecha, estado, condicion').eq('tipo', 'venta').eq('empresa_id', emp.id),
         // Compras = facturas registradas en el Libro de Compras (lo que le debes al proveedor).
         window.sb.from('libro_fiscal').select('numero_factura, tercero_nombre, tercero_rif, total, fecha').eq('empresa_id', emp.id).eq('tipo', 'compra'),
       ]);
@@ -2509,6 +2509,7 @@
           { name: 'concepto', label: 'Concepto', col: 2, placeholder: 'Se completa solo al elegir la factura' },
           { name: 'referencia', label: 'Referencia (N° transferencia, pago móvil…)', placeholder: 'Ej. 0123456789' },
           { name: 'monto', label: 'Monto a cobrar/pagar (Bs) — edítalo si es un abono parcial', type: 'number', step: '0.01', value: pre.monto != null ? String(pre.monto) : '', placeholder: '0.00' },
+          { name: 'igtfDivisas', label: 'IGTF (solo si el PAGO es en divisas/cripto)', type: 'select', options: [{ value: 'no', label: 'No aplica' }, { value: 'si', label: 'Sí — sumar 3% IGTF' }] },
           { name: 'comprobante', label: 'Comprobante · foto/capture del pago (opcional)', col: 2, type: 'file' },
         ],
         afterRender: (body) => {
@@ -2584,6 +2585,24 @@
                 }
                 window.__postAsiento(desc, v.factura, lineas, 'auto').then((r) => { if (r && r.error) console.warn('[DigiAccount] No se pudo contabilizar el movimiento:', r.error.message); });
               }
+              // IGTF 3% cuando el PAGO se hace en divisas/cripto: egreso adicional + asiento de gasto
+              if (v.tipo === 'egreso' && v.igtfDivisas === 'si') {
+                const igtf = Math.round(monto * 0.03 * 100) / 100;
+                if (igtf > 0.005) {
+                  const cta = _cuentas.find((c) => c.id === cuentaId);
+                  const esCaja = cta && /efectivo|caja/i.test((cta.tipo || '') + ' ' + (cta.nombre || ''));
+                  const ctaCash = esCaja ? '1.1.1.01 · Caja' : '1.1.1.03 · Bancos';
+                  const concIgtf = 'IGTF 3% s/pago en divisas' + (v.factura ? ' · ' + v.factura : '');
+                  window.sb.from('movimientos_tesoreria').insert({
+                    cuenta_id: window.__CUENTA_ID, empresa_id: window.__EMPRESA_ACTIVA.id, cuenta_teso_id: cuentaId,
+                    fecha: fecha, concepto: concIgtf, tipo: 'egreso', referencia: v.referencia, monto: igtf,
+                  }).then(({ error: e2 }) => {
+                    if (e2) { console.warn('[DigiAccount] IGTF:', e2.message); return; }
+                    if (window.__postAsiento) window.__postAsiento(concIgtf, v.factura || 'IGTF', [{ cta: '6.3.1.04 · IGTF (gasto)', debe: igtf, haber: 0 }, { cta: ctaCash, debe: 0, haber: igtf }], 'auto');
+                    cargarTesoreria();
+                  });
+                }
+              }
               cargarTesoreria();
             });
           };
@@ -2607,7 +2626,46 @@
         },
       });
     }
+    function transferir() {
+      if (_cuentas.length < 2) { toast('Necesitas al menos 2 cuentas (o Caja) para transferir.', 'error'); return; }
+      const opts = _cuentas.map((c) => ({ value: c.id, label: c.nombre + ' · saldo ' + fmt(saldoDe(c.id)) }));
+      window.openFormModal && window.openFormModal({
+        title: 'Transferencia entre cuentas', saveLabel: 'Transferir',
+        fields: [
+          { name: 'origen', label: 'Desde (sale el dinero)', col: 2, type: 'select', options: opts },
+          { name: 'destino', label: 'Hacia (entra el dinero)', col: 2, type: 'select', options: opts },
+          { name: 'monto', label: 'Monto (Bs)', type: 'number', step: '0.01', placeholder: '0.00' },
+          { name: 'fecha', label: 'Fecha', type: 'date', value: '2026-06-01' },
+          { name: 'concepto', label: 'Concepto', col: 2, value: 'Transferencia entre cuentas' },
+        ],
+        onSave: (v) => {
+          if (!window.sb || !window.__CUENTA_ID || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) return 'No hay empresa activa.';
+          if (!v.origen || !v.destino) return 'Elige las cuentas de origen y destino.';
+          if (v.origen === v.destino) return 'El origen y el destino deben ser distintos.';
+          const monto = parseFloat(v.monto) || 0; if (monto <= 0) return 'Indica un monto mayor a cero.';
+          const p = (v.fecha || '').split('-'); const fecha = p.length === 3 ? (p[2] + '/' + p[1] + '/' + p[0].slice(2)) : '';
+          const cOri = _cuentas.find((c) => c.id === v.origen), cDes = _cuentas.find((c) => c.id === v.destino);
+          const ref = 'TRF-' + String(Date.now()).slice(-8);
+          const base = { cuenta_id: window.__CUENTA_ID, empresa_id: window.__EMPRESA_ACTIVA.id, fecha: fecha, referencia: ref, monto: monto };
+          window.sb.from('movimientos_tesoreria').insert([
+            Object.assign({}, base, { cuenta_teso_id: v.origen, tipo: 'egreso', concepto: v.concepto + ' → ' + (cDes ? cDes.nombre : '') }),
+            Object.assign({}, base, { cuenta_teso_id: v.destino, tipo: 'ingreso', concepto: v.concepto + ' ← ' + (cOri ? cOri.nombre : '') }),
+          ]).then(({ error }) => {
+            if (error) { toast('No se pudo transferir: ' + error.message, 'error'); return; }
+            const code = (c) => (c && /efectivo|caja/i.test((c.tipo || '') + ' ' + (c.nombre || ''))) ? '1.1.1.01 · Caja' : '1.1.1.03 · Bancos';
+            const oc = code(cOri), dc = code(cDes);
+            if (window.__postAsiento && oc !== dc) {
+              window.__postAsiento('Transferencia ' + (cOri ? cOri.nombre : '') + ' → ' + (cDes ? cDes.nombre : ''), ref,
+                [{ cta: dc, debe: monto, haber: 0 }, { cta: oc, debe: 0, haber: monto }], 'auto');
+            }
+            toast('Transferencia registrada · Bs ' + fmt(monto), 'success');
+            cargarTesoreria();
+          });
+        },
+      });
+    }
     const addBtn = document.getElementById('tesoAddCuentaBtn'); if (addBtn) addBtn.addEventListener('click', agregarCuenta);
+    const trBtn = document.getElementById('tesoTransferBtn'); if (trBtn) trBtn.addEventListener('click', transferir);
     const movBtn = document.getElementById('tesoMovBtn'); if (movBtn) movBtn.addEventListener('click', () => registrarMovimiento());
     // Permite registrar un cobro/pago prefilleado desde otro módulo (p. ej. botón "Cobrar" del recibo de venta)
     window.__registrarCobro = (pre) => registrarMovimiento(pre);
@@ -5079,7 +5137,7 @@
         // Guardar la factura REAL en Supabase
         if (window.sb && window.__CUENTA_ID) {
           window.sb.from('facturas').insert({
-            cuenta_id: window.__CUENTA_ID, numero: num, control: ctrl, tipo: 'venta', fecha: fecha,
+            cuenta_id: window.__CUENTA_ID, empresa_id: (window.__EMPRESA_ACTIVA && window.__EMPRESA_ACTIVA.id) || null, numero: num, control: ctrl, tipo: 'venta', fecha: fecha,
             cliente_nombre: cli.n, cliente_rif: cli.rif, cliente_dom: cli.dom || '',
             alicuota: alic, igtf: igtfChk.checked, condicion: document.getElementById('fvCond').value,
             items: items, subtotal: t.subtotal, iva: t.iva, igtf_monto: t.igtf, total: t.total, estado: 'Por cobrar',
@@ -5120,6 +5178,10 @@
         if (window.toast) window.toast((esRec ? 'Recibo ' : 'Factura ') + num + (esRec ? ' emitido · Bs ' : ' emitida · Bs ') + fmt(t.total), 'success');
         close();
         openFactura(num);
+        // Venta de CONTADO: abre el cobro prefilleado para registrar a qué cuenta/Caja entró el dinero
+        if (/contado/i.test(DB[num].cond || '') && window.__registrarCobro) {
+          setTimeout(() => window.__registrarCobro({ tipo: 'ingreso', tercero: cli.n, factura: num, monto: t.total }), 150);
+        }
       });
 
       window.openNuevaFactura = open;
@@ -5743,6 +5805,8 @@
     window.__recalcAutoliq = actualizarAutoliquidacion;
     function registrarMov(tipo) {
       const esCompra = tipo === 'compra';
+      let invBox = null; // contenedor de líneas para reponer inventario (solo compras)
+      const prodsCompra = esCompra && window.__getProductos ? window.__getProductos() : [];
       // Terceros del rol correspondiente (proveedores para compras, clientes para ventas) → autocompletado
       const terceros = (window.__getTerceros ? window.__getTerceros() : []).filter((t) => (esCompra ? t.prov : t.cli) && t.nombre);
       const normRif = (s) => (s || '').toUpperCase().replace(/[\s.\-]/g, '');
@@ -5759,7 +5823,9 @@
           { name: 'base', label: 'Base imponible (Bs)', type: 'number', step: '0.01', placeholder: '0.00' },
           { name: 'alic', label: 'Alícuota IVA', type: 'select', options: ['16%', '8%', 'Exento'] },
           { name: 'exento', label: 'Monto exento / sin ' + (esCompra ? 'crédito' : 'débito') + ' (Bs)', type: 'number', step: '0.01', placeholder: '0.00' },
-        ].concat(esCompra ? [] : [
+        ].concat(esCompra ? [
+          { name: 'cond', label: 'Condición de pago', type: 'select', options: ['Contado', 'Crédito 15 días', 'Crédito 30 días', 'Crédito 60 días'] },
+        ] : [
           { name: 'igtfAplica', label: '¿Aplica IGTF? (cobro en divisas/cripto)', type: 'select', options: ['No', 'Sí (3%)'] },
           { name: 'igtfShow', label: 'IGTF 3% (calculado del total con IVA)', type: 'static', html: '<span class="mono" id="igtfShowVal">Bs 0,00</span>' },
         ]).concat([
@@ -5800,6 +5866,33 @@
           if (exEl) exEl.addEventListener('input', calcIgtf);
           if (igtfSel) igtfSel.addEventListener('change', calcIgtf);
           calcIgtf();
+          // Reposición de inventario (solo compras): suma cantidades al stock de los productos
+          if (esCompra) {
+            invBox = document.createElement('div');
+            invBox.className = 'ic-sec';
+            invBox.innerHTML = '<div class="ic-sec-title"><i data-lucide="package-plus" style="width:15px;height:15px;"></i> Reponer inventario <small>— opcional, suma al stock</small></div>'
+              + '<datalist id="fm-dl-prodcompra">' + prodsCompra.map((p) => '<option value="' + esc(p.nombre) + '"></option>').join('') + '</datalist>'
+              + '<div class="ic-head"><span>Producto</span><span>Cantidad</span><span>Costo unitario</span><span></span></div>'
+              + '<div id="invCompraRows"><div class="ic-empty">Agrega los productos que llegaron con esta compra.</div></div>'
+              + '<button type="button" class="btn btn-ghost" id="invCompraAdd" style="height:30px;font-size:12px;margin-top:4px;"><i data-lucide="plus" style="width:14px;height:14px;"></i> Agregar producto</button>';
+            body.querySelector('.fm-grid').appendChild(invBox);
+            const rows = invBox.querySelector('#invCompraRows');
+            const addRow = () => {
+              const empty = rows.querySelector('.ic-empty'); if (empty) empty.remove();
+              const r = document.createElement('div');
+              r.className = 'ic-row';
+              r.innerHTML = '<input class="ic-prod" list="fm-dl-prodcompra" placeholder="Producto…" autocomplete="off">'
+                + '<input class="ic-cant" type="number" step="1" placeholder="0">'
+                + '<input class="ic-costo" type="number" step="0.01" placeholder="0,00">'
+                + '<button type="button" class="btn btn-ghost ic-del" title="Quitar"><i data-lucide="x" style="width:14px;height:14px;"></i></button>';
+              rows.appendChild(r);
+              r.querySelector('.ic-del').addEventListener('click', () => { r.remove(); if (!rows.querySelector('.ic-row')) rows.innerHTML = '<div class="ic-empty">Agrega los productos que llegaron con esta compra.</div>'; });
+              r.querySelector('.ic-prod').focus();
+              if (window.lucide) window.lucide.createIcons();
+            };
+            invBox.querySelector('#invCompraAdd').addEventListener('click', addRow);
+            if (window.lucide) window.lucide.createIcons();
+          }
         },
         onSave: (v) => {
           if (!window.sb || !window.__CUENTA_ID || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) return 'No hay una empresa activa seleccionada.';
@@ -5826,6 +5919,29 @@
               ln.push({ cta: '2.1.1.01 · Cuentas por pagar comerciales', debe: 0, haber: total });
               window.__postAsiento('Compra s/factura ' + v.numFactura + ' · ' + v.nombre, v.numFactura, ln, 'auto').then((r) => { if (r && r.error) console.warn('[DigiAccount] No se pudo contabilizar la compra:', r.error.message); });
             }
+            // Reponer inventario: suma las cantidades compradas al stock de cada producto
+            if (esCompra && invBox && window.sb) {
+              const lineasInv = [];
+              invBox.querySelectorAll('#invCompraRows > div').forEach((r) => {
+                const nombre = (r.querySelector('.ic-prod').value || '').trim();
+                const cant = parseFloat(r.querySelector('.ic-cant').value) || 0;
+                const costo = parseFloat(r.querySelector('.ic-costo').value) || 0;
+                if (nombre && cant > 0) lineasInv.push({ nombre: nombre, cant: cant, costo: costo });
+              });
+              if (lineasInv.length) {
+                const prods = window.__getProductos ? window.__getProductos() : [];
+                const noEnc = [];
+                const ups = lineasInv.map((li) => {
+                  const pr = prods.find((x) => (x.nombre || '').toLowerCase() === li.nombre.toLowerCase());
+                  if (!pr) { noEnc.push(li.nombre); return null; }
+                  const patch = { stock: (Number(pr.stock) || 0) + li.cant };
+                  if (li.costo > 0) patch.costo = li.costo;
+                  return window.sb.from('productos').update(patch).eq('id', pr.id);
+                }).filter(Boolean);
+                if (ups.length) Promise.all(ups).then(() => { if (window.cargarProductos) window.cargarProductos(); toast(ups.length + ' producto(s) repuestos en inventario', 'success'); });
+                if (noEnc.length) toast('No están en inventario (créalos primero): ' + noEnc.join(', '), 'error');
+              }
+            }
             // VENTA en el Libro: solo contabiliza si la empresa está en modo "libro" (contador).
             // En modo "recibos" la venta la contabiliza el recibo, no el libro (este es solo para declarar).
             if (!esCompra && window.__postAsiento && ((window.__EMPRESA_ACTIVA && window.__EMPRESA_ACTIVA.modo) === 'libro')) {
@@ -5836,6 +5952,10 @@
             }
             // Refresca Compras y CxP (y CxC) con la nueva factura
             if (window.cargarTesoreria) window.cargarTesoreria();
+            // Compra de CONTADO: abre el pago prefilleado para registrar de qué cuenta/Caja salió el dinero
+            if (esCompra && /contado/i.test(v.cond || '') && window.__registrarCobro) {
+              setTimeout(() => window.__registrarCobro({ tipo: 'egreso', tercero: v.nombre, factura: v.numFactura, monto: total }), 200);
+            }
             // Si se indicó retención de IVA, registra el comprobante de retención asociado a esta factura
             const retPctNum = v.retPct === '100%' ? 100 : v.retPct === '75%' ? 75 : 0;
             if (retPctNum && iva > 0) {
