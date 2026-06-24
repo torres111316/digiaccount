@@ -6868,9 +6868,9 @@
     padding: 14px 18px; border-bottom: 1px solid var(--border-default);
   }
   .fm-title { font-family: var(--font-display); font-weight: var(--fw-bold); font-size: 15px; color: var(--fg-primary); }
-  .fm-body { padding: 18px; }
-  .fm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; }
-  .fm-field { display: flex; flex-direction: column; gap: 5px; }
+  .fm-body { padding: 20px 22px; }
+  .fm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 14px; }
+  .fm-field { display: flex; flex-direction: column; gap: 6px; }
   .fm-field .fm-lbl { font-size: 11px; font-weight: var(--fw-semibold); color: var(--fg-muted); }
   .fm-field input, .fm-field select {
     height: 36px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
@@ -6878,6 +6878,21 @@
     background: var(--bg-surface); outline: none; transition: border-color .15s;
   }
   .fm-field input:focus, .fm-field select:focus { border-color: var(--da-cyan-500); }
+  /* Input de archivo: botón acorde al diseño de los botones del sistema */
+  .fm-field input[type="file"] {
+    height: auto; min-height: 38px; padding: 6px 10px; line-height: 1.4;
+    display: flex; align-items: center; color: var(--fg-muted); font-size: 12px;
+  }
+  .fm-field input[type="file"]::file-selector-button {
+    margin-right: 12px; height: 28px; padding: 0 14px; cursor: pointer;
+    border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+    background: var(--bg-surface); color: var(--fg-primary);
+    font-family: var(--font-body); font-size: 12px; font-weight: var(--fw-semibold);
+    transition: background .15s, border-color .15s, color .15s;
+  }
+  .fm-field input[type="file"]::file-selector-button:hover {
+    background: var(--da-cyan-50); border-color: var(--da-cyan-500); color: var(--da-cyan-700);
+  }
   /* Selección múltiple (checks) — ej. empresas con acceso */
   .fm-checks { display: flex; flex-direction: column; gap: 7px; }
   .fm-check { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); cursor: pointer; font-size: 13px; color: var(--fg-body); transition: border-color .15s, background .15s; }

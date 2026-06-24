@@ -908,6 +908,8 @@
         <button data-tab="txt"><i data-lucide="file-down"></i> Retención IVA (TXT)</button>
         <button data-tab="islr"><i data-lucide="file-code-2"></i> Retención ISLR (XML)</button>
         <button data-tab="igtf"><i data-lucide="coins"></i> IGTF (Forma 21)</button>
+        <button data-tab="islranual"><i data-lucide="trending-up"></i> ISLR del ejercicio</button>
+        <button data-tab="boveda"><i data-lucide="archive"></i> Bóveda Fiscal</button>
       </div>
 
       <!-- TAB: Calendario -->
@@ -1952,19 +1954,19 @@
                 <span class="lbl">Tipo de declaración</span>
                 <div class="select-box">Originaria <i data-lucide="chevron-down"></i></div>
               </div>
-              <div class="comp-field">
-                <span class="lbl">Alícuota vigente</span>
-                <div class="select-box">9% (sector privado) <i data-lucide="chevron-down"></i></div>
-              </div>
-              <div class="comp-field">
-                <span class="lbl">Base imponible (nómina del mes)</span>
-                <div class="select-box mono">Bs 2.184.500,00 <i data-lucide="refresh-cw"></i></div>
-              </div>
+              <label class="comp-field">
+                <span class="lbl">N° de empleados</span>
+                <input type="number" step="1" id="dppEmpInput" value="0" style="width:100%;height:34px;padding:0 10px;border:1px solid var(--border-default);border-radius:var(--radius-sm);font-family:inherit;">
+              </label>
+              <label class="comp-field">
+                <span class="lbl">Total salarios + bonif. no salariales (Bs)</span>
+                <input type="number" step="0.01" id="dppBaseInput" value="0" style="width:100%;height:34px;padding:0 10px;border:1px solid var(--border-default);border-radius:var(--radius-sm);font-family:inherit;">
+              </label>
               <div class="dpp-mini">
-                <div class="dm-row"><span>Empleados</span><span class="mono">24</span></div>
-                <div class="dm-row"><span>Base imponible</span><span class="mono">2.184.500,00</span></div>
+                <div class="dm-row"><span>Empleados</span><span class="mono" id="dppEmpMini">0</span></div>
+                <div class="dm-row"><span>Base imponible</span><span class="mono" id="dppBaseMini">0,00</span></div>
                 <div class="dm-row"><span>Alícuota</span><span class="mono">9%</span></div>
-                <div class="dm-row tot"><span>Impuesto a pagar</span><span class="mono">196.605,00</span></div>
+                <div class="dm-row tot"><span>Impuesto a pagar</span><span class="mono" id="dppImpMini">0,00</span></div>
               </div>
             </div>
             <div class="comp-controls-foot">
@@ -1983,12 +1985,12 @@
             <div class="dpp-resumen-head">
               <div class="dpp-rh-left">
                 <div class="t"><i data-lucide="shield-check"></i> Declaración de Protección a las Pensiones</div>
-                <div class="s">Forma 99019 · Aporte patronal mensual · Alícuota 9%</div>
+                <div class="s">Forma 99019 · Aporte patronal · Alícuota 9% · G.O. 6.806 (08/05/2024)</div>
               </div>
               <div class="dpp-rh-right">
-                <div class="co">Agroinversiones Valle, C.A.</div>
-                <div class="m"><span class="mono">RIF J-30456789-0</span> · Contribuyente Especial</div>
-                <div class="m">Período: <strong>Mayo 2026 (01–31)</strong></div>
+                <div class="co" id="dppDocCo">Empresa</div>
+                <div class="m"><span class="mono" id="dppDocRif">RIF —</span> · Persona Jurídica</div>
+                <div class="m">Período: <strong>Junio 2026</strong></div>
               </div>
             </div>
 
@@ -1998,15 +2000,15 @@
                 <tr><th class="item">N°</th><th class="concepto"></th><th class="cod">Casilla</th><th class="num">Base / Monto (Bs.)</th></tr>
               </thead>
               <tbody>
-                <tr><td class="item">1</td><td class="concepto">Cantidad de empleados</td><td class="cod">1</td><td class="num">24</td></tr>
-                <tr><td class="item">2</td><td class="concepto">Total de salarios y bonificaciones de carácter no salarial (base imponible)</td><td class="cod">2</td><td class="num">2.184.500,00</td></tr>
-                <tr class="subtot"><td class="item">3</td><td class="concepto">Alícuota aplicable (sector privado)</td><td class="cod">—</td><td class="num">9%</td></tr>
-                <tr class="total"><td class="item">III</td><td class="concepto">Total impuesto a pagar (base × 9%)</td><td class="cod">—</td><td class="num">196.605,00</td></tr>
+                <tr><td class="item">1</td><td class="concepto">Cantidad de empleados</td><td class="cod">1</td><td class="num" id="dppEmpDoc">0</td></tr>
+                <tr><td class="item">2</td><td class="concepto">Total de salarios y bonificaciones de carácter no salarial (base imponible)</td><td class="cod">2</td><td class="num" id="dppBaseDoc">0,00</td></tr>
+                <tr class="subtot"><td class="item">3</td><td class="concepto">Alícuota aplicable</td><td class="cod">—</td><td class="num">9%</td></tr>
+                <tr class="total"><td class="item">III</td><td class="concepto">Total impuesto a pagar (base × 9%)</td><td class="cod">—</td><td class="num" id="dppImpDoc">0,00</td></tr>
               </tbody>
             </table>
 
             <div class="dpp-note">
-              Cuadro de preparación para la <strong>Forma 99019</strong> del SENIAT. El <strong>N° de declaración</strong> y la <strong>fecha de vencimiento</strong> se asignan al transmitir en el portal. El aporte es <strong>100% patronal</strong> (no se le descuenta al trabajador) y no incide en prestaciones, vacaciones ni utilidades.
+              Declaración de la <strong>contribución especial para la protección de las pensiones · Forma 99019</strong>, conforme a la <strong>G.O. N° 6.806 Extraordinario del 08/05/2024</strong> y la Providencia <strong>SNAT/2024/000042</strong>. Dirigida a personas jurídicas. El aporte es el <strong>9%</strong> del total de salarios y bonificaciones de carácter no salarial; es <strong>100% patronal</strong> (no se le descuenta al trabajador). El N° de declaración y el vencimiento se asignan al transmitir en el portal del SENIAT.
             </div>
           </div>
         </div>
@@ -2028,18 +2030,25 @@
                 <div class="select-box">Originaria <i data-lucide="chevron-down"></i></div>
               </div>
               <div class="comp-field">
-                <span class="lbl">Condición del sujeto</span>
-                <div class="select-box">Contribuyente Especial <i data-lucide="chevron-down"></i></div>
+                <span class="lbl">Patrimonio neto (del Balance General)</span>
+                <div class="select-box mono"><span id="igpPatNetoCtrl">0,00</span> <i data-lucide="refresh-cw"></i></div>
               </div>
-              <div class="comp-field">
-                <span class="lbl">Patrimonio neto (Balance General)</span>
-                <div class="select-box mono">Bs 7.596.382,00 <i data-lucide="refresh-cw"></i></div>
-              </div>
+              <label class="comp-field">
+                <span class="lbl">Bienes / derechos exentos (Bs)</span>
+                <input type="number" step="0.01" id="igpExentosInput" value="0" style="width:100%;height:34px;padding:0 10px;border:1px solid var(--border-default);border-radius:var(--radius-sm);font-family:inherit;">
+              </label>
+              <label class="comp-field">
+                <span class="lbl">Mínimo exento (Bs) · confírmalo</span>
+                <input type="number" step="0.01" id="igpMinExentoInput" value="40000000" style="width:100%;height:34px;padding:0 10px;border:1px solid var(--border-default);border-radius:var(--radius-sm);font-family:inherit;">
+              </label>
+              <label class="comp-field">
+                <span class="lbl">Alícuota (%) · confírmala</span>
+                <input type="number" step="0.01" id="igpAlicInput" value="0.25" style="width:100%;height:34px;padding:0 10px;border:1px solid var(--border-default);border-radius:var(--radius-sm);font-family:inherit;">
+              </label>
               <div class="dpp-mini">
-                <div class="dm-row"><span>Patrimonio neto</span><span class="mono">7.596.382,00</span></div>
-                <div class="dm-row"><span>Mínimo exento</span><span class="mono">40.000.000,00</span></div>
-                <div class="dm-row"><span>Base gravable</span><span class="mono">0,00</span></div>
-                <div class="dm-row tot"><span>Impuesto a pagar</span><span class="mono">0,00</span></div>
+                <div class="dm-row"><span>Patrimonio neto</span><span class="mono" id="igpPatNetoMini">0,00</span></div>
+                <div class="dm-row"><span>Base gravable</span><span class="mono" id="igpBaseMini">0,00</span></div>
+                <div class="dm-row tot"><span>Impuesto a pagar</span><span class="mono" id="igpImpMini">0,00</span></div>
               </div>
             </div>
             <div class="comp-controls-foot">
@@ -2060,8 +2069,8 @@
                 <div class="s">Ley Orgánica del IGP (G.O. 41.667) · Declaración anual · Alícuota 0,25%–1,5%</div>
               </div>
               <div class="dpp-rh-right">
-                <div class="co">Agroinversiones Valle, C.A.</div>
-                <div class="m"><span class="mono">RIF J-30456789-0</span> · Contribuyente Especial</div>
+                <div class="co" id="igpDocCo">Empresa</div>
+                <div class="m"><span class="mono" id="igpDocRif">RIF —</span> · Contribuyente Especial</div>
                 <div class="m">Ejercicio: <strong>al 30/09/2026</strong></div>
               </div>
             </div>
@@ -2072,14 +2081,14 @@
                 <tr><th class="item">N°</th><th class="concepto"></th><th class="cod">Ref.</th><th class="num">Monto (Bs.)</th></tr>
               </thead>
               <tbody>
-                <tr><td class="item">1</td><td class="concepto">Total de activos (bienes y derechos)</td><td class="cod">A</td><td class="num">12.488.510,00</td></tr>
-                <tr><td class="item">2</td><td class="concepto">(−) Total de pasivos y obligaciones</td><td class="cod">B</td><td class="num">(4.892.128,00)</td></tr>
-                <tr><td class="item">3</td><td class="concepto">(−) Bienes y derechos exentos / exonerados (vivienda principal, etc.)</td><td class="cod">C</td><td class="num">0,00</td></tr>
-                <tr class="subtot"><td class="item">4</td><td class="concepto">Patrimonio neto gravable (A − B − C)</td><td class="cod">PN</td><td class="num">7.596.382,00</td></tr>
-                <tr><td class="item">5</td><td class="concepto">(−) Mínimo exento (umbral de ley)</td><td class="cod">ME</td><td class="num">(40.000.000,00)</td></tr>
-                <tr class="subtot"><td class="item">6</td><td class="concepto">Base imponible (excedente sobre el mínimo)</td><td class="cod">BI</td><td class="num">0,00</td></tr>
-                <tr><td class="item">7</td><td class="concepto">Alícuota aplicable según el tramo de patrimonio</td><td class="cod">—</td><td class="num">0,25%</td></tr>
-                <tr class="total"><td class="item">III</td><td class="concepto">Total impuesto a pagar (base imponible × alícuota)</td><td class="cod">—</td><td class="num">0,00</td></tr>
+                <tr><td class="item">1</td><td class="concepto">Total de activos (bienes y derechos)</td><td class="cod">A</td><td class="num" id="igpActivosDoc">0,00</td></tr>
+                <tr><td class="item">2</td><td class="concepto">(−) Total de pasivos y obligaciones</td><td class="cod">B</td><td class="num" id="igpPasivosDoc">0,00</td></tr>
+                <tr><td class="item">3</td><td class="concepto">(−) Bienes y derechos exentos / exonerados (vivienda principal, etc.)</td><td class="cod">C</td><td class="num" id="igpExentosDoc">0,00</td></tr>
+                <tr class="subtot"><td class="item">4</td><td class="concepto">Patrimonio neto gravable (A − B − C)</td><td class="cod">PN</td><td class="num" id="igpPatNetoDoc">0,00</td></tr>
+                <tr><td class="item">5</td><td class="concepto">(−) Mínimo exento (umbral de ley)</td><td class="cod">ME</td><td class="num" id="igpMinExentoDoc">0,00</td></tr>
+                <tr class="subtot"><td class="item">6</td><td class="concepto">Base imponible (excedente sobre el mínimo)</td><td class="cod">BI</td><td class="num" id="igpBaseDoc">0,00</td></tr>
+                <tr><td class="item">7</td><td class="concepto">Alícuota aplicable según el tramo de patrimonio</td><td class="cod">—</td><td class="num" id="igpAlicDoc">0,25%</td></tr>
+                <tr class="total"><td class="item">III</td><td class="concepto">Total impuesto a pagar (base imponible × alícuota)</td><td class="cod">—</td><td class="num" id="igpImpDoc">0,00</td></tr>
               </tbody>
             </table>
 
@@ -2348,6 +2357,96 @@
             <div class="dpp-note">
               Declaración del <strong>Impuesto a las Grandes Transacciones Financieras (IGTF) · Forma 21</strong>, conforme a la Ley publicada en Gaceta Oficial N° 6.687 Extraordinario del 25/02/2022. Periodicidad <strong>quincenal</strong> (sujeta al calendario de Retenciones de IVA). El <strong>3%</strong> aplica a los pagos en moneda extranjera, criptomonedas o criptoactivos (tomado del Libro de Ventas); el <strong>2%</strong> a las transacciones en bolívares. Con monto a pagar se genera el <strong>Compromiso de Pago (Forma 99021)</strong>; sin monto, el Certificado Electrónico. El N° de declaración se asigna al transmitir en el portal del SENIAT. Se permite una declaración originaria y hasta seis complementarias por período.
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB: ISLR del ejercicio (acumulado estimado) -->
+      <div class="fiscal-tab" data-tab="islranual">
+        <section class="grid-2-3">
+          <div class="panel" id="islrAnualPanel">
+            <div class="panel-head">
+              <div class="panel-title-block">
+                <div class="title">ISLR del ejercicio · estimación acumulada</div>
+                <div class="sub">Tarifa N° 2 (personas jurídicas) · UT Bs 43 · se determina al cierre del ejercicio</div>
+              </div>
+              <div class="panel-actions" data-print-hide="true" style="display:flex;gap:8px;align-items:center;">
+                <span class="contrib-badge" style="font-size:10px;"><i data-lucide="info"></i> Estimación, no declaración</span>
+                <button class="btn btn-ghost" style="height:32px;font-size:12px;" id="islrAnualPrintBtn"><i data-lucide="printer"></i> Imprimir estimación</button>
+              </div>
+            </div>
+            <div style="padding:18px 20px;">
+              <div style="background:var(--da-navy-700);border-radius:var(--radius-md);padding:18px 20px;color:var(--da-white);margin-bottom:16px;">
+                <div style="font-size:11px;text-transform:uppercase;letter-spacing:var(--tracking-overline);color:var(--fg-on-dark-muted);font-weight:600;">ISLR estimado acumulado (al día de hoy)</div>
+                <div style="font-size:30px;font-weight:800;color:var(--da-cyan-500);margin-top:4px;">Bs <span id="islrAnualImp">0,00</span></div>
+                <div style="font-size:12px;color:var(--fg-on-dark-muted);margin-top:2px;" id="islrAnualNota">Sobre el enriquecimiento neto del ejercicio en curso</div>
+              </div>
+              <table class="decl-iva-table dpp-decl">
+                <thead><tr><th class="item">N°</th><th class="concepto">Determinación</th><th class="num">Monto / Valor</th></tr></thead>
+                <tbody>
+                  <tr><td class="item">1</td><td class="concepto">Enriquecimiento neto acumulado (Estado de Resultados, año en curso)</td><td class="num" id="islrAnualBase">0,00</td></tr>
+                  <tr><td class="item">2</td><td class="concepto">Equivalente en Unidades Tributarias (UT = Bs 43)</td><td class="num" id="islrAnualUT">0</td></tr>
+                  <tr><td class="item">3</td><td class="concepto">Tramo / tarifa aplicada</td><td class="num" id="islrAnualTarifa">—</td></tr>
+                  <tr><td class="item">4</td><td class="concepto">(−) Sustraendo</td><td class="num" id="islrAnualSustr">0,00</td></tr>
+                  <tr class="total"><td class="item">III</td><td class="concepto">ISLR estimado del ejercicio (a la fecha)</td><td class="num" id="islrAnualImp2">0,00</td></tr>
+                </tbody>
+              </table>
+              <div class="dpp-note">
+                <strong>Estimación referencial</strong> del ISLR que va generando la empresa durante el ejercicio, calculada sobre el <strong>enriquecimiento neto acumulado</strong> del Estado de Resultados (Contabilidad) aplicando la <strong>Tarifa N° 2</strong> del Art. 52 de la LISLR para personas jurídicas (15% hasta 2.000 U.T.; 22% de 2.000 a 3.000 U.T.; 34% sobre el excedente, con su sustraendo). <strong>No sustituye la declaración definitiva anual</strong>; sirve para anticipar cuánto impuesto se va acumulando y no llevarse sorpresas al cierre. Si hay pérdida, el ISLR estimado es cero.
+              </div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head"><div class="panel-title-block"><div class="title">Tarifa N° 2 · ISLR jurídicos</div><div class="sub">Art. 52 LISLR · por tramos de U.T.</div></div></div>
+            <div style="padding:8px 20px 18px;">
+              <table class="decl-iva-table">
+                <thead><tr><th class="concepto">Tramo (U.T.)</th><th class="num">Alícuota</th><th class="num">Sustraendo (U.T.)</th></tr></thead>
+                <tbody>
+                  <tr><td class="concepto">Hasta 2.000</td><td class="num">15%</td><td class="num">0</td></tr>
+                  <tr><td class="concepto">2.000 – 3.000</td><td class="num">22%</td><td class="num">140</td></tr>
+                  <tr><td class="concepto">Más de 3.000</td><td class="num">34%</td><td class="num">500</td></tr>
+                </tbody>
+              </table>
+              <div style="font-size:11px;color:var(--fg-muted);padding:12px 2px 0;line-height:1.5;">El sustraendo en Bs = U.T. × Bs 43. La estimación se actualiza sola con cada asiento que registres en Contabilidad.</div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- TAB: Bóveda Fiscal (respaldo de planillas y certificados SENIAT) -->
+      <div class="fiscal-tab" data-tab="boveda">
+        <div style="background:var(--da-cyan-50);border:1px solid var(--da-cyan-100);border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--da-cyan-700);display:flex;gap:8px;align-items:flex-start;">
+          <i data-lucide="shield" style="width:15px;height:15px;flex-shrink:0;margin-top:1px;"></i>
+          <span>Tu respaldo fiscal en un solo lugar: guarda las <strong>planillas de declaración</strong>, <strong>planillas/compromisos de pago</strong> y <strong>certificados electrónicos</strong> que emite el SENIAT, por empresa, impuesto y período. Archivos privados (cada cuenta ve solo los suyos).</span>
+        </div>
+        <div class="data-table-wrap">
+          <div class="table-toolbar">
+            <label class="quick-search">
+              <i data-lucide="search"></i>
+              <input type="text" id="bovedaSearch" placeholder="Buscar por impuesto, período, tipo o nombre…">
+            </label>
+            <div class="right">
+              <button class="btn btn-primary" style="height:32px;font-size:12px;" id="bovedaSubirBtn"><i data-lucide="upload"></i> Subir documento</button>
+            </div>
+          </div>
+          <div class="table-scroll">
+            <table class="data-table" style="min-width:920px;">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Impuesto</th>
+                  <th>Período</th>
+                  <th>Tipo</th>
+                  <th>Documento</th>
+                  <th class="num">Tamaño</th>
+                  <th class="ctr">Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="bovedaBody">
+                <tr><td colspan="7" style="text-align:center;color:var(--fg-muted);padding:16px;">Cargando…</td></tr>
+              </tbody>
+            </table>
           </div>
         </div>
       </div>

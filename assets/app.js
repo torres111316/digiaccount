@@ -77,6 +77,9 @@
         if (window.cargarActivosFijos) window.cargarActivosFijos();
         if (window.cargarCriptoactivos) window.cargarCriptoactivos();
         if (window.cargarLibroFiscal) { window.cargarLibroFiscal('compra'); window.cargarLibroFiscal('venta'); }
+        if (window.__renderDPP) window.__renderDPP();
+        if (window.__renderIGP) window.__renderIGP();
+        if (window.cargarBoveda) window.cargarBoveda();
         if (window.cargarRetenciones) window.cargarRetenciones();
       });
     }
@@ -1542,6 +1545,9 @@
       if (hv[2]) hv[2].textContent = 'Bs ' + fmt2(tPat);
       if (hv[3]) hv[3].textContent = (tPC ? (tAC / tPC).toFixed(2) : '—') + '×';
       hd.forEach((d) => (d.innerHTML = ''));
+      // Expone los totales para el módulo de Grandes Patrimonios (IGP)
+      window.__BALANCE = { activo: tAct, pasivo: tPas, patrimonio: tPat };
+      if (window.__renderIGP) window.__renderIGP();
     }
 
     // Flujo de Efectivo (método directo): clasifica los movimientos de caja/bancos por su contrapartida
@@ -1607,6 +1613,9 @@
       const utilNeta = renderEstadoResultados(map);
       renderBalanceGeneral(map, utilNeta || 0);
       renderFlujo();
+      // Expone el enriquecimiento neto acumulado para el medidor de ISLR del ejercicio
+      window.__UTILIDAD_NETA = utilNeta || 0;
+      if (window.__renderISLRanual) window.__renderISLRanual();
       if (window.lucide) window.lucide.createIcons();
     }
 
@@ -2059,6 +2068,211 @@
     wire('igtfPrintBtn', imprimir); wire('igtfPdfBtn', imprimir);
     wire('igtfRegistrarBtn', () => { if (window.toast) window.toast('Declaración de IGTF (Forma 21) registrada · lista para transmitir al portal SENIAT', 'success'); });
     render();
+  })();
+
+  /* =========================================================
+     IGP (Grandes Patrimonios) — patrimonio neto desde el Balance General real
+     ========================================================= */
+  (function igpModule() {
+    const fmt = (n) => Number(n || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const $ = (id) => document.getElementById(id);
+    function render() {
+      const b = window.__BALANCE || { activo: 0, pasivo: 0, patrimonio: 0 };
+      const exentos = parseFloat(($('igpExentosInput') || {}).value) || 0;
+      const minEx = parseFloat(($('igpMinExentoInput') || {}).value) || 0;
+      const alic = parseFloat(($('igpAlicInput') || {}).value) || 0;
+      const patNeto = (Number(b.activo) || 0) - (Number(b.pasivo) || 0) - exentos;
+      const base = Math.max(0, patNeto - minEx);
+      const imp = base * alic / 100;
+      const set = (id, t) => { const e = $(id); if (e) e.textContent = t; };
+      set('igpActivosDoc', fmt(b.activo));
+      set('igpPasivosDoc', '(' + fmt(b.pasivo) + ')');
+      set('igpExentosDoc', exentos ? '(' + fmt(exentos) + ')' : '0,00');
+      set('igpPatNetoDoc', fmt(patNeto));
+      set('igpMinExentoDoc', '(' + fmt(minEx) + ')');
+      set('igpBaseDoc', fmt(base));
+      set('igpAlicDoc', (alic % 1 === 0 ? alic : alic) + '%');
+      set('igpImpDoc', fmt(imp));
+      set('igpPatNetoCtrl', 'Bs ' + fmt(patNeto));
+      set('igpPatNetoMini', fmt(patNeto));
+      set('igpBaseMini', fmt(base));
+      set('igpImpMini', fmt(imp));
+      const emp = window.__EMPRESA_ACTIVA || {};
+      set('igpDocCo', emp.n || 'Empresa'); set('igpDocRif', 'RIF ' + (emp.rif || '—'));
+    }
+    window.__renderIGP = render;
+    ['igpExentosInput', 'igpMinExentoInput', 'igpAlicInput'].forEach((id) => { const e = $(id); if (e) e.addEventListener('input', render); });
+    render();
+  })();
+
+  /* =========================================================
+     DPP (Protección a las Pensiones · Forma 99019) — 9% del total de salarios + bonif. no salariales
+     ========================================================= */
+  (function dppModule() {
+    const fmt = (n) => Number(n || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const $ = (id) => document.getElementById(id);
+    function render() {
+      const emp = parseInt(($('dppEmpInput') || {}).value, 10) || 0;
+      const base = parseFloat(($('dppBaseInput') || {}).value) || 0;
+      const imp = base * 0.09;
+      const set = (id, t) => { const e = $(id); if (e) e.textContent = t; };
+      set('dppEmpDoc', String(emp)); set('dppBaseDoc', fmt(base)); set('dppImpDoc', fmt(imp));
+      set('dppEmpMini', String(emp)); set('dppBaseMini', fmt(base)); set('dppImpMini', fmt(imp));
+      const e = window.__EMPRESA_ACTIVA || {};
+      set('dppDocCo', e.n || 'Empresa'); set('dppDocRif', 'RIF ' + (e.rif || '—'));
+    }
+    window.__renderDPP = render;
+    ['dppEmpInput', 'dppBaseInput'].forEach((id) => { const el = $(id); if (el) el.addEventListener('input', render); });
+    render();
+  })();
+
+  /* =========================================================
+     ISLR del ejercicio (acumulado estimado) — Tarifa N°2 PJ sobre el enriquecimiento neto acumulado
+     ========================================================= */
+  (function islrAnualModule() {
+    const UT = 43; // Unidad Tributaria 2026
+    const fmt = (n) => Number(n || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const $ = (id) => document.getElementById(id);
+    function render() {
+      const base = Math.max(0, Number(window.__UTILIDAD_NETA) || 0); // pérdida → 0
+      const baseUT = base / UT;
+      let alic, sustrUT, tarifaTxt;
+      if (baseUT <= 2000) { alic = 0.15; sustrUT = 0; tarifaTxt = '15% · hasta 2.000 U.T.'; }
+      else if (baseUT <= 3000) { alic = 0.22; sustrUT = 140; tarifaTxt = '22% · 2.000–3.000 U.T.'; }
+      else { alic = 0.34; sustrUT = 500; tarifaTxt = '34% · más de 3.000 U.T.'; }
+      const sustr = sustrUT * UT;
+      const imp = Math.max(0, base * alic - sustr);
+      const set = (id, t) => { const e = $(id); if (e) e.textContent = t; };
+      set('islrAnualImp', fmt(imp)); set('islrAnualImp2', fmt(imp));
+      set('islrAnualBase', fmt(base));
+      set('islrAnualUT', baseUT.toLocaleString('es-VE', { maximumFractionDigits: 2 }));
+      set('islrAnualTarifa', tarifaTxt);
+      set('islrAnualSustr', fmt(sustr));
+      set('islrAnualNota', base > 0 ? ('Sobre Bs ' + fmt(base) + ' de enriquecimiento neto acumulado') : 'Sin utilidad acumulada (o pérdida): ISLR estimado en cero');
+    }
+    window.__renderISLRanual = render;
+    function imprimir() {
+      const panel = $('islrAnualPanel'); if (!panel) return;
+      let portal = $('printPortal');
+      if (!portal) { portal = document.createElement('div'); portal.id = 'printPortal'; document.body.appendChild(portal); }
+      portal.innerHTML = '';
+      const clon = panel.cloneNode(true);
+      const hide = clon.querySelector('[data-print-hide]'); if (hide) hide.style.display = 'none';
+      clon.classList.add('conta-print');
+      portal.appendChild(clon);
+      document.body.classList.add('printing-comp');
+      if (window.lucide) window.lucide.createIcons();
+      window.print();
+    }
+    window.addEventListener('afterprint', () => { document.body.classList.remove('printing-comp'); const p = $('printPortal'); if (p) p.innerHTML = ''; });
+    const pb = $('islrAnualPrintBtn'); if (pb) pb.addEventListener('click', imprimir);
+    render();
+  })();
+
+  /* =========================================================
+     BÓVEDA FISCAL — respaldo de planillas y certificados del SENIAT (Supabase Storage)
+     ========================================================= */
+  (function bovedaFiscal() {
+    const view = document.getElementById('view-fiscal');
+    if (!view) return;
+    const BUCKET = 'documentos-fiscales';
+    const toast = (m, t) => { if (window.toast) window.toast(m, t); };
+    const tbody = document.getElementById('bovedaBody');
+    const fmtSize = (n) => { n = Number(n) || 0; return n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(1) + ' KB' : (n / 1048576).toFixed(1) + ' MB'; };
+    const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    let _docs = [];
+
+    async function cargarBoveda() {
+      if (!tbody) return;
+      if (!window.sb || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--fg-muted);padding:16px;">Selecciona una empresa.</td></tr>'; return;
+      }
+      const { data, error } = await window.sb.from('documentos_fiscales').select('*').eq('empresa_id', window.__EMPRESA_ACTIVA.id).order('creado_en', { ascending: false });
+      if (error) { tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--fg-muted);padding:16px;">No se pudo cargar (¿creaste la tabla documentos_fiscales y el bucket?).</td></tr>'; console.warn('[DigiAccount] Bóveda:', error.message); return; }
+      _docs = data || [];
+      render();
+    }
+    window.cargarBoveda = cargarBoveda;
+
+    function render() {
+      if (!tbody) return;
+      const q = ((document.getElementById('bovedaSearch') || {}).value || '').toLowerCase().trim();
+      const arr = _docs.filter((d) => !q || (d.impuesto + ' ' + (d.periodo || '') + ' ' + d.tipo + ' ' + (d.nombre || '')).toLowerCase().includes(q));
+      if (!arr.length) { tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--fg-muted);padding:16px;">' + (_docs.length ? 'Sin resultados.' : 'Aún no hay documentos. Usa "Subir documento".') + '</td></tr>'; return; }
+      const tipoTag = (t) => { const c = /pago/i.test(t) ? 'amber' : /certif/i.test(t) ? 'success' : 'cyan'; return '<span class="tag ' + c + '">' + esc(t) + '</span>'; };
+      tbody.innerHTML = arr.map((d) => {
+        const fecha = d.creado_en ? new Date(d.creado_en).toLocaleDateString('es-VE') : '';
+        return '<tr><td>' + esc(fecha) + '</td><td class="primary">' + esc(d.impuesto) + '</td><td>' + esc(d.periodo || '—') + '</td>'
+          + '<td>' + tipoTag(d.tipo) + '</td><td class="mono">' + esc(d.nombre || '') + '</td><td class="num">' + fmtSize(d.tamano) + '</td>'
+          + '<td class="ctr" style="white-space:nowrap;">'
+          + '<button class="btn btn-ghost" data-bov-ver="' + esc(d.storage_path) + '" title="Ver / descargar" style="height:26px;font-size:11px;padding:0 8px;"><i data-lucide="eye"></i></button> '
+          + '<button class="btn btn-ghost" data-bov-del="' + esc(d.id) + '" data-bov-path="' + esc(d.storage_path) + '" title="Eliminar" style="height:26px;font-size:11px;padding:0 8px;color:#c0392b;"><i data-lucide="trash-2"></i></button>'
+          + '</td></tr>';
+      }).join('');
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    if (tbody) tbody.addEventListener('click', async (e) => {
+      const ver = e.target.closest('[data-bov-ver]');
+      const del = e.target.closest('[data-bov-del]');
+      if (ver) {
+        const { data, error } = await window.sb.storage.from(BUCKET).createSignedUrl(ver.dataset.bovVer, 120);
+        if (error || !data) { toast('No se pudo abrir: ' + (error && error.message), 'error'); return; }
+        window.open(data.signedUrl, '_blank');
+      } else if (del) {
+        if (!window.confirm('¿Eliminar este documento de la bóveda? No se puede deshacer.')) return;
+        await window.sb.storage.from(BUCKET).remove([del.dataset.bovPath]);
+        const { error } = await window.sb.from('documentos_fiscales').delete().eq('id', del.dataset.bovDel);
+        if (error) { toast('No se pudo eliminar: ' + error.message, 'error'); return; }
+        toast('Documento eliminado', 'success'); cargarBoveda();
+      }
+    });
+
+    const search = document.getElementById('bovedaSearch');
+    if (search) search.addEventListener('input', render);
+
+    function subir() {
+      let fileEl = null;
+      window.openFormModal && window.openFormModal({
+        title: 'Subir documento a la Bóveda Fiscal',
+        saveLabel: 'Subir',
+        fields: [
+          { name: 'impuesto', label: 'Impuesto', type: 'select', options: ['IVA', 'Retenciones IVA', 'ISLR', 'Retenciones ISLR', 'IGTF', 'IGP (Grandes Patrimonios)', 'Protección a las Pensiones', 'Otro'] },
+          { name: 'tipo', label: 'Tipo de documento', type: 'select', options: ['Planilla de declaración', 'Planilla / compromiso de pago', 'Certificado electrónico'] },
+          { name: 'pmes', label: 'Mes', type: 'select', options: ['—', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'] },
+          { name: 'pquincena', label: 'Quincena', type: 'select', options: ['Mes completo', '1ra Quincena', '2da Quincena'] },
+          { name: 'panio', label: 'Año / Ejercicio', type: 'select', options: ['2026', '2025', '2024', '2027'] },
+          { name: 'archivo', label: 'Archivo (PDF, imagen…)', col: 2, type: 'file' },
+        ],
+        afterRender: (body) => { fileEl = body.querySelector('[data-name="archivo"]'); },
+        onSave: (v) => {
+          if (!window.sb || !window.__CUENTA_ID || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) return 'No hay una empresa activa seleccionada.';
+          const file = fileEl && fileEl.files && fileEl.files[0];
+          if (!file) return 'Selecciona un archivo.';
+          // Arma el período a partir de los 3 selectores
+          const mes = v.pmes && v.pmes !== '—' ? v.pmes : '';
+          const q = v.pquincena && v.pquincena !== 'Mes completo' ? ' · ' + v.pquincena : '';
+          const periodo = mes ? (mes + ' ' + v.panio + q) : ('Ejercicio ' + v.panio);
+          const safe = (s) => (s || '').replace(/[^a-zA-Z0-9._-]/g, '_');
+          const path = window.__CUENTA_ID + '/' + window.__EMPRESA_ACTIVA.id + '/' + safe(v.impuesto) + '/' + safe(periodo) + '/' + Date.now() + '_' + safe(file.name);
+          window.sb.storage.from(BUCKET).upload(path, file, { upsert: false, contentType: file.type || undefined }).then(({ error }) => {
+            if (error) { toast('No se pudo subir: ' + error.message, 'error'); return; }
+            window.sb.from('documentos_fiscales').insert({
+              cuenta_id: window.__CUENTA_ID, empresa_id: window.__EMPRESA_ACTIVA.id,
+              impuesto: v.impuesto, periodo: periodo, tipo: v.tipo, nombre: file.name,
+              storage_path: path, mime: file.type, tamano: file.size,
+            }).then(({ error: e2 }) => {
+              if (e2) { toast('Archivo subido pero no se registró: ' + e2.message, 'error'); return; }
+              toast('Documento guardado en la Bóveda Fiscal', 'success'); cargarBoveda();
+            });
+          });
+        },
+      });
+    }
+    const subirBtn = document.getElementById('bovedaSubirBtn');
+    if (subirBtn) subirBtn.addEventListener('click', subir);
+
+    cargarBoveda();
   })();
 
   /* =========================================================
@@ -4999,7 +5213,10 @@
           { name: 'base', label: 'Base imponible (Bs)', type: 'number', step: '0.01', placeholder: '0.00' },
           { name: 'alic', label: 'Alícuota IVA', type: 'select', options: ['16%', '8%', 'Exento'] },
           { name: 'exento', label: 'Monto exento / sin ' + (esCompra ? 'crédito' : 'débito') + ' (Bs)', type: 'number', step: '0.01', placeholder: '0.00' },
-        ].concat(esCompra ? [] : [{ name: 'igtf', label: 'IGTF 3% (si cobró en divisas, Bs)', type: 'number', step: '0.01', placeholder: '0.00' }]).concat([
+        ].concat(esCompra ? [] : [
+          { name: 'igtfAplica', label: '¿Aplica IGTF? (cobro en divisas/cripto)', type: 'select', options: ['No', 'Sí (3%)'] },
+          { name: 'igtfShow', label: 'IGTF 3% (calculado del total con IVA)', type: 'static', html: '<span class="mono" id="igtfShowVal">Bs 0,00</span>' },
+        ]).concat([
           { name: 'retPct', label: (esCompra ? 'IVA que le retienes al proveedor' : 'IVA que te retuvo el cliente') + ' (opcional)', type: 'select', options: ['Sin retención', '75%', '100%'] },
           { name: 'retComp', label: 'N° comprobante de retención' + (esCompra ? ' (vacío = se genera)' : ' (el que te dio el cliente)'), placeholder: esCompra ? 'Se genera solo' : 'Ej. 20260600000123' },
         ]),
@@ -5018,13 +5235,33 @@
           };
           prov.addEventListener('change', autollenar);
           prov.addEventListener('input', autollenar);
+          // IGTF (solo ventas): si aplica, calcula el 3% del TOTAL de la factura (base + IVA + exento) en vivo
+          const baseEl = body.querySelector('[data-name="base"]');
+          const alicEl = body.querySelector('[data-name="alic"]');
+          const exEl = body.querySelector('[data-name="exento"]');
+          const igtfSel = body.querySelector('[data-name="igtfAplica"]');
+          const igtfShow = document.getElementById('igtfShowVal');
+          const calcIgtf = () => {
+            if (!igtfSel || !igtfShow) return;
+            const b = parseFloat(baseEl && baseEl.value) || 0;
+            const al = alicEl && alicEl.value === '8%' ? 0.08 : alicEl && alicEl.value === 'Exento' ? 0 : 0.16;
+            const ex = parseFloat(exEl && exEl.value) || 0;
+            const total = b + b * al + ex;
+            igtfShow.textContent = 'Bs ' + fmtF(/s[ií]/i.test(igtfSel.value) ? total * 0.03 : 0);
+          };
+          if (baseEl) baseEl.addEventListener('input', calcIgtf);
+          if (alicEl) alicEl.addEventListener('change', calcIgtf);
+          if (exEl) exEl.addEventListener('input', calcIgtf);
+          if (igtfSel) igtfSel.addEventListener('change', calcIgtf);
+          calcIgtf();
         },
         onSave: (v) => {
           if (!window.sb || !window.__CUENTA_ID || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) return 'No hay una empresa activa seleccionada.';
           if (!v.nombre) return 'Indica el ' + (esCompra ? 'proveedor' : 'cliente') + '.';
-          const base = parseFloat(v.base) || 0, exento = parseFloat(v.exento) || 0, igtf = parseFloat(v.igtf) || 0;
+          const base = parseFloat(v.base) || 0, exento = parseFloat(v.exento) || 0;
           const alic = v.alic === '8%' ? 0.08 : v.alic === 'Exento' ? 0 : 0.16;
           const iva = base * alic, total = base + iva + exento;
+          const igtf = /s[ií]/i.test(v.igtfAplica || '') ? total * 0.03 : 0; // IGTF sobre el total de la factura
           const p = (v.fecha || '').split('-');
           const fecha = p.length === 3 ? (p[2] + '/' + p[1] + '/' + p[0].slice(2)) : '';
           window.sb.from('libro_fiscal').insert({
@@ -5138,13 +5375,36 @@
           { name: 'base', label: 'Base imponible (Bs)', type: 'number', step: '0.01', value: r.base != null ? String(r.base) : '' },
           { name: 'alic', label: 'Alícuota IVA', type: 'select', options: ['16%', '8%', 'Exento'], value: alicVal },
           { name: 'exento', label: 'Monto exento / sin ' + (esCompra ? 'crédito' : 'débito') + ' (Bs)', type: 'number', step: '0.01', value: r.exento != null ? String(r.exento) : '' },
-        ].concat(esCompra ? [] : [{ name: 'igtf', label: 'IGTF 3% (Bs)', type: 'number', step: '0.01', value: r.igtf != null ? String(r.igtf) : '' }]),
+        ].concat(esCompra ? [] : [
+          { name: 'igtfAplica', label: '¿Aplica IGTF? (3%)', type: 'select', options: ['No', 'Sí (3%)'], value: (Number(r.igtf) > 0 ? 'Sí (3%)' : 'No') },
+          { name: 'igtfShow', label: 'IGTF 3% (calculado del total con IVA)', type: 'static', html: '<span class="mono" id="igtfShowVal">Bs ' + fmtF(Number(r.igtf) || 0) + '</span>' },
+        ]),
+        afterRender: (body) => {
+          const baseEl = body.querySelector('[data-name="base"]');
+          const alicEl = body.querySelector('[data-name="alic"]');
+          const exEl = body.querySelector('[data-name="exento"]');
+          const igtfSel = body.querySelector('[data-name="igtfAplica"]');
+          const igtfShow = document.getElementById('igtfShowVal');
+          const calcIgtf = () => {
+            if (!igtfSel || !igtfShow) return;
+            const b = parseFloat(baseEl && baseEl.value) || 0;
+            const al = alicEl && alicEl.value === '8%' ? 0.08 : alicEl && alicEl.value === 'Exento' ? 0 : 0.16;
+            const ex = parseFloat(exEl && exEl.value) || 0;
+            const total = b + b * al + ex;
+            igtfShow.textContent = 'Bs ' + fmtF(/s[ií]/i.test(igtfSel.value) ? total * 0.03 : 0);
+          };
+          if (baseEl) baseEl.addEventListener('input', calcIgtf);
+          if (alicEl) alicEl.addEventListener('change', calcIgtf);
+          if (exEl) exEl.addEventListener('input', calcIgtf);
+          if (igtfSel) igtfSel.addEventListener('change', calcIgtf);
+        },
         onSave: (v) => {
           if (!window.sb) return 'Sin conexión.';
           if (!v.nombre) return 'Indica el ' + (esCompra ? 'proveedor' : 'cliente') + '.';
-          const base = parseFloat(v.base) || 0, exento = parseFloat(v.exento) || 0, igtf = parseFloat(v.igtf) || 0;
+          const base = parseFloat(v.base) || 0, exento = parseFloat(v.exento) || 0;
           const alic = v.alic === '8%' ? 0.08 : v.alic === 'Exento' ? 0 : 0.16;
           const iva = base * alic, total = base + iva + exento;
+          const igtf = /s[ií]/i.test(v.igtfAplica || '') ? total * 0.03 : 0; // IGTF sobre el total de la factura
           window.sb.from('libro_fiscal').update({
             fecha: v.fecha, tipo_doc: (v.tipoDoc || '').slice(0, 2), tercero_nombre: v.nombre,
             tercero_rif: (v.rif || '').toUpperCase().replace(/[\s.\-]/g, ''), numero_factura: v.numFactura, numero_control: v.numControl,
