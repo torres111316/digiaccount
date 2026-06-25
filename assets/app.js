@@ -86,6 +86,8 @@
         if (window.cargarBoveda) window.cargarBoveda();
         if (window.cargarTesoreria) window.cargarTesoreria();
         if (window.cargarRetenciones) window.cargarRetenciones();
+        if (window.cargarEmpleados) window.cargarEmpleados();
+        if (window.cargarDashboard) window.cargarDashboard();
       });
     }
     document.querySelectorAll('.entity-option[data-name]').forEach(bindEntityOption);
@@ -233,6 +235,10 @@
   (function cashFlowChart() {
     const chart = document.getElementById('cashChart');
     if (!chart) return;
+    // Placeholder honesto hasta graficar el flujo diario real (agrupado por día de los movimientos)
+    const phWrap = chart.closest('.chart-wrap');
+    if (phWrap) { phWrap.innerHTML = '<div style="text-align:center;color:var(--fg-muted);padding:42px 20px;"><i data-lucide="line-chart" style="width:28px;height:28px;opacity:.5;"></i><div style="font-size:13px;font-weight:600;margin-top:10px;">Flujo de caja diario</div><div style="font-size:12px;margin-top:4px;">Se graficará con tus movimientos de Tesorería del período.</div></div>'; if (window.lucide) window.lucide.createIcons(); }
+    return;
 
     const days = 28;
     const ingresos = [
@@ -3156,6 +3162,13 @@
     let bcv = 145.82, par = 151.3, eur = 158.04;
     const bcvPrev = 145.21, parPrev = 150.28, eurPrev = 157.55;
     let secs = 12;
+    // Tasas editables manualmente (fuente de verdad para nómina, etc.); persisten en el navegador.
+    let manual = false;
+    try {
+      const b = parseFloat(localStorage.getItem('da_bcv_rate')); if (b > 0) { bcv = b; manual = true; }
+      const p = parseFloat(localStorage.getItem('da_par_rate')); if (p > 0) { par = p; manual = true; }
+      const eu = parseFloat(localStorage.getItem('da_eur_rate')); if (eu > 0) { eur = eu; manual = true; }
+    } catch (e) {}
 
     const fmt = (n) => n.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -3193,12 +3206,29 @@
     }
 
     function tick() {
+      if (manual) { secs = 0; render(); return; } // tasa fijada a mano: no varía sola
       const jitter = () => (Math.random() - 0.42) * 0.18;
       bcv = Math.max(140, bcv + jitter());
       par = Math.max(bcv + 1, par + jitter() * 1.4);
       eur = Math.max(150, eur + jitter() * 1.1);
       secs = 0;
       render();
+    }
+    function editRate(which) {
+      const cfg = {
+        bcv: { lbl: 'Tasa BCV (Bs por $)', src: 'bcv.org.ve', key: 'da_bcv_rate', get: () => bcv, set: (n) => { bcv = n; } },
+        par: { lbl: 'Dólar Binance (Bs por $)', src: 'Binance P2P', key: 'da_par_rate', get: () => par, set: (n) => { par = n; } },
+        eur: { lbl: 'Euro (Bs por €)', src: 'BCV', key: 'da_eur_rate', get: () => eur, set: (n) => { eur = n; } },
+      }[which];
+      if (!cfg) return;
+      const v = window.prompt(cfg.lbl + ' — valor actual (fuente: ' + cfg.src + '):', fmt(cfg.get()));
+      if (v == null) return;
+      const n = parseNum(v);
+      if (!(n > 0)) { if (window.toast) window.toast('Valor inválido', 'error'); return; }
+      cfg.set(n); manual = true;
+      try { localStorage.setItem(cfg.key, String(n)); } catch (e) {}
+      render();
+      if (window.toast) window.toast(cfg.lbl + ' fijado: Bs ' + fmt(n), 'success');
     }
     setInterval(tick, 5000);
     setInterval(() => {
@@ -3208,7 +3238,21 @@
 
     const usdInput = document.getElementById('fxUsd');
     const bsInput = document.getElementById('fxBs');
-    const parseNum = (s) => parseFloat(String(s).replace(/\./g, '').replace(',', '.')) || 0;
+    // Parser inteligente: el punto o la coma que escribas cuentan como decimal;
+    // los separadores de mil no hace falta escribirlos (se reflejan solos al mostrar).
+    function parseNum(s) {
+      s = String(s == null ? '' : s).trim().replace(/[^\d.,]/g, '');
+      if (!s) return 0;
+      const hasC = s.indexOf(',') > -1, hasP = s.indexOf('.') > -1;
+      if (hasC && hasP) {
+        // ambos: el ÚLTIMO es el decimal (ej. "2.569,89" → coma; "2,569.89" → punto)
+        if (s.lastIndexOf(',') > s.lastIndexOf('.')) s = s.replace(/\./g, '').replace(',', '.');
+        else s = s.replace(/,/g, '');
+      } else if (hasC) {
+        s = s.replace(',', '.');
+      } // solo punto → se deja como decimal
+      return parseFloat(s) || 0;
+    }
     function recalcFromUsd() { if (usdInput && bsInput) bsInput.value = fmt(parseNum(usdInput.value) * bcv); }
     function recalcFromBs() {
       if (usdInput && bsInput) usdInput.value = (parseNum(bsInput.value) / bcv).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -3222,9 +3266,70 @@
     });
     document.addEventListener('click', (e) => { if (!pill.contains(e.target)) panel.dataset.open = 'false'; });
     const refreshBtn = document.getElementById('fxRefresh');
-    if (refreshBtn) refreshBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); tick(); });
+    if (refreshBtn) refreshBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); editRate('bcv'); });
+    [['fxBcv', 'bcv'], ['fxPar', 'par'], ['fxEur', 'eur']].forEach((pair) => {
+      const el = document.getElementById(pair[0]);
+      if (el) { el.style.cursor = 'pointer'; el.title = 'Clic para fijar el valor real'; el.addEventListener('click', (e) => { e.stopPropagation(); editRate(pair[1]); }); }
+    });
 
     render();
+  })();
+
+  /* =========================================================
+     DASHBOARD (Visión 360°) — KPIs conectados a datos reales
+     ========================================================= */
+  (function dashboardKpis() {
+    const fmtBs = (n) => Number(n || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const setKpi = (id, bs) => { const el = document.getElementById(id); if (el) { el.dataset.bs = bs; el.innerHTML = '<span class="currency">Bs</span> ' + fmtBs(bs); } };
+    const setVal = (id, bs) => { const el = document.getElementById(id); if (el) { el.dataset.bs = bs; el.textContent = (el.dataset.prefix || '') + fmtBs(bs); } };
+    const setTxt = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    async function cargar() {
+      const emp = window.__EMPRESA_ACTIVA;
+      if (!window.sb || !emp || !emp.id) {
+        ['dashBanco', 'dashCxc', 'dashCxp', 'dashVentas'].forEach((id) => setKpi(id, 0));
+        ['dashIngresos', 'dashEgresos', 'dashNeto', 'dashPosNeta', 'dashBankTotal'].forEach((id) => setVal(id, 0));
+        return;
+      }
+      const [rc, rm, rf, rlc] = await Promise.all([
+        window.sb.from('cuentas_tesoreria').select('id, nombre, banco, numero, tipo, color, saldo_inicial, moneda').eq('empresa_id', emp.id),
+        window.sb.from('movimientos_tesoreria').select('cuenta_teso_id, tipo, monto, factura_ref').eq('empresa_id', emp.id),
+        window.sb.from('facturas').select('numero, total').eq('tipo', 'venta').eq('empresa_id', emp.id),
+        window.sb.from('libro_fiscal').select('numero_factura, total').eq('tipo', 'compra').eq('empresa_id', emp.id),
+      ]);
+      const cuentas = rc.data || [], movs = rm.data || [], recibos = rf.data || [], compras = rlc.data || [];
+      const saldoDe = (cid, ini) => { let s = Number(ini) || 0; movs.filter((m) => m.cuenta_teso_id === cid).forEach((m) => { s += (m.tipo === 'ingreso' ? 1 : -1) * (Number(m.monto) || 0); }); return s; };
+      let disp = 0;
+      cuentas.filter((c) => (c.moneda || 'Bs') !== 'USD').forEach((c) => { disp += saldoDe(c.id, c.saldo_inicial); });
+      const sumBy = (tipo) => { const o = {}; movs.filter((m) => m.tipo === tipo).forEach((m) => { const r = (m.factura_ref || '').trim(); if (r) o[r] = (o[r] || 0) + (Number(m.monto) || 0); }); return o; };
+      const cobros = sumBy('ingreso'), pagos = sumBy('egreso');
+      let cxc = 0, cxcN = 0; recibos.forEach((f) => { const p = Math.max(0, (Number(f.total) || 0) - (cobros[(f.numero || '').trim()] || 0)); if (p > 0.01) cxcN++; cxc += p; });
+      let cxp = 0, cxpN = 0; compras.forEach((f) => { const p = Math.max(0, (Number(f.total) || 0) - (pagos[(f.numero_factura || '').trim()] || 0)); if (p > 0.01) cxpN++; cxp += p; });
+      const ventas = recibos.reduce((s, f) => s + (Number(f.total) || 0), 0);
+      const ingresos = movs.filter((m) => m.tipo === 'ingreso').reduce((s, m) => s + (Number(m.monto) || 0), 0);
+      const egresos = movs.filter((m) => m.tipo === 'egreso').reduce((s, m) => s + (Number(m.monto) || 0), 0);
+      setKpi('dashBanco', disp); setKpi('dashCxc', cxc); setKpi('dashCxp', cxp); setKpi('dashVentas', ventas);
+      setTxt('dashBancoCuentas', cuentas.length); setTxt('dashCxcCount', cxcN); setTxt('dashCxpCount', cxpN); setTxt('dashVentasCount', recibos.length);
+      setVal('dashIngresos', ingresos); setVal('dashEgresos', egresos); setVal('dashNeto', ingresos - egresos); setVal('dashPosNeta', disp + cxc - cxp);
+      // Saldo por cuenta (banco strip)
+      setTxt('dashBankCount', cuentas.length + (cuentas.length === 1 ? ' cuenta' : ' cuentas'));
+      setVal('dashBankTotal', disp);
+      const lines = document.getElementById('dashBankLines');
+      if (lines) {
+        lines.innerHTML = cuentas.length ? cuentas.map((c) => {
+          const s = saldoDe(c.id, c.saldo_inicial);
+          const esCaja = /efectivo|caja/i.test((c.tipo || '') + ' ' + (c.nombre || ''));
+          const ini = esCaja ? '$' : (((c.banco || c.nombre || '?').replace(/[^A-Za-zÁÉÍÓÚÑ ]/g, '').trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join('')) || 'CT').toUpperCase();
+          const pct = disp > 0 ? Math.max(3, Math.round(s / disp * 100)) : 0;
+          return '<div class="bank-line"><div class="bl-logo" style="background:' + esc(c.color || '#003057') + ';">' + esc(ini) + '</div>'
+            + '<div class="bl-name">' + esc(c.nombre || 'Cuenta') + (c.numero ? ' <small>' + esc(c.numero) + '</small>' : '') + '</div>'
+            + '<div class="bar-mini"><span style="width:' + pct + '%"></span></div>'
+            + '<div class="bl-amt">Bs ' + fmtBs(s) + '</div></div>';
+        }).join('') : '<div style="padding:14px;color:var(--fg-muted);font-size:12px;">Aún no hay cuentas de tesorería.</div>';
+      }
+      if (window.lucide) window.lucide.createIcons();
+    }
+    window.cargarDashboard = cargar;
+    cargar();
   })();
 
   /* =========================================================
@@ -3934,32 +4039,8 @@
     const TOPE_IVSS = 5 * SALARIO_MINIMO;  // base máx. de cotización IVSS (5 salarios mínimos)
     const TOPE_RPE  = 10 * SALARIO_MINIMO; // base máx. de cotización RPE/Paro Forzoso (10 sal. mín.)
 
-    const empleados = [
-      { id: 'cr', nombre: 'Carlos Ramírez', cedula: 'V-12.445.781', cargo: 'Gerente General', depto: 'Gerencia', tipo: 'Administrativo', ingreso: new Date(2016, 1, 10), salarioMes: 820000, bonoUSD: 450, bonoLabel: '$ 450', formaPago: 'Transferencia', frecHabitual: 'mensual', horasExtra: 0, horasNoct: 0, diasFeriado: 0, comisionBs: 0, bonoProdBs: 0, cajaAhorroPct: 0.05, prestamoCuota: 0, anticipoSueldo: 0, color: '#003057', ini: 'CR' },
-      { id: 'lm', nombre: 'Luisa Méndez', cedula: 'V-15.998.231', cargo: 'Contadora Senior', depto: 'Contabilidad', tipo: 'Administrativo', ingreso: new Date(2019, 5, 3), salarioMes: 485000, bonoUSD: 280, bonoLabel: '$ 280', formaPago: 'Transferencia', frecHabitual: 'quincenal', horasExtra: 6, horasNoct: 0, diasFeriado: 0, comisionBs: 0, bonoProdBs: 0, cajaAhorroPct: 0, prestamoCuota: 30000, anticipoSueldo: 0, color: '#00aeef', ini: 'LM' },
-      { id: 'jp', nombre: 'José Pérez', cedula: 'V-17.331.554', cargo: 'Supervisor de Planta', depto: 'Producción', tipo: 'Planta', ingreso: new Date(2020, 8, 15), salarioMes: 385000, bonoUSD: 180, bonoLabel: '$ 180', formaPago: 'Transferencia', frecHabitual: 'semanal', horasExtra: 12, horasNoct: 16, diasFeriado: 1, comisionBs: 0, bonoProdBs: 25000, cajaAhorroPct: 0, prestamoCuota: 0, anticipoSueldo: 0, color: '#1c8f5a', ini: 'JP' },
-      { id: 'am', nombre: 'Andrea Mora', cedula: 'V-19.881.220', cargo: 'Analista Tesorería', depto: 'Tesorería', tipo: 'Administrativo', ingreso: new Date(2022, 0, 20), salarioMes: 285000, bonoUSD: 120, bonoLabel: '$ 120', formaPago: 'Transferencia', frecHabitual: 'quincenal', horasExtra: 8, horasNoct: 0, diasFeriado: 0, comisionBs: 0, bonoProdBs: 0, cajaAhorroPct: 0.03, prestamoCuota: 0, anticipoSueldo: 0, color: '#c97a14', ini: 'AM' },
-      { id: 'rg', nombre: 'Roberto Gil', cedula: 'V-21.445.998', cargo: 'Vendedor', depto: 'Ventas', tipo: 'Administrativo', ingreso: new Date(2023, 3, 5), salarioMes: 220000, bonoUSD: 80, bonoLabel: '$ 80 + 2% comisión', formaPago: 'Transferencia', frecHabitual: 'quincenal', horasExtra: 4, horasNoct: 0, diasFeriado: 0, comisionBs: 45000, bonoProdBs: 0, cajaAhorroPct: 0, prestamoCuota: 0, anticipoSueldo: 0, color: '#c0392b', ini: 'RG' },
-      { id: 'ms', nombre: 'María Salazar', cedula: 'V-23.776.541', cargo: 'Auxiliar Contable', depto: 'Contabilidad', tipo: 'Administrativo', ingreso: new Date(2024, 2, 11), salarioMes: 198000, bonoUSD: 60, bonoLabel: '$ 60', formaPago: 'Transferencia', frecHabitual: 'quincenal', horasExtra: 10, horasNoct: 0, diasFeriado: 0, comisionBs: 0, bonoProdBs: 0, cajaAhorroPct: 0, prestamoCuota: 0, anticipoSueldo: 20000, color: '#6f8aab', ini: 'MS' },
-      { id: 'dn', nombre: 'Daniel Núñez', cedula: 'V-25.998.110', cargo: 'Operario de Almacén', depto: 'Producción', tipo: 'Planta', ingreso: new Date(2025, 4, 2), salarioMes: 165000, bonoUSD: 0, bonoLabel: '—', formaPago: 'Efectivo', frecHabitual: 'semanal', horasExtra: 14, horasNoct: 24, diasFeriado: 1, comisionBs: 0, bonoProdBs: 0, cajaAhorroPct: 0, prestamoCuota: 0, anticipoSueldo: 0, color: '#3a7bb8', ini: 'DN' },
-      { id: 'pc', nombre: 'Pedro Castro', cedula: 'V-26.110.445', cargo: 'Operario de Producción', depto: 'Producción', tipo: 'Planta', ingreso: new Date(2021, 6, 12), salarioMes: 158000, bonoUSD: 0, bonoLabel: '—', formaPago: 'Efectivo', frecHabitual: 'semanal', horasExtra: 10, horasNoct: 20, diasFeriado: 1, comisionBs: 0, bonoProdBs: 0, cajaAhorroPct: 0, prestamoCuota: 0, anticipoSueldo: 0, color: '#2e7d6b', ini: 'PC' },
-      { id: 'go', nombre: 'Gabriela Ortiz', cedula: 'V-24.553.118', cargo: 'Vendedora', depto: 'Ventas', tipo: 'Administrativo', ingreso: new Date(2022, 9, 1), salarioMes: 175000, bonoUSD: 70, bonoLabel: '$ 70 + 2% comisión', formaPago: 'Transferencia', frecHabitual: 'quincenal', horasExtra: 0, horasNoct: 0, diasFeriado: 0, comisionBs: 38000, bonoProdBs: 0, cajaAhorroPct: 0, prestamoCuota: 0, anticipoSueldo: 0, color: '#b8568f', ini: 'GO' },
-      { id: 'lh', nombre: 'Luis Herrera', cedula: 'V-20.998.762', cargo: 'Chofer de Reparto', depto: 'Logística', tipo: 'Planta', ingreso: new Date(2019, 11, 9), salarioMes: 162000, bonoUSD: 0, bonoLabel: '—', formaPago: 'Efectivo', frecHabitual: 'semanal', horasExtra: 8, horasNoct: 6, diasFeriado: 0, comisionBs: 0, bonoProdBs: 0, cajaAhorroPct: 0, prestamoCuota: 0, anticipoSueldo: 0, color: '#5a7a9a', ini: 'LH' },
-      { id: 'cd', nombre: 'Carmen Díaz', cedula: 'V-22.114.556', cargo: 'Recepcionista', depto: 'Administración', tipo: 'Administrativo', ingreso: new Date(2023, 1, 20), salarioMes: 148000, bonoUSD: 50, bonoLabel: '$ 50', formaPago: 'Transferencia', frecHabitual: 'quincenal', horasExtra: 0, horasNoct: 0, diasFeriado: 0, comisionBs: 0, bonoProdBs: 0, cajaAhorroPct: 0, prestamoCuota: 0, anticipoSueldo: 0, color: '#c77d3a', ini: 'CD' },
-      { id: 'mr', nombre: 'Miguel Rojas', cedula: 'V-18.776.220', cargo: 'Almacenista', depto: 'Almacén', tipo: 'Planta', ingreso: new Date(2018, 3, 14), salarioMes: 155000, bonoUSD: 0, bonoLabel: '—', formaPago: 'Efectivo', frecHabitual: 'semanal', horasExtra: 12, horasNoct: 0, diasFeriado: 0, comisionBs: 0, bonoProdBs: 0, cajaAhorroPct: 0, prestamoCuota: 0, anticipoSueldo: 0, color: '#3a6ea5', ini: 'MR' },
-      { id: 'rf', nombre: 'Rosa Fernández', cedula: 'V-25.443.901', cargo: 'Asistente de RRHH', depto: 'Recursos Humanos', tipo: 'Administrativo', ingreso: new Date(2024, 0, 8), salarioMes: 168000, bonoUSD: 60, bonoLabel: '$ 60', formaPago: 'Transferencia', frecHabitual: 'quincenal', horasExtra: 0, horasNoct: 0, diasFeriado: 0, comisionBs: 0, bonoProdBs: 0, cajaAhorroPct: 0.03, prestamoCuota: 0, anticipoSueldo: 0, color: '#9a5ba8', ini: 'RF' },
-      { id: 'jm', nombre: 'Jesús Morales', cedula: 'V-27.118.334', cargo: 'Operario de Producción', depto: 'Producción', tipo: 'Planta', ingreso: new Date(2025, 1, 17), salarioMes: 152000, bonoUSD: 0, bonoLabel: '—', formaPago: 'Efectivo', frecHabitual: 'semanal', horasExtra: 11, horasNoct: 18, diasFeriado: 1, comisionBs: 0, bonoProdBs: 0, cajaAhorroPct: 0, prestamoCuota: 0, anticipoSueldo: 0, color: '#1c8f5a', ini: 'JM' },
-      { id: 'pl', nombre: 'Patricia León', cedula: 'V-23.009.887', cargo: 'Cajera', depto: 'Ventas', tipo: 'Administrativo', ingreso: new Date(2022, 4, 23), salarioMes: 145000, bonoUSD: 45, bonoLabel: '$ 45', formaPago: 'Transferencia', frecHabitual: 'quincenal', horasExtra: 0, horasNoct: 0, diasFeriado: 0, comisionBs: 0, bonoProdBs: 0, cajaAhorroPct: 0, prestamoCuota: 0, anticipoSueldo: 0, color: '#c0392b', ini: 'PL' },
-      { id: 'as', nombre: 'Ángel Suárez', cedula: 'V-19.554.776', cargo: 'Mecánico de Mantenimiento', depto: 'Mantenimiento', tipo: 'Planta', ingreso: new Date(2017, 8, 6), salarioMes: 172000, bonoUSD: 0, bonoLabel: '—', formaPago: 'Efectivo', frecHabitual: 'semanal', horasExtra: 16, horasNoct: 8, diasFeriado: 1, comisionBs: 0, bonoProdBs: 0, cajaAhorroPct: 0, prestamoCuota: 0, anticipoSueldo: 0, color: '#6a5acd', ini: 'AS' },
-      { id: 'yr', nombre: 'Yolanda Ramos', cedula: 'V-26.778.103', cargo: 'Auxiliar de Limpieza', depto: 'Servicios Generales', tipo: 'Planta', ingreso: new Date(2024, 6, 1), salarioMes: 138000, bonoUSD: 0, bonoLabel: '—', formaPago: 'Efectivo', frecHabitual: 'semanal', horasExtra: 6, horasNoct: 0, diasFeriado: 0, comisionBs: 0, bonoProdBs: 0, cajaAhorroPct: 0, prestamoCuota: 0, anticipoSueldo: 0, color: '#8a98a8', ini: 'YR' },
-      { id: 'fv', nombre: 'Francisco Vargas', cedula: 'V-21.330.998', cargo: 'Supervisor de Ventas', depto: 'Ventas', tipo: 'Administrativo', ingreso: new Date(2020, 2, 16), salarioMes: 284000, bonoUSD: 130, bonoLabel: '$ 130 + 1% comisión', formaPago: 'Transferencia', frecHabitual: 'quincenal', horasExtra: 0, horasNoct: 0, diasFeriado: 0, comisionBs: 52000, bonoProdBs: 0, cajaAhorroPct: 0.05, prestamoCuota: 0, anticipoSueldo: 0, color: '#003057', ini: 'FV' },
-      { id: 'eg', nombre: 'Elena Guerra', cedula: 'V-24.119.665', cargo: 'Analista de Compras', depto: 'Compras', tipo: 'Administrativo', ingreso: new Date(2023, 7, 28), salarioMes: 192000, bonoUSD: 90, bonoLabel: '$ 90', formaPago: 'Transferencia', frecHabitual: 'quincenal', horasExtra: 5, horasNoct: 0, diasFeriado: 0, comisionBs: 0, bonoProdBs: 0, cajaAhorroPct: 0, prestamoCuota: 25000, anticipoSueldo: 0, color: '#00aeef', ini: 'EG' },
-      { id: 'om', nombre: 'Oscar Medina', cedula: 'V-20.443.221', cargo: 'Operario de Almacén', depto: 'Almacén', tipo: 'Planta', ingreso: new Date(2019, 5, 11), salarioMes: 150000, bonoUSD: 0, bonoLabel: '—', formaPago: 'Efectivo', frecHabitual: 'semanal', horasExtra: 9, horasNoct: 12, diasFeriado: 0, comisionBs: 0, bonoProdBs: 0, cajaAhorroPct: 0, prestamoCuota: 0, anticipoSueldo: 0, color: '#3a7bb8', ini: 'OM' },
-      { id: 'bn', nombre: 'Beatriz Navarro', cedula: 'V-25.998.443', cargo: 'Asistente Administrativo', depto: 'Administración', tipo: 'Administrativo', ingreso: new Date(2024, 3, 4), salarioMes: 158000, bonoUSD: 55, bonoLabel: '$ 55', formaPago: 'Transferencia', frecHabitual: 'quincenal', horasExtra: 0, horasNoct: 0, diasFeriado: 0, comisionBs: 0, bonoProdBs: 0, cajaAhorroPct: 0, prestamoCuota: 0, anticipoSueldo: 0, color: '#c97a14', ini: 'BN' },
-      { id: 'hp', nombre: 'Hugo Paredes', cedula: 'V-22.667.110', cargo: 'Vendedor', depto: 'Ventas', tipo: 'Administrativo', ingreso: new Date(2021, 10, 22), salarioMes: 178000, bonoUSD: 75, bonoLabel: '$ 75 + 2% comisión', formaPago: 'Transferencia', frecHabitual: 'quincenal', horasExtra: 0, horasNoct: 0, diasFeriado: 0, comisionBs: 41000, bonoProdBs: 0, cajaAhorroPct: 0, prestamoCuota: 0, anticipoSueldo: 0, color: '#c0392b', ini: 'HP' },
-      { id: 'sc', nombre: 'Silvia Campos', cedula: 'V-23.881.554', cargo: 'Auxiliar Contable', depto: 'Contabilidad', tipo: 'Administrativo', ingreso: new Date(2023, 0, 30), salarioMes: 165000, bonoUSD: 60, bonoLabel: '$ 60', formaPago: 'Transferencia', frecHabitual: 'quincenal', horasExtra: 7, horasNoct: 0, diasFeriado: 0, comisionBs: 0, bonoProdBs: 0, cajaAhorroPct: 0, prestamoCuota: 0, anticipoSueldo: 0, color: '#6f8aab', ini: 'SC' },
-      { id: 'ra', nombre: 'Ramón Acosta', cedula: 'V-19.220.887', cargo: 'Vigilante', depto: 'Seguridad', tipo: 'Planta', ingreso: new Date(2018, 9, 3), salarioMes: 142000, bonoUSD: 0, bonoLabel: '—', formaPago: 'Efectivo', frecHabitual: 'semanal', horasExtra: 18, horasNoct: 30, diasFeriado: 2, comisionBs: 0, bonoProdBs: 0, cajaAhorroPct: 0, prestamoCuota: 0, anticipoSueldo: 0, color: '#4a5568', ini: 'RA' },
-    ];
+    let empleados = [];   // se carga desde Supabase (cargarEmpleados)
+    // (datos de ejemplo eliminados: la nómina trabaja con empleados reales de Supabase)
 
     const fmt = (n) => n.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const fmt0 = (n) => Math.round(n).toLocaleString('es-VE');
@@ -3967,7 +4048,7 @@
     /* Relación de nómina del período: se genera recorriendo TODA la lista de
        empleados activos, de modo que incluye a todos los que existan (no una
        cantidad fija). Asignación = salario quincenal; deducciones de ley ~6%. */
-    (function buildRelacionNomina() {
+    function buildRelacionNomina() {
       const tbody = document.getElementById('relnTableBody');
       if (!tbody) return;
       const DED_LEY = 0.06; // IVSS 4% + RPE 0,5% + FAOV 1% + INCES 0,5%
@@ -3988,17 +4069,25 @@
       set('relnTotN', fmt(totN));
       set('relnSubLabel', 'TOTALES DEL PERÍODO · ' + empleados.length + ' empleados');
 
-      // Aportes patronales del período sobre la base salarial mensual (todos)
+      // Aportes patronales del período. IVSS/SPF/FAOV/INCES sobre la base salarial mensual (todos).
       const baseMes = totA * 2;
-      const ivss = baseMes * 0.11, spf = baseMes * 0.02, faov = baseMes * 0.02,
-            inces = baseMes * 0.02, pp = baseMes * 0.09;
+      const ivss = baseMes * 0.11, spf = baseMes * 0.02, faov = baseMes * 0.02, inces = baseMes * 0.02;
+      // DPP (9%) SOLO sobre los trabajadores marcados como sujetos a Protección de las Pensiones
+      const baseDpp = empleados.filter((e) => e.sujetoDpp).reduce((s, e) => s + (Number(e.salarioMes) || 0), 0);
+      const pp = baseDpp * 0.09;
       set('raIvss', fmt(ivss));
       set('raSpf', fmt(spf));
       set('raFaov', fmt(faov));
       set('raInces', fmt(inces));
       set('raPp', fmt(pp));
+      const raPpMeta = document.getElementById('raPpMeta');
+      if (raPpMeta) raPpMeta.textContent = empleados.filter((e) => e.sujetoDpp).length + ' trabajador(es) sujetos';
       set('raTotal', fmt(ivss + spf + faov + inces + pp));
-    })();
+      // KPIs de la cabecera de Nómina (datos reales)
+      set('nomKpiCosto', fmt(baseMes));
+      set('nomKpiAportes', fmt(ivss + spf + faov + inces + pp));
+      const kc = document.getElementById('nomKpiCount'); if (kc) kc.textContent = String(empleados.length);
+    }
 
     function aniosServicio(ing) {
       let y = HOY.getFullYear() - ing.getFullYear();
@@ -4109,11 +4198,12 @@
     window.__montoEnLetras = montoEnLetras; // reutilizable por el visor de facturas
 
     // ---------- Render del selector de empleados ----------
-    const state = { vacaciones: empleados[0].id, utilidades: empleados[0].id, liquidacion: empleados[0].id };
+    const state = { vacaciones: null, utilidades: null, liquidacion: null };
 
     function renderPicker(tab) {
       const host = view.querySelector('.emp-picker[data-picker="' + tab + '"]');
       if (!host) return;
+      if (!empleados.length) { host.innerHTML = '<div class="emp-picker-head">Sin empleados</div><div class="emp-picker-body" style="padding:18px;color:var(--fg-muted);font-size:12px;">Registra trabajadores en la pestaña Empleados.</div>'; return; }
       const rows = empleados.map((e) => {
         const c = calc(e);
         const active = state[tab] === e.id ? 'true' : 'false';
@@ -4123,7 +4213,7 @@
           + '<span class="epy">' + c.y + ' año' + (c.y === 1 ? '' : 's') + '</span>'
           + '</div>';
       }).join('');
-      host.innerHTML = '<div class="emp-picker-head">Selecciona un empleado · 24</div><div class="emp-picker-body">' + rows + '</div>';
+      host.innerHTML = '<div class="emp-picker-head">Selecciona un empleado · ' + empleados.length + '</div><div class="emp-picker-body">' + rows + '</div>';
       host.querySelectorAll('.emp-pick').forEach((el) => {
         el.addEventListener('click', () => { state[tab] = el.dataset.emp; renderPicker(tab); renderCalc(tab); });
       });
@@ -4144,6 +4234,7 @@
       const host = view.querySelector('.calc-detail[data-calc="' + tab + '"]');
       if (!host) return;
       const emp = empById(state[tab]);
+      if (!emp) { host.innerHTML = '<div class="calc-card" style="padding:28px;text-align:center;color:var(--fg-muted);font-size:13px;">Registra empleados para calcular prestaciones.</div>'; return; }
       const c = calc(emp);
       let html = '<div class="calc-card">';
 
@@ -4340,7 +4431,7 @@
 
     // ---------- Recibo de pago (semanal / quincenal / mensual) ----------
     let payFreq = 'quincenal';
-    const CESTATICKET_MES = 40000; // bono de alimentación mensual (Ley de Alimentación) — no salarial
+    const CESTATICKET_USD = 40; // cestaticket mensual: $40 pagado en Bs a la tasa BCV (Ley de Alimentación) — no salarial
     const freqInfo = {
       semanal:   { div: 52 / 12, periodo: 'Semana 4 · 24–30 may 2026', etiqueta: 'Sueldo semanal',   doc: 'SEM' },
       quincenal: { div: 2,       periodo: 'Quincena 16–31 may 2026',   etiqueta: 'Sueldo quincenal', doc: 'NOM' },
@@ -4352,35 +4443,35 @@
       const factor = 2 / f.div; // proporción respecto a la quincena (quincenal=1, mensual=2, semanal≈0,46)
       const tasa = window.__bcvRate || 145.82;
 
-      // Salario base COTIZABLE = salario mínimo. El resto del paquete del
-      // trabajador se paga como Bono de Contingencia NO salarial (no cotizable).
-      const sueldo = SALARIO_MINIMO / f.div;
-      const bonoContingencia = Math.max(0, emp.salarioMes - SALARIO_MINIMO) / f.div;
-      const bonoBs = (emp.bonoUSD || 0) * tasa * factor; // bono en divisa (no salarial)
+      // Salario base COTIZABLE = el que se declara para el trabajador.
+      // El Bono de Contingencia es un complemento NO salarial (no cotizable), explícito.
+      const sueldo = (emp.salarioMes || 0) / f.div;
+      const bonoContingencia = (emp.contingenciaUSD || 0) * tasa / f.div; // contingencia en $ pagada en Bs a tasa BCV
+      const transporteBs = (emp.transporteUSD || 0) * tasa / f.div; // bono de transporte mensual en divisa, pagado en Bs a tasa BCV (no salarial)
 
       const salDia = SALARIO_MINIMO / 30;            // recargos legales sobre el salario base
       const valHora = salDia / 8;                    // jornada de 8 h
 
       // Horas extras (Art. 118 LOTTT: recargo 50% sobre la hora normal)
       const valHoraExtra = valHora * 1.5;
-      const horas = Math.round((emp.horasExtra || 0) * factor);
+      const horas = Math.round(emp.horasExtra || 0);       // novedad: horas reales del período
       const montoExtra = horas * valHoraExtra;
 
       // Bono nocturno (Art. 117 LOTTT: recargo 30% sobre la hora normal)
       const valBonoNoct = valHora * 0.30;
-      const horasNoct = Math.round((emp.horasNoct || 0) * factor);
+      const horasNoct = Math.round(emp.horasNoct || 0);    // novedad del período
       const montoNoct = horasNoct * valBonoNoct;
 
       // Días feriados / domingos trabajados (Art. 120 LOTTT: recargo 50%)
-      const diasFeriado = Math.round((emp.diasFeriado || 0) * factor);
+      const diasFeriado = Math.round(emp.diasFeriado || 0); // novedad del período
       const montoFeriado = diasFeriado * salDia * 1.5;
 
-      // Comisiones y bono de producción (salariales, proporcionales al período)
-      const comision = (emp.comisionBs || 0) * factor;
-      const bonoProd = (emp.bonoProdBs || 0) * factor;
+      // Comisiones y bono de producción (novedades del período, salariales)
+      const comision = (emp.comisionBs || 0);
+      const bonoProd = (emp.bonoProdBs || 0);
 
-      // Cestaticket / bono de alimentación (no salarial, sin deducciones)
-      const cestaticket = CESTATICKET_MES / f.div;
+      // Cestaticket / bono de alimentación: $40/mes pagado en Bs a tasa BCV (no salarial, sin deducciones)
+      const cestaticket = (CESTATICKET_USD * tasa) / f.div;
 
       // Base salarial total (asignaciones salariales que devenga el trabajador)
       const baseSalarial = sueldo + montoExtra + montoNoct + montoFeriado + comision + bonoProd;
@@ -4400,17 +4491,17 @@
 
       // Otras deducciones
       const cajaAhorro = salarioNormal * (emp.cajaAhorroPct || 0);
-      const prestamo = (emp.prestamoCuota || 0) / f.div;
-      const anticipo = (emp.anticipoSueldo || 0) * factor;
+      const prestamo = (emp.prestamoCuota || 0) / f.div;     // recurrente mensual, prorrateado
+      const anticipo = (emp.anticipoSueldo || 0);            // novedad del período
       const dedOtras = cajaAhorro + prestamo + anticipo;
 
       const ded = dedLey + dedOtras;
-      const asigSalarial = baseSalarial + bonoBs;
-      // El Bono de Contingencia y el cestaticket son asignaciones NO salariales
-      const asig = asigSalarial + bonoContingencia + cestaticket;
+      const asigSalarial = baseSalarial;
+      // El Bono de Contingencia, el cestaticket y el bono de transporte son asignaciones NO salariales
+      const asig = asigSalarial + bonoContingencia + cestaticket + transporteBs;
       const neto = asig - ded;
       return {
-        f, tasa, salDia, sueldo, bonoContingencia, bonoBs, valHora, baseIvss, baseRpe,
+        f, tasa, salDia, sueldo, bonoContingencia, transporteBs, valHora, baseIvss, baseRpe,
         valHoraExtra, horas, montoExtra,
         valBonoNoct, horasNoct, montoNoct,
         diasFeriado, montoFeriado, comision, bonoProd,
@@ -4433,10 +4524,10 @@
       if (p.diasFeriado > 0) rows.push(['asig', 'Días feriados / domingos (' + p.diasFeriado + ')', 'Recargo 50% sobre el día (Art. 120)', p.montoFeriado]);
       if (p.comision > 0) rows.push(['asig', 'Comisiones por ventas', '2% sobre ventas del período', p.comision]);
       if (p.bonoProd > 0) rows.push(['asig', 'Bono de producción', 'Meta de planta alcanzada', p.bonoProd]);
-      if (emp.bonoUSD) rows.push(['asig', 'Bono en divisa (' + emp.bonoLabel + ')', 'Ref. Bs ' + fmt(p.tasa) + '/$', p.bonoBs]);
       rows.push(['sec', 'Beneficios no salariales (no cotizables)', '', null]);
-      if (p.bonoContingencia > 0) rows.push(['asig', 'Bono de contingencia', 'Complemento no salarial · no incide en prestaciones', p.bonoContingencia]);
-      rows.push(['asig', 'Cestaticket · Bono de alimentación', 'Ley de Alimentación · exento de deducciones', p.cestaticket]);
+      if (p.bonoContingencia > 0) rows.push(['asig', 'Bono de contingencia', '$' + (emp.contingenciaUSD || 0) + ' a tasa BCV (Bs ' + fmt(p.tasa) + '/$) · no salarial', p.bonoContingencia]);
+      rows.push(['asig', 'Cestaticket · Bono de alimentación', '$40/mes a tasa BCV (Bs ' + fmt(p.tasa) + '/$) · exento de deducciones', p.cestaticket]);
+      if (p.transporteBs > 0) rows.push(['asig', 'Bono de transporte', '$' + (emp.transporteUSD || 0) + ' a tasa BCV (Bs ' + fmt(p.tasa) + '/$) · pagado en Bs', p.transporteBs]);
       rows.push(['sec', 'Deducciones de ley', '', null]);
       rows.push(['ded', 'IVSS · Seguro Social', '4% · base tope 5 sal. mín.', p.ivss]);
       rows.push(['ded', 'SPF · Paro Forzoso', '0,5% · base tope 10 sal. mín.', p.spf]);
@@ -4487,9 +4578,9 @@
         + (p.diasFeriado > 0 ? '  Dias feriados (' + p.diasFeriado + '): Bs ' + fmt(p.montoFeriado) + '\r\n' : '')
         + (p.comision > 0 ? '  Comisiones: Bs ' + fmt(p.comision) + '\r\n' : '')
         + (p.bonoProd > 0 ? '  Bono de produccion: Bs ' + fmt(p.bonoProd) + '\r\n' : '')
-        + (emp.bonoUSD ? '  Bono divisa: Bs ' + fmt(p.bonoBs) + '\r\n' : '')
         + (p.bonoContingencia > 0 ? '  Bono de contingencia (no salarial): Bs ' + fmt(p.bonoContingencia) + '\r\n' : '')
         + '  Cestaticket (no salarial): Bs ' + fmt(p.cestaticket) + '\r\n'
+        + (p.transporteBs > 0 ? '  Bono de transporte (no salarial): Bs ' + fmt(p.transporteBs) + '\r\n' : '')
         + '  (-) IVSS: Bs ' + fmt(p.ivss) + '\r\n'
         + '  (-) SPF: Bs ' + fmt(p.spf) + '\r\n'
         + '  (-) FAOV: Bs ' + fmt(p.faov) + '\r\n'
@@ -4534,11 +4625,14 @@
           + '<td>' + emp.formaPago + '</td>'
           + '<td class="num">' + fmt(emp.salarioMes / 2) + '</td>'
           + '<td>' + estado + '</td>'
-          + '<td><button class="btn btn-ghost" data-emp-idx="' + i + '" style="height:28px;font-size:11px;padding:0 10px;white-space:nowrap;"><i data-lucide="file-text"></i> Recibo</button></td>'
+          + '<td style="white-space:nowrap;"><button class="btn btn-ghost" data-emp-edit="' + i + '" title="Editar trabajador" style="height:28px;font-size:11px;padding:0 9px;"><i data-lucide="pencil"></i></button> <button class="btn btn-ghost" data-emp-idx="' + i + '" style="height:28px;font-size:11px;padding:0 10px;"><i data-lucide="file-text"></i> Recibo</button></td>'
           + '</tr>';
       }).join('');
       tbody.querySelectorAll('button[data-emp-idx]').forEach((b) => {
         b.addEventListener('click', () => openReciboPago(empleados[parseInt(b.dataset.empIdx, 10)]));
+      });
+      tbody.querySelectorAll('button[data-emp-edit]').forEach((b) => {
+        b.addEventListener('click', () => formEmpleado(empleados[parseInt(b.dataset.empEdit, 10)]));
       });
       // Mantener el contador de empleados sincronizado
       const badge = view.querySelector('.contrib-badge');
@@ -4547,7 +4641,96 @@
       if (tabCount) tabCount.textContent = empleados.length;
       drawIcons();
     }
-    renderEmpTable();
+    function renderAll() {
+      ['vacaciones', 'utilidades', 'liquidacion'].forEach((tab) => { if (!state[tab] || !empById(state[tab])) state[tab] = empleados[0] ? empleados[0].id : null; });
+      renderEmpTable();
+      buildRelacionNomina();
+      ['vacaciones', 'utilidades', 'liquidacion'].forEach((tab) => { renderPicker(tab); renderCalc(tab); });
+    }
+    async function cargarEmpleados() {
+      if (!window.sb || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) { empleados = []; renderAll(); return; }
+      const { data, error } = await window.sb.from('empleados').select('*').eq('empresa_id', window.__EMPRESA_ACTIVA.id).eq('activo', true).order('nombre');
+      if (error) { console.warn('[DigiAccount] empleados:', error.message); empleados = []; renderAll(); return; }
+      const PAL = ['#003057', '#00aeef', '#1c8f5a', '#c97a14', '#c0392b', '#6f8aab', '#3a7bb8', '#9a5ba8', '#2e7d6b', '#b8568f'];
+      empleados = (data || []).map((r, i) => ({
+        id: r.id, nombre: r.nombre, cedula: r.cedula || '', cargo: r.cargo || '', depto: r.depto || '—', tipo: r.tipo || 'Administrativo',
+        ingreso: r.ingreso ? new Date(r.ingreso + 'T00:00:00') : new Date(2026, 0, 1), salarioMes: Number(r.salario_mes) || 0,
+        transporteUSD: Number(r.transporte_usd) || 0,
+        bonoLabel: Number(r.transporte_usd) > 0 ? '$' + Number(r.transporte_usd) + ' transp.' : '—',
+        sujetoDpp: !!r.sujeto_dpp,
+        formaPago: r.forma_pago || 'Transferencia', frecHabitual: r.frecuencia || 'quincenal',
+        prestamoCuota: Number(r.prestamo_cuota) || 0, cajaAhorroPct: (Number(r.caja_ahorro_pct) || 0) / 100,
+        contingenciaUSD: Number(r.contingencia_usd) || 0,
+        horasExtra: 0, horasNoct: 0, diasFeriado: 0, comisionBs: 0, bonoProdBs: 0, anticipoSueldo: 0,
+        color: r.color || PAL[i % PAL.length], ini: r.ini || (r.nombre || '?').split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase(),
+      }));
+      renderAll();
+    }
+    window.cargarEmpleados = cargarEmpleados;
+    cargarEmpleados();
+
+    // Formulario de trabajador (crear y editar) reutilizable
+    const PALETA = ['#003057', '#00aeef', '#1c8f5a', '#c97a14', '#c0392b', '#6f8aab', '#3a7bb8', '#9a5ba8', '#2e7d6b', '#b8568f'];
+    function formEmpleado(emp) {
+      const esEdit = !!emp;
+      const t = (m, tp) => { if (window.toast) window.toast(m, tp); };
+      window.openFormModal({
+        title: esEdit ? 'Editar trabajador' : 'Registrar nuevo trabajador',
+        saveLabel: esEdit ? 'Guardar cambios' : 'Registrar trabajador',
+        onDelete: esEdit ? (close) => {
+          if (!window.confirm('¿Dar de baja a "' + emp.nombre + '"? Dejará de aparecer en la nómina.')) return;
+          window.sb.from('empleados').update({ activo: false }).eq('id', emp.id).then(({ error }) => {
+            if (error) { t('No se pudo dar de baja: ' + error.message, 'error'); return; }
+            close(); if (window.cargarEmpleados) window.cargarEmpleados(); t('Trabajador dado de baja');
+          });
+        } : undefined,
+        fields: [
+          { name: 'nombre', label: 'Nombre y apellido', col: 2, placeholder: 'Ej. Juan Pérez', value: emp ? emp.nombre : '' },
+          { name: 'cedula', label: 'Cédula', placeholder: 'V-00.000.000', value: emp ? emp.cedula : '' },
+          { name: 'cargo', label: 'Cargo', placeholder: 'Ej. Asistente', value: emp ? emp.cargo : '' },
+          { name: 'depto', label: 'Departamento', placeholder: 'Ej. Administración', value: emp && emp.depto !== '—' ? emp.depto : '' },
+          { name: 'tipo', label: 'Tipo de trabajador', type: 'select', value: emp ? emp.tipo : 'Administrativo', options: ['Administrativo', 'Planta', 'Producción', 'Gerencia'] },
+          { name: 'salarioMes', label: 'Salario base mensual cotizable (Bs)', type: 'number', step: '0.01', placeholder: '0.00', value: emp ? String(emp.salarioMes) : '' },
+          { name: 'contingenciaUSD', label: 'Bono de Contingencia (USD → Bs a BCV, no cotizable)', type: 'number', step: '0.01', placeholder: '0', value: emp ? String(emp.contingenciaUSD || '') : '' },
+          { name: 'transporteUSD', label: 'Bono de transporte (USD → Bs a BCV)', type: 'number', step: '0.01', placeholder: '0', value: emp ? String(emp.transporteUSD || '') : '' },
+          { name: 'formaPago', label: 'Forma de pago', type: 'select', value: emp ? emp.formaPago : 'Transferencia', options: ['Transferencia', 'Efectivo', 'Pago móvil'] },
+          { name: 'frec', label: 'Frecuencia (automática según el tipo)', type: 'select', value: emp ? emp.frecHabitual : 'quincenal', options: [{ value: 'quincenal', label: 'Quincenal' }, { value: 'semanal', label: 'Semanal' }, { value: 'mensual', label: 'Mensual' }] },
+          { name: 'dpp', label: '¿Sujeto a DPP? (Protección Pensiones 9%)', type: 'select', value: emp ? (emp.sujetoDpp ? 'Sí' : 'No') : 'No', options: ['No', 'Sí'] },
+          { name: 'cajaAhorroPct', label: 'Caja de ahorro (% del sueldo, opcional)', type: 'number', step: '0.1', placeholder: '0', value: emp && emp.cajaAhorroPct ? String(emp.cajaAhorroPct * 100) : '' },
+        ],
+        afterRender: (bodyEl) => {
+          ['nombre', 'cedula', 'cargo', 'depto'].forEach((n) => {
+            const el = bodyEl.querySelector('[data-name="' + n + '"]');
+            if (el) el.addEventListener('input', () => { const s = el.selectionStart; el.value = el.value.toUpperCase(); try { el.setSelectionRange(s, s); } catch (e) {} });
+          });
+          const tipoEl = bodyEl.querySelector('[data-name="tipo"]');
+          const frecEl = bodyEl.querySelector('[data-name="frec"]');
+          const autoFrec = () => { if (!tipoEl || !frecEl) return; const tp = tipoEl.value; frecEl.value = tp === 'Gerencia' ? 'mensual' : (tp === 'Administrativo' ? 'quincenal' : 'semanal'); };
+          if (tipoEl) tipoEl.addEventListener('change', autoFrec);
+          if (!esEdit) autoFrec();
+        },
+        onSave: (v) => {
+          const sal = parseFloat(v.salarioMes);
+          if (!v.nombre || !v.cedula || !v.cargo) return 'Nombre, cédula y cargo son obligatorios.';
+          if (!(sal > 0)) return 'El salario base mensual debe ser mayor a cero.';
+          if (!window.sb || !window.__CUENTA_ID || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) return 'No hay una empresa activa.';
+          const ini = v.nombre.trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
+          const datos = {
+            nombre: v.nombre.trim(), cedula: v.cedula.trim(), cargo: v.cargo.trim(), depto: (v.depto || '').trim() || null,
+            tipo: v.tipo, salario_mes: sal, contingencia_usd: parseFloat(v.contingenciaUSD) || 0, transporte_usd: parseFloat(v.transporteUSD) || 0,
+            forma_pago: v.formaPago, frecuencia: v.frec, sujeto_dpp: (v.dpp === 'Sí'), caja_ahorro_pct: parseFloat(v.cajaAhorroPct) || 0, ini: ini,
+          };
+          const accion = esEdit
+            ? window.sb.from('empleados').update(datos).eq('id', emp.id)
+            : window.sb.from('empleados').insert(Object.assign({}, datos, { cuenta_id: window.__CUENTA_ID, empresa_id: window.__EMPRESA_ACTIVA.id, ingreso: '2026-05-30', color: PALETA[Math.floor(Math.random() * PALETA.length)], activo: true }));
+          accion.then(({ error }) => {
+            if (error) { t('No se pudo guardar: ' + error.message, 'error'); return; }
+            if (window.cargarEmpleados) window.cargarEmpleados();
+            t(esEdit ? 'Trabajador actualizado' : 'Trabajador "' + v.nombre.trim() + '" registrado');
+          });
+        },
+      });
+    }
 
     // Acciones del módulo: Nuevo trabajador / Procesar / Recalcular / Exportar
     (function wireNominaActions() {
@@ -4557,40 +4740,7 @@
       const PALETA = ['#003057', '#00aeef', '#1c8f5a', '#c97a14', '#c0392b', '#6f8aab', '#3a7bb8', '#9a5ba8', '#2e7d6b', '#b8568f'];
 
       const nuevoTrab = document.getElementById('nuevoTrabajadorBtn');
-      if (nuevoTrab) nuevoTrab.addEventListener('click', () => {
-        window.openFormModal({
-          title: 'Registrar nuevo trabajador',
-          saveLabel: 'Registrar trabajador',
-          fields: [
-            { name: 'nombre', label: 'Nombre y apellido', col: 2, placeholder: 'Ej. Juan Pérez' },
-            { name: 'cedula', label: 'Cédula', placeholder: 'V-00.000.000' },
-            { name: 'cargo', label: 'Cargo', placeholder: 'Ej. Asistente' },
-            { name: 'depto', label: 'Departamento', placeholder: 'Ej. Administración' },
-            { name: 'tipo', label: 'Tipo de trabajador', type: 'select', options: ['Administrativo', 'Planta'] },
-            { name: 'salarioMes', label: 'Ingreso mensual (Bs)', type: 'number', step: '0.01', placeholder: '0.00' },
-            { name: 'formaPago', label: 'Forma de pago', type: 'select', options: ['Transferencia', 'Efectivo', 'Pago móvil'] },
-            { name: 'frec', label: 'Frecuencia', type: 'select', options: [{ value: 'quincenal', label: 'Quincenal' }, { value: 'semanal', label: 'Semanal' }, { value: 'mensual', label: 'Mensual' }] },
-          ],
-          onSave: (v) => {
-            const sal = parseFloat(v.salarioMes);
-            if (!v.nombre || !v.cedula || !v.cargo) return 'Nombre, cédula y cargo son obligatorios.';
-            if (!(sal > 0)) return 'El ingreso mensual debe ser mayor a cero.';
-            const ini = v.nombre.trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
-            empleados.push({
-              id: 'e' + Date.now().toString(36), nombre: v.nombre.trim(), cedula: v.cedula.trim(),
-              cargo: v.cargo.trim(), depto: v.depto.trim() || '—', tipo: v.tipo,
-              ingreso: new Date(2026, 4, 30), salarioMes: sal,
-              bonoUSD: 0, bonoLabel: '—', formaPago: v.formaPago, frecHabitual: v.frec,
-              horasExtra: 0, horasNoct: 0, diasFeriado: 0, comisionBs: 0, bonoProdBs: 0,
-              cajaAhorroPct: 0, prestamoCuota: 0, anticipoSueldo: 0,
-              color: PALETA[empleados.length % PALETA.length], ini,
-            });
-            renderEmpTable();
-            if (window.refreshTables) window.refreshTables();
-            t('Trabajador "' + v.nombre.trim() + '" registrado · ' + empleados.length + ' empleados activos');
-          },
-        });
-      });
+      if (nuevoTrab) nuevoTrab.addEventListener('click', () => formEmpleado(null));
 
       const procesar = document.getElementById('procesarNominaBtn');
       if (procesar) procesar.addEventListener('click', () => {
@@ -4660,6 +4810,72 @@
         });
       });
     }
+
+    // ===== Novedades del período: horas extra, nocturnas, feriados, comisiones, anticipos =====
+    (function setupNovedades() {
+      const freqSel = document.getElementById('novFreq');
+      const perInput = document.getElementById('novPeriodo');
+      const cargarBtn = document.getElementById('novCargarBtn');
+      const guardarBtn = document.getElementById('novGuardarBtn');
+      const body = document.getElementById('novBody');
+      const msg = document.getElementById('novMsg');
+      if (!cargarBtn || !body) return;
+      const setMsg = (t) => { if (msg) msg.textContent = t; };
+
+      function render(novMap) {
+        if (!empleados.length) { body.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--fg-muted);padding:20px;">Registra trabajadores primero.</td></tr>'; return; }
+        const inp = (k, v) => '<input data-nov="' + k + '" type="number" step="0.01" value="' + (v || v === 0 ? (v || '') : '') + '" style="width:100%;min-width:0;height:30px;border:1px solid var(--border-strong);border-radius:6px;padding:0 8px;font-size:12px;text-align:right;background:var(--bg-surface);color:inherit;">';
+        body.innerHTML = empleados.map((e) => {
+          const n = novMap[e.id] || {};
+          return '<tr data-emp="' + esc(e.id) + '"><td class="primary"><div style="display:flex;align-items:center;gap:8px;"><span style="width:24px;height:24px;border-radius:50%;background:' + e.color + ';color:#fff;font-size:10px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex:none;">' + esc(e.ini) + '</span>' + esc(e.nombre) + '</div></td>'
+            + '<td>' + inp('horasExtra', n.horas_extra) + '</td><td>' + inp('horasNoct', n.horas_noct) + '</td><td>' + inp('diasFeriado', n.dias_feriado) + '</td>'
+            + '<td>' + inp('comisionBs', n.comision_bs) + '</td><td>' + inp('bonoProdBs', n.bono_prod_bs) + '</td><td>' + inp('anticipoSueldo', n.anticipo_bs) + '</td></tr>';
+        }).join('');
+      }
+      function aplicarAEmpleados() {
+        body.querySelectorAll('tr[data-emp]').forEach((tr) => {
+          const e = empleados.find((x) => x.id === tr.dataset.emp); if (!e) return;
+          tr.querySelectorAll('[data-nov]').forEach((el) => { e[el.dataset.nov] = parseFloat(el.value) || 0; });
+        });
+      }
+      async function cargar() {
+        const per = (perInput.value || '').trim();
+        if (!per) { setMsg('Escribe un identificador de período (ej. 2026-Q11).'); return; }
+        payFreq = freqSel.value; // la frecuencia del recibo sigue al período
+        const novMap = {};
+        if (window.sb && window.__EMPRESA_ACTIVA && window.__EMPRESA_ACTIVA.id) {
+          const { data } = await window.sb.from('novedades_nomina').select('*').eq('empresa_id', window.__EMPRESA_ACTIVA.id).eq('periodo', per);
+          (data || []).forEach((n) => { novMap[n.empleado_id] = n; });
+        }
+        render(novMap);
+        empleados.forEach((e) => {
+          const n = novMap[e.id] || {};
+          e.horasExtra = Number(n.horas_extra) || 0; e.horasNoct = Number(n.horas_noct) || 0; e.diasFeriado = Number(n.dias_feriado) || 0;
+          e.comisionBs = Number(n.comision_bs) || 0; e.bonoProdBs = Number(n.bono_prod_bs) || 0; e.anticipoSueldo = Number(n.anticipo_bs) || 0;
+        });
+        renderEmpTable(); buildRelacionNomina();
+        setMsg('Período "' + per + '" cargado · ' + empleados.length + ' trabajadores. Edita y guarda.');
+      }
+      async function guardar() {
+        const per = (perInput.value || '').trim();
+        if (!per) { setMsg('Escribe el período antes de guardar.'); return; }
+        if (!window.sb || !window.__CUENTA_ID || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) { setMsg('No hay empresa activa.'); return; }
+        if (!empleados.length) { setMsg('No hay trabajadores que guardar.'); return; }
+        aplicarAEmpleados();
+        const rows = empleados.map((e) => ({
+          cuenta_id: window.__CUENTA_ID, empresa_id: window.__EMPRESA_ACTIVA.id, empleado_id: e.id, periodo: per,
+          horas_extra: e.horasExtra || 0, horas_noct: e.horasNoct || 0, dias_feriado: e.diasFeriado || 0,
+          comision_bs: e.comisionBs || 0, bono_prod_bs: e.bonoProdBs || 0, anticipo_bs: e.anticipoSueldo || 0,
+        }));
+        const { error } = await window.sb.from('novedades_nomina').upsert(rows, { onConflict: 'empleado_id,periodo' });
+        if (error) { setMsg('No se pudo guardar: ' + error.message); return; }
+        renderEmpTable(); buildRelacionNomina();
+        ['vacaciones', 'utilidades', 'liquidacion'].forEach((t) => { renderPicker(t); renderCalc(t); });
+        setMsg('Novedades guardadas para "' + per + '" ✓ · los recibos del período ya las reflejan.');
+      }
+      cargarBtn.addEventListener('click', cargar);
+      guardarBtn.addEventListener('click', guardar);
+    })();
 
     // Init
     ['vacaciones', 'utilidades', 'liquidacion'].forEach((tab) => { renderPicker(tab); renderCalc(tab); });

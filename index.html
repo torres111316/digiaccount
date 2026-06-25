@@ -313,7 +313,7 @@
             </div>
             <div class="fx-rate-row">
               <div class="src-ic par"><i data-lucide="trending-up"></i></div>
-              <div class="src-info"><div class="sn">Dólar paralelo</div><div class="sd">Mercado · promedio</div></div>
+              <div class="src-info"><div class="sn">Dólar Binance</div><div class="sd">Mercado P2P · referencia</div></div>
               <div class="src-val"><div class="v">Bs <span id="fxPar">151,30</span></div><div class="dl up" id="fxParDl"><i data-lucide="arrow-up"></i> 0,68%</div></div>
             </div>
             <div class="fx-rate-row">
@@ -459,8 +459,8 @@
             <span class="label">Banco / Caja disponible</span>
             <span class="kpi-icon success"><i data-lucide="landmark"></i></span>
           </div>
-          <div class="kpi-value fx-amount" data-bs="4218640.32">
-            <span class="currency">Bs</span> 4.218.640<span class="unit-sm">,32</span>
+          <div class="kpi-value fx-amount" id="dashBanco" data-bs="0">
+            <span class="currency">Bs</span> 0,00
           </div>
           <svg class="spark" viewBox="0 0 200 36" preserveAspectRatio="none">
             <defs>
@@ -473,8 +473,7 @@
             <path d="M0,28 L14,26 L28,22 L42,24 L56,18 L70,20 L84,14 L98,16 L112,10 L126,12 L140,8 L154,11 L168,7 L182,5 L200,2" fill="none" stroke="#1c8f5a" stroke-width="1.5"/>
           </svg>
           <div class="kpi-sub">
-            <span class="meta">Equiv. <strong style="color:var(--fg-primary)">$ 116.183</strong> · 4 cuentas</span>
-            <span class="delta"><i data-lucide="trending-up"></i> +8,4%</span>
+            <span class="meta"><span id="dashBancoCuentas">0</span> cuentas · bancos + Caja</span>
           </div>
         </div>
 
@@ -484,8 +483,8 @@
             <span class="label">Cuentas por Cobrar</span>
             <span class="kpi-icon"><i data-lucide="arrow-down-to-line"></i></span>
           </div>
-          <div class="kpi-value fx-amount" data-bs="1847910">
-            <span class="currency">Bs</span> 1.847.910
+          <div class="kpi-value fx-amount" id="dashCxc" data-bs="0">
+            <span class="currency">Bs</span> 0,00
           </div>
           <svg class="spark" viewBox="0 0 200 36" preserveAspectRatio="none">
             <defs>
@@ -498,19 +497,18 @@
             <path d="M0,20 L14,22 L28,18 L42,24 L56,16 L70,18 L84,12 L98,14 L112,10 L126,8 L140,12 L154,9 L168,6 L182,9 L200,5" fill="none" stroke="#00bfff" stroke-width="1.5"/>
           </svg>
           <div class="kpi-sub">
-            <span class="kpi-alert"><i data-lucide="alert-triangle"></i> Bs 342.180 vencidas</span>
-            <span class="delta down"><i data-lucide="trending-up"></i> +12,1%</span>
+            <span class="meta"><span id="dashCxcCount">0</span> recibos con saldo</span>
           </div>
         </div>
 
         <!-- 3. CxP -->
         <div class="kpi">
           <div class="kpi-head">
-            <span class="label">Por Pagar · Próx. 7 días</span>
+            <span class="label">Cuentas por Pagar</span>
             <span class="kpi-icon warning"><i data-lucide="arrow-up-from-line"></i></span>
           </div>
-          <div class="kpi-value fx-amount" data-bs="968450">
-            <span class="currency">Bs</span> 968.450
+          <div class="kpi-value fx-amount" id="dashCxp" data-bs="0">
+            <span class="currency">Bs</span> 0,00
           </div>
           <svg class="spark" viewBox="0 0 200 36" preserveAspectRatio="none">
             <defs>
@@ -523,19 +521,18 @@
             <path d="M0,14 L14,16 L28,12 L42,18 L56,15 L70,20 L84,17 L98,22 L112,18 L126,24 L140,20 L154,26 L168,22 L182,28 L200,24" fill="none" stroke="#c97a14" stroke-width="1.5"/>
           </svg>
           <div class="kpi-sub">
-            <span class="kpi-alert warn"><i data-lucide="clock"></i> 5 facturas · 3 prov.</span>
-            <span class="delta warn"><i data-lucide="trending-up"></i> +4,8%</span>
+            <span class="meta"><span id="dashCxpCount">0</span> facturas con saldo</span>
           </div>
         </div>
 
         <!-- 4. Margen / EBITDA -->
         <div class="kpi">
           <div class="kpi-head">
-            <span class="label">EBITDA proyectado · Mes</span>
-            <span class="kpi-icon"><i data-lucide="trending-up"></i></span>
+            <span class="label">Ventas registradas (recibos)</span>
+            <span class="kpi-icon"><i data-lucide="receipt"></i></span>
           </div>
-          <div class="kpi-value">
-            22<span class="currency">,7%</span>
+          <div class="kpi-value fx-amount" id="dashVentas" data-bs="0">
+            <span class="currency">Bs</span> 0,00
           </div>
           <svg class="spark" viewBox="0 0 200 36" preserveAspectRatio="none">
             <defs>
@@ -548,8 +545,7 @@
             <path d="M0,24 L14,22 L28,25 L42,20 L56,22 L70,18 L84,20 L98,15 L112,17 L126,13 L140,15 L154,10 L168,12 L182,8 L200,6" fill="none" stroke="#003057" stroke-width="1.5"/>
           </svg>
           <div class="kpi-sub">
-            <span class="meta">Margen neto <strong style="color:var(--fg-primary)">14,3%</strong></span>
-            <span class="delta"><i data-lucide="trending-up"></i> +2,1 pp</span>
+            <span class="meta"><span id="dashVentasCount">0</span> recibos emitidos</span>
           </div>
         </div>
       </section>
@@ -562,7 +558,7 @@
           <div class="panel-head">
             <div class="panel-title-block">
               <div class="title">Flujo de caja · Ingresos vs Egresos</div>
-              <div class="sub">Reales del mes en curso · Bolívares</div>
+              <div class="sub">Cobros vs pagos registrados en Tesorería · Bolívares</div>
             </div>
             <div class="panel-actions">
               <a href="#" class="cash-extra-link" data-go-view="tesoreria" data-go-title="Tesorería" style="font-size:12px;">Ver en Tesorería <i data-lucide="arrow-right"></i></a>
@@ -573,20 +569,20 @@
             <div class="series">
               <span class="sw ingresos"></span>
               <div class="info">
-                <span class="lbl">Ingresos · MTD</span>
-                <span class="val fx-amount" data-bs="6142880" data-prefix="Bs ">Bs 6.142.880</span>
+                <span class="lbl">Ingresos</span>
+                <span class="val fx-amount" id="dashIngresos" data-bs="0" data-prefix="Bs ">Bs 0,00</span>
               </div>
             </div>
             <div class="series">
               <span class="sw egresos"></span>
               <div class="info">
-                <span class="lbl">Egresos · MTD</span>
-                <span class="val fx-amount" data-bs="4295770" data-prefix="Bs ">Bs 4.295.770</span>
+                <span class="lbl">Egresos</span>
+                <span class="val fx-amount" id="dashEgresos" data-bs="0" data-prefix="Bs ">Bs 0,00</span>
               </div>
             </div>
             <div class="net">
               <div class="lbl">Flujo neto</div>
-              <div class="val fx-amount" data-bs="1847110" data-prefix="+ Bs ">+ Bs 1.847.110</div>
+              <div class="val fx-amount" id="dashNeto" data-bs="0" data-prefix="Bs ">Bs 0,00</div>
             </div>
           </div>
 
@@ -614,109 +610,44 @@
               <a href="#" class="cash-extra-link" data-go-view="tesoreria" data-go-title="Tesorería">Ir a Tesorería <i data-lucide="arrow-right"></i></a>
             </div>
 
-            <!-- Índice de salud financiera -->
-            <div class="health-band">
-              <div class="health-gauge" data-score="78">
-                <svg viewBox="0 0 180 104" class="gauge-svg">
-                  <defs>
-                    <linearGradient id="gaugeGrad" x1="0" y1="0" x2="1" y2="0">
-                      <stop offset="0%" stop-color="#c0392b"/>
-                      <stop offset="45%" stop-color="#c97a14"/>
-                      <stop offset="75%" stop-color="#00bfff"/>
-                      <stop offset="100%" stop-color="#1c8f5a"/>
-                    </linearGradient>
-                  </defs>
-                  <path class="gauge-track" d="M 15 92 A 75 75 0 0 1 165 92" fill="none" stroke-width="13" stroke-linecap="round"/>
-                  <path class="gauge-progress" d="M 15 92 A 75 75 0 0 1 165 92" fill="none" stroke="url(#gaugeGrad)" stroke-width="13" stroke-linecap="round" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100"/>
-                </svg>
-                <div class="gauge-center">
-                  <div class="gauge-num"><span class="gv" data-target="78">0</span><span class="gmax">/100</span></div>
-                  <div class="gauge-tag">Salud financiera</div>
-                </div>
-              </div>
-
-              <div class="health-label">
+            <!-- Índice de salud financiera (analítica con IA — próximamente) -->
+            <div class="health-band" style="justify-content:center;">
+              <div class="health-label" style="text-align:center;">
                 <div class="hl-eyebrow">Diagnóstico del agente IA</div>
-                <div class="hl-status good"><i data-lucide="heart-pulse"></i> Saludable</div>
-                <div class="hl-note">Liquidez y rentabilidad sólidas. Vigilar el período de cobro: subió 3 días respecto al mes anterior.</div>
-              </div>
-
-              <div class="health-factors">
-                <div class="hf">
-                  <span class="hf-l">Liquidez</span>
-                  <div class="bar-mini success"><span style="width:82%"></span></div>
-                  <span class="hf-v">82</span>
-                </div>
-                <div class="hf">
-                  <span class="hf-l">Solvencia</span>
-                  <div class="bar-mini"><span style="width:71%"></span></div>
-                  <span class="hf-v">71</span>
-                </div>
-                <div class="hf">
-                  <span class="hf-l">Rentabilidad</span>
-                  <div class="bar-mini success"><span style="width:85%"></span></div>
-                  <span class="hf-v">85</span>
-                </div>
-                <div class="hf">
-                  <span class="hf-l">Eficiencia cobro</span>
-                  <div class="bar-mini warn"><span style="width:64%"></span></div>
-                  <span class="hf-v warn">64</span>
-                </div>
+                <div class="hl-status"><i data-lucide="heart-pulse"></i> Se calculará con tus datos</div>
+                <div class="hl-note">El índice de salud financiera (liquidez, solvencia, rentabilidad) se generará automáticamente a medida que registres operaciones.</div>
               </div>
             </div>
 
             <div class="fin-highlights cash-highlights">
               <div class="fin-hi">
                 <div class="l">Posición neta</div>
-                <div class="v fx-amount" data-bs="4716550" data-prefix="Bs ">Bs 4.716.550</div>
-                <div class="d">Caja + CxC − CxP total</div>
+                <div class="v fx-amount" id="dashPosNeta" data-bs="0" data-prefix="Bs ">Bs 0,00</div>
+                <div class="d">Banco/Caja + CxC − CxP</div>
               </div>
               <div class="fin-hi">
                 <div class="l">Días de caja</div>
-                <div class="v">28<span class="u"> días</span></div>
-                <div class="d up"><i data-lucide="shield-check"></i> Cobertura sólida</div>
+                <div class="v">—</div>
+                <div class="d">Se calculará con tu histórico</div>
               </div>
               <div class="fin-hi">
                 <div class="l">Período de cobro</div>
-                <div class="v">42<span class="u"> días</span></div>
-                <div class="d down"><i data-lucide="trending-up"></i> +3 vs mes ant.</div>
+                <div class="v">—</div>
+                <div class="d">Se calculará con tu histórico</div>
               </div>
               <div class="fin-hi">
                 <div class="l">Cobranza al día</div>
-                <div class="v">81<span class="u">%</span></div>
-                <div class="d">19% vencida · Bs 342K</div>
+                <div class="v">—</div>
+                <div class="d">Se calculará con tu histórico</div>
               </div>
             </div>
 
-            <div class="bank-strip">
+            <div class="bank-strip" id="dashBankStrip">
               <div class="bank-strip-head">
-                <span>Saldo por banco · 4 cuentas</span>
-                <span class="bank-strip-total">Total <strong class="fx-amount" data-bs="4218640" data-prefix="Bs ">Bs 4.218.640</strong></span>
+                <span>Saldo por cuenta · <span id="dashBankCount">0</span></span>
+                <span class="bank-strip-total">Total <strong class="fx-amount" id="dashBankTotal" data-bs="0" data-prefix="Bs ">Bs 0,00</strong></span>
               </div>
-              <div class="bank-line">
-                <div class="bl-logo" style="background:#0a7a3f;">Bn</div>
-                <div class="bl-name">Banesco <small>Cta. corriente · ···4821</small></div>
-                <div class="bar-mini success"><span style="width:47%"></span></div>
-                <div class="bl-amt fx-amount" data-bs="1985420" data-prefix="Bs ">Bs 1.985.420</div>
-              </div>
-              <div class="bank-line">
-                <div class="bl-logo" style="background:#00387a;">Mc</div>
-                <div class="bl-name">Mercantil <small>Cta. corriente · ···0937</small></div>
-                <div class="bar-mini"><span style="width:30%"></span></div>
-                <div class="bl-amt fx-amount" data-bs="1243180" data-prefix="Bs ">Bs 1.243.180</div>
-              </div>
-              <div class="bank-line">
-                <div class="bl-logo" style="background:#b8232f;">BN</div>
-                <div class="bl-name">BNC <small>Cta. ahorro · ···2204</small></div>
-                <div class="bar-mini"><span style="width:17%"></span></div>
-                <div class="bl-amt fx-amount" data-bs="712540" data-prefix="Bs ">Bs 712.540</div>
-              </div>
-              <div class="bank-line">
-                <div class="bl-logo" style="background:var(--da-slate-600);">$</div>
-                <div class="bl-name">Caja chica / efectivo <small>Bs + divisas</small></div>
-                <div class="bar-mini warn"><span style="width:7%"></span></div>
-                <div class="bl-amt fx-amount" data-bs="277500" data-prefix="Bs ">Bs 277.500</div>
-              </div>
+              <div id="dashBankLines"><div style="padding:14px;color:var(--fg-muted);font-size:12px;">Aún no hay cuentas de tesorería.</div></div>
             </div>
           </div>
         </div>
@@ -731,106 +662,16 @@
                   Alertas críticas · Agentes IA
                 </span>
               </div>
-              <div class="sub">7 nuevas · actualizado hace 38 s</div>
-            </div>
-            <div class="panel-actions">
-              <button class="icon-btn" title="Marcar como leídas"><i data-lucide="check-check"></i></button>
+              <div class="sub">Sin alertas nuevas</div>
             </div>
           </div>
 
           <div class="alerts">
-
-            <div class="alert">
-              <div class="alert-icon ai"><i data-lucide="copy"></i></div>
-              <div class="alert-body">
-                <div class="alert-head">
-                  <span class="alert-title">Factura duplicada detectada en Telegram</span>
-                  <span class="alert-source bot">Bot OCR</span>
-                </div>
-                <div class="alert-desc">
-                  El agente leyó <strong>F-00284715</strong> de <strong>Suministros Lara</strong> dos veces en 6 minutos. Misma base imponible <strong>Bs 184.500</strong>.
-                </div>
-                <div class="alert-meta">
-                  <span>Hace 4 min</span><span class="sep">·</span><span>Tesorería › Compras</span>
-                </div>
-              </div>
-              <button class="alert-cta" title="Revisar en Tesorería" data-go-view="tesoreria" data-go-title="Tesorería"><i data-lucide="chevron-right"></i></button>
+            <div style="text-align:center;color:var(--fg-muted);padding:36px 20px;">
+              <i data-lucide="bell-off" style="width:28px;height:28px;opacity:.5;"></i>
+              <div style="font-size:13px;font-weight:600;margin-top:10px;">Sin alertas por ahora</div>
+              <div style="font-size:12px;margin-top:4px;">Los agentes IA generarán alertas (vencimientos, stock crítico, declaraciones) a medida que uses el sistema.</div>
             </div>
-
-            <div class="alert">
-              <div class="alert-icon fiscal"><i data-lucide="calendar-clock"></i></div>
-              <div class="alert-body">
-                <div class="alert-head">
-                  <span class="alert-title">Declaración quincenal de IVA en 3 días</span>
-                  <span class="alert-source urgent">Urgente</span>
-                </div>
-                <div class="alert-desc">
-                  Quincena <strong>16–31 may</strong>. Faltan <strong>2 retenciones</strong> por cargar. Estimado a pagar: <strong>Bs 412.880</strong>.
-                </div>
-                <div class="alert-meta">
-                  <span>Vence 31 may 23:59</span><span class="sep">·</span><span>SENIAT</span>
-                </div>
-              </div>
-              <button class="alert-cta" title="Ir al módulo fiscal" data-go-view="fiscal" data-go-title="Módulo Fiscal · SENIAT"><i data-lucide="chevron-right"></i></button>
-            </div>
-
-            <div class="alert">
-              <div class="alert-icon stock"><i data-lucide="package-x"></i></div>
-              <div class="alert-body">
-                <div class="alert-head">
-                  <span class="alert-title">Stock crítico en SKU-01</span>
-                  <span class="alert-source">Inventario</span>
-                </div>
-                <div class="alert-desc">
-                  <strong>Café Premium 1 kg</strong> · Quedan <strong>12 uds</strong>. Consumo promedio: 28 uds/sem. Cobertura <strong>3 días</strong>.
-                </div>
-                <div class="alert-meta">
-                  <span>Sucursal Valle</span><span class="sep">·</span><span>Reposición sugerida</span>
-                </div>
-              </div>
-              <button class="alert-cta" title="Ir a Inventario" data-go-view="inventario" data-go-title="Catálogo e Inventario"><i data-lucide="chevron-right"></i></button>
-            </div>
-
-            <div class="alert">
-              <div class="alert-icon ai"><i data-lucide="check"></i></div>
-              <div class="alert-body">
-                <div class="alert-head">
-                  <span class="alert-title">Asiento contable sugerido listo</span>
-                  <span class="alert-source bot">Agente IA</span>
-                </div>
-                <div class="alert-desc">
-                  <strong>14 facturas</strong> conciliadas con el extracto bancario. Listas para validar antes del cierre del día.
-                </div>
-                <div class="alert-meta">
-                  <span>Hace 22 min</span><span class="sep">·</span>
-                  <a href="#" data-go-view="contabilidad" data-go-title="Contabilidad" style="color:var(--da-cyan-700);font-weight:600;text-decoration:none;">Validar asiento →</a>
-                </div>
-              </div>
-              <button class="alert-cta" title="Validar en Contabilidad" data-go-view="contabilidad" data-go-title="Contabilidad"><i data-lucide="chevron-right"></i></button>
-            </div>
-
-            <div class="alert">
-              <div class="alert-icon info"><i data-lucide="user-check"></i></div>
-              <div class="alert-body">
-                <div class="alert-head">
-                  <span class="alert-title">Cliente con saldo vencido +30 días</span>
-                  <span class="alert-source">CxC</span>
-                </div>
-                <div class="alert-desc">
-                  <strong>Comercial Andina, C.A.</strong> acumula <strong>Bs 178.420</strong> en 3 facturas vencidas. IA sugiere envío automático de recordatorio.
-                </div>
-                <div class="alert-meta">
-                  <span>RIF J319876542</span><span class="sep">·</span><span>Tesorería</span>
-                </div>
-              </div>
-              <button class="alert-cta" title="Gestionar en Tesorería" data-go-view="tesoreria" data-go-title="Tesorería"><i data-lucide="chevron-right"></i></button>
-            </div>
-
-          </div>
-
-          <div class="alerts-footer">
-            <div class="summary"><strong>5 críticas</strong> · 2 informativas · 0 resueltas hoy</div>
-            <a href="#" class="view-all">Ver todas las alertas <i data-lucide="arrow-right"></i></a>
           </div>
         </div>
 
@@ -3473,50 +3314,39 @@
             <span class="label">Costo mensual nómina</span>
             <span class="kpi-icon"><i data-lucide="banknote"></i></span>
           </div>
-          <div class="kpi-value"><span class="currency">Bs</span> 2.184.500</div>
-          <div class="kpi-sub">
-            <span class="meta">Equiv. <strong style="color:var(--fg-primary)">$ 60.180</strong></span>
-            <span class="delta down"><i data-lucide="trending-up"></i> +5,2%</span>
-          </div>
+          <div class="kpi-value"><span class="currency">Bs</span> <span id="nomKpiCosto">0,00</span></div>
+          <div class="kpi-sub"><span class="meta">Asignaciones del período × frecuencia</span></div>
         </div>
         <div class="kpi">
           <div class="kpi-head">
             <span class="label">Aportes parafiscales · Mes</span>
             <span class="kpi-icon warning"><i data-lucide="percent"></i></span>
           </div>
-          <div class="kpi-value"><span class="currency">Bs</span> 580.895</div>
-          <div class="kpi-sub">
-            <span class="meta">IVSS · SPF · FAOV · INCES · Pensiones</span>
-            <span class="delta down"><i data-lucide="trending-up"></i> +51,2%</span>
-          </div>
+          <div class="kpi-value"><span class="currency">Bs</span> <span id="nomKpiAportes">0,00</span></div>
+          <div class="kpi-sub"><span class="meta">IVSS · SPF · FAOV · INCES · Pensiones</span></div>
         </div>
         <div class="kpi">
           <div class="kpi-head">
             <span class="label">Pasivo laboral acumulado</span>
             <span class="kpi-icon success"><i data-lucide="piggy-bank"></i></span>
           </div>
-          <div class="kpi-value"><span class="currency">Bs</span> 5.612.880</div>
-          <div class="kpi-sub">
-            <span class="meta">Prestaciones sociales · 24 emp.</span>
-            <span class="delta"><i data-lucide="trending-up"></i> +1,8%</span>
-          </div>
+          <div class="kpi-value"><span class="currency">Bs</span> <span id="nomKpiPasivo">0,00</span></div>
+          <div class="kpi-sub"><span class="meta">Prestaciones sociales (se calculará)</span></div>
         </div>
         <div class="kpi">
           <div class="kpi-head">
-            <span class="label">Próximo pago</span>
-            <span class="kpi-icon"><i data-lucide="calendar"></i></span>
+            <span class="label">Trabajadores activos</span>
+            <span class="kpi-icon"><i data-lucide="users"></i></span>
           </div>
-          <div class="kpi-value">3<span class="unit-sm"> días</span></div>
-          <div class="kpi-sub">
-            <span class="meta">31 may · Quincena 2 · <strong style="color:var(--fg-primary)">Bs 1.092.250</strong></span>
-            <span class="delta"><i data-lucide="check"></i> Lista</span>
-          </div>
+          <div class="kpi-value" id="nomKpiCount">0</div>
+          <div class="kpi-sub"><span class="meta">En esta empresa</span></div>
         </div>
       </section>
 
       <!-- Sub-tabs -->
       <div class="subtabs" id="nominaTabs">
-        <button data-active="true" data-tab="empleados"><i data-lucide="users"></i> Empleados <span class="count">24</span></button>
+        <button data-active="true" data-tab="empleados"><i data-lucide="users"></i> Empleados <span class="count">0</span></button>
+        <button data-tab="novedades"><i data-lucide="list-checks"></i> Novedades del período</button>
         <button data-tab="vacaciones"><i data-lucide="palmtree"></i> Vacaciones</button>
         <button data-tab="utilidades"><i data-lucide="gift"></i> Utilidades</button>
         <button data-tab="liquidacion"><i data-lucide="file-check-2"></i> Liquidación</button>
@@ -3744,6 +3574,27 @@
         </div>
       </section>
       </div><!-- /tab empleados -->
+
+      <!-- TAB: Novedades del período -->
+      <div class="nomina-tab" data-tab="novedades">
+        <div class="data-table-wrap">
+          <div class="table-toolbar" style="flex-wrap:wrap;gap:10px;">
+            <label style="font-size:12px;display:flex;align-items:center;gap:6px;">Frecuencia:
+              <select id="novFreq" style="height:32px;border:1px solid var(--border-strong);border-radius:8px;padding:0 8px;font:inherit;background:var(--bg-surface);color:inherit;"><option value="quincenal">Quincenal</option><option value="semanal">Semanal</option><option value="mensual">Mensual</option></select></label>
+            <label style="font-size:12px;display:flex;align-items:center;gap:6px;">Período:
+              <input id="novPeriodo" type="text" placeholder="Ej. 2026-Q11 (16–31 may)" style="height:32px;border:1px solid var(--border-strong);border-radius:8px;padding:0 10px;font:inherit;background:var(--bg-surface);color:inherit;min-width:200px;"></label>
+            <button class="btn btn-ghost" id="novCargarBtn" style="height:32px;font-size:12px;"><i data-lucide="folder-open"></i> Cargar período</button>
+            <div class="right"><button class="btn btn-primary" id="novGuardarBtn" style="height:32px;font-size:12px;"><i data-lucide="save"></i> Guardar novedades</button></div>
+          </div>
+          <div class="table-scroll">
+            <table class="data-table" style="min-width:1040px;">
+              <thead><tr><th>Trabajador</th><th class="num">H. Extra</th><th class="num">H. Noct.</th><th class="num">Feriados</th><th class="num">Comisión (Bs)</th><th class="num">Bono prod. (Bs)</th><th class="num">Anticipo (Bs)</th></tr></thead>
+              <tbody id="novBody"><tr><td colspan="7" style="text-align:center;color:var(--fg-muted);padding:20px;">Elige período y pulsa «Cargar período».</td></tr></tbody>
+            </table>
+          </div>
+          <div class="table-footer"><div class="count" id="novMsg">Las novedades alimentan los recibos del período. Lo recurrente (préstamo, caja de ahorro) está en la ficha del trabajador.</div></div>
+        </div>
+      </div>
 
       <!-- TAB: Vacaciones -->
       <div class="nomina-tab" data-tab="vacaciones">
