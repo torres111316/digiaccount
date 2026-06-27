@@ -9379,7 +9379,9 @@
     function aplicarPlan(plan, prueba) {
       planActivo = plan;
       window.__planActivo = plan;
-      const incluidos = PLAN_MODULOS[plan] || TODOS;
+      // El fundador (super-admin) tiene acceso completo al ERP para llevar las finanzas
+      // de DigiAccount mismo, sin importar el plan de su cuenta.
+      const incluidos = window.__ES_FUNDADOR ? TODOS : (PLAN_MODULOS[plan] || TODOS);
       // Agentes IA: durante la prueba se habilitan en modo DEMO aunque el plan no los incluya
       const demoAgentes = !!prueba && incluidos.indexOf('agentes') < 0;
       window.__demoAgentes = demoAgentes;
