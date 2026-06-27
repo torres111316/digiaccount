@@ -7214,14 +7214,20 @@
       window.__ES_FUNDADOR = (u.user.email || '').toLowerCase() === FUNDADOR_EMAIL; // super-admin
       const { data, error } = await window.sb
         .from('perfiles')
-        .select('cuenta_id, nombre, rol, cuentas(nombre, tipo, estado, planes(nombre))')
+        .select('cuenta_id, nombre, rol, cuentas(nombre, tipo, planes(nombre))')
         .eq('id', u.user.id)
         .single();
       if (error) { console.warn('[DigiAccount] No se pudo cargar el perfil:', error.message); return null; }
       window.__PERFIL = data;            // queda disponible para el resto de la app
       window.__CUENTA_ID = data.cuenta_id; // para crear empresas/datos en la cuenta correcta
       window.__CUENTA_TIPO = (data.cuentas && data.cuentas.tipo) || 'empresa'; // 'empresa' | 'contador'
-      window.__CUENTA_ESTADO = (data.cuentas && data.cuentas.estado) || 'pendiente';
+      // Estado de la cuenta en consulta aparte y tolerante: si la columna 'estado' aún no
+      // existe (SQL del fundador no corrido), NO bloquea (default 'activa').
+      window.__CUENTA_ESTADO = 'activa';
+      try {
+        const { data: ce } = await window.sb.from('cuentas').select('estado').eq('id', data.cuenta_id).single();
+        if (ce && ce.estado) window.__CUENTA_ESTADO = ce.estado;
+      } catch (e) { /* columna estado aún no existe: se asume activa */ }
       // Muestra el Panel del Fundador SOLO al super-admin
       const navFund = document.querySelector('.nav-item[data-view="fundador"]');
       if (navFund) navFund.hidden = !window.__ES_FUNDADOR;
