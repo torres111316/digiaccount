@@ -1339,6 +1339,16 @@
         asientoNum = maxNum;
         asientosData = data || [];
         if (typeof renderReportes === 'function') renderReportes();   // recalcula Mayor y Balance
+        // KPIs de la cabecera de Contabilidad (datos reales)
+        const totDebe = asientosData.reduce((s, a) => s + (Number(a.total) || 0), 0);
+        const ctas = new Set();
+        asientosData.forEach((a) => { (Array.isArray(a.lineas) ? a.lineas : []).forEach((l) => { const c = (l.cta || '').split(' · ')[0]; if (c) ctas.add(c); }); });
+        const setC = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+        const fmt2 = (n) => Number(n || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        setC('contaKpiAsientos', String(asientosData.length));
+        setC('contaKpiDebe', fmt2(totDebe));
+        setC('contaKpiHaber', fmt2(totDebe));
+        setC('contaKpiCuentas', String(ctas.size));
         console.log('[DigiAccount] Asientos cargados:', (data || []).length);
         drawIcons();
       }
@@ -5586,7 +5596,14 @@
           tr.querySelector('[data-ver-factura]').addEventListener('click', () => openFactura(f.numero));
         }
       });
-      console.log('[DigiAccount] Facturas cargadas:', (data || []).length);
+      const arr = data || [];
+      const tot = arr.reduce((s, f) => s + (Number(f.total) || 0), 0);
+      const setK = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+      setK('ventKpiFacturado', fmt(tot));
+      setK('ventKpiCount', String(arr.length));
+      setK('ventTabCount', String(arr.length));
+      setK('ventKpiTicket', fmt(arr.length ? tot / arr.length : 0));
+      console.log('[DigiAccount] Facturas cargadas:', arr.length);
       drawIcons();
     }
     window.cargarFacturas = cargarFacturas;
