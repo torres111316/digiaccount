@@ -1675,6 +1675,8 @@
       if (window.__renderISLRanual) window.__renderISLRanual();
       if (window.lucide) window.lucide.createIcons();
     }
+    // Al cargar (sin empresa/datos), pinta los reportes en cero → limpia el mock estático del HTML
+    setTimeout(() => { try { renderReportes(); } catch (e) { console.warn('[DigiAccount] reportes init:', e.message); } }, 0);
 
     // ---- Registrar activo fijo ----
     const registrarActivo = document.getElementById('registrarActivoBtn');
@@ -4799,6 +4801,8 @@
       if (badge) badge.innerHTML = '<i data-lucide="users"></i> ' + empleados.length + ' empleados activos';
       const tabCount = document.querySelector('#nominaTabs button[data-tab="empleados"] .count');
       if (tabCount) tabCount.textContent = empleados.length;
+      const footer = document.getElementById('empCountFooter');
+      if (footer) footer.innerHTML = empleados.length ? ('Mostrando <strong>' + empleados.length + '</strong> empleado' + (empleados.length === 1 ? '' : 's')) : 'Sin empleados';
       drawIcons();
     }
     function renderAll() {
@@ -5603,6 +5607,7 @@
       setK('ventKpiCount', String(arr.length));
       setK('ventTabCount', String(arr.length));
       setK('ventKpiTicket', fmt(arr.length ? tot / arr.length : 0));
+      setK('ventTotalToolbar', 'Bs ' + fmt(tot));
       console.log('[DigiAccount] Facturas cargadas:', arr.length);
       drawIcons();
     }

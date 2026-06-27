@@ -121,10 +121,10 @@
 
     <!-- Entity switcher -->
     <div class="entity-switcher" id="entitySwitcher" tabindex="0">
-      <div class="entity-avatar" id="entityAvatar">AV</div>
+      <div class="entity-avatar" id="entityAvatar">—</div>
       <div class="entity-info">
         <div class="label">Vista activa</div>
-        <div class="name" id="entityName">Agroinversiones Valle, C.A.</div>
+        <div class="name" id="entityName">Sin empresa</div>
       </div>
       <i data-lucide="chevrons-up-down" class="chev" style="width:16px;height:16px;"></i>
 
@@ -363,36 +363,15 @@
     <!-- Panel de notificaciones -->
     <div class="notif-panel" id="notifPanel" hidden>
       <div class="np-head">
-        <span>Notificaciones <strong id="notifCount">6</strong></span>
+        <span>Notificaciones <strong id="notifCount">0</strong></span>
         <button id="notifMarkAll">Marcar como leídas</button>
       </div>
-      <div class="np-list">
-        <a href="#" class="np-item danger" data-go-view="tesoreria" data-go-title="Tesorería">
-          <div class="np-ic"><i data-lucide="banknote"></i></div>
-          <div class="np-body"><div class="np-t">Pago a Importadora Zulia vence mañana</div><div class="np-d">Cuenta por pagar · Bs 487.500 · 30 may</div></div>
-        </a>
-        <a href="#" class="np-item warn" data-goto-fiscaltab="ventas">
-          <div class="np-ic"><i data-lucide="receipt"></i></div>
-          <div class="np-body"><div class="np-t">Declaración de IVA · 2da quincena</div><div class="np-d">Vence el 31 may · falta generar el TXT de retenciones</div></div>
-        </a>
-        <a href="#" class="np-item warn" data-goto-fiscaltab="pensiones">
-          <div class="np-ic"><i data-lucide="shield-check"></i></div>
-          <div class="np-body"><div class="np-t">Protección a las Pensiones (Forma 99019)</div><div class="np-d">Declaración mensual · vence el 6 jun</div></div>
-        </a>
-        <a href="#" class="np-item" data-go-view="contabilidad" data-go-title="Contabilidad">
-          <div class="np-ic"><i data-lucide="calendar-clock"></i></div>
-          <div class="np-body"><div class="np-t">Depreciación de mayo pendiente</div><div class="np-d">24 activos · Bs 148.750 sin contabilizar</div></div>
-        </a>
-        <a href="#" class="np-item" data-go-view="inventario" data-go-title="Inventario">
-          <div class="np-ic"><i data-lucide="alert-triangle"></i></div>
-          <div class="np-body"><div class="np-t">4 artículos en stock crítico</div><div class="np-d">Revisar reposición en Inventario</div></div>
-        </a>
-        <a href="#" class="np-item" data-go-view="nomina" data-go-title="Nómina y Parafiscales">
-          <div class="np-ic"><i data-lucide="users"></i></div>
-          <div class="np-body"><div class="np-t">Nómina 2da quincena lista</div><div class="np-d">Próximo pago: 31 may · Bs 1.092.250</div></div>
-        </a>
+      <div class="np-list" id="notifList">
+        <div style="text-align:center;color:var(--fg-muted);padding:32px 18px;">
+          <i data-lucide="bell-off" style="width:24px;height:24px;opacity:.5;"></i>
+          <div style="font-size:12px;margin-top:8px;">Sin notificaciones por ahora</div>
+        </div>
       </div>
-      <div class="np-foot"><a href="#" data-go-view="fiscal" data-go-title="Módulo Fiscal · SENIAT">Ver calendario fiscal completo →</a></div>
     </div>
 
     <!-- Scrollable content -->
@@ -406,8 +385,8 @@
         <div class="dash-title-block">
           <div class="overline">Visión 360° · Tiempo real</div>
           <div class="dash-title-row">
-            <h1 class="dash-title" id="companyTitle">Agroinversiones Valle, C.A.</h1>
-            <span class="rif-pill"><span class="rif-label">RIF</span> <span id="companyRif">J304567890</span></span>
+            <h1 class="dash-title" id="companyTitle">Sin empresa seleccionada</h1>
+            <span class="rif-pill"><span class="rif-label">RIF</span> <span id="companyRif">—</span></span>
             <span class="contrib-badge especial" id="contribBadge">
               <i data-lucide="shield-check"></i>
               <span id="contribLabel">Contribuyente Especial</span>
@@ -2384,7 +2363,7 @@
             <button class="filter-chip active">Mayo 2026 <i data-lucide="x"></i></button>
             <button class="filter-chip"><i data-lucide="circle-dot"></i> Estado: Todos</button>
             <div class="right">
-              <span style="font-size:11px;color:var(--fg-muted);">Total facturado: <strong style="color:var(--fg-primary);font-family:var(--font-mono);">Bs 6.142.880</strong></span>
+              <span style="font-size:11px;color:var(--fg-muted);">Total facturado: <strong id="ventTotalToolbar" style="color:var(--fg-primary);font-family:var(--font-mono);">Bs 0,00</strong></span>
             </div>
           </div>
           <div class="table-scroll">
@@ -2788,23 +2767,23 @@
         <section class="kpi-row">
           <div class="kpi">
             <div class="kpi-head"><span class="label">Valor del inventario</span><span class="kpi-icon success"><i data-lucide="boxes"></i></span></div>
-            <div class="kpi-value"><span class="currency">Bs</span> <span id="invKpiValor">8.412.300</span></div>
-            <div class="kpi-sub"><span class="meta">Equiv. <strong style="color:var(--fg-primary)">$ 231.700</strong> · costo prom.</span><span class="delta"><i data-lucide="trending-up"></i> +3,2%</span></div>
+            <div class="kpi-value"><span class="currency">Bs</span> <span id="invKpiValor">0,00</span></div>
+            <div class="kpi-sub"><span class="meta">Costo × existencias</span></div>
           </div>
           <div class="kpi">
             <div class="kpi-head"><span class="label">Artículos activos</span><span class="kpi-icon"><i data-lucide="package"></i></span></div>
-            <div class="kpi-value" id="invKpiArticulos">268</div>
-            <div class="kpi-sub"><span class="meta">Mercancía para reventa</span><span class="delta"><i data-lucide="trending-up"></i> +8</span></div>
+            <div class="kpi-value" id="invKpiArticulos">0</div>
+            <div class="kpi-sub"><span class="meta">Mercancía para reventa</span></div>
           </div>
           <div class="kpi">
             <div class="kpi-head"><span class="label">Stock crítico</span><span class="kpi-icon danger"><i data-lucide="alert-triangle"></i></span></div>
-            <div class="kpi-value" id="invKpiCritico">4</div>
-            <div class="kpi-sub"><span class="kpi-alert"><i data-lucide="package-x"></i> SKU-01 · 3 días cobertura</span><span class="delta down">Reponer</span></div>
+            <div class="kpi-value" id="invKpiCritico">0</div>
+            <div class="kpi-sub"><span class="meta">Por debajo del mínimo</span></div>
           </div>
           <div class="kpi">
             <div class="kpi-head"><span class="label">Rotación promedio</span><span class="kpi-icon"><i data-lucide="refresh-cw"></i></span></div>
-            <div class="kpi-value">6,8<span class="unit-sm">×</span></div>
-            <div class="kpi-sub"><span class="meta">Días en stock: <strong style="color:var(--fg-primary)">54</strong></span><span class="delta"><i data-lucide="trending-up"></i> +0,4×</span></div>
+            <div class="kpi-value">—</div>
+            <div class="kpi-sub"><span class="meta">Se calculará con tu histórico</span></div>
           </div>
         </section>
 
@@ -3292,7 +3271,7 @@
           <div class="overline">Recursos Humanos · Quincena 16–31 may</div>
           <div class="dash-title-row">
             <h1 class="dash-title">Nómina y Parafiscales</h1>
-            <span class="contrib-badge"><i data-lucide="users"></i> 24 empleados activos</span>
+            <span class="contrib-badge"><i data-lucide="users"></i> 0 empleados activos</span>
           </div>
         </div>
         <div class="dash-actions">
@@ -3438,7 +3417,7 @@
             </table>
           </div>
           <div class="table-footer">
-            <div class="count">Mostrando <strong>1–7</strong> de <strong>24</strong> empleados</div>
+            <div class="count" id="empCountFooter">Sin empleados</div>
             <div class="pager">
               <button><i data-lucide="chevron-left"></i></button>
               <button data-active="true">1</button>
@@ -3519,19 +3498,19 @@
             <div class="salary-summary">
               <div class="salary-row">
                 <span class="lbl">Salario normal mensual</span>
-                <span class="val">Bs 364.083</span>
+                <span class="val">Bs 0,00</span>
               </div>
               <div class="salary-row add">
-                <span class="lbl">+ Alícuota bono vacacional (15 d/año)</span>
-                <span class="val">+ Bs 15.170</span>
+                <span class="lbl">+ Alícuota bono vacacional</span>
+                <span class="val">+ Bs 0,00</span>
               </div>
               <div class="salary-row add">
-                <span class="lbl">+ Alícuota utilidades (30 d/año)</span>
-                <span class="val">+ Bs 30.340</span>
+                <span class="lbl">+ Alícuota utilidades</span>
+                <span class="val">+ Bs 0,00</span>
               </div>
               <div class="salary-row total">
                 <span class="lbl">Salario integral</span>
-                <span class="val">Bs 409.593</span>
+                <span class="val">Bs 0,00</span>
               </div>
             </div>
           </div>
@@ -3778,216 +3757,12 @@
         </div>
 
         <div class="journal">
-
-          <div class="asiento">
-            <div class="asiento-head">
-              <span class="asiento-num">#0313</span>
-              <span class="asiento-date"><i data-lucide="calendar"></i> 31/05/2026</span>
-              <span class="asiento-desc">Provisión aporte Protección a las Pensiones · Mayo 2026</span>
-              <span class="asiento-ref">Ref: DPP-2026-05 · Forma 99019</span>
-              <span class="asiento-origin auto"><i data-lucide="zap"></i> Automático</span>
-            </div>
-            <table class="ledger-lines">
-              <tbody>
-                <tr>
-                  <td class="acc-code">6.2.1.05</td>
-                  <td class="acc-name">Aporte Protección a las Pensiones (9%)</td>
-                  <td class="deb">196.605,00</td>
-                  <td class="haber zero">—</td>
-                </tr>
-                <tr>
-                  <td class="acc-code">2.1.5.03</td>
-                  <td class="acc-name haber-indent">Protección a las Pensiones por pagar</td>
-                  <td class="deb zero">—</td>
-                  <td class="haber">196.605,00</td>
-                </tr>
-              </tbody>
-              <tfoot>
-                <tr class="asiento-foot">
-                  <td colspan="2" class="total-label">Sumas iguales</td>
-                  <td class="deb">196.605,00</td>
-                  <td class="haber">196.605,00</td>
-                </tr>
-              </tfoot>
-            </table>
+          <div style="text-align:center;color:var(--fg-muted);padding:48px 20px;">
+            <i data-lucide="book-open" style="width:30px;height:30px;opacity:.5;"></i>
+            <div style="font-size:13px;font-weight:600;margin-top:10px;">Libro Diario vacío</div>
+            <div style="font-size:12px;margin-top:4px;">Los asientos aparecerán al registrar ventas, compras, cobros y pagos.</div>
           </div>
-
-          <div class="asiento">
-            <div class="asiento-head">
-              <span class="asiento-num">#0312</span>
-              <span class="asiento-date"><i data-lucide="calendar"></i> 28/05/2026</span>
-              <span class="asiento-desc">Compra a crédito · Suministros Lara, C.A.</span>
-              <span class="asiento-ref">Ref: F-00284716</span>
-              <span class="asiento-origin ia"><i data-lucide="sparkles"></i> Validado IA</span>
-            </div>
-            <table class="ledger-lines">
-              <tbody>
-                <tr>
-                  <td class="acc-code">6.1.1.01</td>
-                  <td class="acc-name">Compras gravadas 16%</td>
-                  <td class="deb">184.500,00</td>
-                  <td class="haber zero">—</td>
-                </tr>
-                <tr>
-                  <td class="acc-code">1.1.4.02</td>
-                  <td class="acc-name">IVA crédito fiscal</td>
-                  <td class="deb">29.520,00</td>
-                  <td class="haber zero">—</td>
-                </tr>
-                <tr>
-                  <td class="acc-code">2.1.3.05</td>
-                  <td class="acc-name haber-indent">Retención IVA por pagar (75%)</td>
-                  <td class="deb zero">—</td>
-                  <td class="haber">22.140,00</td>
-                </tr>
-                <tr>
-                  <td class="acc-code">2.1.1.01</td>
-                  <td class="acc-name haber-indent">Cuentas por pagar · Sum. Lara</td>
-                  <td class="deb zero">—</td>
-                  <td class="haber">191.880,00</td>
-                </tr>
-              </tbody>
-              <tfoot>
-                <tr class="asiento-foot">
-                  <td colspan="2" class="total-label">Sumas iguales</td>
-                  <td class="deb">214.020,00</td>
-                  <td class="haber">214.020,00</td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-
-          <div class="asiento">
-            <div class="asiento-head">
-              <span class="asiento-num">#0311</span>
-              <span class="asiento-date"><i data-lucide="calendar"></i> 28/05/2026</span>
-              <span class="asiento-desc">Venta a crédito · Comercial Andina, C.A.</span>
-              <span class="asiento-ref">Ref: A-00012841</span>
-              <span class="asiento-origin auto"><i data-lucide="zap"></i> Automático</span>
-            </div>
-            <table class="ledger-lines">
-              <tbody>
-                <tr>
-                  <td class="acc-code">1.1.2.01</td>
-                  <td class="acc-name">Cuentas por cobrar · Cial. Andina</td>
-                  <td class="deb">577.150,00</td>
-                  <td class="haber zero">—</td>
-                </tr>
-                <tr>
-                  <td class="acc-code">4.1.1.01</td>
-                  <td class="acc-name haber-indent">Ingresos por ventas gravadas</td>
-                  <td class="deb zero">—</td>
-                  <td class="haber">485.000,00</td>
-                </tr>
-                <tr>
-                  <td class="acc-code">2.1.4.01</td>
-                  <td class="acc-name haber-indent">IVA débito fiscal</td>
-                  <td class="deb zero">—</td>
-                  <td class="haber">77.600,00</td>
-                </tr>
-                <tr>
-                  <td class="acc-code">2.1.4.05</td>
-                  <td class="acc-name haber-indent">IGTF por pagar (3%)</td>
-                  <td class="deb zero">—</td>
-                  <td class="haber">14.550,00</td>
-                </tr>
-              </tbody>
-              <tfoot>
-                <tr class="asiento-foot">
-                  <td colspan="2" class="total-label">Sumas iguales</td>
-                  <td class="deb">577.150,00</td>
-                  <td class="haber">577.150,00</td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-
-          <div class="asiento">
-            <div class="asiento-head">
-              <span class="asiento-num">#0310</span>
-              <span class="asiento-date"><i data-lucide="calendar"></i> 27/05/2026</span>
-              <span class="asiento-desc">Pago de nómina · Quincena 16–31 may</span>
-              <span class="asiento-ref">Ref: NOM-2026-10</span>
-              <span class="asiento-origin auto"><i data-lucide="zap"></i> Automático</span>
-            </div>
-            <table class="ledger-lines">
-              <tbody>
-                <tr>
-                  <td class="acc-code">6.2.1.01</td>
-                  <td class="acc-name">Gasto sueldos y salarios</td>
-                  <td class="deb">1.092.250,00</td>
-                  <td class="haber zero">—</td>
-                </tr>
-                <tr>
-                  <td class="acc-code">2.1.5.01</td>
-                  <td class="acc-name haber-indent">Retenciones IVSS/FAOV/SPF por pagar</td>
-                  <td class="deb zero">—</td>
-                  <td class="haber">65.535,00</td>
-                </tr>
-                <tr>
-                  <td class="acc-code">1.1.1.02</td>
-                  <td class="acc-name haber-indent">Banco Banesco · cta. corriente</td>
-                  <td class="deb zero">—</td>
-                  <td class="haber">1.026.715,00</td>
-                </tr>
-              </tbody>
-              <tfoot>
-                <tr class="asiento-foot">
-                  <td colspan="2" class="total-label">Sumas iguales</td>
-                  <td class="deb">1.092.250,00</td>
-                  <td class="haber">1.092.250,00</td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-
-          <div class="asiento">
-            <div class="asiento-head">
-              <span class="asiento-num">#0309</span>
-              <span class="asiento-date"><i data-lucide="calendar"></i> 26/05/2026</span>
-              <span class="asiento-desc">Cobro de factura · Supermercados El Sol</span>
-              <span class="asiento-ref">Ref: REC-00891</span>
-              <span class="asiento-origin manual"><i data-lucide="pencil"></i> Manual</span>
-            </div>
-            <table class="ledger-lines">
-              <tbody>
-                <tr>
-                  <td class="acc-code">1.1.1.02</td>
-                  <td class="acc-name">Banco Banesco · cta. corriente</td>
-                  <td class="deb">2.189.600,00</td>
-                  <td class="haber zero">—</td>
-                </tr>
-                <tr>
-                  <td class="acc-code">1.1.2.01</td>
-                  <td class="acc-name haber-indent">Cuentas por cobrar · Superm. El Sol</td>
-                  <td class="deb zero">—</td>
-                  <td class="haber">2.189.600,00</td>
-                </tr>
-              </tbody>
-              <tfoot>
-                <tr class="asiento-foot">
-                  <td colspan="2" class="total-label">Sumas iguales</td>
-                  <td class="deb">2.189.600,00</td>
-                  <td class="haber">2.189.600,00</td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-
         </div>
-
-        <div class="data-table-wrap" style="margin-top:16px;">
-          <div class="table-footer">
-            <div class="count">Mostrando <strong>4</strong> de <strong>312</strong> asientos · Mayo 2026</div>
-            <div class="pager">
-              <button><i data-lucide="chevron-left"></i></button>
-              <button data-active="true">1</button>
-              <button>2</button>
-              <button>3</button>
-              <button>…</button>
-              <button>78</button>
-              <button><i data-lucide="chevron-right"></i></button>
-            </div>
           </div>
         </div>
       </div>
@@ -4031,7 +3806,7 @@
               </div>
               <div class="saldo-final">
                 <div class="lbl" id="mayorSaldoLbl">Saldo final deudor</div>
-                <div class="val" id="mayorSaldoVal">Bs 1.847.910,00</div>
+                <div class="val" id="mayorSaldoVal">Bs 0,00</div>
               </div>
             </div>
             <div style="display:flex;justify-content:flex-end;gap:8px;padding:10px 0 12px;">
@@ -4059,50 +3834,50 @@
                     <td class="mono">—</td>
                     <td class="num">—</td>
                     <td class="num">—</td>
-                    <td class="saldo">3.272.260,00</td>
+                    <td class="saldo">0,00</td>
                   </tr>
                   <tr>
                     <td>26/05/26</td><td class="mono">#0309</td>
                     <td class="primary">Cobro · Supermercados El Sol</td>
                     <td class="mono">REC-00891</td>
-                    <td class="num">—</td><td class="num">2.189.600,00</td>
-                    <td class="saldo">1.082.660,00</td>
+                    <td class="num">—</td><td class="num">0,00</td>
+                    <td class="saldo">0,00</td>
                   </tr>
                   <tr>
                     <td>26/05/26</td><td class="mono">#0308</td>
                     <td class="primary">Venta a crédito · Distribuidora Mérida</td>
                     <td class="mono">A-00012838</td>
-                    <td class="num">719.200,00</td><td class="num">—</td>
-                    <td class="saldo">1.801.860,00</td>
+                    <td class="num">0,00</td><td class="num">—</td>
+                    <td class="saldo">0,00</td>
                   </tr>
                   <tr>
                     <td>27/05/26</td><td class="mono">#0307</td>
                     <td class="primary">Cobro parcial · Café del Llano</td>
                     <td class="mono">REC-00890</td>
-                    <td class="num">—</td><td class="num">114.260,00</td>
-                    <td class="saldo">1.687.600,00</td>
+                    <td class="num">—</td><td class="num">0,00</td>
+                    <td class="saldo">0,00</td>
                   </tr>
                   <tr>
                     <td>28/05/26</td><td class="mono">#0311</td>
                     <td class="primary">Venta a crédito · Comercial Andina</td>
                     <td class="mono">A-00012841</td>
-                    <td class="num">577.150,00</td><td class="num">—</td>
-                    <td class="saldo">2.264.750,00</td>
+                    <td class="num">0,00</td><td class="num">—</td>
+                    <td class="saldo">0,00</td>
                   </tr>
                   <tr>
                     <td>28/05/26</td><td class="mono">#0306</td>
                     <td class="primary">Nota de crédito · Comercial Andina</td>
                     <td class="mono">NC-00042</td>
-                    <td class="num">—</td><td class="num">416.840,00</td>
-                    <td class="saldo">1.847.910,00</td>
+                    <td class="num">—</td><td class="num">0,00</td>
+                    <td class="saldo">0,00</td>
                   </tr>
                 </tbody>
                 <tfoot>
                   <tr class="asiento-foot">
                     <td colspan="4" class="total-label">Totales del período</td>
-                    <td class="num" id="mayorTotDeb">1.296.350,00</td>
-                    <td class="num" id="mayorTotHaber">2.720.700,00</td>
-                    <td class="saldo" id="mayorTotSaldo">1.847.910,00</td>
+                    <td class="num" id="mayorTotDeb">0,00</td>
+                    <td class="num" id="mayorTotHaber">0,00</td>
+                    <td class="saldo" id="mayorTotSaldo">0,00</td>
                   </tr>
                 </tfoot>
               </table>
@@ -4138,23 +3913,23 @@
                 </tr>
               </thead>
               <tbody>
-                <tr><td class="mono">1.1.1.02</td><td class="primary">Banco Banesco · cta. corriente</td><td class="num">3.020.140,00</td><td class="num">6.142.880,00</td><td class="num">4.944.380,00</td><td class="num">4.218.640,00</td><td class="num">—</td></tr>
-                <tr><td class="mono">1.1.2.01</td><td class="primary">Cuentas por cobrar comerciales</td><td class="num">3.272.260,00</td><td class="num">1.296.350,00</td><td class="num">2.720.700,00</td><td class="num">1.847.910,00</td><td class="num">—</td></tr>
-                <tr><td class="mono">1.1.4.02</td><td class="primary">IVA crédito fiscal</td><td class="num">312.480,00</td><td class="num">481.120,00</td><td class="num">312.480,00</td><td class="num">481.120,00</td><td class="num">—</td></tr>
-                <tr><td class="mono">2.1.1.01</td><td class="primary">Cuentas por pagar comerciales</td><td class="num">742.300,00</td><td class="num">1.890.220,00</td><td class="num">2.116.370,00</td><td class="num">—</td><td class="num">968.450,00</td></tr>
-                <tr><td class="mono">2.1.4.01</td><td class="primary">IVA débito fiscal</td><td class="num">681.200,00</td><td class="num">681.200,00</td><td class="num">894.420,00</td><td class="num">—</td><td class="num">894.420,00</td></tr>
-                <tr><td class="mono">2.1.4.05</td><td class="primary">IGTF por pagar</td><td class="num">42.860,00</td><td class="num">42.860,00</td><td class="num">58.412,00</td><td class="num">—</td><td class="num">58.412,00</td></tr>
-                <tr><td class="mono">4.1.1.01</td><td class="primary">Ingresos por ventas gravadas</td><td class="num">—</td><td class="num">—</td><td class="num">6.142.880,00</td><td class="num">—</td><td class="num">6.142.880,00</td></tr>
-                <tr><td class="mono">6.1.1.01</td><td class="primary">Compras gravadas</td><td class="num">—</td><td class="num">3.008.640,00</td><td class="num">—</td><td class="num">3.008.640,00</td><td class="num">—</td></tr>
-                <tr><td class="mono">6.2.1.01</td><td class="primary">Sueldos y salarios</td><td class="num">—</td><td class="num">2.184.500,00</td><td class="num">—</td><td class="num">2.184.500,00</td><td class="num">—</td></tr>
+                <tr><td class="mono">1.1.1.02</td><td class="primary">Banco Banesco · cta. corriente</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">—</td></tr>
+                <tr><td class="mono">1.1.2.01</td><td class="primary">Cuentas por cobrar comerciales</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">—</td></tr>
+                <tr><td class="mono">1.1.4.02</td><td class="primary">IVA crédito fiscal</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">—</td></tr>
+                <tr><td class="mono">2.1.1.01</td><td class="primary">Cuentas por pagar comerciales</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">—</td><td class="num">0,00</td></tr>
+                <tr><td class="mono">2.1.4.01</td><td class="primary">IVA débito fiscal</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">—</td><td class="num">0,00</td></tr>
+                <tr><td class="mono">2.1.4.05</td><td class="primary">IGTF por pagar</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">0,00</td><td class="num">—</td><td class="num">0,00</td></tr>
+                <tr><td class="mono">4.1.1.01</td><td class="primary">Ingresos por ventas gravadas</td><td class="num">—</td><td class="num">—</td><td class="num">0,00</td><td class="num">—</td><td class="num">0,00</td></tr>
+                <tr><td class="mono">6.1.1.01</td><td class="primary">Compras gravadas</td><td class="num">—</td><td class="num">0,00</td><td class="num">—</td><td class="num">0,00</td><td class="num">—</td></tr>
+                <tr><td class="mono">6.2.1.01</td><td class="primary">Sueldos y salarios</td><td class="num">—</td><td class="num">0,00</td><td class="num">—</td><td class="num">0,00</td><td class="num">—</td></tr>
               </tbody>
               <tfoot>
                 <tr>
                   <td colspan="3" class="lbl-cell">Totales</td>
-                  <td class="num" style="text-align:right;">18.642.310,00</td>
-                  <td class="num" style="text-align:right;">18.642.310,00</td>
-                  <td class="num" style="text-align:right;">11.739.610,00</td>
-                  <td class="num" style="text-align:right;">11.739.610,00</td>
+                  <td class="num" style="text-align:right;">0,00</td>
+                  <td class="num" style="text-align:right;">0,00</td>
+                  <td class="num" style="text-align:right;">0,00</td>
+                  <td class="num" style="text-align:right;">0,00</td>
                 </tr>
               </tfoot>
             </table>
@@ -4177,10 +3952,10 @@
           <button class="btn btn-ghost" style="height:32px;font-size:12px;" data-fin-action="export"><i data-lucide="download"></i> Exportar</button>
         </div>
         <div class="fin-highlights">
-          <div class="fin-hi"><div class="l">Ingresos netos</div><div class="v">Bs 6.142.880</div><div class="d up"><i data-lucide="trending-up"></i> +11,2% vs abr</div></div>
+          <div class="fin-hi"><div class="l">Ingresos netos</div><div class="v">Bs 0,00</div><div class="d up"><i data-lucide="trending-up"></i> +11,2% vs abr</div></div>
           <div class="fin-hi"><div class="l">Utilidad bruta</div><div class="v accent">Bs 3.134.240</div><div class="d">Margen 51,0%</div></div>
           <div class="fin-hi"><div class="l">Utilidad operativa</div><div class="v accent">Bs 949.740</div><div class="d">EBITDA 22,7%</div></div>
-          <div class="fin-hi"><div class="l">Utilidad neta</div><div class="v" style="color:var(--da-success);">Bs 878.382</div><div class="d up"><i data-lucide="trending-up"></i> Margen 14,3%</div></div>
+          <div class="fin-hi"><div class="l">Utilidad neta</div><div class="v" style="color:var(--da-success);">Bs 0,00</div><div class="d up"><i data-lucide="trending-up"></i> Margen 14,3%</div></div>
         </div>
 
         <div class="fin-statement">
@@ -4193,27 +3968,27 @@
           <table class="fin-table">
             <tbody>
               <tr class="section-head"><td class="label">Ingresos operacionales</td><td class="amount">Bs</td><td class="amount pct">%</td></tr>
-              <tr class="line-detail"><td class="label"><span class="sub-acc">4.1.1.01</span>Ventas gravadas (16% / 8%)</td><td class="amount">6.142.880,00</td><td class="amount pct">100,0%</td></tr>
-              <tr class="line-detail"><td class="label"><span class="sub-acc">4.1.2.01</span>Devoluciones y descuentos</td><td class="amount fin-neg">(416.840,00)</td><td class="amount pct">(6,8%)</td></tr>
-              <tr class="subtotal"><td class="label">Ingresos netos</td><td class="amount">5.726.040,00</td><td class="amount pct">93,2%</td></tr>
+              <tr class="line-detail"><td class="label"><span class="sub-acc">4.1.1.01</span>Ventas gravadas (16% / 8%)</td><td class="amount">0,00</td><td class="amount pct">100,0%</td></tr>
+              <tr class="line-detail"><td class="label"><span class="sub-acc">4.1.2.01</span>Devoluciones y descuentos</td><td class="amount fin-neg">(0,00)</td><td class="amount pct">(6,8%)</td></tr>
+              <tr class="subtotal"><td class="label">Ingresos netos</td><td class="amount">0,00</td><td class="amount pct">93,2%</td></tr>
 
               <tr class="section-head"><td class="label">Costo de ventas</td><td class="amount"></td><td class="amount pct"></td></tr>
-              <tr class="line-detail"><td class="label"><span class="sub-acc">5.1.1.01</span>Costo de mercancía vendida</td><td class="amount fin-neg">(2.591.800,00)</td><td class="amount pct">(42,2%)</td></tr>
-              <tr class="subtotal"><td class="label">Utilidad bruta</td><td class="amount">3.134.240,00</td><td class="amount pct">51,0%</td></tr>
+              <tr class="line-detail"><td class="label"><span class="sub-acc">5.1.1.01</span>Costo de mercancía vendida</td><td class="amount fin-neg">(0,00)</td><td class="amount pct">(42,2%)</td></tr>
+              <tr class="subtotal"><td class="label">Utilidad bruta</td><td class="amount">0,00</td><td class="amount pct">51,0%</td></tr>
 
               <tr class="section-head"><td class="label">Gastos operativos</td><td class="amount"></td><td class="amount pct"></td></tr>
-              <tr class="line-detail"><td class="label"><span class="sub-acc">6.2.1.01</span>Sueldos, salarios y parafiscales</td><td class="amount fin-neg">(1.476.790,00)</td><td class="amount pct">(24,0%)</td></tr>
-              <tr class="line-detail"><td class="label"><span class="sub-acc">6.2.2.01</span>Alquileres y servicios</td><td class="amount fin-neg">(412.300,00)</td><td class="amount pct">(6,7%)</td></tr>
-              <tr class="line-detail"><td class="label"><span class="sub-acc">6.2.3.01</span>Gastos administrativos y otros</td><td class="amount fin-neg">(295.410,00)</td><td class="amount pct">(4,8%)</td></tr>
-              <tr class="subtotal"><td class="label">Total gastos operativos</td><td class="amount fin-neg">(2.184.500,00)</td><td class="amount pct">(35,6%)</td></tr>
-              <tr class="subtotal"><td class="label">Utilidad operativa (EBITDA)</td><td class="amount">949.740,00</td><td class="amount pct">22,7%</td></tr>
+              <tr class="line-detail"><td class="label"><span class="sub-acc">6.2.1.01</span>Sueldos, salarios y parafiscales</td><td class="amount fin-neg">(0,00)</td><td class="amount pct">(24,0%)</td></tr>
+              <tr class="line-detail"><td class="label"><span class="sub-acc">6.2.2.01</span>Alquileres y servicios</td><td class="amount fin-neg">(0,00)</td><td class="amount pct">(6,7%)</td></tr>
+              <tr class="line-detail"><td class="label"><span class="sub-acc">6.2.3.01</span>Gastos administrativos y otros</td><td class="amount fin-neg">(0,00)</td><td class="amount pct">(4,8%)</td></tr>
+              <tr class="subtotal"><td class="label">Total gastos operativos</td><td class="amount fin-neg">(0,00)</td><td class="amount pct">(35,6%)</td></tr>
+              <tr class="subtotal"><td class="label">Utilidad operativa (EBITDA)</td><td class="amount">0,00</td><td class="amount pct">22,7%</td></tr>
 
               <tr class="section-head"><td class="label">Resultado integral</td><td class="amount"></td><td class="amount pct"></td></tr>
-              <tr class="line-detail"><td class="label"><span class="sub-acc">6.3.1.01</span>Gastos financieros (comisiones, IGTF)</td><td class="amount fin-neg">(71.358,00)</td><td class="amount pct">(1,2%)</td></tr>
-              <tr class="line-detail"><td class="label"><span class="sub-acc">7.1.1.01</span>Ingresos por diferencial cambiario</td><td class="amount fin-pos">182.640,00</td><td class="amount pct">3,0%</td></tr>
-              <tr class="subtotal"><td class="label">Utilidad antes de ISLR</td><td class="amount">1.061.022,00</td><td class="amount pct">17,3%</td></tr>
-              <tr class="line-detail"><td class="label"><span class="sub-acc">6.4.1.01</span>Provisión ISLR (estimada)</td><td class="amount fin-neg">(182.640,00)</td><td class="amount pct">(3,0%)</td></tr>
-              <tr class="grand-total"><td class="label">Utilidad neta del ejercicio</td><td class="amount">878.382,00</td><td class="amount pct">14,3%</td></tr>
+              <tr class="line-detail"><td class="label"><span class="sub-acc">6.3.1.01</span>Gastos financieros (comisiones, IGTF)</td><td class="amount fin-neg">(0,00)</td><td class="amount pct">(1,2%)</td></tr>
+              <tr class="line-detail"><td class="label"><span class="sub-acc">7.1.1.01</span>Ingresos por diferencial cambiario</td><td class="amount fin-pos">0,00</td><td class="amount pct">3,0%</td></tr>
+              <tr class="subtotal"><td class="label">Utilidad antes de ISLR</td><td class="amount">0,00</td><td class="amount pct">17,3%</td></tr>
+              <tr class="line-detail"><td class="label"><span class="sub-acc">6.4.1.01</span>Provisión ISLR (estimada)</td><td class="amount fin-neg">(0,00)</td><td class="amount pct">(3,0%)</td></tr>
+              <tr class="grand-total"><td class="label">Utilidad neta del ejercicio</td><td class="amount">0,00</td><td class="amount pct">14,3%</td></tr>
             </tbody>
           </table>
         </div>
@@ -4232,8 +4007,8 @@
         </div>
         <div class="fin-highlights">
           <div class="fin-hi"><div class="l">Total activo</div><div class="v accent">Bs 12.488.510</div><div class="d up"><i data-lucide="trending-up"></i> +4,1% vs abr</div></div>
-          <div class="fin-hi"><div class="l">Total pasivo</div><div class="v">Bs 4.892.128</div><div class="d">39,2% del activo</div></div>
-          <div class="fin-hi"><div class="l">Patrimonio</div><div class="v" style="color:var(--da-success);">Bs 7.596.382</div><div class="d">60,8% del activo</div></div>
+          <div class="fin-hi"><div class="l">Total pasivo</div><div class="v">Bs 0,00</div><div class="d">39,2% del activo</div></div>
+          <div class="fin-hi"><div class="l">Patrimonio</div><div class="v" style="color:var(--da-success);">Bs 0,00</div><div class="d">60,8% del activo</div></div>
           <div class="fin-hi"><div class="l">Razón corriente</div><div class="v accent">1,68×</div><div class="d up"><i data-lucide="trending-up"></i> Liquidez sana</div></div>
         </div>
 
@@ -4247,18 +4022,18 @@
             <table class="fin-table">
               <tbody>
                 <tr class="section-head"><td class="label">Activo circulante</td><td class="amount"></td></tr>
-                <tr class="line-detail"><td class="label"><span class="sub-acc">1.1.1</span>Efectivo y bancos</td><td class="amount">4.218.640,00</td></tr>
-                <tr class="line-detail"><td class="label"><span class="sub-acc">1.1.2</span>Cuentas por cobrar comerciales</td><td class="amount">1.847.910,00</td></tr>
-                <tr class="line-detail"><td class="label"><span class="sub-acc">1.1.3</span>Inventario de mercancía</td><td class="amount">2.412.300,00</td></tr>
-                <tr class="line-detail"><td class="label"><span class="sub-acc">1.1.4</span>IVA crédito fiscal</td><td class="amount">481.120,00</td></tr>
-                <tr class="subtotal"><td class="label">Total activo circulante</td><td class="amount">8.959.970,00</td></tr>
+                <tr class="line-detail"><td class="label"><span class="sub-acc">1.1.1</span>Efectivo y bancos</td><td class="amount">0,00</td></tr>
+                <tr class="line-detail"><td class="label"><span class="sub-acc">1.1.2</span>Cuentas por cobrar comerciales</td><td class="amount">0,00</td></tr>
+                <tr class="line-detail"><td class="label"><span class="sub-acc">1.1.3</span>Inventario de mercancía</td><td class="amount">0,00</td></tr>
+                <tr class="line-detail"><td class="label"><span class="sub-acc">1.1.4</span>IVA crédito fiscal</td><td class="amount">0,00</td></tr>
+                <tr class="subtotal"><td class="label">Total activo circulante</td><td class="amount">0,00</td></tr>
 
                 <tr class="section-head"><td class="label">Activo no circulante</td><td class="amount"></td></tr>
-                <tr class="line-detail"><td class="label"><span class="sub-acc">1.2.1</span>Propiedad, planta y equipo</td><td class="amount">4.180.000,00</td></tr>
+                <tr class="line-detail"><td class="label"><span class="sub-acc">1.2.1</span>Propiedad, planta y equipo</td><td class="amount">0,00</td></tr>
                 <tr class="line-detail"><td class="label"><span class="sub-acc">1.2.2</span>Depreciación acumulada</td><td class="amount fin-neg">(651.460,00)</td></tr>
-                <tr class="subtotal"><td class="label">Total activo no circulante</td><td class="amount">3.528.540,00</td></tr>
+                <tr class="subtotal"><td class="label">Total activo no circulante</td><td class="amount">0,00</td></tr>
 
-                <tr class="grand-total"><td class="label">Total activo</td><td class="amount">12.488.510,00</td></tr>
+                <tr class="grand-total"><td class="label">Total activo</td><td class="amount">0,00</td></tr>
               </tbody>
             </table>
           </div>
@@ -4272,24 +4047,24 @@
             <table class="fin-table">
               <tbody>
                 <tr class="section-head"><td class="label">Pasivo circulante</td><td class="amount"></td></tr>
-                <tr class="line-detail"><td class="label"><span class="sub-acc">2.1.1</span>Cuentas por pagar comerciales</td><td class="amount">968.450,00</td></tr>
-                <tr class="line-detail"><td class="label"><span class="sub-acc">2.1.4</span>IVA / IGTF débito por pagar</td><td class="amount">952.832,00</td></tr>
-                <tr class="line-detail"><td class="label"><span class="sub-acc">2.1.5</span>Retenciones y parafiscales por pagar</td><td class="amount">384.290,00</td></tr>
-                <tr class="line-detail"><td class="label"><span class="sub-acc">2.1.6</span>ISLR por pagar (provisión)</td><td class="amount">182.640,00</td></tr>
-                <tr class="subtotal"><td class="label">Total pasivo circulante</td><td class="amount">2.488.212,00</td></tr>
+                <tr class="line-detail"><td class="label"><span class="sub-acc">2.1.1</span>Cuentas por pagar comerciales</td><td class="amount">0,00</td></tr>
+                <tr class="line-detail"><td class="label"><span class="sub-acc">2.1.4</span>IVA / IGTF débito por pagar</td><td class="amount">0,00</td></tr>
+                <tr class="line-detail"><td class="label"><span class="sub-acc">2.1.5</span>Retenciones y parafiscales por pagar</td><td class="amount">0,00</td></tr>
+                <tr class="line-detail"><td class="label"><span class="sub-acc">2.1.6</span>ISLR por pagar (provisión)</td><td class="amount">0,00</td></tr>
+                <tr class="subtotal"><td class="label">Total pasivo circulante</td><td class="amount">0,00</td></tr>
 
                 <tr class="section-head"><td class="label">Pasivo no circulante</td><td class="amount"></td></tr>
-                <tr class="line-detail"><td class="label"><span class="sub-acc">2.2.1</span>Préstamos bancarios L/P</td><td class="amount">1.792.036,00</td></tr>
-                <tr class="line-detail"><td class="label"><span class="sub-acc">2.2.2</span>Prestaciones sociales acumuladas</td><td class="amount">611.880,00</td></tr>
-                <tr class="subtotal"><td class="label">Total pasivo</td><td class="amount">4.892.128,00</td></tr>
+                <tr class="line-detail"><td class="label"><span class="sub-acc">2.2.1</span>Préstamos bancarios L/P</td><td class="amount">0,00</td></tr>
+                <tr class="line-detail"><td class="label"><span class="sub-acc">2.2.2</span>Prestaciones sociales acumuladas</td><td class="amount">0,00</td></tr>
+                <tr class="subtotal"><td class="label">Total pasivo</td><td class="amount">0,00</td></tr>
 
                 <tr class="section-head"><td class="label">Patrimonio</td><td class="amount"></td></tr>
-                <tr class="line-detail"><td class="label"><span class="sub-acc">3.1.1</span>Capital social</td><td class="amount">4.500.000,00</td></tr>
-                <tr class="line-detail"><td class="label"><span class="sub-acc">3.2.1</span>Resultados acumulados</td><td class="amount">2.218.000,00</td></tr>
+                <tr class="line-detail"><td class="label"><span class="sub-acc">3.1.1</span>Capital social</td><td class="amount">0,00</td></tr>
+                <tr class="line-detail"><td class="label"><span class="sub-acc">3.2.1</span>Resultados acumulados</td><td class="amount">0,00</td></tr>
                 <tr class="line-detail"><td class="label"><span class="sub-acc">3.2.2</span>Utilidad del ejercicio</td><td class="amount fin-pos">878.382,00</td></tr>
-                <tr class="subtotal"><td class="label">Total patrimonio</td><td class="amount">7.596.382,00</td></tr>
+                <tr class="subtotal"><td class="label">Total patrimonio</td><td class="amount">0,00</td></tr>
 
-                <tr class="grand-total"><td class="label">Pasivo + Patrimonio</td><td class="amount">12.488.510,00</td></tr>
+                <tr class="grand-total"><td class="label">Pasivo + Patrimonio</td><td class="amount">0,00</td></tr>
               </tbody>
             </table>
           </div>
@@ -4706,10 +4481,10 @@
       </header>
 
       <section class="kpi-row">
-        <div class="kpi"><div class="kpi-head"><span class="label">Total terceros</span><span class="kpi-icon"><i data-lucide="contact-round"></i></span></div><div class="kpi-value" id="terKpiTotal">48</div><div class="kpi-sub"><span class="meta">Registro único por RIF</span></div></div>
-        <div class="kpi"><div class="kpi-head"><span class="label">Clientes</span><span class="kpi-icon success"><i data-lucide="arrow-down-to-line"></i></span></div><div class="kpi-value" id="terKpiCli">31</div><div class="kpi-sub"><span class="meta">Por cobrar <strong style="color:var(--fg-primary);">Bs 1.847.910</strong></span></div></div>
-        <div class="kpi"><div class="kpi-head"><span class="label">Proveedores</span><span class="kpi-icon warning"><i data-lucide="arrow-up-from-line"></i></span></div><div class="kpi-value" id="terKpiProv">22</div><div class="kpi-sub"><span class="meta">Por pagar <strong style="color:var(--fg-primary);">Bs 968.450</strong></span></div></div>
-        <div class="kpi"><div class="kpi-head"><span class="label">Cliente y proveedor</span><span class="kpi-icon"><i data-lucide="repeat"></i></span></div><div class="kpi-value" id="terKpiAmbos">5</div><div class="kpi-sub"><span class="meta">Doble rol · sin duplicar</span></div></div>
+        <div class="kpi"><div class="kpi-head"><span class="label">Total terceros</span><span class="kpi-icon"><i data-lucide="contact-round"></i></span></div><div class="kpi-value" id="terKpiTotal">0</div><div class="kpi-sub"><span class="meta">Registro único por RIF</span></div></div>
+        <div class="kpi"><div class="kpi-head"><span class="label">Clientes</span><span class="kpi-icon success"><i data-lucide="arrow-down-to-line"></i></span></div><div class="kpi-value" id="terKpiCli">0</div><div class="kpi-sub"><span class="meta">Registrados como cliente</span></div></div>
+        <div class="kpi"><div class="kpi-head"><span class="label">Proveedores</span><span class="kpi-icon warning"><i data-lucide="arrow-up-from-line"></i></span></div><div class="kpi-value" id="terKpiProv">0</div><div class="kpi-sub"><span class="meta">Registrados como proveedor</span></div></div>
+        <div class="kpi"><div class="kpi-head"><span class="label">Cliente y proveedor</span><span class="kpi-icon"><i data-lucide="repeat"></i></span></div><div class="kpi-value" id="terKpiAmbos">0</div><div class="kpi-sub"><span class="meta">Doble rol · sin duplicar</span></div></div>
       </section>
 
       <div class="data-table-wrap">
@@ -4757,13 +4532,13 @@
         <div class="cfg-card">
           <div class="cfg-card-head"><span class="cfg-ic"><i data-lucide="building-2"></i></span><div><div class="cfg-tt">Datos de la empresa</div><div class="cfg-sub">Aparecen en tus facturas y documentos.</div></div></div>
           <div class="cfg-fields">
-            <label class="cfg-f full"><span>Razón social</span><input id="cfgRazon" value="AGROINVERSIONES VALLE, C.A."></label>
-            <label class="cfg-f"><span>RIF</span><input id="cfgRif" value="J-29485761-3"></label>
+            <label class="cfg-f full"><span>Razón social</span><input id="cfgRazon" value="" placeholder="Razón social de la empresa"></label>
+            <label class="cfg-f"><span>RIF</span><input id="cfgRif" value="" placeholder="J-00000000-0"></label>
             <label class="cfg-f"><span>Tipo de contribuyente</span><select id="cfgTipoContrib"><option>Contribuyente especial</option><option>Contribuyente ordinario</option><option>Contribuyente formal</option></select></label>
-            <label class="cfg-f full"><span>Domicilio fiscal</span><input id="cfgDom" value="Av. Bolívar, Edif. Centro, San Carlos, Edo. Cojedes"></label>
-            <label class="cfg-f"><span>Teléfono</span><input id="cfgTel" value="0258-4334455"></label>
-            <label class="cfg-f"><span>WhatsApp</span><input id="cfgWsp" value="0414-1234567"></label>
-            <label class="cfg-f full"><span>Correo</span><input id="cfgEmail" value="admin@valle.com"></label>
+            <label class="cfg-f full"><span>Domicilio fiscal</span><input id="cfgDom" value="" placeholder="Dirección fiscal"></label>
+            <label class="cfg-f"><span>Teléfono</span><input id="cfgTel" value="" placeholder="0000-0000000"></label>
+            <label class="cfg-f"><span>WhatsApp</span><input id="cfgWsp" value="" placeholder="0000-0000000"></label>
+            <label class="cfg-f full"><span>Correo</span><input id="cfgEmail" value="" placeholder="correo@empresa.com"></label>
           </div>
         </div>
 
