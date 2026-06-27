@@ -7225,6 +7225,12 @@
       // Muestra el Panel del Fundador SOLO al super-admin
       const navFund = document.querySelector('.nav-item[data-view="fundador"]');
       if (navFund) navFund.hidden = !window.__ES_FUNDADOR;
+      // Usuario real en el pie del menú lateral
+      const nombre = data.nombre || window.__USER_EMAIL || 'Usuario';
+      const ini = (nombre.trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join('') || 'U').toUpperCase();
+      const rol = window.__ES_FUNDADOR ? 'Fundador' : (data.rol || 'Administrador');
+      const setSb = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+      setSb('sidebarUserAvatar', ini); setSb('sidebarUserName', nombre); setSb('sidebarUserRole', rol);
       console.log('[DigiAccount] Perfil cargado:', data, '· fundador:', window.__ES_FUNDADOR, '· estado:', window.__CUENTA_ESTADO);
       return data;
     }
@@ -8914,17 +8920,8 @@
       { id: 'lectura', nombre: 'Auditor (solo lectura)', cls: 'lectura', ic: 'eye', color: '#545e67', desc: 'Consulta todo el sistema sin modificar nada.' },
     ];
     const rolDe = (id) => ROLES.find((r) => r.id === id) || ROLES[0];
-    const USUARIOS = [
-      { n: 'Marcos Rojas', email: 'marcos@digiaccount.com', rol: 'admin', color: '#003057', emp: ['Todas'], acc: 'Hace 5 min', est: 'Activo' },
-      { n: 'Ana Gómez', email: 'ana.gomez@valle.com', rol: 'contador', color: '#1c8f5a', emp: ['AV'], acc: 'Hace 2 h', est: 'Activo' },
-      { n: 'Luis Pérez', email: 'luis.perez@valle.com', rol: 'operador', color: '#c97a14', emp: ['AV'], acc: 'Ayer', est: 'Activo' },
-      { n: 'Carmen Díaz', email: 'carmen@grupo.com', rol: 'gerente', color: '#7b54c9', emp: ['AV', 'TS'], acc: 'Hace 3 días', est: 'Activo' },
-      { n: 'Auditores Asociados', email: 'auditoria@externa.com', rol: 'lectura', color: '#545e67', emp: ['Todas'], acc: 'Hace 1 sem', est: 'Activo' },
-    ];
-    const INVIT = [
-      { email: 'nuevo.contador@valle.com', rol: 'contador', meta: 'Enviada hace 2 días' },
-      { email: 'vendedor2@valle.com', rol: 'operador', meta: 'Enviada ayer' },
-    ];
+    const USUARIOS = [];   // se llena con los usuarios reales de la cuenta
+    const INVIT = [];      // invitaciones pendientes reales
     // Empresas de la cuenta a las que se puede dar acceso
     const EMPRESAS = [
       { value: 'AV', label: 'Agroinversiones Valle, C.A.' },
