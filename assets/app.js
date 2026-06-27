@@ -61,6 +61,7 @@
           cond: /especial/i.test(cond) ? 'Contribuyente Especial' : /formal/i.test(cond) ? 'Contribuyente Formal' : (type === 'natural' ? 'Persona Natural' : 'Contribuyente Ordinario'),
           fiscalActivo: fiscalActivo,
           modo: fiscalActivo ? 'libro' : 'recibos', // DERIVADO del módulo Fiscal: activo→libros, inactivo→recibos
+          firmaEmpresa: opt.dataset.firma || '',
         };
         aplicarFiscal(fiscalActivo);
         setText('entityName', name);
@@ -133,7 +134,7 @@
     if (!window.sb || !dd || !addBtn) return;
     const { data, error } = await window.sb
       .from('empresas')
-      .select('id, nombre, rif, condicion_fiscal, fiscal_activo')
+      .select('id, nombre, rif, condicion_fiscal, fiscal_activo, firma_empresa')
       .order('nombre');
     if (error) { console.warn('[DigiAccount] No se pudieron cargar las empresas:', error.message); return; }
     // Quitar las opciones de ejemplo (hardcodeadas) y sus etiquetas de grupo
@@ -155,6 +156,7 @@
       opt.dataset.cond = cond;
       opt.dataset.empresaId = emp.id || '';
       opt.dataset.fiscal = String(!!emp.fiscal_activo);
+      if (emp.firma_empresa) opt.dataset.firma = emp.firma_empresa;
       opt.innerHTML = '<div class="ea" style="background:var(--da-navy-500);color:#fff">' + ini + '</div>'
         + '<div class="eo-info"><div class="eo-name">' + nombre + '</div><div class="eo-meta">' + rif + ' · Contribuyente ' + condTxt + '</div></div>'
         + '<i data-lucide="check" class="eo-check" style="width:16px;height:16px;"></i>';
@@ -2867,7 +2869,9 @@
     const printBtn = document.getElementById('relnPrint');
 
     const doc = document.getElementById('relnDoc');
-    openBtn.addEventListener('click', () => { overlay.hidden = false; drawIcons(); });
+    const freqSel = document.getElementById('relnFreq');
+    openBtn.addEventListener('click', () => { if (window.__buildRelacion) window.__buildRelacion(freqSel ? freqSel.value : 'quincenal'); overlay.hidden = false; drawIcons(); });
+    if (freqSel) freqSel.addEventListener('change', () => { if (window.__buildRelacion) window.__buildRelacion(freqSel.value); });
     if (closeBtn) closeBtn.addEventListener('click', () => (overlay.hidden = true));
     overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.hidden = true; });
     if (printBtn) printBtn.addEventListener('click', () => {
@@ -4048,32 +4052,43 @@
     /* Relación de nómina del período: se genera recorriendo TODA la lista de
        empleados activos, de modo que incluye a todos los que existan (no una
        cantidad fija). Asignación = salario quincenal; deducciones de ley ~6%. */
-    function buildRelacionNomina() {
+    function buildRelacionNomina(freq) {
       const tbody = document.getElementById('relnTableBody');
       if (!tbody) return;
-      const DED_LEY = 0.06; // IVSS 4% + RPE 0,5% + FAOV 1% + INCES 0,5%
+      const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+      const relnFreqEl = document.getElementById('relnFreq');
+      freq = freq || (relnFreqEl ? relnFreqEl.value : 'quincenal');
+      const div = freq === 'semanal' ? (52 / 12) : freq === 'mensual' ? 1 : 2;
+      const periodoLbl = freq === 'semanal' ? 'Semanal' : freq === 'mensual' ? 'Mensual' : 'Quincenal';
+      const DED_LEY = 0.055; // IVSS 4% + RPE 0,5% + FAOV 1% (el INCES 0,5% del trabajador va sobre utilidades)
+      // Solo los trabajadores con ESTA frecuencia de pago
+      const lista = empleados.filter((e) => (e.frecHabitual || 'quincenal') === freq);
       let totA = 0, totD = 0, totN = 0;
-      tbody.innerHTML = empleados.map((e, i) => {
-        const asig = e.salarioMes / 2;
+      tbody.innerHTML = lista.length ? lista.map((e, i) => {
+        const asig = (Number(e.salarioMes) || 0) / div;
         const ded = asig * DED_LEY;
         const neto = asig - ded;
         totA += asig; totD += ded; totN += neto;
-        return '<tr><td class="ctr">' + (i + 1) + '</td><td>' + e.nombre
-          + '</td><td class="mono">' + e.cedula + '</td><td>' + e.cargo
+        return '<tr><td class="ctr">' + (i + 1) + '</td><td>' + esc(e.nombre)
+          + '</td><td class="mono">' + esc(e.cedula) + '</td><td>' + esc(e.cargo)
           + '</td><td class="num">' + fmt(asig) + '</td><td class="num">' + fmt(ded)
           + '</td><td class="num">' + fmt(neto) + '</td></tr>';
-      }).join('');
-      const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+      }).join('') : '<tr><td colspan="7" style="text-align:center;color:var(--fg-muted);padding:18px;">Sin trabajadores con pago ' + periodoLbl.toLowerCase() + '.</td></tr>';
       set('relnTotA', fmt(totA));
       set('relnTotD', fmt(totD));
       set('relnTotN', fmt(totN));
-      set('relnSubLabel', 'TOTALES DEL PERÍODO · ' + empleados.length + ' empleados');
+      set('relnSubLabel', 'TOTALES · ' + periodoLbl.toUpperCase() + ' · ' + lista.length + ' trabajador' + (lista.length === 1 ? '' : 'es'));
+      // Cabecera real del documento
+      const emp = window.__EMPRESA_ACTIVA || {};
+      set('relnEmpresa', emp.n || '—');
+      set('relnRif', emp.rif ? ('RIF ' + emp.rif) : '—');
+      set('relnPeriodo', 'Pago ' + periodoLbl.toLowerCase());
+      set('relnCount', String(lista.length));
 
-      // Aportes patronales del período. IVSS/SPF/FAOV/INCES sobre la base salarial mensual (todos).
-      const baseMes = totA * 2;
+      // Aportes patronales sobre la base mensual del grupo de esta frecuencia
+      const baseMes = lista.reduce((s, e) => s + (Number(e.salarioMes) || 0), 0);
       const ivss = baseMes * 0.11, spf = baseMes * 0.02, faov = baseMes * 0.02, inces = baseMes * 0.02;
-      // DPP (9%) SOLO sobre los trabajadores marcados como sujetos a Protección de las Pensiones
-      const baseDpp = empleados.filter((e) => e.sujetoDpp).reduce((s, e) => s + (Number(e.salarioMes) || 0), 0);
+      const baseDpp = lista.filter((e) => e.sujetoDpp).reduce((s, e) => s + (Number(e.salarioMes) || 0), 0);
       const pp = baseDpp * 0.09;
       set('raIvss', fmt(ivss));
       set('raSpf', fmt(spf));
@@ -4081,13 +4096,17 @@
       set('raInces', fmt(inces));
       set('raPp', fmt(pp));
       const raPpMeta = document.getElementById('raPpMeta');
-      if (raPpMeta) raPpMeta.textContent = empleados.filter((e) => e.sujetoDpp).length + ' trabajador(es) sujetos';
+      if (raPpMeta) raPpMeta.textContent = lista.filter((e) => e.sujetoDpp).length + ' sujeto(s)';
       set('raTotal', fmt(ivss + spf + faov + inces + pp));
-      // KPIs de la cabecera de Nómina (datos reales)
-      set('nomKpiCosto', fmt(baseMes));
-      set('nomKpiAportes', fmt(ivss + spf + faov + inces + pp));
+
+      // KPIs de la cabecera de Nómina: sobre TODOS los trabajadores (no solo el grupo)
+      const baseTodos = empleados.reduce((s, e) => s + (Number(e.salarioMes) || 0), 0);
+      const dppTodos = empleados.filter((e) => e.sujetoDpp).reduce((s, e) => s + (Number(e.salarioMes) || 0), 0);
+      set('nomKpiCosto', fmt(baseTodos));
+      set('nomKpiAportes', fmt(baseTodos * 0.17 + dppTodos * 0.09));
       const kc = document.getElementById('nomKpiCount'); if (kc) kc.textContent = String(empleados.length);
     }
+    window.__buildRelacion = buildRelacionNomina;
 
     function aniosServicio(ing) {
       let y = HOY.getFullYear() - ing.getFullYear();
@@ -4375,7 +4394,7 @@
         + '<tfoot><tr><td>Total a pagar</td><td class="num">Bs</td><td class="num">' + fmt(k.total) + '</td></tr></tfoot></table>'
         + '<div class="recibo-words">Son: <strong>' + capitalizar(montoEnLetras(k.total)) + '</strong>.</div>'
         + '<div class="recibo-foot">'
-        + '<div class="recibo-sign"><div class="line">Por la empresa</div></div>'
+        + '<div class="recibo-sign">' + ((window.__EMPRESA_ACTIVA && window.__EMPRESA_ACTIVA.firmaEmpresa) ? '<img src="' + window.__EMPRESA_ACTIVA.firmaEmpresa + '" alt="firma empresa" style="max-height:54px;display:block;margin:0 auto 2px;">' : '') + '<div class="line">Por la empresa</div></div>'
         + '<div class="recibo-sign"><div class="line">Recibí conforme · ' + emp.nombre + '</div></div>'
         + '<div class="recibo-legal">Documento generado electrónicamente por DigiAccount conforme a la Ley Orgánica del Trabajo, los Trabajadores y las Trabajadoras (LOTTT). Válido sin firma autógrafa según el Decreto-Ley sobre Mensajes de Datos y Firmas Electrónicas. Este recibo refleja el cálculo automático de los conceptos laborales; cualquier diferencia debe notificarse a Recursos Humanos.</div>'
         + '</div>';
@@ -4428,6 +4447,74 @@
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
       URL.revokeObjectURL(url);
     });
+
+    // ---------- Firma digital del recibo de pago + respaldo ----------
+    let currentReciboPago = null;
+    const firmarBtn = document.getElementById('reciboFirmar');
+    if (firmarBtn) firmarBtn.addEventListener('click', () => {
+      if (!currentReciboPago) { if (window.toast) window.toast('Abre un recibo de pago primero.', 'error'); return; }
+      if (window.__abrirFirma) window.__abrirFirma();
+    });
+    window.__aplicarFirmaRecibo = async (firmaUrl) => {
+      if (!currentReciboPago) return;
+      const c = currentReciboPago;
+      const signs = doc.querySelectorAll('.recibo-sign');
+      if (signs && signs.length) {
+        const worker = signs[signs.length - 1];
+        worker.innerHTML = '<img src="' + firmaUrl + '" alt="firma" style="max-height:54px;display:block;margin:0 auto 2px;"><div class="line">Recibí conforme · ' + c.emp.nombre + '</div>';
+      }
+      if (window.sb && window.__CUENTA_ID && window.__EMPRESA_ACTIVA && window.__EMPRESA_ACTIVA.id) {
+        const detalle = (c.rows || []).filter((r) => r[0] !== 'sec').map((r) => ({ concepto: r[1], monto: r[3], tipo: r[0] }));
+        const { error } = await window.sb.from('recibos_nomina').insert({
+          cuenta_id: window.__CUENTA_ID, empresa_id: window.__EMPRESA_ACTIVA.id, empleado_id: c.emp.id || null,
+          empleado_nombre: c.emp.nombre, empleado_cedula: c.emp.cedula, periodo: c.periodo, frecuencia: c.frecuencia,
+          neto: c.p.neto, detalle: detalle, tasa_bcv: c.p.tasa, firma: firmaUrl, firmado_en: new Date().toISOString(),
+        });
+        if (error) { if (window.toast) window.toast('Firmó, pero no se respaldó: ' + error.message, 'error'); return; }
+      }
+      if (window.toast) window.toast('Recibo firmado y respaldado en la empresa ✓', 'success');
+    };
+    // Pad de firma (canvas con eventos de puntero: mouse y táctil)
+    (function firmaPad() {
+      const fo = document.getElementById('firmaOverlay');
+      const canvas = document.getElementById('firmaCanvas');
+      if (!fo || !canvas) return;
+      const ctx = canvas.getContext('2d');
+      ctx.lineWidth = 2.4; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#0a2540';
+      let drawing = false, has = false;
+      const pos = (e) => { const r = canvas.getBoundingClientRect(); return { x: (e.clientX - r.left) * (canvas.width / r.width), y: (e.clientY - r.top) * (canvas.height / r.height) }; };
+      canvas.addEventListener('pointerdown', (e) => { drawing = true; has = true; const pt = pos(e); ctx.beginPath(); ctx.moveTo(pt.x, pt.y); try { canvas.setPointerCapture(e.pointerId); } catch (er) {} });
+      canvas.addEventListener('pointermove', (e) => { if (!drawing) return; const pt = pos(e); ctx.lineTo(pt.x, pt.y); ctx.stroke(); });
+      const stop = () => { drawing = false; };
+      canvas.addEventListener('pointerup', stop); canvas.addEventListener('pointerleave', stop);
+      const limpiar = () => { ctx.clearRect(0, 0, canvas.width, canvas.height); has = false; };
+      const li = document.getElementById('firmaLimpiar'); if (li) li.addEventListener('click', limpiar);
+      const fcl = document.getElementById('firmaClose'); if (fcl) fcl.addEventListener('click', () => { fo.dataset.open = 'false'; });
+      fo.addEventListener('click', (e) => { if (e.target === fo) fo.dataset.open = 'false'; });
+      let onApply = null;
+      window.__abrirFirma = (cb) => { onApply = (typeof cb === 'function') ? cb : null; limpiar(); fo.dataset.open = 'true'; };
+      const ap = document.getElementById('firmaAplicar');
+      if (ap) ap.addEventListener('click', () => {
+        if (!has) { if (window.toast) window.toast('Falta la firma.', 'error'); return; }
+        const dataUrl = canvas.toDataURL('image/png');
+        fo.dataset.open = 'false';
+        if (onApply) onApply(dataUrl);
+        else if (window.__aplicarFirmaRecibo) window.__aplicarFirmaRecibo(dataUrl);
+      });
+    })();
+
+    // Configurar la firma autorizada de la empresa (se estampa sola en los recibos)
+    async function guardarFirmaEmpresa(url) {
+      if (!window.sb || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) { if (window.toast) window.toast('No hay empresa activa.', 'error'); return; }
+      const { error } = await window.sb.from('empresas').update({ firma_empresa: url }).eq('id', window.__EMPRESA_ACTIVA.id);
+      if (error) { if (window.toast) window.toast('No se pudo guardar: ' + error.message, 'error'); return; }
+      window.__EMPRESA_ACTIVA.firmaEmpresa = url;
+      const opt = document.querySelector('.entity-option[data-empresa-id="' + window.__EMPRESA_ACTIVA.id + '"]');
+      if (opt) opt.dataset.firma = url;
+      if (window.toast) window.toast('Firma de la empresa guardada · se estampará en los recibos', 'success');
+    }
+    const firmaEmpBtn = document.getElementById('reciboFirmaEmpresa');
+    if (firmaEmpBtn) firmaEmpBtn.addEventListener('click', () => { if (window.__abrirFirma) window.__abrirFirma(guardarFirmaEmpresa); });
 
     // ---------- Recibo de pago (semanal / quincenal / mensual) ----------
     let payFreq = 'quincenal';
@@ -4564,7 +4651,7 @@
         + '<tfoot><tr><td>Neto a pagar</td><td class="num">Bs</td><td class="num">' + fmt(p.neto) + '</td></tr></tfoot></table>'
         + '<div class="recibo-words">Son: <strong>' + capitalizar(montoEnLetras(p.neto)) + '</strong>.</div>'
         + '<div class="recibo-foot">'
-        + '<div class="recibo-sign"><div class="line">Por la empresa</div></div>'
+        + '<div class="recibo-sign">' + ((window.__EMPRESA_ACTIVA && window.__EMPRESA_ACTIVA.firmaEmpresa) ? '<img src="' + window.__EMPRESA_ACTIVA.firmaEmpresa + '" alt="firma empresa" style="max-height:54px;display:block;margin:0 auto 2px;">' : '') + '<div class="line">Por la empresa</div></div>'
         + '<div class="recibo-sign"><div class="line">Recibí conforme · ' + emp.nombre + '</div></div>'
         + '<div class="recibo-legal">Recibo de pago emitido conforme al Art. 106 de la LOTTT. Las deducciones de ley (IVSS y RPE, con tope de cotización, y FAOV) se aplican sobre el salario normal cotizable; el INCES del trabajador (0,5%) se retiene sobre las utilidades. El Bono de Contingencia es una asignación no salarial que no es cotizable ni incide en prestaciones, vacaciones ni utilidades. El aporte patronal corre por cuenta de la empresa y no se refleja en este recibo. Documento generado electrónicamente por DigiAccount, válido sin firma autógrafa.</div>'
         + '</div>';
@@ -4591,6 +4678,7 @@
         + 'NETO A PAGAR: Bs ' + fmt(p.neto) + '\r\n'
         + 'Son: ' + capitalizar(montoEnLetras(p.neto)) + '\r\n';
       lastReciboName = p.f.doc + '_' + emp.id + '_2026.txt';
+      currentReciboPago = { emp: emp, p: p, rows: rows, periodo: p.f.periodo, frecuencia: payFreq };
 
       overlay.dataset.open = 'true';
       drawIcons();

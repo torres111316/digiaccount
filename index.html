@@ -3626,6 +3626,13 @@
           <div class="rrm-bar">
             <span><i data-lucide="users"></i> Relación de nómina del período</span>
             <div class="rrm-actions">
+              <label style="font-size:12px;display:flex;align-items:center;gap:6px;">Frecuencia:
+                <select id="relnFreq" style="height:32px;border:1px solid var(--border-strong);border-radius:8px;padding:0 8px;font:inherit;background:var(--bg-surface);color:inherit;">
+                  <option value="semanal">Semanal</option>
+                  <option value="quincenal" selected>Quincenal</option>
+                  <option value="mensual">Mensual</option>
+                </select>
+              </label>
               <button class="btn btn-ghost" id="relnPrint"><i data-lucide="printer"></i> Imprimir</button>
               <button class="btn btn-ghost" id="relnClose"><i data-lucide="x"></i> Cerrar</button>
             </div>
@@ -3635,12 +3642,12 @@
               <div class="rr-head">
                 <div class="rr-agent">
                   <div class="rr-eyebrow">Relación de Nómina</div>
-                  <div class="rr-name">Agroinversiones Valle, C.A.</div>
-                  <div class="rr-meta"><span class="mono">RIF J-30456789-0</span> · Contribuyente Especial<br>Av. Intercomunal, Galpón 4, Valencia, Edo. Carabobo</div>
+                  <div class="rr-name" id="relnEmpresa">—</div>
+                  <div class="rr-meta"><span class="mono" id="relnRif">—</span></div>
                 </div>
                 <div class="rr-title">
-                  <div class="rr-kind">Relación de Nómina<br><span>Quincena 16–31 · Mayo 2026</span></div>
-                  <div class="rr-period">24 empleados activos<br><span class="mono">NOM-2026-10</span></div>
+                  <div class="rr-kind">Relación de Nómina<br><span id="relnPeriodo">Quincenal</span></div>
+                  <div class="rr-period"><span id="relnCount">0</span> trabajadores</div>
                 </div>
               </div>
 
@@ -5233,6 +5240,8 @@
     <div class="recibo-modal-bar">
       <span class="rm-title"><i data-lucide="file-text"></i> <span id="reciboModalTitle">Recibo</span></span>
       <div class="rm-actions">
+        <button class="btn btn-primary" style="height:32px;font-size:12px;" id="reciboFirmar"><i data-lucide="pen-tool"></i> Firmar</button>
+        <button class="btn btn-ghost" style="height:32px;font-size:12px;" id="reciboFirmaEmpresa" title="Configurar la firma autorizada de la empresa (una sola vez)"><i data-lucide="stamp"></i> Firma empresa</button>
         <button class="btn btn-ghost" style="height:32px;font-size:12px;" id="reciboPrint"><i data-lucide="printer"></i> Imprimir</button>
         <button class="btn btn-ghost" style="height:32px;font-size:12px;" id="reciboDownload"><i data-lucide="download"></i> Descargar</button>
         <button class="icon-btn" id="reciboClose" title="Cerrar"><i data-lucide="x"></i></button>
@@ -5240,6 +5249,24 @@
     </div>
     <div class="recibo-scroll">
       <div class="recibo-doc" id="reciboDoc"><!-- render por JS --></div>
+    </div>
+  </div>
+</div>
+
+<!-- Pad de firma digital del trabajador -->
+<div class="recibo-overlay" id="firmaOverlay" data-open="false" style="z-index:1300;">
+  <div class="recibo-modal" style="max-width:480px;">
+    <div class="recibo-modal-bar">
+      <span class="rm-title"><i data-lucide="pen-tool"></i> Firma del trabajador</span>
+      <div class="rm-actions"><button class="icon-btn" id="firmaClose" title="Cerrar"><i data-lucide="x"></i></button></div>
+    </div>
+    <div style="padding:18px;">
+      <div style="font-size:12px;color:var(--fg-muted);margin-bottom:8px;">El trabajador firma aquí (con el dedo o el mouse):</div>
+      <canvas id="firmaCanvas" width="440" height="190" style="width:100%;border:1px dashed var(--border-strong);border-radius:10px;background:#fff;touch-action:none;cursor:crosshair;display:block;"></canvas>
+      <div style="display:flex;gap:10px;margin-top:14px;justify-content:flex-end;">
+        <button class="btn btn-ghost" id="firmaLimpiar"><i data-lucide="eraser"></i> Limpiar</button>
+        <button class="btn btn-primary" id="firmaAplicar"><i data-lucide="check"></i> Firmar y guardar</button>
+      </div>
     </div>
   </div>
 </div>
