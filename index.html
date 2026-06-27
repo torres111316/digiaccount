@@ -3729,7 +3729,7 @@
 
       <!-- Sub-tabs -->
       <div class="subtabs" id="contaTabs">
-        <button data-active="true" data-tab="diario"><i data-lucide="book-text"></i> Libro Diario <span class="count">312</span></button>
+        <button data-active="true" data-tab="diario"><i data-lucide="book-text"></i> Libro Diario <span class="count" id="contaDiarioCount">0</span></button>
         <button data-tab="mayor"><i data-lucide="library"></i> Libro Mayor</button>
         <button data-tab="balance"><i data-lucide="scale"></i> Balance de Comprobación</button>
         <button data-tab="resultados"><i data-lucide="trending-up"></i> Estado de Resultados</button>
@@ -3750,7 +3750,7 @@
             <button class="filter-chip"><i data-lucide="sparkles"></i> Origen: Todos</button>
             <button class="filter-chip"><i data-lucide="filter"></i> Más filtros</button>
             <div class="right">
-              <span style="font-size:11px;color:var(--fg-muted);">Movimiento del mes: <strong style="color:var(--fg-primary);font-family:var(--font-mono);">Bs 18.838.915</strong></span>
+              <span style="font-size:11px;color:var(--fg-muted);">Movimiento del mes: <strong id="contaMovMes" style="color:var(--fg-primary);font-family:var(--font-mono);">Bs 0,00</strong></span>
               <button class="btn btn-ghost" style="height:32px;font-size:12px;" id="diarioPrintBtn"><i data-lucide="printer"></i> Imprimir</button>
             </div>
           </div>

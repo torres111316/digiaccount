@@ -1349,6 +1349,8 @@
         setC('contaKpiDebe', fmt2(totDebe));
         setC('contaKpiHaber', fmt2(totDebe));
         setC('contaKpiCuentas', String(ctas.size));
+        setC('contaDiarioCount', String(asientosData.length));
+        setC('contaMovMes', 'Bs ' + fmt2(totDebe));
         console.log('[DigiAccount] Asientos cargados:', (data || []).length);
         drawIcons();
       }
