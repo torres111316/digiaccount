@@ -87,6 +87,7 @@
         if (window.cargarBoveda) window.cargarBoveda();
         if (window.cargarTesoreria) window.cargarTesoreria();
         if (window.cargarRetenciones) window.cargarRetenciones();
+        if (window.cargarParametros) window.cargarParametros();
         if (window.cargarEmpleados) window.cargarEmpleados();
         if (window.cargarDashboard) window.cargarDashboard();
       });
@@ -4032,16 +4033,77 @@
     if (!view) return;
 
     const HOY = new Date(2026, 4, 30); // 30 may 2026
-    const DIAS_UTILIDADES = 60;        // política de la empresa (mín. legal 30, máx. 120)
-    const TASA_INTERES = 0.12;         // tasa anual referencial sobre prestaciones
 
-    /* Parámetros legales (ajustar al valor vigente) — Venezuela
-       El salario base cotizable es el salario mínimo nacional; el resto del
-       paquete del trabajador se paga como Bono de Contingencia NO salarial
-       (no cotizable, no incide en prestaciones, vacaciones ni utilidades). */
-    const SALARIO_MINIMO = 130;            // Bs/mes — salario mínimo nacional vigente
-    const TOPE_IVSS = 5 * SALARIO_MINIMO;  // base máx. de cotización IVSS (5 salarios mínimos)
-    const TOPE_RPE  = 10 * SALARIO_MINIMO; // base máx. de cotización RPE/Paro Forzoso (10 sal. mín.)
+    /* Parámetros legales — EDITABLES desde "Parámetros de Nómina" (tabla parametros_nomina,
+       por cuenta). Aquí quedan los valores por defecto/vigentes; applyParams() los actualiza. */
+    let DIAS_UTILIDADES = 60;          // política (mín. legal 30, máx. 120)
+    let DIAS_VAC = 15, DIAS_BONO_VAC = 15; // base de vacaciones y bono vacacional (mín. legal 15)
+    let TASA_INTERES = 0.12;           // tasa anual referencial sobre prestaciones
+    let SALARIO_MINIMO = 130;          // Bs/mes — salario mínimo nacional vigente
+    let TOPE_IVSS = 5 * SALARIO_MINIMO;  // base máx. cotización IVSS (5 sal. mín.)
+    let TOPE_RPE  = 10 * SALARIO_MINIMO; // base máx. cotización RPE (10 sal. mín.)
+    // Tasas (fracción): trabajador y patrono
+    let R_IVSS_T = 0.04, R_RPE_T = 0.005, R_FAOV_T = 0.01;
+    let R_IVSS_P = 0.11, R_RPE_P = 0.02, R_FAOV_P = 0.02, R_INCES_P = 0.02, R_DPP = 0.09;
+    const nz = (v, d) => (v != null && v !== '' && !isNaN(v)) ? Number(v) : d;
+    function applyParams() {
+      const p = window.__PARAMS || {};
+      SALARIO_MINIMO = nz(p.salario_minimo, 130);
+      CESTATICKET_USD = nz(p.cestaticket_usd, 40);
+      DIAS_UTILIDADES = nz(p.dias_utilidades, 60);
+      DIAS_VAC = nz(p.dias_vacaciones, 15);
+      DIAS_BONO_VAC = nz(p.dias_bono_vac, 15);
+      TASA_INTERES = nz(p.tasa_interes_prest, 12) / 100;
+      TOPE_IVSS = 5 * SALARIO_MINIMO; TOPE_RPE = 10 * SALARIO_MINIMO;
+      R_IVSS_T = nz(p.ivss_trab, 4) / 100; R_RPE_T = nz(p.rpe_trab, 0.5) / 100; R_FAOV_T = nz(p.faov_trab, 1) / 100;
+      R_IVSS_P = nz(p.ivss_pat, 11) / 100; R_RPE_P = nz(p.rpe_pat, 2) / 100; R_FAOV_P = nz(p.faov_pat, 2) / 100; R_INCES_P = nz(p.inces_pat, 2) / 100; R_DPP = nz(p.dpp, 9) / 100;
+    }
+    async function cargarParametros() {
+      if (window.sb && window.__CUENTA_ID) {
+        const { data } = await window.sb.from('parametros_nomina').select('*').eq('cuenta_id', window.__CUENTA_ID).maybeSingle();
+        window.__PARAMS = data || {};
+      }
+      applyParams();
+      if (typeof renderAll === 'function') renderAll();
+    }
+    window.cargarParametros = cargarParametros;
+
+    function formParametros() {
+      const p = window.__PARAMS || {};
+      const g = (k, d) => (p[k] != null ? String(p[k]) : String(d));
+      const CAMPOS = [
+        ['salario_minimo', 'Salario mínimo (Bs/mes)', 130],
+        ['cestaticket_usd', 'Cestaticket (USD/mes)', 40],
+        ['ivss_trab', 'IVSS trabajador (%)', 4],
+        ['rpe_trab', 'RPE / Paro Forzoso trabajador (%)', 0.5],
+        ['faov_trab', 'FAOV trabajador (%)', 1],
+        ['ivss_pat', 'IVSS patrono (%)', 11],
+        ['rpe_pat', 'RPE patrono (%)', 2],
+        ['faov_pat', 'FAOV patrono (%)', 2],
+        ['inces_pat', 'INCES patrono (%)', 2],
+        ['dpp', 'Protección Pensiones · DPP (%)', 9],
+        ['dias_utilidades', 'Días de utilidades (al año)', 60],
+        ['dias_vacaciones', 'Días de vacaciones · disfrute (base)', 15],
+        ['dias_bono_vac', 'Días de bono vacacional (base)', 15],
+        ['tasa_interes_prest', 'Tasa interés prestaciones (% anual)', 12],
+      ];
+      window.openFormModal && window.openFormModal({
+        title: 'Parámetros de Nómina (por cuenta)', saveLabel: 'Guardar parámetros',
+        fields: CAMPOS.map((c) => ({ name: c[0], label: c[1], type: 'number', step: '0.01', value: g(c[0], c[2]) })),
+        onSave: (v) => {
+          if (!window.sb || !window.__CUENTA_ID) return 'No hay sesión activa.';
+          const row = { cuenta_id: window.__CUENTA_ID, actualizado_en: new Date().toISOString() };
+          CAMPOS.forEach((c) => { row[c[0]] = parseFloat(v[c[0]]) || 0; });
+          window.sb.from('parametros_nomina').upsert(row, { onConflict: 'cuenta_id' }).then(({ error }) => {
+            if (error) { if (window.toast) window.toast('No se pudo guardar: ' + error.message, 'error'); return; }
+            if (window.toast) window.toast('Parámetros guardados · aplicados a la nómina', 'success');
+            if (window.cargarParametros) window.cargarParametros();
+          });
+        },
+      });
+    }
+    const paramBtn = document.getElementById('parametrosNominaBtn');
+    if (paramBtn) paramBtn.addEventListener('click', formParametros);
 
     let empleados = [];   // se carga desde Supabase (cargarEmpleados)
     // (datos de ejemplo eliminados: la nómina trabaja con empleados reales de Supabase)
@@ -4060,7 +4122,7 @@
       freq = freq || (relnFreqEl ? relnFreqEl.value : 'quincenal');
       const div = freq === 'semanal' ? (52 / 12) : freq === 'mensual' ? 1 : 2;
       const periodoLbl = freq === 'semanal' ? 'Semanal' : freq === 'mensual' ? 'Mensual' : 'Quincenal';
-      const DED_LEY = 0.055; // IVSS 4% + RPE 0,5% + FAOV 1% (el INCES 0,5% del trabajador va sobre utilidades)
+      const DED_LEY = R_IVSS_T + R_RPE_T + R_FAOV_T; // deducciones de ley al trabajador (el INCES 0,5% va sobre utilidades)
       // Solo los trabajadores con ESTA frecuencia de pago
       const lista = empleados.filter((e) => (e.frecHabitual || 'quincenal') === freq);
       let totA = 0, totD = 0, totN = 0;
@@ -4087,9 +4149,9 @@
 
       // Aportes patronales sobre la base mensual del grupo de esta frecuencia
       const baseMes = lista.reduce((s, e) => s + (Number(e.salarioMes) || 0), 0);
-      const ivss = baseMes * 0.11, spf = baseMes * 0.02, faov = baseMes * 0.02, inces = baseMes * 0.02;
+      const ivss = baseMes * R_IVSS_P, spf = baseMes * R_RPE_P, faov = baseMes * R_FAOV_P, inces = baseMes * R_INCES_P;
       const baseDpp = lista.filter((e) => e.sujetoDpp).reduce((s, e) => s + (Number(e.salarioMes) || 0), 0);
-      const pp = baseDpp * 0.09;
+      const pp = baseDpp * R_DPP;
       set('raIvss', fmt(ivss));
       set('raSpf', fmt(spf));
       set('raFaov', fmt(faov));
@@ -4103,7 +4165,7 @@
       const baseTodos = empleados.reduce((s, e) => s + (Number(e.salarioMes) || 0), 0);
       const dppTodos = empleados.filter((e) => e.sujetoDpp).reduce((s, e) => s + (Number(e.salarioMes) || 0), 0);
       set('nomKpiCosto', fmt(baseTodos));
-      set('nomKpiAportes', fmt(baseTodos * 0.17 + dppTodos * 0.09));
+      set('nomKpiAportes', fmt(baseTodos * (R_IVSS_P + R_RPE_P + R_FAOV_P + R_INCES_P) + dppTodos * R_DPP));
       const kc = document.getElementById('nomKpiCount'); if (kc) kc.textContent = String(empleados.length);
     }
     window.__buildRelacion = buildRelacionNomina;
@@ -4131,8 +4193,8 @@
       const fracMeses = mesesFraccion(emp.ingreso);
       const mesesAnio = HOY.getMonth() + 1; // utilidades del ejercicio en curso (ene..may = 5)
 
-      const diasVac = Math.min(15 + Math.max(0, y - 1), 30);
-      const diasBonoVac = Math.min(15 + Math.max(0, y - 1), 30);
+      const diasVac = Math.min(DIAS_VAC + Math.max(0, y - 1), DIAS_VAC + 15);
+      const diasBonoVac = Math.min(DIAS_BONO_VAC + Math.max(0, y - 1), DIAS_BONO_VAC + 15);
       const diasUtil = DIAS_UTILIDADES;
 
       const alicBV = (salDia * diasBonoVac) / 360;
@@ -4518,7 +4580,7 @@
 
     // ---------- Recibo de pago (semanal / quincenal / mensual) ----------
     let payFreq = 'quincenal';
-    const CESTATICKET_USD = 40; // cestaticket mensual: $40 pagado en Bs a la tasa BCV (Ley de Alimentación) — no salarial
+    let CESTATICKET_USD = 40; // cestaticket mensual: $ pagado en Bs a la tasa BCV (Ley de Alimentación) — no salarial · editable en Parámetros
     const freqInfo = {
       semanal:   { div: 52 / 12, periodo: 'Semana 4 · 24–30 may 2026', etiqueta: 'Sueldo semanal',   doc: 'SEM' },
       quincenal: { div: 2,       periodo: 'Quincena 16–31 may 2026',   etiqueta: 'Sueldo quincenal', doc: 'NOM' },
@@ -4571,9 +4633,9 @@
       // El INCES del trabajador (0,5%) NO se deduce aquí: va sobre las utilidades.
       const baseIvss = Math.min(salarioNormal, TOPE_IVSS / f.div);
       const baseRpe  = Math.min(salarioNormal, TOPE_RPE / f.div);
-      const ivss = baseIvss * 0.04;
-      const spf = baseRpe * 0.005;
-      const faov = salarioNormal * 0.01; // FAOV sin tope legal
+      const ivss = baseIvss * R_IVSS_T;
+      const spf = baseRpe * R_RPE_T;
+      const faov = salarioNormal * R_FAOV_T; // FAOV sin tope legal
       const dedLey = ivss + spf + faov;
 
       // Otras deducciones
@@ -4605,7 +4667,7 @@
       const numDoc = p.f.doc + '-2026-10-' + emp.id.toUpperCase();
 
       const rows = [['sec', 'Asignaciones salariales', '', null]];
-      rows.push(['asig', p.f.etiqueta + ' (salario base)', 'Base cotizable: salario mínimo Bs ' + fmt(SALARIO_MINIMO) + '/mes', p.sueldo]);
+      rows.push(['asig', p.f.etiqueta + ' (salario base)', 'Salario base cotizable · Bs ' + fmt(emp.salarioMes) + '/mes', p.sueldo]);
       if (p.horas > 0) rows.push(['asig', 'Horas extras (' + p.horas + ' h)', 'Bs ' + fmt(p.valHoraExtra) + '/h · recargo 50% (Art. 118)', p.montoExtra]);
       if (p.horasNoct > 0) rows.push(['asig', 'Bono nocturno (' + p.horasNoct + ' h)', 'Bs ' + fmt(p.valBonoNoct) + '/h · recargo 30% (Art. 117)', p.montoNoct]);
       if (p.diasFeriado > 0) rows.push(['asig', 'Días feriados / domingos (' + p.diasFeriado + ')', 'Recargo 50% sobre el día (Art. 120)', p.montoFeriado]);
@@ -4616,9 +4678,9 @@
       rows.push(['asig', 'Cestaticket · Bono de alimentación', '$40/mes a tasa BCV (Bs ' + fmt(p.tasa) + '/$) · exento de deducciones', p.cestaticket]);
       if (p.transporteBs > 0) rows.push(['asig', 'Bono de transporte', '$' + (emp.transporteUSD || 0) + ' a tasa BCV (Bs ' + fmt(p.tasa) + '/$) · pagado en Bs', p.transporteBs]);
       rows.push(['sec', 'Deducciones de ley', '', null]);
-      rows.push(['ded', 'IVSS · Seguro Social', '4% · base tope 5 sal. mín.', p.ivss]);
-      rows.push(['ded', 'SPF · Paro Forzoso', '0,5% · base tope 10 sal. mín.', p.spf]);
-      rows.push(['ded', 'FAOV · Política Habitacional', '1,00% s/ salario normal', p.faov]);
+      rows.push(['ded', 'IVSS · Seguro Social', fmt(R_IVSS_T * 100) + '% · base tope 5 sal. mín.', p.ivss]);
+      rows.push(['ded', 'SPF · Paro Forzoso', fmt(R_RPE_T * 100) + '% · base tope 10 sal. mín.', p.spf]);
+      rows.push(['ded', 'FAOV · Política Habitacional', fmt(R_FAOV_T * 100) + '% s/ salario normal', p.faov]);
       if (p.dedOtras > 0) {
         rows.push(['sec', 'Otras deducciones', '', null]);
         if (p.cajaAhorro > 0) rows.push(['ded', 'Caja de ahorro', (emp.cajaAhorroPct * 100).toFixed(0) + '% del sueldo', p.cajaAhorro]);
@@ -4842,7 +4904,9 @@
 
       const recalc = document.getElementById('recalcularNominaBtn');
       if (recalc) recalc.addEventListener('click', () => {
-        t('Nómina recalculada con los parámetros vigentes', 'info');
+        if (window.cargarParametros) window.cargarParametros(); // recarga parámetros vigentes + re-render
+        if (window.cargarEmpleados) window.cargarEmpleados();   // recarga empleados y recalcula todo
+        t('Nómina recalculada con datos y parámetros vigentes', 'success');
       });
 
       const exportar = document.getElementById('exportNominaBtn');
