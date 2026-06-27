@@ -7231,6 +7231,8 @@
       const rol = window.__ES_FUNDADOR ? 'Fundador' : (data.rol || 'Administrador');
       const setSb = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
       setSb('sidebarUserAvatar', ini); setSb('sidebarUserName', nombre); setSb('sidebarUserRole', rol);
+      // El fundador carga el listado real de cuentas del SaaS
+      if (window.__ES_FUNDADOR && window.cargarCuentasFundador) window.cargarCuentasFundador();
       console.log('[DigiAccount] Perfil cargado:', data, '· fundador:', window.__ES_FUNDADOR, '· estado:', window.__CUENTA_ESTADO);
       return data;
     }
@@ -8787,22 +8789,57 @@
     const fmt0 = (n) => Number(n).toLocaleString('es-VE');
 
     const PLANES = {
-      'Esencial': { precio: 15, color: '#545e67', empresas: '1 empresa', usuarios: '2 usuarios', modulos: 'Facturación · Fiscal · Contabilidad' },
-      'Profesional': { precio: 45, color: '#008ec7', empresas: 'Hasta 5 empresas', usuarios: '10 usuarios', modulos: 'Todos los módulos + Agentes IA básicos' },
-      'Firma Contable': { precio: 120, color: '#003057', empresas: 'Empresas ilimitadas', usuarios: 'Usuarios ilimitados', modulos: 'Todos los módulos + Agentes IA' },
-      'Enterprise': { precio: 300, color: '#7b54c9', empresas: 'A medida', usuarios: 'A medida', modulos: 'Todo + integraciones a medida' },
+      'Contador Básico': { precio: 49, color: '#545e67', empresas: 'Hasta 3 empresas', usuarios: '2 usuarios', modulos: 'Contabilidad · Fiscal' },
+      'Contador PRO': { precio: 79, color: '#008ec7', empresas: 'Hasta 10 empresas', usuarios: '10 usuarios', modulos: 'Todos los módulos' },
+      'Firma Contable': { precio: 199, color: '#003057', empresas: 'Empresas ilimitadas', usuarios: 'Usuarios ilimitados', modulos: 'Todos los módulos + Agentes IA' },
+      'Emprendimientos y PYME': { precio: 29, color: '#1c8f5a', empresas: '1 empresa', usuarios: '2 usuarios', modulos: 'Ventas y CxC · Compras y CxP · Tesorería · Inventario' },
+      'Empresa Completa': { precio: 99, color: '#c97a14', empresas: '1 empresa', usuarios: 'Usuarios ilimitados', modulos: 'Todos los módulos' },
+      'Grupo Empresarial': { precio: 299, color: '#7b54c9', empresas: 'Hasta 5 empresas', usuarios: 'Usuarios ilimitados', modulos: 'Todos los módulos' },
     };
-    const CUENTAS = [
-      { cuenta: 'Torres & Asociados', admin: 'luis@digiaccount.com', tipo: 'Firma Contable', plan: 'Firma Contable', empresas: 18, usuarios: 6, estado: 'Activo', mrr: 120, alta: 'Ene 2026' },
-      { cuenta: 'Despacho Contable Mérida', admin: 'contacto@despachomerida.com', tipo: 'Firma Contable', plan: 'Firma Contable', empresas: 24, usuarios: 8, estado: 'Activo', mrr: 120, alta: 'Feb 2026' },
-      { cuenta: 'Grupo Empresarial Lara', admin: 'sistemas@grupolara.com', tipo: 'Empresa', plan: 'Enterprise', empresas: 9, usuarios: 24, estado: 'Activo', mrr: 300, alta: 'Dic 2025' },
-      { cuenta: 'Agroinversiones Valle, C.A.', admin: 'admin@valle.com', tipo: 'Empresa', plan: 'Profesional', empresas: 1, usuarios: 5, estado: 'Activo', mrr: 45, alta: 'Mar 2026' },
-      { cuenta: 'Distribuidora Caracas, C.A.', admin: 'admin@distcaracas.com', tipo: 'Empresa', plan: 'Profesional', empresas: 3, usuarios: 7, estado: 'Activo', mrr: 45, alta: 'Mar 2026' },
-      { cuenta: 'Comercial Andina', admin: 'gerencia@andina.com', tipo: 'Empresa', plan: 'Esencial', empresas: 1, usuarios: 2, estado: 'Activo', mrr: 15, alta: 'Abr 2026' },
-      { cuenta: 'Inversiones del Centro', admin: 'centro@inversiones.com', tipo: 'Empresa', plan: 'Esencial', empresas: 1, usuarios: 2, estado: 'Prueba', mrr: 0, alta: 'May 2026' },
-      { cuenta: 'Servicios Profesionales JM', admin: 'jm@servprof.com', tipo: 'Empresa', plan: 'Esencial', empresas: 1, usuarios: 1, estado: 'Moroso', mrr: 15, alta: 'Feb 2026' },
-    ];
-    const estadoTag = { 'Activo': 'success', 'Prueba': 'cyan', 'Moroso': 'danger', 'Suspendido': 'slate' };
+    let CUENTAS = [];   // se llena con las cuentas reales desde Supabase
+    const estadoTag = { 'Activa': 'success', 'Pendiente': 'cyan', 'Suspendida': 'slate' };
+    function normEstado(e) {
+      e = String(e || '').toLowerCase();
+      if (e === 'activa' || e === 'activo') return 'Activa';
+      if (e === 'suspendida' || e === 'suspendido' || e === 'moroso') return 'Suspendida';
+      return 'Pendiente';
+    }
+    // Carga las cuentas reales del SaaS (solo visible para el fundador / super-admin)
+    async function cargarCuentas() {
+      if (!window.sb || !window.__ES_FUNDADOR) return;
+      const { data: cuentas, error } = await window.sb
+        .from('cuentas')
+        .select('id, nombre, tipo, estado, created_at, planes(nombre)')
+        .order('created_at', { ascending: false });
+      if (error) { console.warn('[Fundador] No se pudieron cargar las cuentas:', error.message); return; }
+      const { data: perfiles } = await window.sb.from('perfiles').select('cuenta_id, nombre, rol');
+      const { data: emps } = await window.sb.from('empresas').select('cuenta_id');
+      const usersBy = {}, empsBy = {}, adminBy = {};
+      (perfiles || []).forEach((p) => { usersBy[p.cuenta_id] = (usersBy[p.cuenta_id] || 0) + 1; if (!adminBy[p.cuenta_id] || p.rol === 'admin') adminBy[p.cuenta_id] = p.nombre; });
+      (emps || []).forEach((e) => { empsBy[e.cuenta_id] = (empsBy[e.cuenta_id] || 0) + 1; });
+      CUENTAS = (cuentas || []).map((c) => {
+        const planNombre = (c.planes && c.planes.nombre) || '—';
+        const pl = PLANES[planNombre] || {};
+        const est = normEstado(c.estado);
+        return {
+          id: c.id, cuenta: c.nombre, admin: adminBy[c.id] || '—',
+          tipo: c.tipo === 'contador' ? 'Firma Contable' : 'Empresa',
+          plan: planNombre, empresas: empsBy[c.id] || 0, usuarios: usersBy[c.id] || 0,
+          estado: est, mrr: est === 'Activa' ? (pl.precio || 0) : 0,
+          alta: c.created_at ? new Date(c.created_at).toLocaleDateString('es-VE', { month: 'short', year: 'numeric' }) : '—',
+        };
+      });
+      render(); renderPlanDist(); updateKPIs();
+    }
+    window.cargarCuentasFundador = cargarCuentas;
+    // Cambia el estado de una cuenta (activar / suspender) en Supabase
+    async function cambiarEstado(c, nuevo) {
+      if (!c || !c.id) return;
+      const { error } = await window.sb.from('cuentas').update({ estado: nuevo }).eq('id', c.id);
+      if (error) { toast('No se pudo actualizar: ' + error.message, 'error'); return; }
+      toast('Cuenta ' + (nuevo === 'activa' ? 'activada' : 'suspendida') + ': ' + c.cuenta, 'success');
+      cargarCuentas();
+    }
 
     // Distribución por plan
     function renderPlanDist() {
@@ -8836,19 +8873,27 @@
           + '<td class="num">' + c.empresas + '</td><td class="num">' + c.usuarios + '</td>'
           + '<td><span class="tag ' + (estadoTag[c.estado] || 'slate') + '">' + c.estado + '</span></td>'
           + '<td class="num mono">$' + c.mrr + '</td>'
-          + '<td><button class="btn btn-ghost" data-cuenta="' + CUENTAS.indexOf(c) + '" style="height:26px;font-size:11px;padding:0 9px;"><i data-lucide="eye"></i> Ver</button></td></tr>';
+          + '<td style="white-space:nowrap;"><button class="btn btn-ghost" data-cuenta="' + CUENTAS.indexOf(c) + '" style="height:26px;font-size:11px;padding:0 9px;"><i data-lucide="eye"></i> Ver</button>'
+          + (c.estado === 'Pendiente'
+              ? '<button class="btn btn-primary" data-activar="' + CUENTAS.indexOf(c) + '" style="height:26px;font-size:11px;padding:0 9px;margin-left:4px;"><i data-lucide="check"></i> Activar</button>'
+              : c.estado === 'Activa'
+              ? '<button class="btn btn-ghost" data-suspender="' + CUENTAS.indexOf(c) + '" style="height:26px;font-size:11px;padding:0 9px;margin-left:4px;color:#e06b5e;"><i data-lucide="ban"></i> Suspender</button>'
+              : '<button class="btn btn-ghost" data-activar="' + CUENTAS.indexOf(c) + '" style="height:26px;font-size:11px;padding:0 9px;margin-left:4px;"><i data-lucide="rotate-ccw"></i> Reactivar</button>')
+          + '</td></tr>';
       }).join('');
       tb.querySelectorAll('[data-cuenta]').forEach((b) => b.addEventListener('click', () => verCuenta(CUENTAS[parseInt(b.dataset.cuenta, 10)])));
+      tb.querySelectorAll('[data-activar]').forEach((b) => b.addEventListener('click', () => cambiarEstado(CUENTAS[parseInt(b.dataset.activar, 10)], 'activa')));
+      tb.querySelectorAll('[data-suspender]').forEach((b) => b.addEventListener('click', () => cambiarEstado(CUENTAS[parseInt(b.dataset.suspender, 10)], 'suspendida')));
       const sh = document.getElementById('cuentasShown'); if (sh) sh.textContent = vis.length;
       if (window.lucide) window.lucide.createIcons();
     }
     function updateKPIs() {
       const set = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
-      const activas = CUENTAS.filter((c) => c.estado === 'Activo');
-      set('saasKpiCuentas', activas.length + 34);
-      set('saasKpiMrr', fmt0(activas.reduce((a, c) => a + c.mrr, 0) + 3845));
-      set('saasKpiEmpresas', fmt0(CUENTAS.reduce((a, c) => a + c.empresas, 0) + 118));
-      set('saasKpiUsuarios', fmt0(CUENTAS.reduce((a, c) => a + c.usuarios, 0) + 286));
+      const activas = CUENTAS.filter((c) => c.estado === 'Activa');
+      set('saasKpiCuentas', activas.length);
+      set('saasKpiMrr', fmt0(activas.reduce((a, c) => a + c.mrr, 0)));
+      set('saasKpiEmpresas', fmt0(CUENTAS.reduce((a, c) => a + c.empresas, 0)));
+      set('saasKpiUsuarios', fmt0(CUENTAS.reduce((a, c) => a + c.usuarios, 0)));
     }
     function verCuenta(c) {
       const pl = PLANES[c.plan] || {};
@@ -9311,12 +9356,12 @@
     const toast = (m, t) => { if (window.toast) window.toast(m, t); };
     // Módulos operativos sujetos a plan (los transversales —dashboard, terceros,
     // usuarios, plataforma— están siempre disponibles).
-    const TODOS = ['ventas', 'tesoreria', 'inventario', 'nomina', 'contabilidad', 'fiscal', 'agentes'];
+    const TODOS = ['ventas', 'compras', 'tesoreria', 'inventario', 'nomina', 'contabilidad', 'fiscal', 'agentes'];
     const PLAN_MODULOS = {
       'Contador Básico': ['contabilidad', 'fiscal'],
       'Contador PRO': TODOS,
       'Firma Contable': TODOS,
-      'Emprendimientos y PYME': ['tesoreria', 'inventario'],
+      'Emprendimientos y PYME': ['ventas', 'compras', 'tesoreria', 'inventario'],
       'Empresa Completa': TODOS,
       'Grupo Empresarial': TODOS,
     };
@@ -9326,7 +9371,7 @@
       'Emprendimientos y PYME': 'pyme', 'Empresa Completa': 'empresa_completa', 'Grupo Empresarial': 'grupo_empresarial',
     };
     const NOMBRE_VIEW = {
-      ventas: 'Ventas y Facturación', tesoreria: 'Tesorería', inventario: 'Inventario',
+      ventas: 'Ventas y CxC', compras: 'Compras y CxP', tesoreria: 'Tesorería', inventario: 'Inventario',
       nomina: 'Nómina y RRHH', contabilidad: 'Contabilidad', fiscal: 'Módulo Fiscal', agentes: 'Centro de Agentes IA',
     };
     let planActivo = 'Firma Contable'; // por defecto: acceso completo
