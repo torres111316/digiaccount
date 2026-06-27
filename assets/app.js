@@ -7206,21 +7206,52 @@
     window.__showAuth = showAuth;
 
     // Carga el perfil del usuario conectado (nombre, rol, cuenta y plan) desde Supabase
+    const FUNDADOR_EMAIL = 'gerencia@digiaccount.io';
     async function cargarPerfilActual() {
       const { data: u } = await window.sb.auth.getUser();
       if (!u || !u.user) return null;
+      window.__USER_EMAIL = u.user.email || '';
+      window.__ES_FUNDADOR = (u.user.email || '').toLowerCase() === FUNDADOR_EMAIL; // super-admin
       const { data, error } = await window.sb
         .from('perfiles')
-        .select('cuenta_id, nombre, rol, cuentas(nombre, tipo, planes(nombre))')
+        .select('cuenta_id, nombre, rol, cuentas(nombre, tipo, estado, planes(nombre))')
         .eq('id', u.user.id)
         .single();
       if (error) { console.warn('[DigiAccount] No se pudo cargar el perfil:', error.message); return null; }
       window.__PERFIL = data;            // queda disponible para el resto de la app
       window.__CUENTA_ID = data.cuenta_id; // para crear empresas/datos en la cuenta correcta
       window.__CUENTA_TIPO = (data.cuentas && data.cuentas.tipo) || 'empresa'; // 'empresa' | 'contador'
-      console.log('[DigiAccount] Perfil cargado:', data);
+      window.__CUENTA_ESTADO = (data.cuentas && data.cuentas.estado) || 'pendiente';
+      // Muestra el Panel del Fundador SOLO al super-admin
+      const navFund = document.querySelector('.nav-item[data-view="fundador"]');
+      if (navFund) navFund.hidden = !window.__ES_FUNDADOR;
+      console.log('[DigiAccount] Perfil cargado:', data, '· fundador:', window.__ES_FUNDADOR, '· estado:', window.__CUENTA_ESTADO);
       return data;
     }
+    // ¿La cuenta está bloqueada (pendiente/suspendida) y NO es el fundador?
+    window.__cuentaBloqueada = () => !window.__ES_FUNDADOR && (window.__CUENTA_ESTADO === 'pendiente' || window.__CUENTA_ESTADO === 'suspendida');
+    function mostrarBloqueo() {
+      document.body.classList.remove('authed');
+      const susp = window.__CUENTA_ESTADO === 'suspendida';
+      let ov = document.getElementById('cuentaBloqueoOverlay');
+      if (!ov) {
+        ov = document.createElement('div');
+        ov.id = 'cuentaBloqueoOverlay';
+        ov.style.cssText = 'position:fixed;inset:0;z-index:99999;background:var(--bg-app,#0a1420);display:flex;align-items:center;justify-content:center;padding:24px;';
+        document.body.appendChild(ov);
+      }
+      ov.style.display = 'flex';
+      ov.innerHTML = '<div style="max-width:460px;text-align:center;background:var(--bg-surface,#11202e);border:1px solid var(--border-default,#1e2f3e);border-radius:16px;padding:38px 30px;">'
+        + '<div style="width:58px;height:58px;border-radius:50%;background:' + (susp ? '#c0392b22;color:#e06b5e' : '#c97a1422;color:#e0a341') + ';display:inline-flex;align-items:center;justify-content:center;margin-bottom:16px;"><i data-lucide="' + (susp ? 'shield-alert' : 'clock') + '" style="width:28px;height:28px;"></i></div>'
+        + '<h2 style="font-size:20px;margin:0 0 8px;color:var(--fg-primary,#fff);">' + (susp ? 'Cuenta suspendida' : 'Tu cuenta está en revisión') + '</h2>'
+        + '<p style="font-size:13px;color:var(--fg-muted,#8aa);line-height:1.6;margin:0 0 22px;">' + (susp ? 'Tu acceso está suspendido temporalmente. Comunícate con nosotros para reactivarla.' : 'Gracias por registrarte en DigiAccount. Estamos verificando tu cuenta para activarla; será muy pronto. Si tienes dudas, escríbenos por WhatsApp.') + '</p>'
+        + '<button id="bloqueoLogout" class="btn btn-ghost" style="height:36px;font-size:13px;"><i data-lucide="log-out"></i> Cerrar sesión</button>'
+        + '</div>';
+      const lb = document.getElementById('bloqueoLogout');
+      if (lb) lb.addEventListener('click', async () => { await window.sb.auth.signOut(); ov.remove(); showAuth(); });
+      if (window.lucide) window.lucide.createIcons();
+    }
+    window.__mostrarBloqueo = mostrarBloqueo;
     window.cargarPerfilActual = cargarPerfilActual;
 
     tabs.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => setTab(b.dataset.tab)));
@@ -7245,6 +7276,7 @@
       if (error) { toast('Correo o contraseña incorrectos', 'error'); return; }
       showApp();
       const perfil = await cargarPerfilActual();
+      if (window.__cuentaBloqueada()) { mostrarBloqueo(); return; }
       if (window.cargarEmpresas) await window.cargarEmpresas();
       if (window.cargarTerceros) window.cargarTerceros();
       if (window.cargarProductos) window.cargarProductos();
@@ -7287,6 +7319,7 @@
       if (!data.session) { toast('Te enviamos un correo para confirmar tu cuenta. Revísalo para entrar.', 'success'); setTab('login'); return; }
       showApp();
       await cargarPerfilActual();
+      if (window.__cuentaBloqueada()) { toast('Cuenta creada · en revisión para activación', 'success'); mostrarBloqueo(); return; }
       if (window.cargarEmpresas) window.cargarEmpresas();
       if (window.cargarTerceros) window.cargarTerceros();
       if (window.cargarProductos) window.cargarProductos();
@@ -7313,7 +7346,7 @@
 
     // Si ya hay una sesión activa (p. ej. tras recargar), entra directo a la app
     window.sb.auth.getSession().then(async ({ data }) => {
-      if (data && data.session) { showApp(); await cargarPerfilActual(); if (window.cargarEmpresas) await window.cargarEmpresas(); if (window.cargarTerceros) window.cargarTerceros(); if (window.cargarProductos) window.cargarProductos(); if (window.cargarFacturas) window.cargarFacturas(); }
+      if (data && data.session) { showApp(); await cargarPerfilActual(); if (window.__cuentaBloqueada()) { mostrarBloqueo(); return; } if (window.cargarEmpresas) await window.cargarEmpresas(); if (window.cargarTerceros) window.cargarTerceros(); if (window.cargarProductos) window.cargarProductos(); if (window.cargarFacturas) window.cargarFacturas(); }
     });
   })();
 
