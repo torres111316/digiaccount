@@ -203,6 +203,11 @@
     if (title && breadcrumbHere) breadcrumbHere.textContent = title;
     const content = document.querySelector('.content');
     if (content) content.scrollTop = 0;
+    const main = document.querySelector('.main');
+    if (main) main.scrollTop = 0;
+    // En móvil/ventana angosta el scroll suele estar en el body: súbelo al inicio
+    // para que la vista recién abierta quede visible y no "debajo del pliegue".
+    if (window.scrollY) window.scrollTo(0, 0);
     drawIcons();
   }
   window.showView = showView;
