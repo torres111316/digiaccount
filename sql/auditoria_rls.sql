@@ -174,7 +174,30 @@ create policy "tenant_cuentas_contables" on public.cuentas_contables for all
 
 
 -- ----------------------------------------------------------------------------
---  PASO 5 · VERIFICACIÓN: todas las tablas de datos deben quedar con RLS y política
+--  PASO 5 · STORAGE (archivos): los buckets guardan en {cuenta_id}/{empresa_id}/...
+--  Se asegura por la PRIMERA carpeta de la ruta = cuenta_id del usuario.
+--  IMPORTANTE: los buckets deben ser PRIVADOS (no públicos). La app usa URLs firmadas.
+-- ----------------------------------------------------------------------------
+
+-- Bóveda de documentos fiscales
+drop policy if exists "tenant_docs_fiscales" on storage.objects;
+create policy "tenant_docs_fiscales" on storage.objects for all
+  using (bucket_id = 'documentos-fiscales'
+         and ((storage.foldername(name))[1] = public.mi_cuenta_id()::text or public.soy_superadmin()))
+  with check (bucket_id = 'documentos-fiscales'
+         and ((storage.foldername(name))[1] = public.mi_cuenta_id()::text or public.soy_superadmin()));
+
+-- Comprobantes de Tesorería (fotos de pagos/cobros)
+drop policy if exists "tenant_comprobantes_tesoreria" on storage.objects;
+create policy "tenant_comprobantes_tesoreria" on storage.objects for all
+  using (bucket_id = 'comprobantes-tesoreria'
+         and ((storage.foldername(name))[1] = public.mi_cuenta_id()::text or public.soy_superadmin()))
+  with check (bucket_id = 'comprobantes-tesoreria'
+         and ((storage.foldername(name))[1] = public.mi_cuenta_id()::text or public.soy_superadmin()));
+
+
+-- ----------------------------------------------------------------------------
+--  PASO 6 · VERIFICACIÓN: todas las tablas de datos deben quedar con RLS y política
 -- ----------------------------------------------------------------------------
 select c.relname as tabla,
        c.relrowsecurity as rls_activo,
