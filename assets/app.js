@@ -8363,11 +8363,7 @@
     let rifFiscal = null;
     window.__modoComprobante = 'recibo';
     // Historial de comprobantes del cliente (meses anteriores de ejemplo)
-    const COMPROBANTES = [
-      { num: '000003', fecha: '05/05/2026', tipo: 'Recibo', cliente: 'Agroinversiones Valle, C.A.', doc: 'J-29485761-3', plan: 'Empresa Completa', monto: 99, metodoLabel: 'Pago Móvil C2P', ref: '003981245', fiscal: false, estado: 'Pagado' },
-      { num: '000002', fecha: '05/04/2026', tipo: 'Recibo', cliente: 'Agroinversiones Valle, C.A.', doc: 'J-29485761-3', plan: 'Empresa Completa', monto: 99, metodoLabel: 'USDT · Binance Pay', ref: '0x7a2f…b1', fiscal: false, estado: 'Pagado' },
-      { num: '000001', fecha: '05/03/2026', tipo: 'Recibo', cliente: 'Agroinversiones Valle, C.A.', doc: 'J-29485761-3', plan: 'Empresa Completa', monto: 99, metodoLabel: 'Zelle', ref: 'ZL-5521', fiscal: false, estado: 'Pagado' },
-    ];
+    const COMPROBANTES = [];   // se llena con los comprobantes de pago reales de la cuenta
     window.__COMPROBANTES = COMPROBANTES;
     let correlativo = COMPROBANTES.length;
 
