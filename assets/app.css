@@ -170,6 +170,7 @@
   /* Nav */
   .nav {
     flex: 1;
+    min-height: 0; /* fix flexbox: permite que el nav se encoja y haga scroll; sin esto se cortan las secciones de abajo */
     padding: 4px 12px;
     overflow-y: auto;
     overflow-x: hidden;
