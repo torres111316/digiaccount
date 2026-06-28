@@ -7257,6 +7257,15 @@
       if (window.lucide) window.lucide.createIcons();
     }
     window.__mostrarBloqueo = mostrarBloqueo;
+    // Al entrar sin empresa seleccionada, deja limpios libros fiscales, retenciones y
+    // asientos: sus loaders entran al estado "vacío" y reemplazan cualquier demo estático.
+    window.__limpiarTablasInit = function () {
+      try {
+        if (window.cargarLibroFiscal) { window.cargarLibroFiscal('venta'); window.cargarLibroFiscal('compra'); }
+        if (window.cargarRetenciones) window.cargarRetenciones();
+        if (window.cargarAsientos) window.cargarAsientos();
+      } catch (e) {}
+    };
     window.cargarPerfilActual = cargarPerfilActual;
 
     tabs.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => setTab(b.dataset.tab)));
@@ -7286,6 +7295,7 @@
       if (window.cargarTerceros) window.cargarTerceros();
       if (window.cargarProductos) window.cargarProductos();
       if (window.cargarFacturas) window.cargarFacturas();
+      if (window.__limpiarTablasInit) window.__limpiarTablasInit();
       if (perfil) {
         const plan = perfil.cuentas && perfil.cuentas.planes ? perfil.cuentas.planes.nombre : '';
         toast('Bienvenido, ' + String(perfil.nombre || '').split(' ')[0] + (plan ? ' · ' + plan : ''), 'success');
@@ -7351,7 +7361,7 @@
 
     // Si ya hay una sesión activa (p. ej. tras recargar), entra directo a la app
     window.sb.auth.getSession().then(async ({ data }) => {
-      if (data && data.session) { showApp(); await cargarPerfilActual(); if (window.__cuentaBloqueada()) { mostrarBloqueo(); return; } if (window.cargarEmpresas) await window.cargarEmpresas(); if (window.cargarTerceros) window.cargarTerceros(); if (window.cargarProductos) window.cargarProductos(); if (window.cargarFacturas) window.cargarFacturas(); }
+      if (data && data.session) { showApp(); await cargarPerfilActual(); if (window.__cuentaBloqueada()) { mostrarBloqueo(); return; } if (window.cargarEmpresas) await window.cargarEmpresas(); if (window.cargarTerceros) window.cargarTerceros(); if (window.cargarProductos) window.cargarProductos(); if (window.cargarFacturas) window.cargarFacturas(); if (window.__limpiarTablasInit) window.__limpiarTablasInit(); }
     });
   })();
 
