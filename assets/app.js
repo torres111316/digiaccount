@@ -8815,8 +8815,7 @@
       if (!window.sb || !window.__ES_FUNDADOR) return;
       const { data: cuentas, error } = await window.sb
         .from('cuentas')
-        .select('id, nombre, tipo, estado, created_at, planes(nombre)')
-        .order('created_at', { ascending: false });
+        .select('id, nombre, tipo, estado, planes(nombre)');
       if (error) { console.warn('[Fundador] No se pudieron cargar las cuentas:', error.message); return; }
       const { data: perfiles } = await window.sb.from('perfiles').select('cuenta_id, nombre, rol');
       const { data: emps } = await window.sb.from('empresas').select('cuenta_id');
@@ -8832,7 +8831,7 @@
           tipo: c.tipo === 'contador' ? 'Firma Contable' : 'Empresa',
           plan: planNombre, empresas: empsBy[c.id] || 0, usuarios: usersBy[c.id] || 0,
           estado: est, mrr: est === 'Activa' ? (pl.precio || 0) : 0,
-          alta: c.created_at ? new Date(c.created_at).toLocaleDateString('es-VE', { month: 'short', year: 'numeric' }) : '—',
+          alta: '—',
         };
       });
       render(); renderPlanDist(); updateKPIs();
