@@ -5088,21 +5088,7 @@
     const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
     // Catálogo de facturas (ventas y compras) con sus renglones
-    const DB = {
-      'A-00012841': { tipo: 'venta', control: '00-031284', fecha: '28/05/2026', parte: { n: 'Comercial Andina, C.A.', rif: 'J-31987654-2', dom: 'Av. Lara, Barquisimeto, Edo. Lara' }, alic: 0.16, igtf: true, cond: 'Crédito 30 días', items: [{ d: 'Café Premium 1 kg', c: 20, p: 14500 }, { d: 'Surtido de víveres (varios)', c: 1, p: 195000 }] },
-      'A-00012840': { tipo: 'venta', control: '00-031283', fecha: '28/05/2026', parte: { n: 'Pedro Marín (consumidor final)', rif: 'V-19445221-8', dom: 'Valencia, Edo. Carabobo' }, alic: 0.16, igtf: false, cond: 'Contado', items: [{ d: 'Arroz blanco 1 kg', c: 25, p: 2900 }, { d: 'Pasta larga 500 g', c: 25, p: 2100 }] },
-      'A-00012839': { tipo: 'venta', control: '00-031282', fecha: '27/05/2026', parte: { n: 'Supermercados El Sol, C.A.', rif: 'J-30776554-1', dom: 'Av. Bolívar, Caracas' }, alic: 0.16, igtf: true, cond: 'Crédito 15 días', items: [{ d: 'Café Premium 1 kg', c: 50, p: 14500 }, { d: 'Aceite vegetal 1 L', c: 100, p: 5900 }, { d: 'Surtido mayorista', c: 1, p: 525000 }] },
-      'A-00012838': { tipo: 'venta', control: '00-031281', fecha: '26/05/2026', parte: { n: 'Distribuidora Mérida, C.A.', rif: 'J-29881220-4', dom: 'Av. Las Américas, Mérida' }, alic: 0.16, igtf: false, cond: 'Crédito 30 días', items: [{ d: 'Harina de maíz 1 kg', c: 100, p: 3200 }, { d: 'Surtido de víveres', c: 1, p: 300000 }] },
-      'A-00012837': { tipo: 'venta', control: '00-031280', fecha: '25/05/2026', parte: { n: 'Hotel Caracas Suites, C.A.', rif: 'J-30554998-0', dom: 'Las Mercedes, Caracas' }, alic: 0.08, igtf: false, cond: 'Contado', items: [{ d: 'Suministro de alimentos (tarifa reducida 8%)', c: 1, p: 285000 }] },
-      'A-00012836': { tipo: 'venta', control: '00-031279', fecha: '24/05/2026', parte: { n: 'Café del Llano, C.A.', rif: 'J-31220114-9', dom: 'Guanare, Edo. Portuguesa' }, alic: 0.16, igtf: false, cond: 'Contado', items: [{ d: 'Café Premium 1 kg', c: 5, p: 14500 }, { d: 'Surtido', c: 1, p: 26000 }] },
-      'A-00012828': { tipo: 'venta', control: '00-031271', fecha: '20/05/2026', parte: { n: 'Inversiones del Centro, C.A.', rif: 'J-30118776-2', dom: 'Av. Urdaneta, Caracas, Distrito Capital' }, alic: 0.16, igtf: false, cond: 'Crédito 30 días', items: [{ d: 'Mercancía surtida (consolidado)', c: 1, p: 383620.69 }] },
-      'F-00284716': { tipo: 'compra', control: '00-018472', fecha: '28/05/2026', parte: { n: 'Suministros Lara, C.A.', rif: 'J-31567890-1', dom: 'Calle 22, Barquisimeto, Edo. Lara' }, alic: 0.16, igtf: false, cond: 'Crédito 30 días', items: [{ d: 'Café verde en grano (saco 50 kg)', c: 3, p: 31000 }, { d: 'Insumos varios', c: 1, p: 91500 }] },
-      'F-00045128': { tipo: 'compra', control: '00-018465', fecha: '27/05/2026', parte: { n: 'Tecnología Andes, S.A.', rif: 'J-29445821-7', dom: 'Av. Universidad, Mérida' }, alic: 0.16, igtf: true, cond: 'Contado (divisas)', items: [{ d: 'Equipos de cómputo', c: 2, p: 410000 }] },
-      'F-00102993': { tipo: 'compra', control: '00-018451', fecha: '26/05/2026', parte: { n: 'Servicios Profesionales JM', rif: 'V-15998231-4', dom: 'Maracay, Edo. Aragua' }, alic: 0.08, igtf: false, cond: 'Crédito', items: [{ d: 'Honorarios profesionales (tarifa 8%)', c: 1, p: 240000 }] },
-      'F-00731122': { tipo: 'compra', control: '00-018430', fecha: '24/05/2026', parte: { n: 'Importadora Zulia', rif: 'J-28776901-3', dom: 'Av. 5 de Julio, Maracaibo, Edo. Zulia' }, alic: 0.16, igtf: true, cond: 'Contado (divisas)', items: [{ d: 'Materia prima importada', c: 1, p: 1250000 }] },
-      'F-00018744': { tipo: 'compra', control: '00-018421', fecha: '23/05/2026', parte: { n: 'Papelería Central', rif: 'J-30998122-5', dom: 'Av. Bolívar, Valencia, Edo. Carabobo' }, alic: 0.16, igtf: false, cond: 'Contado', items: [{ d: 'Materiales de oficina', c: 1, p: 48640 }] },
-      'F-00045621': { tipo: 'compra', control: '00-018418', fecha: '22/05/2026', parte: { n: 'Insumos Agrícolas Aragua', rif: 'J-29331087-8', dom: 'Maracay, Edo. Aragua' }, alic: 0.16, igtf: false, cond: 'Crédito 30 días', items: [{ d: 'Insumos agrícolas', c: 1, p: 186000 }] },
-    };
+    const DB = {};   // las facturas/recibos reales vienen de Supabase
 
     function calcFactura(f) {
       const subtotal = f.items.reduce((a, it) => a + it.c * it.p, 0);
@@ -7383,20 +7369,7 @@
     const idSistema = (rif) => String(rif || '').replace(/^[A-Za-z]/, ''); // RIF sin la letra inicial
 
     // Catálogo de terceros (memoria) — registro único por RIF
-    const DB = [
-      { tipo: 'Persona jurídica (J)', rif: 'J319876542', nombre: 'Comercial Andina, C.A.', cli: true, prov: false, fiscal: 'Contribuyente ordinario', tel: '0241-8334455', email: 'compras@andina.com', dom: 'Av. Lara, Barquisimeto, Edo. Lara', cxc: 1847910, cxp: 0, cont: [{ n: 'María Pérez', cargo: 'Jefa de Compras', tel: '0414-1234567', email: 'mperez@andina.com' }] },
-      { tipo: 'Persona jurídica (J)', rif: 'J307765541', nombre: 'Supermercados El Sol, C.A.', cli: true, prov: false, fiscal: 'Contribuyente especial', tel: '0212-5550101', email: 'pagos@elsol.com', dom: 'Av. Bolívar, Caracas', cxc: 0, cxp: 0, cont: [] },
-      { tipo: 'Persona jurídica (J)', rif: 'J315678901', nombre: 'Suministros Lara, C.A.', cli: false, prov: true, fiscal: 'Contribuyente ordinario', tel: '0251-2667788', email: 'ventas@suministroslara.com', dom: 'Calle 22, Barquisimeto, Edo. Lara', cxc: 0, cxp: 487500, cont: [] },
-      { tipo: 'Persona jurídica (J)', rif: 'J298812204', nombre: 'Distribuidora Mérida, C.A.', cli: true, prov: true, fiscal: 'Contribuyente especial', tel: '0274-2519900', email: 'admin@distmerida.com', dom: 'Av. Las Américas, Mérida', cxc: 719200, cxp: 142000, cont: [{ n: 'José Rangel', cargo: 'Administrador', tel: '0416-9988776', email: 'jrangel@distmerida.com' }] },
-      { tipo: 'Persona jurídica (J)', rif: 'J294458217', nombre: 'Tecnología Andes, S.A.', cli: false, prov: true, fiscal: 'Contribuyente ordinario', tel: '0274-2440011', email: 'info@tecandes.com', dom: 'Av. Universidad, Mérida', cxc: 0, cxp: 0, cont: [] },
-      { tipo: 'Persona natural · Venezolano (V)', rif: 'V194452218', nombre: 'Pedro Marín', cli: true, prov: false, fiscal: 'No contribuyente', tel: '0412-3344556', email: 'pedromarin@gmail.com', dom: 'Valencia, Edo. Carabobo', cxc: 0, cxp: 0, cont: [] },
-      { tipo: 'Persona natural · Extranjero (E)', rif: 'E841220337', nombre: 'Giuseppe Romano', cli: false, prov: true, fiscal: 'Contribuyente formal', tel: '0414-5567788', email: 'g.romano@import.com', dom: 'Av. Libertador, Caracas', cxc: 0, cxp: 96400, cont: [] },
-      { tipo: 'Ente gubernamental (G)', rif: 'G200012568', nombre: 'Alcaldía de Valencia', cli: true, prov: false, fiscal: 'Ente público', tel: '0241-8001122', email: 'compras@alcaldiavalencia.gob.ve', dom: 'Palacio Municipal, Valencia, Edo. Carabobo', cxc: 284000, cxp: 0, cont: [] },
-      { tipo: 'Persona jurídica (J)', rif: 'J287769013', nombre: 'Importadora Zulia, C.A.', cli: false, prov: true, fiscal: 'Contribuyente especial', tel: '0261-7889900', email: 'compras@impzulia.com', dom: 'Av. 5 de Julio, Maracaibo, Edo. Zulia', cxc: 0, cxp: 487500, cont: [] },
-      { tipo: 'Persona jurídica (J)', rif: 'J305549980', nombre: 'Hotel Caracas Suites, C.A.', cli: true, prov: false, fiscal: 'Contribuyente especial', tel: '0212-9012345', email: 'admin@caracassuites.com', dom: 'Las Mercedes, Caracas', cxc: 0, cxp: 0, cont: [] },
-      { tipo: 'Firma Personal · F.P. (V)', rif: 'V192651251', nombre: 'RAFAEL JOSE GORDILLO (COMERCIALIZADORA RADIAN GORDILLO, F.P.)', cli: false, prov: true, fiscal: 'Contribuyente especial', agenteRet: 'Sí', tel: '0251-3322110', email: 'gordillo@comercial.com', dom: 'CR 5 ENTRE CALLES 7 Y 8, SABANA DE PARRA, EDO. YARACUY', cxc: 0, cxp: 184500, cont: [] },
-      { tipo: 'Emprendimiento (J)', rif: 'J507632059', nombre: 'EMPRENDIMIENTO GILBERTO PARRA 2', cli: true, prov: false, fiscal: 'Contribuyente ordinario', agenteRet: 'No', tel: '0251-4455667', email: 'gilberto.parra@emprende.com', dom: 'CR 6 ENTRE 4 Y 6, URB. ALEXIS OLMOS, SABANA DE PARRA, EDO. YARACUY', cxc: 96400, cxp: 0, cont: [] },
-    ];
+    const DB = [];   // los terceros reales se cargan desde Supabase con cargarTerceros()
 
     const rolDe = (t) => t.cli && t.prov ? 'ambos' : t.cli ? 'cliente' : t.prov ? 'proveedor' : 'otro';
     function rolBadges(t) {
@@ -7649,14 +7622,14 @@
 
     // Especialistas subordinados del Gerente IA
     const AGENTS = [
-      { id: 'contable', n: 'Agente Contable', ic: 'book-open', col: '#2f6df0', spec: 'Asientos · conciliación · cierre', tareas: 34, auto: 'sugiere' },
-      { id: 'fiscal', n: 'Agente Fiscal', ic: 'file-text', col: '#c0392b', spec: 'SENIAT · IVA · ISLR · retenciones', tareas: 21, auto: 'aviso' },
-      { id: 'tesoreria', n: 'Agente Tesorería', ic: 'wallet', col: '#1c8f5a', spec: 'Cobros · pagos · conciliación', tareas: 28, auto: 'aviso' },
-      { id: 'ventas', n: 'Agente Ventas', ic: 'receipt', col: '#0e9bbf', spec: 'Facturación · despachos', tareas: 19, auto: 'sugiere' },
-      { id: 'inventario', n: 'Agente Inventario', ic: 'package', col: '#c97a14', spec: 'Stock · reposición · órdenes', tareas: 12, auto: 'aviso' },
-      { id: 'nomina', n: 'Agente Nómina', ic: 'users', col: '#7b54c9', spec: 'Recibos · LOTTT · parafiscales', tareas: 8, auto: 'sugiere' },
-      { id: 'ocr', n: 'Agente OCR / Documentos', ic: 'scan-text', col: '#3a8dde', spec: 'Lee facturas por foto', tareas: 16, auto: 'aviso' },
-      { id: 'analista', n: 'Agente Analista', ic: 'line-chart', col: '#0f8a8a', spec: 'Salud financiera · reportes', tareas: 4, auto: 'silencioso' },
+      { id: 'contable', n: 'Agente Contable', ic: 'book-open', col: '#2f6df0', spec: 'Asientos · conciliación · cierre', tareas: 0, auto: 'sugiere' },
+      { id: 'fiscal', n: 'Agente Fiscal', ic: 'file-text', col: '#c0392b', spec: 'SENIAT · IVA · ISLR · retenciones', tareas: 0, auto: 'aviso' },
+      { id: 'tesoreria', n: 'Agente Tesorería', ic: 'wallet', col: '#1c8f5a', spec: 'Cobros · pagos · conciliación', tareas: 0, auto: 'aviso' },
+      { id: 'ventas', n: 'Agente Ventas', ic: 'receipt', col: '#0e9bbf', spec: 'Facturación · despachos', tareas: 0, auto: 'sugiere' },
+      { id: 'inventario', n: 'Agente Inventario', ic: 'package', col: '#c97a14', spec: 'Stock · reposición · órdenes', tareas: 0, auto: 'aviso' },
+      { id: 'nomina', n: 'Agente Nómina', ic: 'users', col: '#7b54c9', spec: 'Recibos · LOTTT · parafiscales', tareas: 0, auto: 'sugiere' },
+      { id: 'ocr', n: 'Agente OCR / Documentos', ic: 'scan-text', col: '#3a8dde', spec: 'Lee facturas por foto', tareas: 0, auto: 'aviso' },
+      { id: 'analista', n: 'Agente Analista', ic: 'line-chart', col: '#0f8a8a', spec: 'Salud financiera · reportes', tareas: 0, auto: 'silencioso' },
     ];
 
     // Gradientes compartidos (volumen metálico, visor con profundidad, ojos brillantes)
@@ -7732,12 +7705,7 @@
     }
 
     // ---- Bandeja de aprobaciones (human-in-the-loop) ----
-    const APROB = [
-      { id: 1, ic: 'scan-text', agente: 'Agente OCR', titulo: 'Registrar factura de compra F-00284716', desc: 'Suministros Lara · Bs 487.500 · IVA Bs 67.241. Detectada por foto en WhatsApp.', conf: 'Confianza 96% · cuenta sugerida 6.1.1.01 Compras' },
-      { id: 2, ic: 'file-text', agente: 'Agente Fiscal', titulo: 'Declarar IVA · 2da quincena de mayo', desc: 'Débito Bs 894.420 − Crédito Bs 481.120 = a pagar Bs 413.300.', conf: 'Confianza 99% · falta tu confirmación para enviar al SENIAT' },
-      { id: 3, ic: 'wallet', agente: 'Agente Tesorería', titulo: 'Pagar a Importadora Zulia', desc: 'Vence mañana · Bs 487.500 desde Banesco. Pago en divisas con IGTF.', conf: 'Confianza 92% · requiere tu autorización por el monto' },
-      { id: 4, ic: 'package', agente: 'Agente Inventario', titulo: 'Generar 4 órdenes de compra', desc: 'Café Premium, Pasta larga y 2 más en stock crítico.', conf: 'Confianza 88% · proveedores sugeridos por histórico' },
-    ];
+    const APROB = [];   // aprobaciones reales del agente
     const aprobEl = document.getElementById('agApprovals');
     function renderAprob() {
       if (!APROB.length) { aprobEl.innerHTML = '<div class="ag-empty"><i data-lucide="check-circle-2"></i> Todo al día · no hay acciones por aprobar</div>'; drawIcons(); }
@@ -8017,10 +7985,7 @@
      Captura a todo el que ingresa (usuarios y empresas)
      ========================================================= */
   (function contactosCRM() {
-    const CONTACTOS = [
-      { tipo: 'Empresa', nombre: 'AGROINVERSIONES VALLE, C.A.', doc: 'J294857613', email: 'admin@valle.com', whatsapp: '0414-1234567', segmento: 'empresas', origen: 'Onboarding', fecha: '12/03/2026' },
-      { tipo: 'Usuario', nombre: 'Luis Torres', doc: 'V-15789456', email: 'luis@digiaccount.com', whatsapp: '0412-9988776', segmento: 'contadores', origen: 'Registro de cuenta', fecha: '08/01/2026' },
-    ];
+    const CONTACTOS = [];   // CRM: contactos reales
     window.__CONTACTOS = CONTACTOS;
     window.__registrarContacto = function (c) {
       const reg = Object.assign({ fecha: new Date().toLocaleDateString('es-VE') }, c);
@@ -8119,8 +8084,8 @@
     const bars = document.getElementById('mrrBars');
     if (!bars) return;
     const MRR = [
-      { m: 'Ene', v: 2980 }, { m: 'Feb', v: 3320 }, { m: 'Mar', v: 3640 },
-      { m: 'Abr', v: 3980 }, { m: 'May', v: 4240 }, { m: 'Jun', v: 4505 },
+      { m: 'Ene', v: 0 }, { m: 'Feb', v: 0 }, { m: 'Mar', v: 0 },
+      { m: 'Abr', v: 0 }, { m: 'May', v: 0 }, { m: 'Jun', v: 0 },
     ];
     const max = Math.max.apply(null, MRR.map((x) => x.v));
     bars.innerHTML = MRR.map((x, i) => {
@@ -8157,11 +8122,7 @@
     window.__CUENTAS_RECEPTORAS = RECEPTORAS;
     window.__METODOS_PAGO = METODOS;
 
-    const PAGOS = [
-      { cliente: 'Comercial Andina', plan: 'Empresa Completa', metodo: 'pagomovil', monto: 99, ref: '004857213', estado: 'Confirmado', fecha: '05/06/2026' },
-      { cliente: 'Despacho Contable Mérida', plan: 'Firma Contable', metodo: 'usdt', monto: 199, ref: '0x9f2a…c7', estado: 'Confirmado', fecha: '03/06/2026' },
-      { cliente: 'Servicios Profesionales JM', plan: 'Emprendimientos y PYME', metodo: 'zelle', monto: 29, ref: 'ZL-7782', estado: 'Por verificar', fecha: '06/06/2026' },
-    ];
+    const PAGOS = [];   // pagos reales recibidos
     window.__PAGOS = PAGOS;
     window.__registrarPago = function (p) {
       PAGOS.unshift(Object.assign({ fecha: new Date().toLocaleDateString('es-VE') }, p));
@@ -8974,11 +8935,7 @@
     const USUARIOS = [];   // se llena con los usuarios reales de la cuenta
     const INVIT = [];      // invitaciones pendientes reales
     // Empresas de la cuenta a las que se puede dar acceso
-    const EMPRESAS = [
-      { value: 'AV', label: 'Agroinversiones Valle, C.A.' },
-      { value: 'TS', label: 'Tecnoservicios del Sur, C.A.' },
-      { value: 'DC', label: 'Distribuidora Caracas, C.A.' },
-    ];
+    const EMPRESAS = [];   // empresas reales de la cuenta
     const MODULOS = [
       { n: 'Dashboard', ic: 'layout-dashboard' }, { n: 'Ventas', ic: 'receipt' }, { n: 'Tesorería', ic: 'wallet' },
       { n: 'Inventario', ic: 'package' }, { n: 'Nómina', ic: 'users' }, { n: 'Terceros', ic: 'contact-round' },
