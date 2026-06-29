@@ -2405,15 +2405,12 @@
                 <tr><th>Fecha</th><th>N° Nota</th><th>Tipo</th><th>Factura Afectada</th><th>Cliente</th><th class="num">Monto</th><th>Motivo</th></tr>
               </thead>
               <tbody>
-                <tr><td>28/05/26</td><td class="mono">NC-00042</td><td><span class="tag danger">Crédito</span></td><td class="mono">A-00012841</td><td class="primary">Comercial Andina, C.A.</td><td class="num">416.840,00</td><td>Devolución de mercancía</td></tr>
-                <tr><td>26/05/26</td><td class="mono">ND-00011</td><td><span class="tag navy">Débito</span></td><td class="mono">A-00012838</td><td class="primary">Distribuidora Mérida</td><td class="num">12.500,00</td><td>Ajuste de flete</td></tr>
-                <tr><td>22/05/26</td><td class="mono">NC-00041</td><td><span class="tag danger">Crédito</span></td><td class="mono">A-00012830</td><td class="primary">Hotel Caracas Suites</td><td class="num">28.000,00</td><td>Descuento por pronto pago</td></tr>
-                <tr><td>18/05/26</td><td class="mono">NC-00040</td><td><span class="tag danger">Crédito</span></td><td class="mono">A-00012815</td><td class="primary">Café del Llano</td><td class="num">9.300,00</td><td>Anulación parcial</td></tr>
+                <tr><td colspan="7" style="text-align:center;color:var(--fg-muted);padding:16px;">Sin notas de crédito/débito registradas.</td></tr>
               </tbody>
             </table>
           </div>
           <div class="table-footer">
-            <div class="count">Mostrando <strong>4</strong> de <strong>4</strong> notas</div>
+            <div class="count">Mostrando <strong>0</strong> notas</div>
             <div class="pager"><button><i data-lucide="chevron-left"></i></button><button data-active="true">1</button><button><i data-lucide="chevron-right"></i></button></div>
           </div>
         </div>
@@ -2436,14 +2433,12 @@
                 <tr><th>Fecha</th><th>N° Guía</th><th>Factura</th><th>Cliente</th><th>Transporte</th><th class="num">Bultos</th><th>Estado</th><th></th></tr>
               </thead>
               <tbody id="despachosBody">
-                <tr><td>28/05/26</td><td class="mono">GD-00031</td><td class="mono">A-00012841</td><td class="primary">Comercial Andina, C.A.</td><td>Transporte propio</td><td class="num">21</td><td><span class="tag success">Entregado</span></td><td><button class="btn btn-ghost" data-ver-despacho="GD-00031" style="height:26px;font-size:11px;padding:0 9px;white-space:nowrap;"><i data-lucide="eye"></i> Ver</button></td></tr>
-                <tr><td>27/05/26</td><td class="mono">GD-00030</td><td class="mono">A-00012839</td><td class="primary">Supermercados El Sol</td><td>Encava 0034 · J. Pérez</td><td class="num">151</td><td><span class="tag cyan">En ruta</span></td><td><button class="btn btn-ghost" data-ver-despacho="GD-00030" style="height:26px;font-size:11px;padding:0 9px;white-space:nowrap;"><i data-lucide="eye"></i> Ver</button></td></tr>
-                <tr><td>26/05/26</td><td class="mono">GD-00029</td><td class="mono">A-00012838</td><td class="primary">Distribuidora Mérida</td><td>Cootransporte C.A.</td><td class="num">101</td><td><span class="tag success">Entregado</span></td><td><button class="btn btn-ghost" data-ver-despacho="GD-00029" style="height:26px;font-size:11px;padding:0 9px;white-space:nowrap;"><i data-lucide="eye"></i> Ver</button></td></tr>
+                <tr><td colspan="8" style="text-align:center;color:var(--fg-muted);padding:16px;">Sin despachos registrados.</td></tr>
               </tbody>
             </table>
           </div>
           <div class="table-footer">
-            <div class="count">Mostrando <strong id="despachosShown">3</strong> guías de despacho</div>
+            <div class="count">Mostrando <strong id="despachosShown">0</strong> guías de despacho</div>
             <div class="pager"><button><i data-lucide="chevron-left"></i></button><button data-active="true">1</button><button><i data-lucide="chevron-right"></i></button></div>
           </div>
         </div>
@@ -2683,7 +2678,7 @@
           <div class="dash-title-row">
             <h1 class="dash-title">Catálogo e Inventario</h1>
             <span class="contrib-badge" id="invModeBadge"><i data-lucide="store"></i> Empresa comercial</span>
-            <span class="contrib-badge especial" id="invAlertBadge"><i data-lucide="alert-triangle"></i> 4 en stock crítico</span>
+            <span class="contrib-badge especial" id="invAlertBadge" hidden><i data-lucide="alert-triangle"></i> 0 en stock crítico</span>
           </div>
         </div>
         <div class="dash-actions">
@@ -2788,10 +2783,10 @@
         </section>
 
         <div class="subtabs" id="invTabsCom">
-          <button data-active="true" data-tab="articulos"><i data-lucide="package"></i> Artículos <span class="count" id="invTabArticulos">268</span></button>
+          <button data-active="true" data-tab="articulos"><i data-lucide="package"></i> Artículos <span class="count" id="invTabArticulos">0</span></button>
           <button data-tab="kardex"><i data-lucide="history"></i> Kardex</button>
-          <button data-tab="critico"><i data-lucide="alert-triangle"></i> Stock crítico <span class="count">4</span></button>
-          <button data-tab="almacenes"><i data-lucide="warehouse"></i> Almacenes <span class="count">3</span></button>
+          <button data-tab="critico"><i data-lucide="alert-triangle"></i> Stock crítico <span class="count">0</span></button>
+          <button data-tab="almacenes"><i data-lucide="warehouse"></i> Almacenes <span class="count">0</span></button>
           <button data-tab="costos"><i data-lucide="calculator"></i> Estructura de costos</button>
         </div>
 
@@ -2836,11 +2831,7 @@
                 <thead><tr><th>Fecha</th><th>Movimiento</th><th>Referencia</th><th>Almacén</th><th class="num">Entrada</th><th class="num">Salida</th><th class="num">Saldo (uds)</th><th class="num">Costo prom.</th></tr></thead>
                 <tbody>
                   <tr class="opening" style="background:var(--da-cyan-50);"><td>01/05/26</td><td colspan="3" style="color:var(--da-cyan-700);font-weight:600;">Saldo inicial</td><td class="num">—</td><td class="num">—</td><td class="num" style="font-weight:700;">96</td><td class="num">8.200,00</td></tr>
-                  <tr><td>04/05/26</td><td><span class="kx-type in"><i data-lucide="arrow-down-left"></i> Compra</span></td><td class="mono">F-00280112</td><td>Valle</td><td class="num">120</td><td class="num">—</td><td class="num">216</td><td class="num">8.350,00</td></tr>
-                  <tr><td>09/05/26</td><td><span class="kx-type out"><i data-lucide="arrow-up-right"></i> Venta</span></td><td class="mono">A-00012780</td><td>Valle</td><td class="num">—</td><td class="num">84</td><td class="num">132</td><td class="num">8.350,00</td></tr>
-                  <tr><td>15/05/26</td><td><span class="kx-type out"><i data-lucide="arrow-up-right"></i> Venta</span></td><td class="mono">A-00012805</td><td>Valle</td><td class="num">—</td><td class="num">72</td><td class="num">60</td><td class="num">8.350,00</td></tr>
-                  <tr><td>20/05/26</td><td><span class="kx-type adj"><i data-lucide="settings-2"></i> Ajuste</span></td><td class="mono">AJU-0042</td><td>Valle</td><td class="num">—</td><td class="num">6</td><td class="num">54</td><td class="num">8.400,00</td></tr>
-                  <tr><td>27/05/26</td><td><span class="kx-type out"><i data-lucide="arrow-up-right"></i> Venta</span></td><td class="mono">A-00012838</td><td>Valle</td><td class="num">—</td><td class="num">42</td><td class="num">12</td><td class="num">8.400,00</td></tr>
+                  <tr><td colspan="8" style="text-align:center;color:var(--fg-muted);padding:16px;">Selecciona un artículo para ver su kardex. Aún no hay movimientos.</td></tr>
                 </tbody>
                 <tfoot><tr class="asiento-foot"><td colspan="4" class="total-label">Movimiento del período</td><td class="num">120</td><td class="num">204</td><td class="num" style="font-weight:700;">12</td><td class="num">8.400,00</td></tr></tfoot>
               </table>
@@ -2859,9 +2850,7 @@
               <table class="data-table" style="min-width:880px;">
                 <thead><tr><th>Artículo</th><th class="num">Stock actual</th><th class="num">Mínimo</th><th>Cobertura</th><th class="num">Consumo sem.</th><th class="num">Sugerido</th><th>Proveedor</th><th></th></tr></thead>
                 <tbody>
-                  <tr><td><div class="prod-cell"><div class="prod-thumb" style="background:var(--da-danger-tint);color:var(--da-danger);"><i data-lucide="coffee"></i></div><div class="info"><div class="n">Café Premium 1 kg</div><div class="sku">SKU-01</div></div></div></td><td class="num" style="color:var(--da-danger);font-weight:700;">12</td><td class="num">80</td><td><span class="tag danger">3 días</span></td><td class="num">28 uds</td><td class="num" style="font-weight:700;">200</td><td>Suministros Lara</td><td><button class="btn btn-primary" style="height:28px;font-size:11px;padding:0 10px;"><i data-lucide="shopping-cart"></i> OC</button></td></tr>
-                  <tr><td><div class="prod-cell"><div class="prod-thumb" style="background:var(--da-danger-tint);color:var(--da-danger);"><i data-lucide="package-2"></i></div><div class="info"><div class="n">Pasta larga 500 g</div><div class="sku">SKU-06</div></div></div></td><td class="num" style="color:var(--da-danger);font-weight:700;">8</td><td class="num">100</td><td><span class="tag danger">2 días</span></td><td class="num">45 uds</td><td class="num" style="font-weight:700;">300</td><td>Insumos Aragua</td><td><button class="btn btn-primary" style="height:28px;font-size:11px;padding:0 10px;"><i data-lucide="shopping-cart"></i> OC</button></td></tr>
-                  <tr><td><div class="prod-cell"><div class="prod-thumb" style="background:rgba(201,122,20,0.10);color:#8a5410;"><i data-lucide="milk"></i></div><div class="info"><div class="n">Harina de maíz 1 kg</div><div class="sku">SKU-03</div></div></div></td><td class="num" style="color:#8a5410;font-weight:700;">58</td><td class="num">60</td><td><span class="tag warn">9 días</span></td><td class="num">38 uds</td><td class="num" style="font-weight:700;">120</td><td>Insumos Aragua</td><td><button class="btn btn-ghost" style="height:28px;font-size:11px;padding:0 10px;"><i data-lucide="shopping-cart"></i> OC</button></td></tr>
+                  <tr><td colspan="8" style="text-align:center;color:var(--fg-muted);padding:16px;">Sin artículos en stock crítico.</td></tr>
                 </tbody>
               </table>
             </div>
@@ -2870,18 +2859,10 @@
 
         <!-- Almacenes -->
         <div class="invpane-com" data-tab="almacenes">
-          <div class="wh-grid">
-            <div class="wh-card">
-              <div class="wh-card-head"><div class="wh-icon"><i data-lucide="warehouse"></i></div><div><div class="wh-name">Almacén Central · Valle</div><div class="wh-loc">Av. Principal, Galpón 4 · Caracas</div></div></div>
-              <div class="wh-body"><div class="wh-stat"><div class="n">186</div><div class="l">Artículos</div></div><div class="wh-stat"><div class="n">Bs 5,2M</div><div class="l">Valor</div></div><div class="wh-stat"><div class="n danger">3</div><div class="l">Críticos</div></div><div class="wh-stat"><div class="n">72%</div><div class="l">Ocupación</div></div></div>
-            </div>
-            <div class="wh-card">
-              <div class="wh-card-head"><div class="wh-icon"><i data-lucide="warehouse"></i></div><div><div class="wh-name">Sucursal Norte</div><div class="wh-loc">C.C. Las Mercedes, Local 12 · Caracas</div></div></div>
-              <div class="wh-body"><div class="wh-stat"><div class="n">94</div><div class="l">Artículos</div></div><div class="wh-stat"><div class="n">Bs 2,1M</div><div class="l">Valor</div></div><div class="wh-stat"><div class="n danger">1</div><div class="l">Críticos</div></div><div class="wh-stat"><div class="n">58%</div><div class="l">Ocupación</div></div></div>
-            </div>
-            <div class="wh-card">
-              <div class="wh-card-head"><div class="wh-icon"><i data-lucide="warehouse"></i></div><div><div class="wh-name">Depósito en tránsito</div><div class="wh-loc">Mercancía en ruta · 2 órdenes</div></div></div>
-              <div class="wh-body"><div class="wh-stat"><div class="n">32</div><div class="l">Artículos</div></div><div class="wh-stat"><div class="n">Bs 1,1M</div><div class="l">Valor</div></div><div class="wh-stat"><div class="n">0</div><div class="l">Críticos</div></div><div class="wh-stat"><div class="n">—</div><div class="l">Ocupación</div></div></div>
+          <div class="wh-grid" id="whGrid">
+            <div style="grid-column:1/-1;text-align:center;color:var(--fg-muted);padding:32px 18px;">
+              <i data-lucide="warehouse" style="width:26px;height:26px;opacity:.5;"></i>
+              <div style="font-size:13px;margin-top:8px;">Aún no has registrado almacenes.</div>
             </div>
           </div>
         </div>
@@ -3834,41 +3815,7 @@
                     <td class="num">—</td>
                     <td class="saldo">0,00</td>
                   </tr>
-                  <tr>
-                    <td>26/05/26</td><td class="mono">#0309</td>
-                    <td class="primary">Cobro · Supermercados El Sol</td>
-                    <td class="mono">REC-00891</td>
-                    <td class="num">—</td><td class="num">0,00</td>
-                    <td class="saldo">0,00</td>
-                  </tr>
-                  <tr>
-                    <td>26/05/26</td><td class="mono">#0308</td>
-                    <td class="primary">Venta a crédito · Distribuidora Mérida</td>
-                    <td class="mono">A-00012838</td>
-                    <td class="num">0,00</td><td class="num">—</td>
-                    <td class="saldo">0,00</td>
-                  </tr>
-                  <tr>
-                    <td>27/05/26</td><td class="mono">#0307</td>
-                    <td class="primary">Cobro parcial · Café del Llano</td>
-                    <td class="mono">REC-00890</td>
-                    <td class="num">—</td><td class="num">0,00</td>
-                    <td class="saldo">0,00</td>
-                  </tr>
-                  <tr>
-                    <td>28/05/26</td><td class="mono">#0311</td>
-                    <td class="primary">Venta a crédito · Comercial Andina</td>
-                    <td class="mono">A-00012841</td>
-                    <td class="num">0,00</td><td class="num">—</td>
-                    <td class="saldo">0,00</td>
-                  </tr>
-                  <tr>
-                    <td>28/05/26</td><td class="mono">#0306</td>
-                    <td class="primary">Nota de crédito · Comercial Andina</td>
-                    <td class="mono">NC-00042</td>
-                    <td class="num">—</td><td class="num">0,00</td>
-                    <td class="saldo">0,00</td>
-                  </tr>
+                  <tr><td colspan="7" style="text-align:center;color:var(--fg-muted);padding:14px;">Sin movimientos en esta cuenta. Aparecerán al registrar asientos.</td></tr>
                 </tbody>
                 <tfoot>
                   <tr class="asiento-foot">
@@ -4436,8 +4383,8 @@
           <div class="cost-card">
             <div class="cc-title"><span class="cc-ic"><i data-lucide="calculator"></i></span> Diferencia temporaria (activos no monetarios)</div>
             <label class="dif-switch"><span>¿Es sujeto pasivo especial?</span><span class="switch"><input type="checkbox" id="difEspecial" checked><span class="track"></span></span></label>
-            <div class="cost-row"><span>Base contable (ajustada por inflación)</span><input type="number" data-k="baseContable" value="8500000"></div>
-            <div class="cost-row"><span>Base fiscal histórica</span><input type="number" data-k="baseFiscal" value="3200000"></div>
+            <div class="cost-row"><span>Base contable (ajustada por inflación)</span><input type="number" data-k="baseContable" value="0"></div>
+            <div class="cost-row"><span>Base fiscal histórica</span><input type="number" data-k="baseFiscal" value="0"></div>
             <div class="cost-out sub"><span>Diferencia temporaria imponible</span><strong data-out="difTemporaria">—</strong></div>
             <div class="cost-row"><span>Tasa de ISLR (%)</span><input type="number" data-k="tasaIslr" value="34"></div>
             <div class="cost-sep"></div>
