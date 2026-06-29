@@ -142,24 +142,27 @@
     dd.querySelectorAll('.entity-option, .group-label').forEach((el) => el.remove());
     const lbl = document.createElement('div');
     lbl.className = 'group-label';
-    lbl.textContent = 'Empresas (Persona Jurídica)';
+    lbl.textContent = 'Mis empresas';
     dd.insertBefore(lbl, addBtn);
     (data || []).forEach((emp) => {
       const nombre = emp.nombre || 'Empresa';
       const rif = emp.rif || '';
       const cond = emp.condicion_fiscal || 'ordinario';
+      // Tipo de persona derivado del RIF: V/E = persona natural; J/G = persona jurídica.
+      const esNatural = /^\s*[VE]/i.test(rif);
       const ini = (nombre.replace(/[^A-Za-zÁÉÍÓÚÑ ]/g, '').trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join('') || 'EM').toUpperCase();
       const condTxt = cond.charAt(0).toUpperCase() + cond.slice(1);
       const opt = document.createElement('div');
       opt.className = 'entity-option';
       opt.dataset.name = nombre; opt.dataset.avatar = ini; opt.dataset.rif = rif;
-      opt.dataset.type = /especial/i.test(cond) ? 'especial' : 'ordinario';
+      opt.dataset.type = esNatural ? 'natural' : (/especial/i.test(cond) ? 'especial' : 'ordinario');
       opt.dataset.cond = cond;
       opt.dataset.empresaId = emp.id || '';
       opt.dataset.fiscal = String(!!emp.fiscal_activo);
       if (emp.firma_empresa) opt.dataset.firma = emp.firma_empresa;
+      const metaTxt = esNatural ? 'Persona Natural' : ('Contribuyente ' + condTxt);
       opt.innerHTML = '<div class="ea" style="background:var(--da-navy-500);color:#fff">' + ini + '</div>'
-        + '<div class="eo-info"><div class="eo-name">' + nombre + '</div><div class="eo-meta">' + rif + ' · Contribuyente ' + condTxt + '</div></div>'
+        + '<div class="eo-info"><div class="eo-name">' + nombre + '</div><div class="eo-meta">' + rif + ' · ' + metaTxt + '</div></div>'
         + '<i data-lucide="check" class="eo-check" style="width:16px;height:16px;"></i>';
       dd.insertBefore(opt, addBtn);
       if (window.__bindEntityOption) window.__bindEntityOption(opt);
@@ -167,6 +170,8 @@
     const first = dd.querySelector('.entity-option');
     if (first) first.click();          // activa la primera empresa (nombre, RIF, badge)
     dd.dataset.open = 'false';
+    const kEmp = document.getElementById('usKpiEmpresas');
+    if (kEmp) kEmp.textContent = String((data || []).length);
     drawIcons();
     console.log('[DigiAccount] Empresas cargadas:', (data || []).length);
   }
