@@ -206,6 +206,9 @@
     text-decoration: none;
     user-select: none;
   }
+  /* El atributo hidden DEBE ocultar el item (si no, display:flex lo anula).
+     Crítico para el menú del Fundador y el de Fiscal, que se ocultan por permisos. */
+  .nav-item[hidden] { display: none !important; }
   .nav-item:hover { background: rgba(255,255,255,0.05); color: var(--da-white); }
   .nav-item[data-active="true"] {
     background: linear-gradient(90deg, rgba(0,191,255,0.14) 0%, rgba(0,191,255,0.04) 100%);

@@ -198,6 +198,9 @@
   const breadcrumbHere = document.getElementById('breadcrumbHere');
 
   function showView(viewId, title) {
+    // Defensa: el Panel del Fundador solo para el super-admin (aunque la data ya
+    // está protegida por RLS, no debe ni mostrarse la vista a otros).
+    if (viewId === 'fundador' && !window.__ES_FUNDADOR) { viewId = 'dashboard'; title = 'Dashboard Central'; }
     views.forEach((v) => (v.dataset.active = v.id === 'view-' + viewId ? 'true' : 'false'));
     navItems.forEach((n) => (n.dataset.active = n.dataset.view === viewId ? 'true' : 'false'));
     if (title && breadcrumbHere) breadcrumbHere.textContent = title;
