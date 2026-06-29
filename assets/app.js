@@ -7243,6 +7243,10 @@
       const rol = window.__ES_FUNDADOR ? 'Fundador' : (data.rol || 'Administrador');
       const setSb = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
       setSb('sidebarUserAvatar', ini); setSb('sidebarUserName', nombre); setSb('sidebarUserRole', rol);
+      // Aplica el plan REAL de la cuenta (gating de módulos por plan + tipo de cuenta).
+      // Antes la app usaba un plan por defecto, ignorando lo que el cliente realmente tiene.
+      const planNombre = (data.cuentas && data.cuentas.planes && data.cuentas.planes.nombre) || null;
+      if (window.aplicarPlan) window.aplicarPlan(planNombre || undefined);
       // El fundador carga el listado real de cuentas del SaaS
       if (window.__ES_FUNDADOR && window.cargarCuentasFundador) window.cargarCuentasFundador();
       console.log('[DigiAccount] Perfil cargado:', data, '· fundador:', window.__ES_FUNDADOR, '· estado:', window.__CUENTA_ESTADO);
@@ -9370,10 +9374,13 @@
     // Módulos operativos sujetos a plan (los transversales —dashboard, terceros,
     // usuarios, plataforma— están siempre disponibles).
     const TODOS = ['ventas', 'compras', 'tesoreria', 'inventario', 'nomina', 'contabilidad', 'fiscal', 'agentes'];
+    // Alcance del CONTADOR: solo módulos contables/de cumplimiento (NUNCA los operativos
+    // ventas/compras/tesorería/inventario, que son el control interno de la empresa).
+    // Esto evita que un contador "regale" el ERP completo y canibalice los planes de Empresa.
     const PLAN_MODULOS = {
       'Contador Básico': ['contabilidad', 'fiscal'],
-      'Contador PRO': TODOS,
-      'Firma Contable': TODOS,
+      'Contador PRO': ['contabilidad', 'fiscal', 'nomina', 'agentes'],
+      'Firma Contable': ['contabilidad', 'fiscal', 'nomina', 'agentes'],
       'Emprendimientos y PYME': ['ventas', 'compras', 'tesoreria', 'inventario'],
       'Empresa Completa': TODOS,
       'Grupo Empresarial': TODOS,
@@ -9394,7 +9401,14 @@
       window.__planActivo = plan;
       // El fundador (super-admin) tiene acceso completo al ERP para llevar las finanzas
       // de DigiAccount mismo, sin importar el plan de su cuenta.
-      const incluidos = window.__ES_FUNDADOR ? TODOS : (PLAN_MODULOS[plan] || TODOS);
+      let incluidos = window.__ES_FUNDADOR ? TODOS : (PLAN_MODULOS[plan] || TODOS);
+      // REFUERZO ANTI-FUGA: una cuenta de CONTADOR nunca tiene módulos operativos
+      // (ventas/compras/tesorería/inventario), pase lo que pase con el plan. Esos módulos
+      // son el control interno de la empresa; si la empresa los quiere, compra su plan.
+      if (!window.__ES_FUNDADOR && window.__CUENTA_TIPO === 'contador') {
+        const OPERATIVOS = ['ventas', 'compras', 'tesoreria', 'inventario'];
+        incluidos = incluidos.filter((m) => OPERATIVOS.indexOf(m) < 0);
+      }
       // Agentes IA: durante la prueba se habilitan en modo DEMO aunque el plan no los incluya
       const demoAgentes = !!prueba && incluidos.indexOf('agentes') < 0;
       window.__demoAgentes = demoAgentes;
