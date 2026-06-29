@@ -92,3 +92,46 @@ from information_schema.triggers
 where trigger_schema = 'public'
   and trigger_name in ('trg_proteger_cuenta', 'trg_limite_empresas')
 order by tabla, trigger_name;
+
+
+-- ----------------------------------------------------------------------------
+--  BLINDAJE 3 · Eliminar una cuenta y TODOS sus datos (solo el fundador).
+--  Se llama desde el Panel del Fundador: rpc('eliminar_cuenta', { p_cuenta_id }).
+--  Borra en orden todo lo de la cuenta. (No borra el usuario de auth; eso se
+--  puede hacer aparte desde Supabase → Authentication si se desea.)
+-- ----------------------------------------------------------------------------
+create or replace function public.eliminar_cuenta(p_cuenta_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.soy_superadmin() then
+    raise exception 'Solo el fundador puede eliminar cuentas.';
+  end if;
+
+  -- datos por empresa
+  delete from public.libro_fiscal          where empresa_id in (select id from public.empresas where cuenta_id = p_cuenta_id);
+  delete from public.movimientos_tesoreria where empresa_id in (select id from public.empresas where cuenta_id = p_cuenta_id);
+  delete from public.retenciones           where empresa_id in (select id from public.empresas where cuenta_id = p_cuenta_id);
+  delete from public.asientos              where empresa_id in (select id from public.empresas where cuenta_id = p_cuenta_id);
+  delete from public.documentos_fiscales   where empresa_id in (select id from public.empresas where cuenta_id = p_cuenta_id);
+  delete from public.criptoactivos         where empresa_id in (select id from public.empresas where cuenta_id = p_cuenta_id);
+  delete from public.activos_fijos         where empresa_id in (select id from public.empresas where cuenta_id = p_cuenta_id);
+  delete from public.novedades_nomina      where empresa_id in (select id from public.empresas where cuenta_id = p_cuenta_id);
+  delete from public.cuentas_contables     where empresa_id in (select id from public.empresas where cuenta_id = p_cuenta_id);
+
+  -- datos por cuenta
+  delete from public.recibos_nomina        where cuenta_id = p_cuenta_id;
+  delete from public.empleados             where cuenta_id = p_cuenta_id;
+  delete from public.parametros_nomina     where cuenta_id = p_cuenta_id;
+  delete from public.cuentas_tesoreria     where cuenta_id = p_cuenta_id;
+  delete from public.facturas              where cuenta_id = p_cuenta_id;
+  delete from public.productos             where cuenta_id = p_cuenta_id;
+  delete from public.terceros              where cuenta_id = p_cuenta_id;
+  delete from public.empresas              where cuenta_id = p_cuenta_id;
+  delete from public.perfiles              where cuenta_id = p_cuenta_id;
+  delete from public.cuentas               where id = p_cuenta_id;
+end;
+$$;

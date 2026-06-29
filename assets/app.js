@@ -8169,9 +8169,9 @@
       zelle: { label: 'Zelle', icon: 'circle-dollar-sign', moneda: 'USD', auto: false, nota: 'Verifica el Agente IA (comprobante)' },
     };
     const RECEPTORAS = {
-      pagomovil: { activo: true, campos: { Banco: 'Banco Mercantil · 0105', Teléfono: '0414-1234567', RIF: 'J-50763205-9', Titular: 'DigiAccount, C.A.' } },
-      usdt: { activo: true, campos: { Red: 'TRON · TRC-20', Wallet: 'TZ8x7Hq2...n4kP9', Titular: 'DigiAccount' } },
-      zelle: { activo: true, campos: { Email: 'pagos@digiaccount.com', Titular: 'DigiAccount LLC', Banco: 'Bank of America' } },
+      pagomovil: { activo: false, campos: { Banco: '', 'Teléfono': '', RIF: '', Titular: '' } },
+      usdt: { activo: false, campos: { Red: '', Wallet: '', Titular: '' } },
+      zelle: { activo: false, campos: { Email: '', Titular: '', Banco: '' } },
     };
     window.__CUENTAS_RECEPTORAS = RECEPTORAS;
     window.__METODOS_PAGO = METODOS;
@@ -8898,6 +8898,21 @@
       toast('Cuenta ' + (nuevo === 'activa' ? 'activada' : 'suspendida') + ': ' + c.cuenta, 'success');
       cargarCuentas();
     }
+    // Elimina definitivamente una cuenta (y, con ON DELETE CASCADE en la BD, sus datos).
+    async function eliminarCuenta(c) {
+      if (!c || !c.id) return;
+      const ok = window.confirm('¿ELIMINAR definitivamente la cuenta "' + c.cuenta + '" y todos sus datos (empresas, registros, usuarios)?\n\nEsta acción NO se puede deshacer.');
+      if (!ok) return;
+      // Usa la función RPC eliminar_cuenta (borra todo en orden, con permiso de fundador).
+      let { error } = await window.sb.rpc('eliminar_cuenta', { p_cuenta_id: c.id });
+      if (error && /function|does not exist|not find|404|schema cache/i.test(error.message || '')) {
+        // Respaldo si aún no creaste la función: borrado directo (requiere ON DELETE CASCADE).
+        ({ error } = await window.sb.from('cuentas').delete().eq('id', c.id));
+      }
+      if (error) { toast('No se pudo eliminar: ' + error.message, 'error'); return; }
+      toast('Cuenta eliminada: ' + c.cuenta, 'success');
+      cargarCuentas();
+    }
 
     // Distribución por plan
     function renderPlanDist() {
@@ -8937,11 +8952,13 @@
               : c.estado === 'Activa'
               ? '<button class="btn btn-ghost" data-suspender="' + CUENTAS.indexOf(c) + '" style="height:26px;font-size:11px;padding:0 9px;margin-left:4px;color:#e06b5e;"><i data-lucide="ban"></i> Suspender</button>'
               : '<button class="btn btn-ghost" data-activar="' + CUENTAS.indexOf(c) + '" style="height:26px;font-size:11px;padding:0 9px;margin-left:4px;"><i data-lucide="rotate-ccw"></i> Reactivar</button>')
+          + '<button class="btn btn-ghost" data-eliminar="' + CUENTAS.indexOf(c) + '" title="Eliminar cuenta" style="height:26px;font-size:11px;padding:0 8px;margin-left:4px;color:#c0392b;"><i data-lucide="trash-2"></i></button>'
           + '</td></tr>';
       }).join('');
       tb.querySelectorAll('[data-cuenta]').forEach((b) => b.addEventListener('click', () => verCuenta(CUENTAS[parseInt(b.dataset.cuenta, 10)])));
       tb.querySelectorAll('[data-activar]').forEach((b) => b.addEventListener('click', () => cambiarEstado(CUENTAS[parseInt(b.dataset.activar, 10)], 'activa')));
       tb.querySelectorAll('[data-suspender]').forEach((b) => b.addEventListener('click', () => cambiarEstado(CUENTAS[parseInt(b.dataset.suspender, 10)], 'suspendida')));
+      tb.querySelectorAll('[data-eliminar]').forEach((b) => b.addEventListener('click', () => eliminarCuenta(CUENTAS[parseInt(b.dataset.eliminar, 10)])));
       const sh = document.getElementById('cuentasShown'); if (sh) sh.textContent = vis.length;
       if (window.lucide) window.lucide.createIcons();
     }
