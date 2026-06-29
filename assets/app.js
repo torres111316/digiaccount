@@ -68,6 +68,10 @@
         setText('entityAvatar', avatar);
         setText('companyTitle', name);
         setText('companyRif', rif);
+        // Coherencia con Configuración: refleja la empresa activa
+        const cfgN = document.getElementById('cfgEmpresaNombre'); if (cfgN) cfgN.textContent = name;
+        const cfgR = document.getElementById('cfgRazon'); if (cfgR && !cfgR.value) cfgR.value = name;
+        const cfgF = document.getElementById('cfgRif'); if (cfgF && !cfgF.value) cfgF.value = rif;
 
         const badge = document.getElementById('contribBadge');
         const lbl = document.getElementById('contribLabel');
@@ -82,6 +86,7 @@
         if (window.cargarActivosFijos) window.cargarActivosFijos();
         if (window.cargarCriptoactivos) window.cargarCriptoactivos();
         if (window.cargarLibroFiscal) { window.cargarLibroFiscal('compra'); window.cargarLibroFiscal('venta'); }
+        if (window.__cargarCobrosEmp) window.__cargarCobrosEmp(opt.dataset.empresaId); // métodos de cobro guardados
         if (window.__renderDPP) window.__renderDPP();
         if (window.__renderIGP) window.__renderIGP();
         if (window.cargarBoveda) window.cargarBoveda();
@@ -7247,6 +7252,7 @@
       // Antes la app usaba un plan por defecto, ignorando lo que el cliente realmente tiene.
       const planNombre = (data.cuentas && data.cuentas.planes && data.cuentas.planes.nombre) || null;
       if (window.aplicarPlan) window.aplicarPlan(planNombre || undefined);
+      if (window.__renderSuscripcion) window.__renderSuscripcion();  // refresca "Mi Suscripción" con el plan real
       // El fundador carga el listado real de cuentas del SaaS
       if (window.__ES_FUNDADOR && window.cargarCuentasFundador) window.cargarCuentasFundador();
       console.log('[DigiAccount] Perfil cargado:', data, '· fundador:', window.__ES_FUNDADOR, '· estado:', window.__CUENTA_ESTADO);
@@ -8503,7 +8509,9 @@
     const ICON = { 'Contador Básico': 'calculator', 'Contador PRO': 'briefcase-business', 'Firma Contable': 'landmark', 'Emprendimientos y PYME': 'sprout', 'Empresa Completa': 'building-2', 'Grupo Empresarial': 'network' };
 
     function renderResumen() {
-      const plan = window.__planActivo || 'Empresa Completa';
+      const plan = window.__planActivo
+        || (window.__PERFIL && window.__PERFIL.cuentas && window.__PERFIL.cuentas.planes && window.__PERFIL.cuentas.planes.nombre)
+        || '—';
       const prueba = window.__prueba;
       const precio = precioPlan(plan);
       const bcv = window.__BCV || 1;
@@ -8564,6 +8572,7 @@
     document.getElementById('subCambiarBtn').addEventListener('click', () => { if (window.showView) window.showView('planes', 'Planes y Precios'); });
     document.getElementById('subActivarBtn').addEventListener('click', () => { if (window.openCheckout) window.openCheckout(window.__planActivo); });
 
+    window.__renderSuscripcion = render;  // para refrescar tras conocer el plan real al iniciar sesión
     render();
   })();
 
@@ -8617,14 +8626,40 @@
       usdt: { label: 'USDT / Binance', icon: 'bitcoin' },
       efectivo: { label: 'Efectivo / Divisas', icon: 'banknote' },
     };
+    // Estructura de campos por método; valores vacíos (cada empresa configura los suyos).
     const COBROS_EMP = {
-      pagomovil: { activo: true, campos: { Banco: 'Banco de Venezuela · 0102', 'Teléfono': '0414-1234567', RIF: 'J-29485761-3', Titular: 'Agroinversiones Valle, C.A.' } },
-      transferencia: { activo: true, campos: { Banco: 'Banco Mercantil · 0105', Cuenta: '0105-1234-56-1234567890', Tipo: 'Corriente', Titular: 'Agroinversiones Valle, C.A.' } },
-      zelle: { activo: false, campos: { Email: 'pagos@valle.com', Titular: 'Valle Investments LLC' } },
-      usdt: { activo: false, campos: { Red: 'TRON · TRC-20', Wallet: 'No configurado' } },
-      efectivo: { activo: true, campos: { Moneda: 'USD / EUR', Nota: 'En oficina, previa cita' } },
+      pagomovil: { activo: false, campos: { Banco: '', 'Teléfono': '', RIF: '', Titular: '' } },
+      transferencia: { activo: false, campos: { Banco: '', Cuenta: '', Tipo: '', Titular: '' } },
+      zelle: { activo: false, campos: { Email: '', Titular: '' } },
+      usdt: { activo: false, campos: { Red: '', Wallet: '' } },
+      efectivo: { activo: false, campos: { Moneda: '', Nota: '' } },
     };
     window.__COBROS_EMPRESA = COBROS_EMP;
+    // Persistencia por empresa (columna jsonb empresas.metodos_cobro).
+    async function guardarCobrosEmp() {
+      const emp = window.__EMPRESA_ACTIVA;
+      if (!window.sb || !emp || !emp.id) return;
+      try { await window.sb.from('empresas').update({ metodos_cobro: COBROS_EMP }).eq('id', emp.id); }
+      catch (e) { /* la columna metodos_cobro aún no existe: no rompe */ }
+    }
+    // Carga los métodos de cobro guardados de una empresa (tolerante si la columna no existe).
+    window.__cargarCobrosEmp = async function (empresaId) {
+      let guardado = null;
+      if (window.sb && empresaId) {
+        try {
+          const { data } = await window.sb.from('empresas').select('metodos_cobro').eq('id', empresaId).single();
+          if (data && data.metodos_cobro) guardado = data.metodos_cobro;
+        } catch (e) { /* columna no existe aún */ }
+      }
+      Object.keys(COBROS_EMP).forEach((k) => {
+        const g = guardado && guardado[k];
+        COBROS_EMP[k].activo = !!(g && g.activo);
+        Object.keys(COBROS_EMP[k].campos).forEach((c) => {
+          COBROS_EMP[k].campos[c] = (g && g.campos && g.campos[c] != null) ? g.campos[c] : '';
+        });
+      });
+      renderCobrosEmp();
+    };
     const cobrosGrid = document.getElementById('cfgCobrosGrid');
     function renderCobrosEmp() {
       if (!cobrosGrid) return;
@@ -8642,6 +8677,7 @@
       cobrosGrid.querySelectorAll('input[data-m]').forEach((c) => c.addEventListener('change', () => {
         COBROS_EMP[c.dataset.m].activo = c.checked;
         c.closest('.cobro-card').classList.toggle('off', !c.checked);
+        guardarCobrosEmp();
         toast(METODOS_EMP[c.dataset.m].label + (c.checked ? ' activado' : ' desactivado') + ' como método de cobro', c.checked ? 'success' : 'info');
       }));
       if (window.lucide) window.lucide.createIcons();
@@ -8651,7 +8687,7 @@
       window.openFormModal && window.openFormModal({
         title: 'Configurar · ' + m.label, saveLabel: 'Guardar',
         fields: Object.keys(r.campos).map((c) => ({ name: c, label: c, value: r.campos[c], col: 2 })),
-        onSave: (v) => { Object.keys(r.campos).forEach((c) => { if (v[c] != null) r.campos[c] = v[c]; }); renderCobrosEmp(); toast('Datos de ' + m.label + ' actualizados'); },
+        onSave: (v) => { Object.keys(r.campos).forEach((c) => { if (v[c] != null) r.campos[c] = v[c]; }); renderCobrosEmp(); guardarCobrosEmp(); toast('Datos de ' + m.label + ' actualizados'); },
       });
     }
     renderCobrosEmp();
