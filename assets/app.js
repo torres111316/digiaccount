@@ -7887,10 +7887,10 @@
             { t: 'Hasta 3 empresas', ok: true }, { t: 'Módulos: Fiscal + Contabilidad', ok: true },
             { t: 'Soporte por email', ok: true }, { t: 'Onboarding', ok: false }] },
           { nombre: 'Contador PRO', precio: 79, popular: true, cta: 'Elegir plan', features: [
-            { t: 'Hasta 10 empresas', ok: true }, { t: 'Todos los módulos', ok: true },
+            { t: 'Hasta 10 empresas', ok: true }, { t: 'Fiscal · Contabilidad · Nómina + IA', ok: true },
             { t: 'Soporte por email', ok: true }, { t: 'Onboarding 1:1 (1 sesión)', ok: true }] },
           { nombre: 'Firma Contable', precio: 199, popular: false, cta: 'Elegir plan', features: [
-            { t: 'Empresas ilimitadas', ok: true }, { t: 'Todos los módulos', ok: true },
+            { t: 'Empresas ilimitadas', ok: true }, { t: 'Fiscal · Contabilidad · Nómina + IA', ok: true },
             { t: 'Soporte por email y WhatsApp', ok: true }, { t: 'Onboarding + capacitación', ok: true }] },
         ],
       },
@@ -8805,8 +8805,8 @@
 
     const PLANES = {
       'Contador Básico': { precio: 49, color: '#545e67', empresas: 'Hasta 3 empresas', usuarios: '2 usuarios', modulos: 'Contabilidad · Fiscal' },
-      'Contador PRO': { precio: 79, color: '#008ec7', empresas: 'Hasta 10 empresas', usuarios: '10 usuarios', modulos: 'Todos los módulos' },
-      'Firma Contable': { precio: 199, color: '#003057', empresas: 'Empresas ilimitadas', usuarios: 'Usuarios ilimitados', modulos: 'Todos los módulos + Agentes IA' },
+      'Contador PRO': { precio: 79, color: '#008ec7', empresas: 'Hasta 10 empresas', usuarios: '10 usuarios', modulos: 'Fiscal · Contabilidad · Nómina + IA' },
+      'Firma Contable': { precio: 199, color: '#003057', empresas: 'Empresas ilimitadas', usuarios: 'Usuarios ilimitados', modulos: 'Fiscal · Contabilidad · Nómina + IA' },
       'Emprendimientos y PYME': { precio: 29, color: '#1c8f5a', empresas: '1 empresa', usuarios: '2 usuarios', modulos: 'Ventas y CxC · Compras y CxP · Tesorería · Inventario' },
       'Empresa Completa': { precio: 99, color: '#c97a14', empresas: '1 empresa', usuarios: 'Usuarios ilimitados', modulos: 'Todos los módulos' },
       'Grupo Empresarial': { precio: 299, color: '#7b54c9', empresas: 'Hasta 5 empresas', usuarios: 'Usuarios ilimitados', modulos: 'Todos los módulos' },
