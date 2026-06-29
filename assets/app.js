@@ -7213,13 +7213,14 @@
       window.__ES_FUNDADOR = (u.user.email || '').toLowerCase() === FUNDADOR_EMAIL; // super-admin
       const { data, error } = await window.sb
         .from('perfiles')
-        .select('cuenta_id, nombre, rol, cuentas(nombre, tipo, planes(nombre))')
+        .select('cuenta_id, nombre, rol, cuentas(nombre, tipo, segmento, planes(nombre))')
         .eq('id', u.user.id)
         .single();
       if (error) { console.warn('[DigiAccount] No se pudo cargar el perfil:', error.message); return null; }
       window.__PERFIL = data;            // queda disponible para el resto de la app
       window.__CUENTA_ID = data.cuenta_id; // para crear empresas/datos en la cuenta correcta
-      window.__CUENTA_TIPO = (data.cuentas && data.cuentas.tipo) || 'empresa'; // 'empresa' | 'contador'
+      // El tipo de cuenta vive en 'segmento' (lo pone el trigger); 'tipo' queda de respaldo.
+      window.__CUENTA_TIPO = (data.cuentas && (data.cuentas.segmento || data.cuentas.tipo)) || 'empresa'; // 'empresa' | 'contador'
       // Estado de la cuenta en consulta aparte y tolerante: si la columna 'estado' aún no
       // existe (SQL del fundador no corrido), NO bloquea (default 'activa').
       window.__CUENTA_ESTADO = 'activa';
@@ -8820,7 +8821,7 @@
       if (!window.sb || !window.__ES_FUNDADOR) return;
       const { data: cuentas, error } = await window.sb
         .from('cuentas')
-        .select('id, nombre, tipo, estado, trial_termina_en, planes(nombre)');
+        .select('id, nombre, tipo, segmento, estado, trial_termina_en, planes(nombre)');
       if (error) { console.warn('[Fundador] No se pudieron cargar las cuentas:', error.message); return; }
       const { data: perfiles } = await window.sb.from('perfiles').select('cuenta_id, nombre, rol');
       const { data: emps } = await window.sb.from('empresas').select('cuenta_id');
@@ -8839,7 +8840,7 @@
         }
         return {
           id: c.id, cuenta: c.nombre, admin: adminBy[c.id] || '—',
-          tipo: c.tipo === 'contador' ? 'Firma Contable' : 'Empresa',
+          tipo: (c.segmento || c.tipo) === 'contador' ? 'Firma Contable' : 'Empresa',
           plan: planNombre, empresas: empsBy[c.id] || 0, usuarios: usersBy[c.id] || 0,
           estado: est, trialDias: trialDias, mrr: est === 'Activa' ? (pl.precio || 0) : 0,
           alta: est === 'Prueba' ? ('Prueba · ' + trialDias + ' día' + (trialDias === 1 ? '' : 's')) : '—',
