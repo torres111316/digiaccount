@@ -7887,10 +7887,10 @@
             { t: 'Hasta 3 empresas', ok: true }, { t: 'Módulos: Fiscal + Contabilidad', ok: true },
             { t: 'Soporte por email', ok: true }, { t: 'Onboarding', ok: false }] },
           { nombre: 'Contador PRO', precio: 79, popular: true, cta: 'Elegir plan', features: [
-            { t: 'Hasta 10 empresas', ok: true }, { t: 'Fiscal · Contabilidad · Nómina + IA', ok: true },
+            { t: 'Hasta 10 empresas', ok: true }, { t: 'Fiscal · Contabilidad · Nómina', ok: true },
             { t: 'Soporte por email', ok: true }, { t: 'Onboarding 1:1 (1 sesión)', ok: true }] },
           { nombre: 'Firma Contable', precio: 199, popular: false, cta: 'Elegir plan', features: [
-            { t: 'Empresas ilimitadas', ok: true }, { t: 'Fiscal · Contabilidad · Nómina + IA', ok: true },
+            { t: 'Empresas ilimitadas', ok: true }, { t: 'Fiscal · Contabilidad · Nómina', ok: true },
             { t: 'Soporte por email y WhatsApp', ok: true }, { t: 'Onboarding + capacitación', ok: true }] },
         ],
       },
@@ -8805,8 +8805,8 @@
 
     const PLANES = {
       'Contador Básico': { precio: 49, color: '#545e67', empresas: 'Hasta 3 empresas', usuarios: '2 usuarios', modulos: 'Contabilidad · Fiscal' },
-      'Contador PRO': { precio: 79, color: '#008ec7', empresas: 'Hasta 10 empresas', usuarios: '10 usuarios', modulos: 'Fiscal · Contabilidad · Nómina + IA' },
-      'Firma Contable': { precio: 199, color: '#003057', empresas: 'Empresas ilimitadas', usuarios: 'Usuarios ilimitados', modulos: 'Fiscal · Contabilidad · Nómina + IA' },
+      'Contador PRO': { precio: 79, color: '#008ec7', empresas: 'Hasta 10 empresas', usuarios: '10 usuarios', modulos: 'Fiscal · Contabilidad · Nómina' },
+      'Firma Contable': { precio: 199, color: '#003057', empresas: 'Empresas ilimitadas', usuarios: 'Usuarios ilimitados', modulos: 'Fiscal · Contabilidad · Nómina' },
       'Emprendimientos y PYME': { precio: 29, color: '#1c8f5a', empresas: '1 empresa', usuarios: '2 usuarios', modulos: 'Ventas y CxC · Compras y CxP · Tesorería · Inventario' },
       'Empresa Completa': { precio: 99, color: '#c97a14', empresas: '1 empresa', usuarios: 'Usuarios ilimitados', modulos: 'Todos los módulos' },
       'Grupo Empresarial': { precio: 299, color: '#7b54c9', empresas: 'Hasta 5 empresas', usuarios: 'Usuarios ilimitados', modulos: 'Todos los módulos' },
@@ -9374,16 +9374,19 @@
     // Módulos operativos sujetos a plan (los transversales —dashboard, terceros,
     // usuarios, plataforma— están siempre disponibles).
     const TODOS = ['ventas', 'compras', 'tesoreria', 'inventario', 'nomina', 'contabilidad', 'fiscal', 'agentes'];
+    // 'agentes' (IA) NO va en ningún plan: es un ADD-ON aparte, personalizado y con precio
+    // variable según el negocio (se vende en la pestaña "Automatizaciones y Agentes IA").
+    const EMPRESA_FULL = ['ventas', 'compras', 'tesoreria', 'inventario', 'nomina', 'contabilidad', 'fiscal'];
     // Alcance del CONTADOR: solo módulos contables/de cumplimiento (NUNCA los operativos
     // ventas/compras/tesorería/inventario, que son el control interno de la empresa).
     // Esto evita que un contador "regale" el ERP completo y canibalice los planes de Empresa.
     const PLAN_MODULOS = {
       'Contador Básico': ['contabilidad', 'fiscal'],
-      'Contador PRO': ['contabilidad', 'fiscal', 'nomina', 'agentes'],
-      'Firma Contable': ['contabilidad', 'fiscal', 'nomina', 'agentes'],
+      'Contador PRO': ['contabilidad', 'fiscal', 'nomina'],
+      'Firma Contable': ['contabilidad', 'fiscal', 'nomina'],
       'Emprendimientos y PYME': ['ventas', 'compras', 'tesoreria', 'inventario'],
-      'Empresa Completa': TODOS,
-      'Grupo Empresarial': TODOS,
+      'Empresa Completa': EMPRESA_FULL,
+      'Grupo Empresarial': EMPRESA_FULL,
     };
     // Nombre del plan → código (id) de la tabla 'planes' en Supabase
     const PLAN_SLUG = {
