@@ -175,6 +175,7 @@
     const first = dd.querySelector('.entity-option');
     if (first) first.click();          // activa la primera empresa (nombre, RIF, badge)
     dd.dataset.open = 'false';
+    window.__NUM_EMPRESAS = (data || []).length;   // para aplicar el tope de empresas del plan
     const kEmp = document.getElementById('usKpiEmpresas');
     if (kEmp) kEmp.textContent = String((data || []).length);
     drawIcons();
@@ -9392,6 +9393,16 @@
 
     window.openCompanyWizard = function (opts) {
       fromSignup = !!(opts && opts.fromSignup);
+      // TOPE DE EMPRESAS según el plan (el fundador no tiene tope; el alta del propio registro pasa).
+      if (!fromSignup && !window.__ES_FUNDADOR) {
+        const limite = window.__limiteEmpresas ? window.__limiteEmpresas() : Infinity;
+        const actual = window.__NUM_EMPRESAS || 0;
+        if (actual >= limite) {
+          if (window.toast) window.toast('Tu plan ' + (window.__planActivo || '') + ' permite hasta ' + limite + ' empresa' + (limite === 1 ? '' : 's') + '. Mejora tu plan para registrar más.', 'error');
+          if (window.showView) window.showView('planes', 'Planes y Precios');
+          return;
+        }
+      }
       ['cwNombre', 'cwRif', 'cwDom', 'cwTel', 'cwWhatsapp', 'cwEmail', 'cwFpNombre', 'cwFpComercial', 'cwEmpNombre', 'cwEmpApellido', 'cwEmpNum'].forEach((id) => { const e = document.getElementById(id); if (e) e.value = ''; });
       resetOcr();
       goStep(1);
@@ -9428,6 +9439,15 @@
     const PLAN_SLUG = {
       'Contador Básico': 'contador_basico', 'Contador PRO': 'contador_pro', 'Firma Contable': 'firma_contable',
       'Emprendimientos y PYME': 'pyme', 'Empresa Completa': 'empresa_completa', 'Grupo Empresarial': 'grupo_empresarial',
+    };
+    // Tope REAL de empresas por plan (se aplica al registrar; el fundador no tiene tope).
+    const LIMITE_EMPRESAS = {
+      'Contador Básico': 3, 'Contador PRO': 10, 'Firma Contable': Infinity,
+      'Emprendimientos y PYME': 1, 'Empresa Completa': 1, 'Grupo Empresarial': 5,
+    };
+    window.__limiteEmpresas = function () {
+      const lim = LIMITE_EMPRESAS[window.__planActivo || planActivo];
+      return (lim != null) ? lim : Infinity;
     };
     const NOMBRE_VIEW = {
       ventas: 'Ventas y CxC', compras: 'Compras y CxP', tesoreria: 'Tesorería', inventario: 'Inventario',
