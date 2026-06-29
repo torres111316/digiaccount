@@ -1,8 +1,20 @@
 -- ============================================================================
 --  DigiAccount · AUDITORÍA DE SEGURIDAD RLS (Row Level Security)
 --  Objetivo: que cada cuenta/empresa vea SOLO sus datos, y el fundador todo.
---  Seguro de correr varias veces (idempotente).
---  Ejecutar en: Supabase → SQL Editor
+--
+--  >>> AUDITORÍA REALIZADA (resultado: APROBADA) <<<
+--  La base de datos YA TIENE políticas equivalentes y correctas, con otros nombres:
+--    - Tablas con cuenta_id: política "<tabla>_rw" (FOR ALL) con
+--      using/with check = (cuenta_id = mi_cuenta_id() OR soy_superadmin()).
+--    - Otras: "<tabla>_select" (SELECT, cuenta_id) + "<tabla>_superadmin_all" (ALL) +
+--      insert/update/delete; ninguna permisiva.
+--    - Única política pública: "planes_lectura_todos" (SELECT, catálogo) -> correcto.
+--  Diagnóstico confirmó: TODAS las tablas con RLS activo y sin huecos.
+--
+--  ⚠️  NO EJECUTAR los PASOS 1–5 de abajo: crearían políticas "tenant_*" DUPLICADAS
+--      junto a las existentes. Se conservan como REFERENCIA del modelo y para
+--      reconstruir desde cero si algún día hiciera falta.
+--  ✅  Sí son útiles para correr: el PASO 0 (diagnóstico) y el PASO 6 (verificación).
 -- ============================================================================
 
 
