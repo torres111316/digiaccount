@@ -7215,9 +7215,15 @@
       // Estado de la cuenta en consulta aparte y tolerante: si la columna 'estado' aún no
       // existe (SQL del fundador no corrido), NO bloquea (default 'activa').
       window.__CUENTA_ESTADO = 'activa';
+      window.__TRIAL_TERMINA = null;
+      window.__TRIAL_VENCIDO = false;
       try {
-        const { data: ce } = await window.sb.from('cuentas').select('estado').eq('id', data.cuenta_id).single();
+        const { data: ce } = await window.sb.from('cuentas').select('estado, trial_termina_en').eq('id', data.cuenta_id).single();
         if (ce && ce.estado) window.__CUENTA_ESTADO = ce.estado;
+        if (ce && ce.trial_termina_en) {
+          window.__TRIAL_TERMINA = ce.trial_termina_en;
+          window.__TRIAL_VENCIDO = new Date(ce.trial_termina_en) < new Date();
+        }
       } catch (e) { /* columna estado aún no existe: se asume activa */ }
       // Muestra el Panel del Fundador SOLO al super-admin
       const navFund = document.querySelector('.nav-item[data-view="fundador"]');
@@ -7233,11 +7239,29 @@
       console.log('[DigiAccount] Perfil cargado:', data, '· fundador:', window.__ES_FUNDADOR, '· estado:', window.__CUENTA_ESTADO);
       return data;
     }
-    // ¿La cuenta está bloqueada (pendiente/suspendida) y NO es el fundador?
-    window.__cuentaBloqueada = () => !window.__ES_FUNDADOR && (window.__CUENTA_ESTADO === 'pendiente' || window.__CUENTA_ESTADO === 'suspendida');
+    // ¿La cuenta está bloqueada y NO es el fundador?
+    //  - pendiente / suspendida  -> bloqueada
+    //  - prueba                  -> puede entrar, SALVO que el periodo de prueba ya venció
+    //  - activa                  -> entra normal
+    window.__cuentaBloqueada = () => {
+      if (window.__ES_FUNDADOR) return false;
+      const e = window.__CUENTA_ESTADO;
+      if (e === 'pendiente' || e === 'suspendida') return true;
+      if (e === 'prueba') return window.__TRIAL_VENCIDO === true;
+      return false;
+    };
     function mostrarBloqueo() {
       document.body.classList.remove('authed');
-      const susp = window.__CUENTA_ESTADO === 'suspendida';
+      const estado = window.__CUENTA_ESTADO;
+      // 3 motivos posibles: prueba vencida, suspendida, o pendiente (en revisión)
+      let modo = 'pendiente';
+      if (estado === 'suspendida') modo = 'suspendida';
+      else if (estado === 'prueba' && window.__TRIAL_VENCIDO) modo = 'trial';
+      const ui = {
+        pendiente:  { ic: 'clock',        col: '#c97a1422;color:#e0a341', t: 'Tu cuenta está en revisión', p: 'Gracias por registrarte en DigiAccount. Estamos verificando tu cuenta para activarla; será muy pronto. Si tienes dudas, escríbenos por WhatsApp.' },
+        suspendida: { ic: 'shield-alert', col: '#c0392b22;color:#e06b5e', t: 'Cuenta suspendida', p: 'Tu acceso está suspendido temporalmente. Comunícate con nosotros para reactivarla.' },
+        trial:      { ic: 'timer-off',    col: '#c97a1422;color:#e0a341', t: 'Tu prueba terminó', p: 'Tu periodo de prueba de 14 días finalizó. Activa tu plan para seguir usando DigiAccount — escríbenos por WhatsApp y te ayudamos.' },
+      }[modo];
       let ov = document.getElementById('cuentaBloqueoOverlay');
       if (!ov) {
         ov = document.createElement('div');
@@ -7247,9 +7271,9 @@
       }
       ov.style.display = 'flex';
       ov.innerHTML = '<div style="max-width:460px;text-align:center;background:var(--bg-surface,#11202e);border:1px solid var(--border-default,#1e2f3e);border-radius:16px;padding:38px 30px;">'
-        + '<div style="width:58px;height:58px;border-radius:50%;background:' + (susp ? '#c0392b22;color:#e06b5e' : '#c97a1422;color:#e0a341') + ';display:inline-flex;align-items:center;justify-content:center;margin-bottom:16px;"><i data-lucide="' + (susp ? 'shield-alert' : 'clock') + '" style="width:28px;height:28px;"></i></div>'
-        + '<h2 style="font-size:20px;margin:0 0 8px;color:var(--fg-primary,#fff);">' + (susp ? 'Cuenta suspendida' : 'Tu cuenta está en revisión') + '</h2>'
-        + '<p style="font-size:13px;color:var(--fg-muted,#8aa);line-height:1.6;margin:0 0 22px;">' + (susp ? 'Tu acceso está suspendido temporalmente. Comunícate con nosotros para reactivarla.' : 'Gracias por registrarte en DigiAccount. Estamos verificando tu cuenta para activarla; será muy pronto. Si tienes dudas, escríbenos por WhatsApp.') + '</p>'
+        + '<div style="width:58px;height:58px;border-radius:50%;background:' + ui.col + ';display:inline-flex;align-items:center;justify-content:center;margin-bottom:16px;"><i data-lucide="' + ui.ic + '" style="width:28px;height:28px;"></i></div>'
+        + '<h2 style="font-size:20px;margin:0 0 8px;color:var(--fg-primary,#fff);">' + ui.t + '</h2>'
+        + '<p style="font-size:13px;color:var(--fg-muted,#8aa);line-height:1.6;margin:0 0 22px;">' + ui.p + '</p>'
         + '<button id="bloqueoLogout" class="btn btn-ghost" style="height:36px;font-size:13px;"><i data-lucide="log-out"></i> Cerrar sesión</button>'
         + '</div>';
       const lb = document.getElementById('bloqueoLogout');
@@ -8775,10 +8799,11 @@
       'Grupo Empresarial': { precio: 299, color: '#7b54c9', empresas: 'Hasta 5 empresas', usuarios: 'Usuarios ilimitados', modulos: 'Todos los módulos' },
     };
     let CUENTAS = [];   // se llena con las cuentas reales desde Supabase
-    const estadoTag = { 'Activa': 'success', 'Pendiente': 'cyan', 'Suspendida': 'slate' };
+    const estadoTag = { 'Activa': 'success', 'Prueba': 'cyan', 'Vencida': 'danger', 'Pendiente': 'navy', 'Suspendida': 'slate' };
     function normEstado(e) {
       e = String(e || '').toLowerCase();
       if (e === 'activa' || e === 'activo') return 'Activa';
+      if (e === 'prueba' || e === 'trial') return 'Prueba';
       if (e === 'suspendida' || e === 'suspendido' || e === 'moroso') return 'Suspendida';
       return 'Pendiente';
     }
@@ -8787,7 +8812,7 @@
       if (!window.sb || !window.__ES_FUNDADOR) return;
       const { data: cuentas, error } = await window.sb
         .from('cuentas')
-        .select('id, nombre, tipo, estado, planes(nombre)');
+        .select('id, nombre, tipo, estado, trial_termina_en, planes(nombre)');
       if (error) { console.warn('[Fundador] No se pudieron cargar las cuentas:', error.message); return; }
       const { data: perfiles } = await window.sb.from('perfiles').select('cuenta_id, nombre, rol');
       const { data: emps } = await window.sb.from('empresas').select('cuenta_id');
@@ -8797,13 +8822,19 @@
       CUENTAS = (cuentas || []).map((c) => {
         const planNombre = (c.planes && c.planes.nombre) || '—';
         const pl = PLANES[planNombre] || {};
-        const est = normEstado(c.estado);
+        let est = normEstado(c.estado);
+        // Días restantes de prueba; si ya venció, se marca como "Vencida"
+        let trialDias = null;
+        if (est === 'Prueba' && c.trial_termina_en) {
+          trialDias = Math.ceil((new Date(c.trial_termina_en) - new Date()) / 86400000);
+          if (trialDias < 0) { est = 'Vencida'; trialDias = 0; }
+        }
         return {
           id: c.id, cuenta: c.nombre, admin: adminBy[c.id] || '—',
           tipo: c.tipo === 'contador' ? 'Firma Contable' : 'Empresa',
           plan: planNombre, empresas: empsBy[c.id] || 0, usuarios: usersBy[c.id] || 0,
-          estado: est, mrr: est === 'Activa' ? (pl.precio || 0) : 0,
-          alta: '—',
+          estado: est, trialDias: trialDias, mrr: est === 'Activa' ? (pl.precio || 0) : 0,
+          alta: est === 'Prueba' ? ('Prueba · ' + trialDias + ' día' + (trialDias === 1 ? '' : 's')) : '—',
         };
       });
       render(); renderPlanDist(); updateKPIs();
@@ -8851,7 +8882,7 @@
           + '<td><span class="tag ' + (estadoTag[c.estado] || 'slate') + '">' + c.estado + '</span></td>'
           + '<td class="num mono">$' + c.mrr + '</td>'
           + '<td style="white-space:nowrap;"><button class="btn btn-ghost" data-cuenta="' + CUENTAS.indexOf(c) + '" style="height:26px;font-size:11px;padding:0 9px;"><i data-lucide="eye"></i> Ver</button>'
-          + (c.estado === 'Pendiente'
+          + (['Pendiente', 'Prueba', 'Vencida'].indexOf(c.estado) >= 0
               ? '<button class="btn btn-primary" data-activar="' + CUENTAS.indexOf(c) + '" style="height:26px;font-size:11px;padding:0 9px;margin-left:4px;"><i data-lucide="check"></i> Activar</button>'
               : c.estado === 'Activa'
               ? '<button class="btn btn-ghost" data-suspender="' + CUENTAS.indexOf(c) + '" style="height:26px;font-size:11px;padding:0 9px;margin-left:4px;color:#e06b5e;"><i data-lucide="ban"></i> Suspender</button>'
