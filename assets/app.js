@@ -7297,7 +7297,7 @@
         + '<button id="bloqueoLogout" class="btn btn-ghost" style="height:36px;font-size:13px;"><i data-lucide="log-out"></i> Cerrar sesión</button>'
         + '</div>';
       const lb = document.getElementById('bloqueoLogout');
-      if (lb) lb.addEventListener('click', async () => { await window.sb.auth.signOut(); ov.remove(); showAuth(); });
+      if (lb) lb.addEventListener('click', async () => { try { await window.sb.auth.signOut(); } catch (e) {} window.location.reload(); });
       if (window.lucide) window.lucide.createIcons();
     }
     window.__mostrarBloqueo = mostrarBloqueo;
@@ -7395,8 +7395,10 @@
     });
     const logoutBtn = document.getElementById('logoutBtn');
     if (logoutBtn) logoutBtn.addEventListener('click', async () => {
-      await window.sb.auth.signOut();   // cierra la sesión real
-      showAuth(); toast('Sesión cerrada');
+      try { await window.sb.auth.signOut(); } catch (e) {}
+      // CRÍTICO: recargar la página borra TODO el estado en memoria (datos del fundador,
+      // paneles, variables) para que NADA del usuario anterior quede visible al siguiente.
+      window.location.reload();
     });
 
     // Estado inicial: pantalla de acceso
@@ -9485,8 +9487,9 @@
         const OPERATIVOS = ['ventas', 'compras', 'tesoreria', 'inventario'];
         incluidos = incluidos.filter((m) => OPERATIVOS.indexOf(m) < 0);
       }
-      // Agentes IA: durante la prueba se habilitan en modo DEMO aunque el plan no los incluya
-      const demoAgentes = !!prueba && incluidos.indexOf('agentes') < 0;
+      // Agentes IA: add-on aparte. SIEMPRE bloqueado para clientes (visible como vitrina con
+      // candado, pero NO usable). Solo el fundador lo tiene activo. Sin "modo demo".
+      const demoAgentes = false;
       window.__demoAgentes = demoAgentes;
       TODOS.forEach((v) => {
         const item = document.querySelector('.nav-item[data-view="' + v + '"]');
