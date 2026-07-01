@@ -8551,15 +8551,28 @@
     function renderResumen() {
       const plan = window.__planActivo
         || (window.__PERFIL && window.__PERFIL.cuentas && window.__PERFIL.cuentas.planes && window.__PERFIL.cuentas.planes.nombre)
-        || '—';
-      const prueba = window.__prueba;
-      const precio = precioPlan(plan);
+        || null;
+      const planTxt = plan || 'Sin plan seleccionado';
+      const precio = plan ? precioPlan(plan) : 0;
       const bcv = window.__BCV || 1;
       const badge = document.getElementById('subEstadoBadge');
+      // Estado REAL de la cuenta (de la base de datos), no la variable legada del onboarding
+      const estado = window.__CUENTA_ESTADO || 'activa';
       let estadoTxt, estadoCls, fechaLabel, fechaVal;
-      if (prueba) {
-        estadoTxt = 'Prueba · ' + prueba.dias + ' días'; estadoCls = 'prueba';
-        fechaLabel = 'Tu prueba vence'; fechaVal = fFecha(addDias(new Date(), prueba.dias));
+      if (estado === 'prueba') {
+        let diasRest = 14, vence = null;
+        if (window.__TRIAL_TERMINA) {
+          vence = new Date(window.__TRIAL_TERMINA);
+          diasRest = Math.max(0, Math.ceil((vence - new Date()) / 86400000));
+        }
+        estadoTxt = 'Prueba · ' + diasRest + ' día' + (diasRest === 1 ? '' : 's'); estadoCls = 'prueba';
+        fechaLabel = 'Tu prueba vence'; fechaVal = vence ? fFecha(vence) : '—';
+      } else if (estado === 'pendiente') {
+        estadoTxt = 'En revisión'; estadoCls = 'prueba';
+        fechaLabel = 'Estado'; fechaVal = 'Por activar';
+      } else if (estado === 'suspendida') {
+        estadoTxt = 'Suspendida'; estadoCls = 'prueba';
+        fechaLabel = 'Estado'; fechaVal = 'Contáctanos';
       } else {
         estadoTxt = 'Activo'; estadoCls = 'activo';
         fechaLabel = 'Próximo cobro'; fechaVal = fFecha(addMes(new Date()));
@@ -8567,10 +8580,10 @@
       if (badge) { badge.className = 'contrib-badge' + (estadoCls === 'activo' ? ' especial' : ''); badge.innerHTML = '<i data-lucide="' + (prueba ? 'clock' : 'circle-check') + '"></i> <span>' + estadoTxt + '</span>'; }
       document.getElementById('subSummary').innerHTML =
         '<div class="ss-card"><div class="ss-main"><div class="ss-plan-ic"><i data-lucide="' + (ICON[plan] || 'package') + '"></i></div>'
-        + '<div><div class="ss-label">Tu plan actual</div><div class="ss-plan">' + plan + '</div><span class="ss-badge ' + estadoCls + '">' + estadoTxt + '</span></div></div>'
-        + '<div class="ss-meta"><div class="ss-meta-item"><span>Precio</span><strong>$' + precio + ' <em>/mes</em></strong></div>'
+        + '<div><div class="ss-label">Tu plan actual</div><div class="ss-plan">' + planTxt + '</div><span class="ss-badge ' + estadoCls + '">' + estadoTxt + '</span></div></div>'
+        + '<div class="ss-meta"><div class="ss-meta-item"><span>Precio</span><strong>' + (plan ? '$' + precio + ' <em>/mes</em>' : '—') + '</strong></div>'
         + '<div class="ss-meta-item"><span>' + fechaLabel + '</span><strong>' + fechaVal + '</strong></div>'
-        + '<div class="ss-meta-item"><span>Equivalente Bs</span><strong>Bs ' + bsFmt(precio * bcv) + '</strong></div></div></div>';
+        + '<div class="ss-meta-item"><span>Equivalente Bs</span><strong>' + (plan ? 'Bs ' + bsFmt(precio * bcv) : '—') + '</strong></div></div></div>';
       if (window.lucide) window.lucide.createIcons();
     }
 
