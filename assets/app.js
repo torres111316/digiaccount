@@ -9573,3 +9573,39 @@
   }
 })();
 
+/* =========================================================
+   SEGURIDAD · Auto-cierre de sesión por inactividad
+   Cierra la sesión sola si no hay actividad por un tiempo
+   (protege PCs desatendidas). El logout hace reload = limpia todo.
+   ========================================================= */
+(function idleLogout() {
+  const IDLE_MS = 30 * 60 * 1000; // 30 min sin actividad → cierra
+  const WARN_MS = 60 * 1000;      // avisa 1 min antes
+  let tIdle = null, tWarn = null;
+  const autenticado = () => document.body.classList.contains('authed');
+  async function cerrarPorInactividad() {
+    if (!autenticado()) return;
+    try { if (window.sb) await window.sb.auth.signOut(); } catch (e) {}
+    try { sessionStorage.setItem('da_logout_motivo', 'inactividad'); } catch (e) {}
+    window.location.reload(); // recarga = borra TODO el estado en memoria
+  }
+  function reset() {
+    clearTimeout(tIdle); clearTimeout(tWarn);
+    if (!autenticado()) return;
+    tWarn = setTimeout(() => {
+      if (autenticado() && window.toast) window.toast('Tu sesión se cerrará por inactividad en 1 minuto', 'info');
+    }, IDLE_MS - WARN_MS);
+    tIdle = setTimeout(cerrarPorInactividad, IDLE_MS);
+  }
+  ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'click', 'visibilitychange'].forEach((ev) =>
+    document.addEventListener(ev, reset, { passive: true }));
+  // Aviso al reabrir tras cierre por inactividad
+  try {
+    if (sessionStorage.getItem('da_logout_motivo') === 'inactividad') {
+      sessionStorage.removeItem('da_logout_motivo');
+      setTimeout(() => { if (window.toast) window.toast('Sesión cerrada por inactividad', 'info'); }, 800);
+    }
+  } catch (e) {}
+  reset();
+})();
+
