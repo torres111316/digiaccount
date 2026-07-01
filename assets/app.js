@@ -5,6 +5,16 @@
 (function () {
   'use strict';
 
+  // --- Inactividad: recuerda la última actividad para expirar la sesión aunque se cierre el navegador ---
+  window.__DA_IDLE_MS = 30 * 60 * 1000; // 30 min
+  window.__marcarActividad = function () { try { localStorage.setItem('da_last_activity', String(Date.now())); } catch (e) {} };
+  window.__sesionExpiradaPorInactividad = function () {
+    try {
+      const last = parseInt(localStorage.getItem('da_last_activity') || '0', 10);
+      return last > 0 && (Date.now() - last) > window.__DA_IDLE_MS;
+    } catch (e) { return false; }
+  };
+
   // Fecha de HOY en formato YYYY-MM-DD (hora LOCAL, para inputs type=date)
   window.__hoyISO = function () {
     const d = new Date();
@@ -7345,6 +7355,7 @@
       // Autenticación REAL contra Supabase Auth
       const { data, error } = await window.sb.auth.signInWithPassword({ email: email, password: pass });
       if (error) { toast('Correo o contraseña incorrectos', 'error'); return; }
+      window.__marcarActividad();
       showApp();
       const perfil = await cargarPerfilActual();
       if (window.__cuentaBloqueada()) { mostrarBloqueo(); return; }
@@ -7389,6 +7400,7 @@
       if (window.__registrarContacto) window.__registrarContacto({ tipo: 'Usuario', nombre: name, doc: cedula, email: email, whatsapp: whatsapp, segmento: segmento, origen: 'Registro de cuenta' });
       // Si Supabase aún exige confirmar el correo, no hay sesión todavía
       if (!data.session) { toast('Te enviamos un correo para confirmar tu cuenta. Revísalo para entrar.', 'success'); setTab('login'); return; }
+      window.__marcarActividad();
       showApp();
       await cargarPerfilActual();
       if (window.__cuentaBloqueada()) { toast('Cuenta creada · en revisión para activación', 'success'); mostrarBloqueo(); return; }
@@ -7420,7 +7432,19 @@
 
     // Si ya hay una sesión activa (p. ej. tras recargar), entra directo a la app
     window.sb.auth.getSession().then(async ({ data }) => {
-      if (data && data.session) { showApp(); await cargarPerfilActual(); if (window.__cuentaBloqueada()) { mostrarBloqueo(); return; } if (window.cargarEmpresas) await window.cargarEmpresas(); if (window.cargarTerceros) window.cargarTerceros(); if (window.cargarProductos) window.cargarProductos(); if (window.cargarFacturas) window.cargarFacturas(); if (window.__limpiarTablasInit) window.__limpiarTablasInit(); }
+      if (data && data.session) {
+        // Si la sesión guardada lleva +30 min sin actividad (aunque se haya cerrado el
+        // navegador), NO reingresar solo: cerrar y pedir login de nuevo.
+        if (window.__sesionExpiradaPorInactividad && window.__sesionExpiradaPorInactividad()) {
+          try { await window.sb.auth.signOut(); } catch (e) {}
+          try { localStorage.removeItem('da_last_activity'); } catch (e) {}
+          showAuth();
+          if (window.toast) setTimeout(function () { window.toast('Sesión cerrada por inactividad', 'info'); }, 800);
+          return;
+        }
+        window.__marcarActividad();
+        showApp(); await cargarPerfilActual(); if (window.__cuentaBloqueada()) { mostrarBloqueo(); return; } if (window.cargarEmpresas) await window.cargarEmpresas(); if (window.cargarTerceros) window.cargarTerceros(); if (window.cargarProductos) window.cargarProductos(); if (window.cargarFacturas) window.cargarFacturas(); if (window.__limpiarTablasInit) window.__limpiarTablasInit();
+      }
     });
   })();
 
@@ -9592,19 +9616,21 @@
    (protege PCs desatendidas). El logout hace reload = limpia todo.
    ========================================================= */
 (function idleLogout() {
-  const IDLE_MS = 30 * 60 * 1000; // 30 min sin actividad → cierra
+  const IDLE_MS = window.__DA_IDLE_MS || (30 * 60 * 1000); // 30 min sin actividad → cierra
   const WARN_MS = 60 * 1000;      // avisa 1 min antes
   let tIdle = null, tWarn = null;
   const autenticado = () => document.body.classList.contains('authed');
   async function cerrarPorInactividad() {
     if (!autenticado()) return;
     try { if (window.sb) await window.sb.auth.signOut(); } catch (e) {}
+    try { localStorage.removeItem('da_last_activity'); } catch (e) {}
     try { sessionStorage.setItem('da_logout_motivo', 'inactividad'); } catch (e) {}
     window.location.reload(); // recarga = borra TODO el estado en memoria
   }
   function reset() {
     clearTimeout(tIdle); clearTimeout(tWarn);
     if (!autenticado()) return;
+    if (window.__marcarActividad) window.__marcarActividad(); // recuerda la actividad (persiste)
     tWarn = setTimeout(() => {
       if (autenticado() && window.toast) window.toast('Tu sesión se cerrará por inactividad en 1 minuto', 'info');
     }, IDLE_MS - WARN_MS);
