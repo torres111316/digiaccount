@@ -7275,8 +7275,8 @@
       // Aplica el plan REAL de la cuenta (gating de módulos por plan + tipo de cuenta).
       // Antes la app usaba un plan por defecto, ignorando lo que el cliente realmente tiene.
       const planNombre = (data.cuentas && data.cuentas.planes && data.cuentas.planes.nombre) || null;
-      if (window.aplicarPlan) window.aplicarPlan(planNombre || undefined);
-      if (window.__renderSuscripcion) window.__renderSuscripcion();  // refresca "Mi Suscripción" con el plan real
+      try { if (window.aplicarPlan) window.aplicarPlan(planNombre || undefined); } catch (e) { console.warn('[DigiAccount] aplicarPlan:', e); }
+      try { if (window.__renderSuscripcion) window.__renderSuscripcion(); } catch (e) { console.warn('[DigiAccount] renderSuscripcion:', e); }
       // El fundador carga el listado real de cuentas del SaaS
       if (window.__ES_FUNDADOR && window.cargarCuentasFundador) window.cargarCuentasFundador();
       console.log('[DigiAccount] Perfil cargado:', data, '· fundador:', window.__ES_FUNDADOR, '· estado:', window.__CUENTA_ESTADO);
@@ -8577,7 +8577,7 @@
         estadoTxt = 'Activo'; estadoCls = 'activo';
         fechaLabel = 'Próximo cobro'; fechaVal = fFecha(addMes(new Date()));
       }
-      if (badge) { badge.className = 'contrib-badge' + (estadoCls === 'activo' ? ' especial' : ''); badge.innerHTML = '<i data-lucide="' + (prueba ? 'clock' : 'circle-check') + '"></i> <span>' + estadoTxt + '</span>'; }
+      if (badge) { badge.className = 'contrib-badge' + (estadoCls === 'activo' ? ' especial' : ''); badge.innerHTML = '<i data-lucide="' + (estadoCls === 'activo' ? 'circle-check' : 'clock') + '"></i> <span>' + estadoTxt + '</span>'; }
       document.getElementById('subSummary').innerHTML =
         '<div class="ss-card"><div class="ss-main"><div class="ss-plan-ic"><i data-lucide="' + (ICON[plan] || 'package') + '"></i></div>'
         + '<div><div class="ss-label">Tu plan actual</div><div class="ss-plan">' + planTxt + '</div><span class="ss-badge ' + estadoCls + '">' + estadoTxt + '</span></div></div>'
@@ -9529,7 +9529,12 @@
       window.__planActivo = plan;
       // El fundador (super-admin) tiene acceso completo al ERP para llevar las finanzas
       // de DigiAccount mismo, sin importar el plan de su cuenta.
-      let incluidos = window.__ES_FUNDADOR ? TODOS : (PLAN_MODULOS[plan] || TODOS);
+      // Sin plan asignado (ej. cuenta en prueba que no eligió): módulos de su segmento,
+      // NUNCA todos (y jamás agentes, que es add-on).
+      const SIN_PLAN = (window.__CUENTA_TIPO === 'contador')
+        ? ['contabilidad', 'fiscal', 'nomina']
+        : EMPRESA_FULL;
+      let incluidos = window.__ES_FUNDADOR ? TODOS : (PLAN_MODULOS[plan] || SIN_PLAN);
       // REFUERZO ANTI-FUGA: una cuenta de CONTADOR nunca tiene módulos operativos
       // (ventas/compras/tesorería/inventario), pase lo que pase con el plan. Esos módulos
       // son el control interno de la empresa; si la empresa los quiere, compra su plan.
