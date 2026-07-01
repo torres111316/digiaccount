@@ -5,6 +5,19 @@
 (function () {
   'use strict';
 
+  // Fecha de HOY en formato YYYY-MM-DD (hora LOCAL, para inputs type=date)
+  window.__hoyISO = function () {
+    const d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  };
+  // Al cargar, pone la fecha de HOY en los campos de fecha que traían un valor fijo
+  window.addEventListener('DOMContentLoaded', function () {
+    ['amFecha', 'fvFecha'].forEach(function (id) {
+      const el = document.getElementById(id);
+      if (el && el.type === 'date') el.value = window.__hoyISO();
+    });
+  });
+
   /* ---------- Iconos ---------- */
   function drawIcons() { if (window.lucide) lucide.createIcons(); }
   drawIcons();
@@ -1709,7 +1722,7 @@
           { name: 'cod', label: 'Código', placeholder: 'Ej. AF-025' },
           { name: 'nombre', label: 'Activo', col: 2, placeholder: 'Ej. Computador de oficina' },
           { name: 'cat', label: 'Categoría', type: 'select', options: ['Equipos', 'Vehículos', 'Inmuebles', 'Mobiliario', 'Maquinaria'] },
-          { name: 'fecha', label: 'Fecha de adquisición', type: 'date', value: '2026-05-31' },
+          { name: 'fecha', label: 'Fecha de adquisición', type: 'date', value: window.__hoyISO() },
           { name: 'costo', label: 'Costo (Bs)', type: 'number', step: '0.01', placeholder: '0.00' },
           { name: 'vida', label: 'Vida útil (años)', type: 'number', value: '5' },
           { name: 'metodo', label: 'Método', type: 'select', options: ['Línea recta', 'Saldos decrecientes'] },
@@ -6643,7 +6656,7 @@
         { name: 'prov', label: 'Proveedor', col: 2, placeholder: 'Razón social' },
         { name: 'rif', label: 'RIF', placeholder: 'J-00000000-0' },
         { name: 'factura', label: 'N° Factura', placeholder: 'F-00000000' },
-        { name: 'fecha', label: 'Fecha', type: 'date', value: '2026-05-31' },
+        { name: 'fecha', label: 'Fecha', type: 'date', value: window.__hoyISO() },
         { name: 'monto', label: 'Total (Bs)', type: 'number', step: '0.01', placeholder: '0.00' },
         { name: 'alic', label: 'Alícuota IVA', type: 'select', options: ['16%', '8%', 'Exenta'] },
       ],
