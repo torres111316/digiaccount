@@ -21,7 +21,11 @@ as $$
 begin
   if not public.soy_superadmin() then
     new.estado           := old.estado;
-    new.plan_id          := old.plan_id;
+    -- El plan solo puede fijarse la PRIMERA vez (elección del registro/onboarding);
+    -- una vez asignado, solo el fundador puede cambiarlo (anti auto-upgrade).
+    if old.plan_id is not null then
+      new.plan_id := old.plan_id;
+    end if;
     new.trial_termina_en := old.trial_termina_en;
     new.segmento         := old.segmento;
   end if;
