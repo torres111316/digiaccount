@@ -8336,6 +8336,13 @@
       const REC = window.__CUENTAS_RECEPTORAS || {};
       const box = document.getElementById('payMethods');
       const activos = Object.keys(METODOS).filter((k) => !REC[k] || REC[k].activo);
+      // Sin métodos configurados por el fundador: aviso amable en vez de romperse.
+      if (!activos.length) {
+        metodo = null;
+        box.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--fg-muted);font-size:12.5px;padding:14px;">Los métodos de pago están en configuración.<br>Escríbenos por WhatsApp y activamos tu plan al instante.</div>';
+        const det = document.getElementById('payDetail'); if (det) det.innerHTML = '';
+        return;
+      }
       if (activos.indexOf(metodo) < 0) metodo = activos[0];
       box.innerHTML = activos.map((k) => {
         const m = METODOS[k];
@@ -8348,6 +8355,7 @@
       const METODOS = window.__METODOS_PAGO || {};
       const REC = window.__CUENTAS_RECEPTORAS || {};
       const m = METODOS[metodo]; const r = REC[metodo] || { campos: {} };
+      if (!m) { const det = document.getElementById('payDetail'); if (det) det.innerHTML = ''; return; }
       const bs = bsFmt(precio * (window.__BCV || 1));
       const datos = Object.keys(r.campos).map((c) => '<div class="pd-row"><span>' + c + '</span><strong>' + r.campos[c] + '</strong></div>').join('');
       const montoLinea = m.moneda === 'Bs'
@@ -8381,6 +8389,7 @@
     document.getElementById('payConfirm').addEventListener('click', () => {
       const METODOS = window.__METODOS_PAGO || {};
       const m = METODOS[metodo];
+      if (!m) return toast('Aún no hay métodos de pago disponibles. Escríbenos por WhatsApp.', 'info');
       const ref = (document.getElementById('payRef') || {}).value || '';
       if (!ref.trim()) return toast('Indica la referencia de tu pago', 'error');
       const btn = document.getElementById('payConfirm');
