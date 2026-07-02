@@ -7277,8 +7277,9 @@
       const planNombre = (data.cuentas && data.cuentas.planes && data.cuentas.planes.nombre) || null;
       try { if (window.aplicarPlan) window.aplicarPlan(planNombre || undefined); } catch (e) { console.warn('[DigiAccount] aplicarPlan:', e); }
       try { if (window.__renderSuscripcion) window.__renderSuscripcion(); } catch (e) { console.warn('[DigiAccount] renderSuscripcion:', e); }
-      // El fundador carga el listado real de cuentas del SaaS
+      // El fundador carga el listado real de cuentas del SaaS y sus contactos (CRM)
       if (window.__ES_FUNDADOR && window.cargarCuentasFundador) window.cargarCuentasFundador();
+      if (window.__ES_FUNDADOR && window.cargarContactos) { try { window.cargarContactos(); } catch (e) {} }
       console.log('[DigiAccount] Perfil cargado:', data, '· fundador:', window.__ES_FUNDADOR, '· estado:', window.__CUENTA_ESTADO);
       return data;
     }
@@ -8086,6 +8087,33 @@
       if (window.__renderContactos) window.__renderContactos();
       return CONTACTOS.length;
     };
+    // Carga los contactos REALES (solo fundador): correo/WhatsApp de cada CUENTA
+    // registrada (los guarda el trigger del registro) + datos de cada EMPRESA.
+    window.cargarContactos = async function () {
+      if (!window.sb || !window.__ES_FUNDADOR) return;
+      CONTACTOS.length = 0;
+      try {
+        const { data: ctas } = await window.sb.from('cuentas')
+          .select('nombre, segmento, estado, email_contacto, telefono');
+        (ctas || []).forEach((c) => CONTACTOS.push({
+          tipo: 'Usuario', nombre: c.nombre || '—', doc: (c.segmento || '') + (c.estado ? ' · ' + c.estado : ''),
+          email: c.email_contacto || '', whatsapp: c.telefono || '', origen: 'Registro de cuenta', fecha: '—',
+        }));
+      } catch (e) { console.warn('[CRM] cuentas:', e); }
+      try {
+        let { data: emps, error: eErr } = await window.sb.from('empresas')
+          .select('nombre, rif, email, whatsapp, telefono');
+        if (eErr) {
+          // columnas email/whatsapp aún no existen en empresas: carga sin contacto
+          ({ data: emps } = await window.sb.from('empresas').select('nombre, rif'));
+        }
+        (emps || []).forEach((e2) => CONTACTOS.push({
+          tipo: 'Empresa', nombre: e2.nombre || '—', doc: e2.rif || '—',
+          email: e2.email || '', whatsapp: e2.whatsapp || e2.telefono || '', origen: 'Onboarding', fecha: '—',
+        }));
+      } catch (e) { console.warn('[CRM] empresas:', e); }
+      if (window.__renderContactos) window.__renderContactos();
+    };
   })();
 
   /* =========================================================
@@ -8141,7 +8169,7 @@
       const esCuentas = tab === 'cuentas';
       if (exportBtn) exportBtn.style.display = esCuentas ? '' : 'none';
       if (nuevaBtn) nuevaBtn.style.display = esCuentas ? '' : 'none';
-      if (tab === 'contactos') render();
+      if (tab === 'contactos') { render(); if (window.cargarContactos) window.cargarContactos(); }
       if (tab === 'cobros' && window.__renderPagos) window.__renderPagos();
     }));
 
@@ -9431,13 +9459,26 @@
       // Guardar la empresa REAL en Supabase, y refrescar el selector desde la base
       if (window.sb && window.__CUENTA_ID) {
         const condFiscal = /especial/i.test(cond) ? 'especial' : (/formal/i.test(cond) ? 'formal' : 'ordinario');
-        window.sb.from('empresas').insert({
+        const filaEmp = {
           cuenta_id: window.__CUENTA_ID,
           nombre: nombre,
           rif: rif,
           condicion_fiscal: condFiscal,
           fiscal_activo: (window.__CUENTA_TIPO === 'contador'), // contador: Fiscal ON por defecto; empresa: OFF
-        }).then(({ error }) => {
+          // Datos de contacto de la empresa (para el CRM del fundador)
+          telefono: ((document.getElementById('cwTel') || {}).value || '').trim() || null,
+          whatsapp: ((document.getElementById('cwWhatsapp') || {}).value || '').trim() || null,
+          email: ((document.getElementById('cwEmail') || {}).value || '').trim() || null,
+        };
+        window.sb.from('empresas').insert(filaEmp).then(({ error }) => {
+          if (error && /column|schema cache/i.test(error.message || '')) {
+            // columnas de contacto aún no existen: guarda sin ellas (no bloquear el alta)
+            delete filaEmp.telefono; delete filaEmp.whatsapp; delete filaEmp.email;
+            return window.sb.from('empresas').insert(filaEmp).then(({ error: e2 }) => manejarAlta(e2));
+          }
+          return manejarAlta(error);
+        });
+        function manejarAlta(error) {
           if (error) {
             console.warn('[DigiAccount] No se pudo guardar la empresa:', error.message);
             if (window.toast) window.toast('No se pudo guardar la empresa: ' + error.message, 'error');
@@ -9445,7 +9486,7 @@
           }
           if (window.cargarEmpresas) window.cargarEmpresas();   // recarga la lista real
           if (window.toast) window.toast('Empresa guardada en la base de datos ✓', 'success');
-        });
+        }
       } else {
         console.warn('[DigiAccount] Falta la sesión o el cuenta_id; la empresa no se guardó en la base.');
       }
