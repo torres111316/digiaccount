@@ -6817,34 +6817,75 @@
         const c = document.getElementById('notifCount'); if (c) c.textContent = '0';
         const d = document.getElementById('notifDot'); if (d) { d.textContent = '0'; d.hidden = true; }
         panel.hidden = true;
+        // Persistir el "leídas" en la base
+        if (window.sb && window.__CUENTA_ID) {
+          window.sb.from('notificaciones').update({ leida: true }).eq('cuenta_id', window.__CUENTA_ID).eq('leida', false)
+            .then(({ error }) => { if (error) console.warn('[Notif] marcar leídas:', error.message); });
+        }
+        panel.querySelectorAll('.np-item').forEach((it) => it.classList.remove('np-new'));
         if (window.toast) window.toast('Notificaciones marcadas como leídas');
       });
     }
-    // Inyecta una notificación nueva desde cualquier módulo del sistema
-    window.__notificar = function (n) {
+    // Crea el elemento visual de una notificación en el panel
+    function crearItemNotif(n, esNueva) {
       const list = document.querySelector('#notifPanel .np-list');
       if (!list) return;
-      // Quita el placeholder "Sin notificaciones" al llegar la primera
       const vacio = document.getElementById('notifEmpty');
       if (vacio) vacio.remove();
       const a = document.createElement('a');
       a.href = '#';
-      a.className = 'np-item np-new' + (n.nivel ? ' ' + n.nivel : '');
+      a.className = 'np-item' + (esNueva ? ' np-new' : '') + (n.nivel ? ' ' + n.nivel : '');
       a.innerHTML = '<div class="np-ic"><i data-lucide="' + (n.icon || 'bell') + '"></i></div>'
         + '<div class="np-body"><div class="np-t">' + n.titulo + '</div><div class="np-d">' + (n.detalle || '') + '</div></div>';
-      list.insertBefore(a, list.firstChild);
+      list.appendChild(a);
       a.addEventListener('click', (e) => {
         e.preventDefault();
-        if (panel) panel.hidden = true;
+        const p = document.getElementById('notifPanel');
+        if (p) p.hidden = true;
         if (n.view && window.showView) window.showView(n.view, n.title2 || '');
       });
-      if (btn) btn.classList.remove('read');
+      return a;
+    }
+    function setContadores(noLeidas) {
       const dot = document.getElementById('notifDot');
       const cnt = document.getElementById('notifCount');
-      const nuevo = (parseInt((dot || {}).textContent, 10) || 0) + 1;
-      if (dot) { dot.textContent = nuevo; dot.hidden = false; }
-      if (cnt) cnt.textContent = nuevo;
+      if (dot) { dot.textContent = String(noLeidas); dot.hidden = noLeidas === 0; }
+      if (cnt) cnt.textContent = String(noLeidas);
+      if (btn) btn.classList.toggle('read', noLeidas === 0);
+    }
+    // Carga las notificaciones PERSISTENTES de la cuenta (últimas 20)
+    window.cargarNotificaciones = async function () {
+      if (!window.sb || !window.__CUENTA_ID) return;
+      const { data, error } = await window.sb.from('notificaciones')
+        .select('*').order('creado_en', { ascending: false }).limit(20);
+      if (error) { console.warn('[Notif] No se pudieron cargar:', error.message); return; }
+      const list = document.getElementById('notifList');
+      if (list) list.innerHTML = '';
+      const rows = data || [];
+      if (!rows.length && list) {
+        list.innerHTML = '<div id="notifEmpty" style="text-align:center;color:var(--fg-muted);padding:32px 18px;"><i data-lucide="bell-off" style="width:24px;height:24px;opacity:.5;"></i><div style="font-size:12px;margin-top:8px;">Sin notificaciones por ahora</div></div>';
+      }
+      rows.forEach((r) => crearItemNotif({ icon: r.icon, nivel: r.nivel, titulo: r.titulo, detalle: r.detalle, view: r.view, title2: r.title2 }, !r.leida));
+      setContadores(rows.filter((r) => !r.leida).length);
       if (window.lucide) window.lucide.createIcons();
+    };
+    // Inyecta una notificación nueva (la muestra Y la guarda en la base)
+    window.__notificar = function (n) {
+      const list = document.querySelector('#notifPanel .np-list');
+      if (!list) return;
+      const a = crearItemNotif(n, true);
+      if (a) list.insertBefore(a, list.firstChild);
+      const dot = document.getElementById('notifDot');
+      const actual = (dot && !dot.hidden ? parseInt(dot.textContent, 10) || 0 : 0) + 1;
+      setContadores(actual);
+      if (window.lucide) window.lucide.createIcons();
+      // Persistir (sobrevive al recargar y a otras sesiones)
+      if (window.sb && window.__CUENTA_ID && !n.noPersistir) {
+        window.sb.from('notificaciones').insert({
+          cuenta_id: window.__CUENTA_ID, icon: n.icon || 'bell', nivel: n.nivel || null,
+          titulo: n.titulo || '', detalle: n.detalle || '', view: n.view || null, title2: n.title2 || null,
+        }).then(({ error }) => { if (error) console.warn('[Notif] No se pudo guardar:', error.message); });
+      }
     };
     // Calendario del topbar → Módulo Fiscal · Calendario fiscal
     const cal = document.getElementById('topbarCalBtn');
@@ -7293,6 +7334,8 @@
       if (window.__ES_FUNDADOR && window.cargarContactos) { try { window.cargarContactos(); } catch (e) {} }
       // Todos cargan SUS pagos (RLS limita): el cliente ve su estado real y sus recibos
       if (window.cargarPagos) { try { window.cargarPagos(); } catch (e) {} }
+      // Notificaciones persistentes de la cuenta
+      if (window.cargarNotificaciones) { try { window.cargarNotificaciones(); } catch (e) {} }
       // TODOS los usuarios cargan las cuentas receptoras (el checkout las muestra al pagar)
       if (window.__cargarReceptoras) { try { window.__cargarReceptoras(); } catch (e) {} }
       console.log('[DigiAccount] Perfil cargado:', data, '· fundador:', window.__ES_FUNDADOR, '· estado:', window.__CUENTA_ESTADO);
