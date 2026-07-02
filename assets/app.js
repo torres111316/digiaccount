@@ -7280,7 +7280,8 @@
       // El fundador carga el listado real de cuentas del SaaS y sus contactos (CRM)
       if (window.__ES_FUNDADOR && window.cargarCuentasFundador) window.cargarCuentasFundador();
       if (window.__ES_FUNDADOR && window.cargarContactos) { try { window.cargarContactos(); } catch (e) {} }
-      if (window.__ES_FUNDADOR && window.cargarPagos) { try { window.cargarPagos(); } catch (e) {} }
+      // Todos cargan SUS pagos (RLS limita): el cliente ve su estado real y sus recibos
+      if (window.cargarPagos) { try { window.cargarPagos(); } catch (e) {} }
       // TODOS los usuarios cargan las cuentas receptoras (el checkout las muestra al pagar)
       if (window.__cargarReceptoras) { try { window.__cargarReceptoras(); } catch (e) {} }
       console.log('[DigiAccount] Perfil cargado:', data, '· fundador:', window.__ES_FUNDADOR, '· estado:', window.__CUENTA_ESTADO);
@@ -8278,11 +8279,23 @@
       if (error) { console.warn('[Pagos] No se pudieron cargar:', error.message); return; }
       PAGOS.length = 0;
       (data || []).forEach((r) => PAGOS.push({
-        _id: r.id, cliente: r.cliente || '—', plan: r.plan || '—', metodo: r.metodo || 'pagomovil',
+        _id: r.id, _cuenta: r.cuenta_id, _creado: r.creado_en,
+        cliente: r.cliente || '—', plan: r.plan || '—', metodo: r.metodo || 'pagomovil',
         monto: Number(r.monto) || 0, ref: r.referencia || '', fecha: r.creado_en ? new Date(r.creado_en).toLocaleDateString('es-VE') : '—',
         estado: r.estado === 'confirmado' ? 'Confirmado' : 'Por verificar',
       }));
       if (window.__renderPagos) window.__renderPagos();
+      // Los pagos CONFIRMADOS se vuelven los recibos/comprobantes del cliente
+      if (window.__COMPROBANTES) {
+        const conf = PAGOS.filter((p) => p.estado === 'Confirmado');
+        window.__COMPROBANTES.length = 0;
+        conf.forEach((p, i) => window.__COMPROBANTES.push({
+          num: String(conf.length - i).padStart(6, '0'), fecha: p.fecha, tipo: 'Recibo',
+          cliente: p.cliente, doc: '', plan: p.plan, monto: p.monto,
+          metodoLabel: (METODOS[p.metodo] || { label: p.metodo }).label, ref: p.ref, fiscal: false, estado: 'Pagado',
+        }));
+      }
+      if (window.__renderSuscripcion) { try { window.__renderSuscripcion(); } catch (e) {} }
     };
     // Cuentas receptoras: persistencia en plataforma_config (el fundador escribe;
     // todos los clientes las LEEN para ver a dónde pagar en el checkout).
@@ -8390,6 +8403,12 @@
         // Persistir la confirmación (solo el fundador puede, por RLS)
         if (p._id && window.sb) window.sb.from('pagos_suscripcion').update({ estado: 'confirmado' }).eq('id', p._id)
           .then(({ error }) => { if (error) console.warn('[Pagos] No se pudo confirmar en BD:', error.message); });
+        // Al confirmar el pago, la CUENTA del cliente se ACTIVA automáticamente
+        if (p._cuenta && window.sb) window.sb.from('cuentas').update({ estado: 'activa' }).eq('id', p._cuenta)
+          .then(({ error }) => {
+            if (error) console.warn('[Pagos] No se pudo activar la cuenta:', error.message);
+            else if (window.cargarCuentasFundador) window.cargarCuentasFundador();
+          });
         toast('Pago de ' + p.cliente + ' verificado y confirmado · suscripción activa', 'success');
         if (window.__notificar) window.__notificar({ icon: 'badge-check', nivel: 'ok', titulo: 'Pago verificado · ' + p.cliente, detalle: 'El Agente IA confirmó el pago de $' + p.monto + ' · suscripción activa', view: 'fundador', title2: 'Panel del Fundador' });
       }, 1400);
@@ -8453,9 +8472,7 @@
       const montoLinea = m.moneda === 'Bs'
         ? '<div class="pd-row total"><span>Monto a pagar</span><strong>Bs ' + bs + '</strong></div>'
         : '<div class="pd-row total"><span>Monto a pagar</span><strong>$' + precio + ' USD</strong></div>';
-      const aviso = m.auto
-        ? '<div class="pd-aviso auto"><i data-lucide="zap"></i> ' + m.nota + ' · tu plan se activa al instante.</div>'
-        : '<div class="pd-aviso ia"><i data-lucide="bot"></i> ' + m.nota + '. Adjunta la referencia y el Agente IA lo valida en minutos.</div>';
+      const aviso = '<div class="pd-aviso ia"><i data-lucide="shield-check"></i> Tu pago será verificado por nuestro equipo antes de activar el plan. Recibirás tu recibo al aprobarse.</div>';
       const refField = '<label class="pd-field"><span>' + (metodo === 'zelle' ? 'Referencia / N° de confirmación Zelle' : metodo === 'usdt' ? 'Hash de la transacción (TXID)' : metodo === 'transferencia' ? 'Número de referencia de la transferencia' : 'Número de referencia del Pago Móvil') + '</span><input id="payRef" placeholder="' + (metodo === 'zelle' ? 'Ej. ZL-00123' : metodo === 'usdt' ? '0x…' : 'Ej. 004857213') + '"></label>';
       document.getElementById('payDetail').innerHTML = '<div class="pd-data">' + datos + montoLinea + '</div>' + aviso + refField;
       if (window.lucide) window.lucide.createIcons();
@@ -8486,24 +8503,19 @@
       if (!ref.trim()) return toast('Indica la referencia de tu pago', 'error');
       const btn = document.getElementById('payConfirm');
       btn.disabled = true;
-      btn.innerHTML = m.auto ? '<i data-lucide="loader"></i> Confirmando con el banco…' : '<i data-lucide="loader"></i> Agente IA verificando…';
+      btn.innerHTML = '<i data-lucide="loader"></i> Registrando tu pago…';
       if (window.lucide) window.lucide.createIcons();
-      const cliente = (document.querySelector('.entity-current .ec-name') || {}).textContent || 'Mi empresa';
+      const cliente = (window.__PERFIL && window.__PERFIL.cuentas && window.__PERFIL.cuentas.nombre)
+        || (document.querySelector('.entity-current .ec-name') || {}).textContent || 'Mi cuenta';
       setTimeout(() => {
-        const estado = m.auto ? 'Confirmado' : 'Por verificar';
-        if (window.__registrarPago) window.__registrarPago({ cliente: cliente, plan: plan, metodo: metodo, monto: precio, ref: ref.trim(), estado: estado });
-        if (m.auto) {
-          if (window.aplicarPlan) window.aplicarPlan(plan); // activa definitivo (sin prueba)
-          close();
-          toast('¡Pago confirmado! Suscripción ' + plan + ' activada ✓', 'success');
-          if (window.__notificar) window.__notificar({ icon: 'check-circle-2', nivel: 'ok', titulo: 'Pago confirmado · Plan ' + plan, detalle: m.label + ' · tu suscripción quedó activa', view: 'suscripcion', title2: 'Mi Suscripción' });
-          if (window.__generarRecibo) setTimeout(() => window.__generarRecibo({ cliente: cliente, plan: plan, monto: precio, metodoLabel: m.label, ref: ref.trim() }), 360);
-        } else {
-          close();
-          toast('Pago reportado · el Agente IA validará tu comprobante y activará tu plan en minutos', 'info');
-          if (window.__notificar) window.__notificar({ icon: 'clock', nivel: 'warn', titulo: 'Pago en verificación', detalle: m.label + ' · el Agente IA está validando tu comprobante', view: 'suscripcion', title2: 'Mi Suscripción' });
-        }
-      }, 1600);
+        // NINGÚN pago se auto-aprueba: siempre queda "Por verificar" hasta que el
+        // fundador lo confirme contra su banco. El recibo se emite al aprobarse.
+        if (window.__registrarPago) window.__registrarPago({ cliente: cliente, plan: plan, metodo: metodo, monto: precio, ref: ref.trim(), estado: 'Por verificar' });
+        close();
+        toast('Pago reportado ✓ · lo verificaremos y activaremos tu plan. Recibirás tu recibo al aprobarse.', 'info');
+        if (window.__notificar) window.__notificar({ icon: 'clock', nivel: 'warn', titulo: 'Pago en verificación', detalle: m.label + ' · Ref. ' + ref.trim() + ' · te avisaremos al activarlo', view: 'suscripcion', title2: 'Mi Suscripción' });
+        if (window.cargarPagos) window.cargarPagos();
+      }, 900);
     });
   })();
 
@@ -8659,8 +8671,16 @@
       const badge = document.getElementById('subEstadoBadge');
       // Estado REAL de la cuenta (de la base de datos), no la variable legada del onboarding
       const estado = window.__CUENTA_ESTADO || 'activa';
+      // Pagos propios (los carga cargarPagos): pendientes de verificar y confirmados
+      const pagos = window.__PAGOS || [];
+      const pagoPend = pagos.find((p) => p.estado === 'Por verificar');
+      const pagoConf = pagos.find((p) => p.estado === 'Confirmado'); // el más reciente
       let estadoTxt, estadoCls, fechaLabel, fechaVal;
-      if (estado === 'prueba') {
+      if (estado !== 'activa' && pagoPend) {
+        // Ya pagó y espera la verificación: nada de "activa tu plan" ni días de prueba
+        estadoTxt = 'Pago en verificación'; estadoCls = 'prueba';
+        fechaLabel = 'Referencia'; fechaVal = pagoPend.ref || '—';
+      } else if (estado === 'prueba') {
         let diasRest = 14, vence = null;
         if (window.__TRIAL_TERMINA) {
           vence = new Date(window.__TRIAL_TERMINA);
@@ -8675,8 +8695,20 @@
         estadoTxt = 'Suspendida'; estadoCls = 'prueba';
         fechaLabel = 'Estado'; fechaVal = 'Contáctanos';
       } else {
-        estadoTxt = 'Activo'; estadoCls = 'activo';
-        fechaLabel = 'Próximo cobro'; fechaVal = fFecha(addMes(new Date()));
+        // Activa: el próximo cobro se calcula desde el último pago confirmado + 1 mes
+        const base = (pagoConf && pagoConf._creado) ? new Date(pagoConf._creado) : new Date();
+        const proximo = addMes(base);
+        const diasRenov = Math.ceil((proximo - new Date()) / 86400000);
+        estadoCls = 'activo'; estadoTxt = 'Activo';
+        if (diasRenov <= 5) { estadoTxt = 'Renueva pronto'; estadoCls = 'prueba'; }
+        fechaLabel = 'Próximo cobro'; fechaVal = fFecha(proximo);
+      }
+      // Botón del encabezado acorde al momento del ciclo
+      const btnAct = document.getElementById('subActivarBtn');
+      if (btnAct) {
+        if (estado !== 'activa' && pagoPend) { btnAct.disabled = true; btnAct.innerHTML = '<i data-lucide="clock"></i> Pago en verificación'; }
+        else if (estado === 'activa') { btnAct.disabled = false; btnAct.innerHTML = '<i data-lucide="credit-card"></i> Pagar mensualidad'; }
+        else { btnAct.disabled = false; btnAct.innerHTML = '<i data-lucide="credit-card"></i> Activar / Pagar'; }
       }
       if (badge) { badge.className = 'contrib-badge' + (estadoCls === 'activo' ? ' especial' : ''); badge.innerHTML = '<i data-lucide="' + (estadoCls === 'activo' ? 'circle-check' : 'clock') + '"></i> <span>' + estadoTxt + '</span>'; }
       document.getElementById('subSummary').innerHTML =
