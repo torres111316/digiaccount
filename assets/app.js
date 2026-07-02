@@ -8235,18 +8235,23 @@
     window.__BCV = 36.80;
     const METODOS = {
       pagomovil: { label: 'Pago Móvil C2P', icon: 'smartphone', moneda: 'Bs', auto: true, nota: 'Confirmación automática vía banco' },
+      transferencia: { label: 'Transferencia Bancaria', icon: 'landmark', moneda: 'Bs', auto: false, nota: 'Se verifica contra el estado de cuenta' },
       usdt: { label: 'USDT · Binance Pay', icon: 'bitcoin', moneda: 'USD', auto: true, nota: 'Confirmación automática on-chain' },
       zelle: { label: 'Zelle', icon: 'circle-dollar-sign', moneda: 'USD', auto: false, nota: 'Verifica el Agente IA (comprobante)' },
     };
     const RECEPTORAS = {
       pagomovil: { activo: false, campos: { Banco: '', 'Teléfono': '', 'Tipo de documento': '', 'Nº de documento': '', Titular: '' } },
+      transferencia: { activo: false, campos: { Banco: '', 'Tipo de cuenta': '', 'Nº de cuenta': '', 'Tipo de documento': '', 'Nº de documento': '', Titular: '' } },
       usdt: { activo: false, campos: { Red: '', Wallet: '', Titular: '' } },
       zelle: { activo: false, campos: { Email: '', Titular: '', Banco: '' } },
     };
-    // Opciones de documento para Pago Móvil
+    // Opciones de documento (V/J) y de tipo de cuenta bancaria
     const TIPOS_DOC = ['V — Persona', 'J — Comercio'];
+    const TIPOS_CUENTA = ['Corriente', 'Ahorro'];
     const campoDoc = (c, val) => (c === 'Tipo de documento')
       ? { name: c, label: c, type: 'select', options: TIPOS_DOC, value: val || '', col: 2 }
+      : (c === 'Tipo de cuenta')
+      ? { name: c, label: c, type: 'select', options: TIPOS_CUENTA, value: val || '', col: 2 }
       : { name: c, label: c, value: val, col: 2 };
     window.__CUENTAS_RECEPTORAS = RECEPTORAS;
     window.__METODOS_PAGO = METODOS;
@@ -8451,7 +8456,7 @@
       const aviso = m.auto
         ? '<div class="pd-aviso auto"><i data-lucide="zap"></i> ' + m.nota + ' · tu plan se activa al instante.</div>'
         : '<div class="pd-aviso ia"><i data-lucide="bot"></i> ' + m.nota + '. Adjunta la referencia y el Agente IA lo valida en minutos.</div>';
-      const refField = '<label class="pd-field"><span>' + (metodo === 'zelle' ? 'Referencia / N° de confirmación Zelle' : metodo === 'usdt' ? 'Hash de la transacción (TXID)' : 'Número de referencia del Pago Móvil') + '</span><input id="payRef" placeholder="' + (metodo === 'zelle' ? 'Ej. ZL-00123' : metodo === 'usdt' ? '0x…' : 'Ej. 004857213') + '"></label>';
+      const refField = '<label class="pd-field"><span>' + (metodo === 'zelle' ? 'Referencia / N° de confirmación Zelle' : metodo === 'usdt' ? 'Hash de la transacción (TXID)' : metodo === 'transferencia' ? 'Número de referencia de la transferencia' : 'Número de referencia del Pago Móvil') + '</span><input id="payRef" placeholder="' + (metodo === 'zelle' ? 'Ej. ZL-00123' : metodo === 'usdt' ? '0x…' : 'Ej. 004857213') + '"></label>';
       document.getElementById('payDetail').innerHTML = '<div class="pd-data">' + datos + montoLinea + '</div>' + aviso + refField;
       if (window.lucide) window.lucide.createIcons();
     }
@@ -8778,7 +8783,7 @@
     // Estructura de campos por método; valores vacíos (cada empresa configura los suyos).
     const COBROS_EMP = {
       pagomovil: { activo: false, campos: { Banco: '', 'Teléfono': '', 'Tipo de documento': '', 'Nº de documento': '', Titular: '' } },
-      transferencia: { activo: false, campos: { Banco: '', Cuenta: '', Tipo: '', Titular: '' } },
+      transferencia: { activo: false, campos: { Banco: '', 'Tipo de cuenta': '', 'Nº de cuenta': '', 'Tipo de documento': '', 'Nº de documento': '', Titular: '' } },
       zelle: { activo: false, campos: { Email: '', Titular: '' } },
       usdt: { activo: false, campos: { Red: '', Wallet: '' } },
       efectivo: { activo: false, campos: { Moneda: '', Nota: '' } },
@@ -8834,10 +8839,13 @@
     function configCobro(k) {
       const r = COBROS_EMP[k]; const m = METODOS_EMP[k];
       const TIPOS_DOC = ['V — Persona', 'J — Comercio'];
+      const TIPOS_CUENTA = ['Corriente', 'Ahorro'];
       window.openFormModal && window.openFormModal({
         title: 'Configurar · ' + m.label, saveLabel: 'Guardar',
         fields: Object.keys(r.campos).map((c) => (c === 'Tipo de documento')
           ? { name: c, label: c, type: 'select', options: TIPOS_DOC, value: r.campos[c] || '', col: 2 }
+          : (c === 'Tipo de cuenta')
+          ? { name: c, label: c, type: 'select', options: TIPOS_CUENTA, value: r.campos[c] || '', col: 2 }
           : { name: c, label: c, value: r.campos[c], col: 2 }),
         onSave: (v) => { Object.keys(r.campos).forEach((c) => { if (v[c] != null) r.campos[c] = v[c]; }); renderCobrosEmp(); guardarCobrosEmp(); toast('Datos de ' + m.label + ' actualizados'); },
       });
