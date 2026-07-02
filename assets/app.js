@@ -9092,8 +9092,18 @@
     // Elimina definitivamente una cuenta (y, con ON DELETE CASCADE en la BD, sus datos).
     async function eliminarCuenta(c) {
       if (!c || !c.id) return;
-      const ok = window.confirm('¿ELIMINAR definitivamente la cuenta "' + c.cuenta + '" y todos sus datos (empresas, registros, usuarios)?\n\nEsta acción NO se puede deshacer.');
-      if (!ok) return;
+      // PROTECCIÓN: la cuenta del propio fundador JAMÁS se elimina desde aquí.
+      if (c.id === window.__CUENTA_ID) {
+        toast('Esta es TU cuenta de fundador — no se puede eliminar desde el panel.', 'error');
+        return;
+      }
+      // Confirmación fuerte: hay que escribir el nombre EXACTO de la cuenta.
+      const escrito = window.prompt('⚠️ Vas a ELIMINAR definitivamente la cuenta y TODOS sus datos (empresas, registros, usuarios).\n\nPara confirmar, escribe el nombre exacto de la cuenta:\n\n' + c.cuenta);
+      if (escrito === null) return; // canceló
+      if ((escrito || '').trim() !== String(c.cuenta).trim()) {
+        toast('El nombre no coincide — eliminación cancelada.', 'info');
+        return;
+      }
       // Usa la función RPC eliminar_cuenta (borra todo en orden, con permiso de fundador).
       let { error } = await window.sb.rpc('eliminar_cuenta', { p_cuenta_id: c.id });
       if (error && /function|does not exist|not find|404|schema cache/i.test(error.message || '')) {
