@@ -7275,7 +7275,15 @@
       // Aplica el plan REAL de la cuenta (gating de módulos por plan + tipo de cuenta).
       // Antes la app usaba un plan por defecto, ignorando lo que el cliente realmente tiene.
       const planNombre = (data.cuentas && data.cuentas.planes && data.cuentas.planes.nombre) || null;
-      try { if (window.aplicarPlan) window.aplicarPlan(planNombre || undefined); } catch (e) { console.warn('[DigiAccount] aplicarPlan:', e); }
+      // La interfaz de "prueba" (píldora, banner, botón Activar) se enciende SOLO si el
+      // estado REAL de la cuenta es 'prueba' — con los días reales que le quedan.
+      let pruebaArg;
+      if (window.__CUENTA_ESTADO === 'prueba') {
+        let diasReal = 14;
+        if (window.__TRIAL_TERMINA) diasReal = Math.max(0, Math.ceil((new Date(window.__TRIAL_TERMINA) - new Date()) / 86400000));
+        pruebaArg = { dias: diasReal };
+      }
+      try { if (window.aplicarPlan) window.aplicarPlan(planNombre || undefined, pruebaArg); } catch (e) { console.warn('[DigiAccount] aplicarPlan:', e); }
       try { if (window.__renderSuscripcion) window.__renderSuscripcion(); } catch (e) { console.warn('[DigiAccount] renderSuscripcion:', e); }
       // El fundador carga el listado real de cuentas del SaaS y sus contactos (CRM)
       if (window.__ES_FUNDADOR && window.cargarCuentasFundador) window.cargarCuentasFundador();
@@ -8296,6 +8304,7 @@
         }));
       }
       if (window.__renderSuscripcion) { try { window.__renderSuscripcion(); } catch (e) {} }
+      if (window.__syncTrialBanner) { try { window.__syncTrialBanner(); } catch (e) {} }
     };
     // Cuentas receptoras: persistencia en plataforma_config (el fundador escribe;
     // todos los clientes las LEEN para ver a dónde pagar en el checkout).
@@ -8911,6 +8920,8 @@
     function sync() {
       const p = window.__prueba;
       if (!p) { banner.hidden = true; return; }
+      // Si ya reportó un pago (en verificación), no insistir con "activa tu plan"
+      if ((window.__PAGOS || []).some((x) => x.estado === 'Por verificar')) { banner.hidden = true; return; }
       const d = p.dias;
       const nv = nivel(d);
       const fijo = (nv === 'urgente' || nv === 'vencido');
