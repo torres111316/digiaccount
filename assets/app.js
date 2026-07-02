@@ -8239,10 +8239,15 @@
       zelle: { label: 'Zelle', icon: 'circle-dollar-sign', moneda: 'USD', auto: false, nota: 'Verifica el Agente IA (comprobante)' },
     };
     const RECEPTORAS = {
-      pagomovil: { activo: false, campos: { Banco: '', 'Teléfono': '', RIF: '', Titular: '' } },
+      pagomovil: { activo: false, campos: { Banco: '', 'Teléfono': '', 'Tipo de documento': '', 'Nº de documento': '', Titular: '' } },
       usdt: { activo: false, campos: { Red: '', Wallet: '', Titular: '' } },
       zelle: { activo: false, campos: { Email: '', Titular: '', Banco: '' } },
     };
+    // Opciones de documento para Pago Móvil
+    const TIPOS_DOC = ['V — Persona', 'J — Comercio'];
+    const campoDoc = (c, val) => (c === 'Tipo de documento')
+      ? { name: c, label: c, type: 'select', options: TIPOS_DOC, value: val || '', col: 2 }
+      : { name: c, label: c, value: val, col: 2 };
     window.__CUENTAS_RECEPTORAS = RECEPTORAS;
     window.__METODOS_PAGO = METODOS;
 
@@ -8282,6 +8287,14 @@
         const { data, error } = await window.sb.from('plataforma_config').select('valor').eq('clave', 'cuentas_receptoras').maybeSingle();
         if (!error && data && data.valor) {
           Object.keys(RECEPTORAS).forEach((k) => { if (data.valor[k]) RECEPTORAS[k] = data.valor[k]; });
+          // Migración: datos guardados con el campo viejo 'RIF' → nuevo esquema V/J
+          const pm = RECEPTORAS.pagomovil;
+          if (pm && pm.campos && pm.campos.RIF != null) {
+            pm.campos['Tipo de documento'] = pm.campos['Tipo de documento'] || '';
+            pm.campos['Nº de documento'] = pm.campos['Nº de documento'] || pm.campos.RIF || '';
+            pm.campos.Titular = pm.campos.Titular || '';
+            delete pm.campos.RIF;
+          }
           renderReceptoras();
         }
       } catch (e) { /* tabla aún no creada */ }
@@ -8319,7 +8332,7 @@
       const r = RECEPTORAS[k]; const m = METODOS[k];
       window.openFormModal && window.openFormModal({
         title: 'Configurar · ' + m.label, saveLabel: 'Guardar datos',
-        fields: Object.keys(r.campos).map((c) => ({ name: c, label: c, value: r.campos[c], col: 2 })),
+        fields: Object.keys(r.campos).map((c) => campoDoc(c, r.campos[c])),
         onSave: (v) => { Object.keys(r.campos).forEach((c) => { if (v[c] != null) r.campos[c] = v[c]; }); renderReceptoras(); guardarReceptoras(); toast('Datos de ' + m.label + ' actualizados'); },
       });
     }
@@ -8764,7 +8777,7 @@
     };
     // Estructura de campos por método; valores vacíos (cada empresa configura los suyos).
     const COBROS_EMP = {
-      pagomovil: { activo: false, campos: { Banco: '', 'Teléfono': '', RIF: '', Titular: '' } },
+      pagomovil: { activo: false, campos: { Banco: '', 'Teléfono': '', 'Tipo de documento': '', 'Nº de documento': '', Titular: '' } },
       transferencia: { activo: false, campos: { Banco: '', Cuenta: '', Tipo: '', Titular: '' } },
       zelle: { activo: false, campos: { Email: '', Titular: '' } },
       usdt: { activo: false, campos: { Red: '', Wallet: '' } },
@@ -8820,9 +8833,12 @@
     }
     function configCobro(k) {
       const r = COBROS_EMP[k]; const m = METODOS_EMP[k];
+      const TIPOS_DOC = ['V — Persona', 'J — Comercio'];
       window.openFormModal && window.openFormModal({
         title: 'Configurar · ' + m.label, saveLabel: 'Guardar',
-        fields: Object.keys(r.campos).map((c) => ({ name: c, label: c, value: r.campos[c], col: 2 })),
+        fields: Object.keys(r.campos).map((c) => (c === 'Tipo de documento')
+          ? { name: c, label: c, type: 'select', options: TIPOS_DOC, value: r.campos[c] || '', col: 2 }
+          : { name: c, label: c, value: r.campos[c], col: 2 }),
         onSave: (v) => { Object.keys(r.campos).forEach((c) => { if (v[c] != null) r.campos[c] = v[c]; }); renderCobrosEmp(); guardarCobrosEmp(); toast('Datos de ' + m.label + ' actualizados'); },
       });
     }
