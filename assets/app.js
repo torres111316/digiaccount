@@ -7280,6 +7280,9 @@
       // El fundador carga el listado real de cuentas del SaaS y sus contactos (CRM)
       if (window.__ES_FUNDADOR && window.cargarCuentasFundador) window.cargarCuentasFundador();
       if (window.__ES_FUNDADOR && window.cargarContactos) { try { window.cargarContactos(); } catch (e) {} }
+      if (window.__ES_FUNDADOR && window.cargarPagos) { try { window.cargarPagos(); } catch (e) {} }
+      // TODOS los usuarios cargan las cuentas receptoras (el checkout las muestra al pagar)
+      if (window.__cargarReceptoras) { try { window.__cargarReceptoras(); } catch (e) {} }
       console.log('[DigiAccount] Perfil cargado:', data, '· fundador:', window.__ES_FUNDADOR, '· estado:', window.__CUENTA_ESTADO);
       return data;
     }
@@ -8170,7 +8173,7 @@
       if (exportBtn) exportBtn.style.display = esCuentas ? '' : 'none';
       if (nuevaBtn) nuevaBtn.style.display = esCuentas ? '' : 'none';
       if (tab === 'contactos') { render(); if (window.cargarContactos) window.cargarContactos(); }
-      if (tab === 'cobros' && window.__renderPagos) window.__renderPagos();
+      if (tab === 'cobros') { if (window.__renderPagos) window.__renderPagos(); if (window.cargarPagos) window.cargarPagos(); }
     }));
 
     document.getElementById('leadsFiltros').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => {
@@ -8248,7 +8251,46 @@
     window.__registrarPago = function (p) {
       PAGOS.unshift(Object.assign({ fecha: new Date().toLocaleDateString('es-VE') }, p));
       if (window.__renderPagos) window.__renderPagos();
+      // Persistir en la base: así el FUNDADOR ve el pago reportado desde su propia sesión.
+      if (window.sb && window.__CUENTA_ID) {
+        window.sb.from('pagos_suscripcion').insert({
+          cuenta_id: window.__CUENTA_ID,
+          cliente: p.cliente || ((window.__PERFIL && window.__PERFIL.cuentas && window.__PERFIL.cuentas.nombre) || null),
+          plan: p.plan || null, metodo: p.metodo || null, monto: p.monto || 0,
+          referencia: p.ref || '', estado: (p.estado === 'Confirmado') ? 'confirmado' : 'por_verificar',
+        }).then(({ error }) => { if (error) console.warn('[Pagos] No se pudo guardar el pago:', error.message); });
+      }
     };
+    // Carga los pagos reales (el fundador ve todos; el cliente, los suyos)
+    window.cargarPagos = async function () {
+      if (!window.sb) return;
+      const { data, error } = await window.sb.from('pagos_suscripcion').select('*').order('creado_en', { ascending: false });
+      if (error) { console.warn('[Pagos] No se pudieron cargar:', error.message); return; }
+      PAGOS.length = 0;
+      (data || []).forEach((r) => PAGOS.push({
+        _id: r.id, cliente: r.cliente || '—', plan: r.plan || '—', metodo: r.metodo || 'pagomovil',
+        monto: Number(r.monto) || 0, ref: r.referencia || '', fecha: r.creado_en ? new Date(r.creado_en).toLocaleDateString('es-VE') : '—',
+        estado: r.estado === 'confirmado' ? 'Confirmado' : 'Por verificar',
+      }));
+      if (window.__renderPagos) window.__renderPagos();
+    };
+    // Cuentas receptoras: persistencia en plataforma_config (el fundador escribe;
+    // todos los clientes las LEEN para ver a dónde pagar en el checkout).
+    window.__cargarReceptoras = async function () {
+      if (!window.sb) return;
+      try {
+        const { data, error } = await window.sb.from('plataforma_config').select('valor').eq('clave', 'cuentas_receptoras').maybeSingle();
+        if (!error && data && data.valor) {
+          Object.keys(RECEPTORAS).forEach((k) => { if (data.valor[k]) RECEPTORAS[k] = data.valor[k]; });
+          renderReceptoras();
+        }
+      } catch (e) { /* tabla aún no creada */ }
+    };
+    function guardarReceptoras() {
+      if (!window.sb || !window.__ES_FUNDADOR) return;
+      window.sb.from('plataforma_config').upsert({ clave: 'cuentas_receptoras', valor: RECEPTORAS })
+        .then(({ error }) => { if (error) toast('No se pudo guardar: ' + error.message + ' (¿creaste plataforma_config?)', 'error'); });
+    }
 
     // ---- Cuentas receptoras (config) ----
     const grid = document.getElementById('cobrosGrid');
@@ -8268,6 +8310,7 @@
       grid.querySelectorAll('input[data-m]').forEach((c) => c.addEventListener('change', () => {
         RECEPTORAS[c.dataset.m].activo = c.checked;
         c.closest('.cobro-card').classList.toggle('off', !c.checked);
+        guardarReceptoras();
         toast(METODOS[c.dataset.m].label + (c.checked ? ' activado' : ' desactivado'), c.checked ? 'success' : 'info');
       }));
       if (window.lucide) window.lucide.createIcons();
@@ -8277,7 +8320,7 @@
       window.openFormModal && window.openFormModal({
         title: 'Configurar · ' + m.label, saveLabel: 'Guardar datos',
         fields: Object.keys(r.campos).map((c) => ({ name: c, label: c, value: r.campos[c], col: 2 })),
-        onSave: (v) => { Object.keys(r.campos).forEach((c) => { if (v[c] != null) r.campos[c] = v[c]; }); renderReceptoras(); toast('Datos de ' + m.label + ' actualizados'); },
+        onSave: (v) => { Object.keys(r.campos).forEach((c) => { if (v[c] != null) r.campos[c] = v[c]; }); renderReceptoras(); guardarReceptoras(); toast('Datos de ' + m.label + ' actualizados'); },
       });
     }
     const bcvEdit = document.getElementById('bcvEdit');
@@ -8326,6 +8369,9 @@
       toast('Agente IA leyendo el comprobante de ' + p.cliente + '…', 'info');
       setTimeout(() => {
         p.estado = 'Confirmado'; renderPagos();
+        // Persistir la confirmación (solo el fundador puede, por RLS)
+        if (p._id && window.sb) window.sb.from('pagos_suscripcion').update({ estado: 'confirmado' }).eq('id', p._id)
+          .then(({ error }) => { if (error) console.warn('[Pagos] No se pudo confirmar en BD:', error.message); });
         toast('Pago de ' + p.cliente + ' verificado y confirmado · suscripción activa', 'success');
         if (window.__notificar) window.__notificar({ icon: 'badge-check', nivel: 'ok', titulo: 'Pago verificado · ' + p.cliente, detalle: 'El Agente IA confirmó el pago de $' + p.monto + ' · suscripción activa', view: 'fundador', title2: 'Panel del Fundador' });
       }, 1400);
