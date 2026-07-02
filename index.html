@@ -348,7 +348,7 @@
       </button>
       <button class="topbar-icon" title="Notificaciones" id="notifBtn">
         <i data-lucide="bell"></i>
-        <span class="count-badge" id="notifDot">6</span>
+        <span class="count-badge" id="notifDot" hidden>0</span>
       </button>
       <button class="topbar-icon" title="Ayuda" id="ayudaBtn">
         <i data-lucide="help-circle"></i>
@@ -365,7 +365,7 @@
         <button id="notifMarkAll">Marcar como leídas</button>
       </div>
       <div class="np-list" id="notifList">
-        <div style="text-align:center;color:var(--fg-muted);padding:32px 18px;">
+        <div id="notifEmpty" style="text-align:center;color:var(--fg-muted);padding:32px 18px;">
           <i data-lucide="bell-off" style="width:24px;height:24px;opacity:.5;"></i>
           <div style="font-size:12px;margin-top:8px;">Sin notificaciones por ahora</div>
         </div>

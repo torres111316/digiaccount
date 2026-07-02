@@ -6815,7 +6815,7 @@
       if (markAll) markAll.addEventListener('click', () => {
         btn.classList.add('read');
         const c = document.getElementById('notifCount'); if (c) c.textContent = '0';
-        const d = document.getElementById('notifDot'); if (d) d.textContent = '0';
+        const d = document.getElementById('notifDot'); if (d) { d.textContent = '0'; d.hidden = true; }
         panel.hidden = true;
         if (window.toast) window.toast('Notificaciones marcadas como leídas');
       });
@@ -6824,6 +6824,9 @@
     window.__notificar = function (n) {
       const list = document.querySelector('#notifPanel .np-list');
       if (!list) return;
+      // Quita el placeholder "Sin notificaciones" al llegar la primera
+      const vacio = document.getElementById('notifEmpty');
+      if (vacio) vacio.remove();
       const a = document.createElement('a');
       a.href = '#';
       a.className = 'np-item np-new' + (n.nivel ? ' ' + n.nivel : '');
