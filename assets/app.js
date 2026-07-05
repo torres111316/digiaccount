@@ -2423,7 +2423,7 @@
       ]);
       if (r1.error) { console.warn('[DigiAccount] Tesorería:', r1.error.message); }
       _cuentas = r1.data || []; _movs = r2.data || [];
-      const ventas = (r3.data || []).map((f) => ({ ref: f.numero, tercero_nombre: f.cliente_nombre, tercero_rif: f.cliente_rif, total: f.total, fecha: f.fecha, tipo: 'venta', condicion: f.condicion, estado: f.estado }));
+      const ventas = (r3.data || []).filter((f) => !/anulada/i.test(f.estado || '')).map((f) => ({ ref: f.numero, tercero_nombre: f.cliente_nombre, tercero_rif: f.cliente_rif, total: f.total, fecha: f.fecha, tipo: 'venta', condicion: f.condicion, estado: f.estado }));
       const compras = (r4.data || []).map((f) => ({ ref: f.numero_factura, tercero_nombre: f.tercero_nombre, tercero_rif: f.tercero_rif, total: f.total, fecha: f.fecha, tipo: 'compra' }));
       _facturas = ventas.concat(compras);
       render();
@@ -3387,10 +3387,11 @@
       const [rc, rm, rf, rlc] = await Promise.all([
         window.sb.from('cuentas_tesoreria').select('id, nombre, banco, numero, tipo, color, saldo_inicial, moneda').eq('empresa_id', emp.id),
         window.sb.from('movimientos_tesoreria').select('cuenta_teso_id, tipo, monto, factura_ref').eq('empresa_id', emp.id),
-        window.sb.from('facturas').select('numero, total').eq('tipo', 'venta').eq('empresa_id', emp.id),
+        window.sb.from('facturas').select('numero, total, estado').eq('tipo', 'venta').eq('empresa_id', emp.id),
         window.sb.from('libro_fiscal').select('numero_factura, total').eq('tipo', 'compra').eq('empresa_id', emp.id),
       ]);
-      const cuentas = rc.data || [], movs = rm.data || [], recibos = rf.data || [], compras = rlc.data || [];
+      const cuentas = rc.data || [], movs = rm.data || [], compras = rlc.data || [];
+      const recibos = (rf.data || []).filter((f) => !/anulada/i.test(f.estado || '')); // anulados no cuentan
       const saldoDe = (cid, ini) => { let s = Number(ini) || 0; movs.filter((m) => m.cuenta_teso_id === cid).forEach((m) => { s += (m.tipo === 'ingreso' ? 1 : -1) * (Number(m.monto) || 0); }); return s; };
       let disp = 0;
       cuentas.filter((c) => (c.moneda || 'Bs') !== 'USD').forEach((c) => { disp += saldoDe(c.id, c.saldo_inicial); });
@@ -5339,13 +5340,20 @@
           + 'TOTAL: Bs ' + fmt(t.total) + '\r\n');
       lastName = 'Factura_' + num + '.txt';
 
-      // Botón "Cobrar": solo en recibos de venta con saldo pendiente
+      // Botón "Cobrar": solo en recibos de venta con saldo pendiente (y no anulados)
+      const anulada = /anulada/i.test(f.estado || '');
       const cobrarBtn = document.getElementById('facturaCobrar');
       if (cobrarBtn) {
         const cobrado = window.__cobradoDe ? window.__cobradoDe(num) : 0;
         const pend = Math.max(0, t.total - cobrado);
-        if (f.tipo === 'venta' && pend > 0.01) { cobrarBtn.hidden = false; cobrarBtn.dataset.pend = pend.toFixed(2); }
+        if (f.tipo === 'venta' && pend > 0.01 && !anulada) { cobrarBtn.hidden = false; cobrarBtn.dataset.pend = pend.toFixed(2); }
         else cobrarBtn.hidden = true;
+      }
+      // Botón "Anular": solo recibos de venta SIN cobros registrados y no anulados ya
+      const anularBtn = document.getElementById('facturaAnular');
+      if (anularBtn) {
+        const cobrado2 = window.__cobradoDe ? window.__cobradoDe(num) : 0;
+        anularBtn.hidden = !(f.tipo === 'venta' && !anulada && cobrado2 < 0.01 && f._id);
       }
 
       overlay.dataset.open = 'true';
@@ -5361,6 +5369,42 @@
       close();
       if (window.__registrarCobro) window.__registrarCobro(pre);
       else if (window.toast) window.toast('Abre el módulo de Tesorería para registrar el cobro.', 'error');
+    });
+    // Anular: deja el recibo sin efecto (estado Anulada) con reverso contable y
+    // reposición del stock. Solo si NO tiene cobros (si los tiene, primero se reversan).
+    const anularBtnEl = document.getElementById('facturaAnular');
+    if (anularBtnEl) anularBtnEl.addEventListener('click', async () => {
+      if (!currentFac || !currentFac.f || !currentFac.f._id) return;
+      const num = currentFac.num, f = currentFac.f;
+      const cobrado = window.__cobradoDe ? window.__cobradoDe(num) : 0;
+      if (cobrado > 0.01) { if (window.toast) window.toast('Este recibo tiene cobros registrados — no se puede anular directo.', 'error'); return; }
+      const ok = window.confirm('¿ANULAR el recibo ' + num + '?\n\nQuedará sin efecto: se reversa el asiento de la venta y se repone el stock de los productos. Esta acción no se puede deshacer.');
+      if (!ok) return;
+      const { error } = await window.sb.from('facturas').update({ estado: 'Anulada' }).eq('id', f._id);
+      if (error) { if (window.toast) window.toast('No se pudo anular: ' + error.message, 'error'); return; }
+      // Reverso contable (solo en modo recibos; en modo libro contabiliza el Libro de Ventas)
+      const t = calcFactura(f);
+      const _modo = (window.__EMPRESA_ACTIVA && window.__EMPRESA_ACTIVA.modo) || 'recibos';
+      if (window.__postAsiento && _modo !== 'libro') {
+        const ln = [{ cta: '4.1.1.01 · Ventas / Ingresos por servicios', debe: t.subtotal, haber: 0 }];
+        if (t.iva > 0.005) ln.push({ cta: '2.1.3.01 · IVA débito fiscal', debe: t.iva, haber: 0 });
+        if (t.igtf > 0.005) ln.push({ cta: '2.1.4.03 · IGTF por pagar', debe: t.igtf, haber: 0 });
+        ln.push({ cta: '1.1.2.01 · Cuentas por cobrar comerciales', debe: 0, haber: t.total });
+        window.__postAsiento('Anulación recibo ' + num + ' · ' + (f.parte ? f.parte.n : ''), num, ln, 'auto')
+          .then((r) => { if (r && r.error) console.warn('[DigiAccount] Reverso de anulación:', r.error.message); });
+      }
+      // Reponer el stock de los productos del recibo
+      const ups = (f.items || []).filter((it) => it.pid).map((it) => {
+        const prod = (window.__getProductos ? window.__getProductos() : []).find((x) => x.id === it.pid);
+        const nuevo = (Number(prod ? prod.stock : 0) || 0) + (Number(it.c) || 0);
+        return window.sb.from('productos').update({ stock: nuevo }).eq('id', it.pid);
+      });
+      if (ups.length) Promise.all(ups).then(() => { if (window.cargarProductos) window.cargarProductos(); });
+      close();
+      if (window.toast) window.toast('Recibo ' + num + ' ANULADO · asiento reversado y stock repuesto', 'success');
+      if (window.cargarFacturas) window.cargarFacturas();
+      if (window.cargarTesoreria) window.cargarTesoreria();
+      if (window.cargarDashboard) window.cargarDashboard();
     });
     const cb = document.getElementById('facturaClose');
     if (cb) cb.addEventListener('click', close);
@@ -5669,19 +5713,20 @@
       const tb = document.querySelector('.ventas-tab[data-tab="facturas"] table.data-table tbody');
       if (tb) tb.innerHTML = '';
       (data || []).forEach((f) => {
-        DB[f.numero] = { tipo: 'venta', control: f.control, fecha: f.fecha, parte: { n: f.cliente_nombre, rif: f.cliente_rif, dom: f.cliente_dom || '' }, alic: Number(f.alicuota) || 0, igtf: !!f.igtf, cond: f.condicion, items: Array.isArray(f.items) ? f.items : [] };
+        DB[f.numero] = { tipo: 'venta', control: f.control, fecha: f.fecha, parte: { n: f.cliente_nombre, rif: f.cliente_rif, dom: f.cliente_dom || '' }, alic: Number(f.alicuota) || 0, igtf: !!f.igtf, cond: f.condicion, items: Array.isArray(f.items) ? f.items : [], _id: f.id, estado: f.estado || 'Por cobrar' };
         if (tb) {
           const fc = (f.fecha || '').slice(0, 6) + (f.fecha || '').slice(8);
           const tr = document.createElement('tr');
           tr.innerHTML = '<td>' + fc + '</td><td class="mono">' + f.numero + '</td><td class="mono">' + (f.control || '') + '</td>'
             + '<td class="primary">' + (f.cliente_nombre || '') + '</td><td class="mono">' + (f.cliente_rif || '') + '</td>'
-            + '<td class="num">' + fmt(Number(f.total) || 0) + '</td><td><span class="tag ' + (/cobrada|pagada/i.test(f.estado || '') ? 'success' : /abonada/i.test(f.estado || '') ? 'warn' : 'cyan') + '">' + (f.estado || 'Por cobrar') + '</span></td>'
+            + '<td class="num">' + fmt(Number(f.total) || 0) + '</td><td><span class="tag ' + (/anulada/i.test(f.estado || '') ? 'danger' : /cobrada|pagada/i.test(f.estado || '') ? 'success' : /abonada/i.test(f.estado || '') ? 'warn' : 'cyan') + '">' + (f.estado || 'Por cobrar') + '</span></td>'
             + '<td><button class="btn btn-ghost" data-ver-factura="' + f.numero + '" style="height:26px;font-size:11px;padding:0 9px;white-space:nowrap;"><i data-lucide="eye"></i> Ver</button></td>';
           tb.appendChild(tr);
           tr.querySelector('[data-ver-factura]').addEventListener('click', () => openFactura(f.numero));
         }
       });
-      const arr = data || [];
+      // Los recibos ANULADOS no cuentan en los KPIs
+      const arr = (data || []).filter((f) => !/anulada/i.test(f.estado || ''));
       const tot = arr.reduce((s, f) => s + (Number(f.total) || 0), 0);
       const setK = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
       setK('ventKpiFacturado', fmt(tot));
