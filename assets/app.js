@@ -127,6 +127,10 @@
     function aplicarFiscal(activo) {
       const nav = document.getElementById('navFiscal');
       if (nav) nav.hidden = !activo;
+      // El atajo "Libro de Ventas →" (dentro de Ventas) SOLO existe si hay módulo Fiscal;
+      // si la empresa no lo tiene, no debe verse (eso lo maneja el contador).
+      const libroLink = document.getElementById('ventasLibroLink');
+      if (libroLink) libroLink.hidden = !activo;
       const sel = document.getElementById('fiscalActivoSel');
       if (sel) sel.value = activo ? 'on' : 'off';
       // Si se desactiva mientras se está viendo Fiscal, salir a la primera vista visible
@@ -2566,6 +2570,12 @@
     async function registrarMovimiento(pre) {
       pre = pre || {};
       let fileEl = null;
+      // Recargar las cuentas de la empresa activa: garantiza que aparezcan TODAS (bancos
+      // incluidos), aunque el cobro se abra desde Ventas/CxC sin haber entrado a Tesorería.
+      if (window.sb && window.__EMPRESA_ACTIVA && window.__EMPRESA_ACTIVA.id) {
+        const { data: cc } = await window.sb.from('cuentas_tesoreria').select('*').eq('empresa_id', window.__EMPRESA_ACTIVA.id).order('creado_en');
+        if (cc) _cuentas = cc;
+      }
       // El selector incluye bancos Y la Caja (efectivo). Si no hay caja, se crea sola al usarla.
       const cajaExist = _cuentas.find((c) => /efectivo|caja/i.test((c.tipo || '') + ' ' + (c.nombre || '')));
       const cuentaOpts = _cuentas.map((c) => ({ value: c.id, label: c.nombre }));
