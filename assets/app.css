@@ -940,6 +940,7 @@
     max-width: 100%;
     overflow-x: auto;
   }
+  .subtabs button[hidden] { display: none !important; }
   .subtabs button {
     border: 0;
     background: transparent;
