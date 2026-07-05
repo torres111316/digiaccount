@@ -26,6 +26,23 @@
       const el = document.getElementById(id);
       if (el && el.type === 'date') el.value = window.__hoyISO();
     });
+    // Normaliza las etiquetas de período que quedaron fijas ("Mayo 2026") al MES ACTUAL
+    try {
+      const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+      const d = new Date();
+      const label = MESES[d.getMonth()] + ' ' + d.getFullYear();
+      const ym = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+      const rxMes = /May(o)?\s*2026/g;
+      const rxYm = /2026-05/g;
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      let node;
+      while ((node = walker.nextNode())) {
+        if (rxMes.test(node.nodeValue)) node.nodeValue = node.nodeValue.replace(rxMes, label);
+        rxMes.lastIndex = 0;
+        if (rxYm.test(node.nodeValue)) node.nodeValue = node.nodeValue.replace(rxYm, ym);
+        rxYm.lastIndex = 0;
+      }
+    } catch (e) {}
   });
 
   /* ---------- Iconos ---------- */
@@ -115,6 +132,7 @@
         if (window.cargarBoveda) window.cargarBoveda();
         if (window.cargarTesoreria) window.cargarTesoreria();
         if (window.cargarRetenciones) window.cargarRetenciones();
+        if (window.__aplicarModoDoc) window.__aplicarModoDoc(); // letrero de modo (recibos/homologado) + RIF en Ventas
         if (window.cargarParametros) window.cargarParametros();
         if (window.cargarEmpleados) window.cargarEmpleados();
         if (window.cargarDashboard) window.cargarDashboard();
@@ -216,19 +234,6 @@
   }
 
   /* =========================================================
-     DATE RANGE + CURRENCY TOGGLE (segmentos genéricos)
-     ========================================================= */
-  const dateRange = document.getElementById('dateRange');
-  if (dateRange) {
-    dateRange.querySelectorAll('button').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        dateRange.querySelectorAll('button').forEach((b) => b.removeAttribute('data-active'));
-        btn.dataset.active = 'true';
-      });
-    });
-  }
-
-  /* =========================================================
      VIEW SWITCHING (nav items → views)
      ========================================================= */
   const views = document.querySelectorAll('.view');
@@ -249,6 +254,8 @@
     // En móvil/ventana angosta el scroll suele estar en el body: súbelo al inicio
     // para que la vista recién abierta quede visible y no "debajo del pliegue".
     if (window.scrollY) window.scrollTo(0, 0);
+    // El Dashboard SIEMPRE se refresca con datos reales al abrirlo
+    if (viewId === 'dashboard' && window.cargarDashboard) { try { window.cargarDashboard(); } catch (e) {} }
     drawIcons();
   }
   window.showView = showView;
@@ -1209,7 +1216,7 @@
       const doc = document.createElement('div');
       doc.className = 'conta-print';
       if (!opts.noHead) {
-        doc.innerHTML = '<div class="cp-head"><div class="cp-co">Agroinversiones Valle, C.A. · RIF J-30456789-0</div>'
+        doc.innerHTML = '<div class="cp-head"><div class="cp-co">' + (((window.__EMPRESA_ACTIVA || {}).n) || '—') + ' · RIF ' + (((window.__EMPRESA_ACTIVA || {}).rif) || '—') + '</div>'
           + '<div class="cp-title">' + (opts.titulo || '') + '</div>'
           + '<div class="cp-sub">' + (opts.sub || 'Ejercicio 2026 · Expresado en bolívares (Bs)') + '</div></div>';
       }
@@ -2693,6 +2700,7 @@
               // El recibo asociado pasa a "Cobrada" (o "Abonada" si fue parcial)
               if (v.tipo === 'ingreso' && v.factura) actualizarEstadoRecibo(v.factura.trim());
               cargarTesoreria();
+              if (window.cargarDashboard) window.cargarDashboard();
             });
           };
           const proceder = (cuentaId) => {
@@ -4521,7 +4529,7 @@
 
       doc.innerHTML =
         '<div class="recibo-head">'
-        + '<div><div class="rh-co">Agroinversiones Valle, C.A.</div><div class="rh-meta"><span class="mono">RIF J-30456789-0</span><br>Av. Intercomunal, Galpón 4, Valencia, Edo. Carabobo</div></div>'
+        + '<div><div class="rh-co">' + (((window.__EMPRESA_ACTIVA || {}).n) || '—') + '</div><div class="rh-meta"><span class="mono">RIF ' + (((window.__EMPRESA_ACTIVA || {}).rif) || '—') + '</span></div></div>'
         + '<div class="rh-kind"><div class="k">' + k.title + '</div><div class="num">N° ' + numDoc + '</div></div>'
         + '</div>'
         + '<div class="recibo-party">'
@@ -4777,7 +4785,7 @@
 
       doc.innerHTML =
         '<div class="recibo-head">'
-        + '<div><div class="rh-co">Agroinversiones Valle, C.A.</div><div class="rh-meta"><span class="mono">RIF J-30456789-0</span><br>Av. Intercomunal, Galpón 4, Valencia, Edo. Carabobo</div></div>'
+        + '<div><div class="rh-co">' + (((window.__EMPRESA_ACTIVA || {}).n) || '—') + '</div><div class="rh-meta"><span class="mono">RIF ' + (((window.__EMPRESA_ACTIVA || {}).rif) || '—') + '</span></div></div>'
         + '<div class="rh-kind"><div class="k">Recibo de Pago</div><div class="num">N° ' + numDoc + '</div></div>'
         + '</div>'
         + '<div class="recibo-party">'
@@ -5125,7 +5133,13 @@
     const modalTitle = document.getElementById('facturaModalTitle');
     if (!overlay || !doc) return;
 
-    const EMPRESA = { n: 'Agroinversiones Valle, C.A.', rif: 'J-30456789-0', dom: 'Av. Intercomunal, Galpón 4, Valencia, Edo. Carabobo', cond: 'Contribuyente Especial' };
+    // Datos del emisor/receptor propios: SIEMPRE la empresa activa real (nunca quemados)
+    const EMPRESA = {
+      get n() { return (window.__EMPRESA_ACTIVA || {}).n || '—'; },
+      get rif() { return (window.__EMPRESA_ACTIVA || {}).rif || '—'; },
+      get dom() { return (window.__EMPRESA_ACTIVA || {}).dom || ''; },
+      get cond() { return (window.__EMPRESA_ACTIVA || {}).cond || ''; },
+    };
     const IMPRENTA = { n: 'Gráficas El Sol, C.A.', rif: 'J-31002030-4', prov: 'SNAT/INTI/GRTI/RCO/2024/0185', desde: '00012001', hasta: '00015000' };
     const MAQ = { n: 'Z7C0025982', serial: 'VE-FISCAL-0044712', modelo: 'The Factory HKA PP-80 (homologado SENIAT)' };
     const ELEC = { prov: 'DigiFactura Electrónica, C.A.', rif: 'J-40551203-7', prov_aut: 'SNAT/2024/00102-DE-0087' };
@@ -5510,7 +5524,7 @@
       }
       function open() {
         clientes = (window.__clientes ? window.__clientes() : []);
-        if (!clientes.length) clientes = [{ n: 'Comercial Andina, C.A.', rif: 'J319876542', dom: 'Av. Lara, Barquisimeto, Edo. Lara' }];
+        if (!clientes.length) clientes = [{ n: '(Aún no hay clientes con recibos)', rif: '—', dom: '' }];
         selCli.innerHTML = clientes.map((c, i) => '<option value="' + i + '">' + c.n + '</option>').join('');
         fillCliente(clientes[0]);
         linesEl.innerHTML = ''; addLine();
@@ -5600,6 +5614,7 @@
             }
             if (window.cargarTesoreria) window.cargarTesoreria(); // refresca CxC con el nuevo recibo
             if (window.cargarFacturas) window.cargarFacturas();   // refresca la lista y los KPIs de Ventas
+            if (window.cargarDashboard) window.cargarDashboard(); // refresca los KPIs del Dashboard
           });
           // Descontar el stock del inventario por cada producto vendido
           const ups = items.filter((it) => it.pid).map((it) => {
@@ -5696,7 +5711,16 @@
     // Aplica el modo de documento. En 'recibo' (por defecto) cambia los textos visibles
     // a "Recibo" y oculta lo fiscal. En 'factura' (al homologar) deja los textos originales.
     function aplicarModoDoc() {
-      if (!(window.__esRecibo ? window.__esRecibo() : true)) return; // modo factura = textos fiscales originales
+      const esRec = window.__esRecibo ? window.__esRecibo() : true;
+      // Letrero del modo REAL: recibos (sin homologar) o facturación homologada
+      const modoBadge = document.getElementById('ventasModoBadge');
+      if (modoBadge) modoBadge.innerHTML = esRec
+        ? '<i data-lucide="receipt"></i> Recibos de venta'
+        : '<i data-lucide="shield-check"></i> Facturación homologada';
+      // RIF de la empresa activa (nada de RIF quemado)
+      const ventasRif = document.getElementById('ventasRif');
+      if (ventasRif) ventasRif.textContent = (window.__EMPRESA_ACTIVA && window.__EMPRESA_ACTIVA.rif) || '—';
+      if (!esRec) return; // modo factura = textos fiscales originales
       const nb = document.getElementById('nuevaFacturaBtn'); if (nb) nb.innerHTML = '<i data-lucide="plus"></i> Nuevo recibo';
       const mb = document.getElementById('medioEmisionBtn'); if (mb) mb.style.display = 'none';
       document.querySelectorAll('#view-ventas .overline').forEach((ov) => { if (/Facturaci/i.test(ov.textContent)) ov.textContent = 'Recibos de venta'; });
@@ -5712,6 +5736,7 @@
       if (window.lucide) window.lucide.createIcons();
     }
     aplicarModoDoc();
+    window.__aplicarModoDoc = aplicarModoDoc;
     cargarFacturas();
     drawIcons();
   })();
@@ -5727,15 +5752,16 @@
     if (!overlay || !doc) return;
     const toast = (m, t) => { if (window.toast) window.toast(m, t); };
     const fmt = (n) => Number(n).toLocaleString('es-VE', { minimumFractionDigits: 0 });
-    const EMPRESA = { n: 'Agroinversiones Valle, C.A.', rif: 'J-30456789-0', dom: 'Av. Intercomunal, Galpón 4, Valencia, Edo. Carabobo' };
-
-    // Catálogo de guías (memoria). Las de ejemplo replican los renglones de su factura.
-    const DB = {
-      'GD-00031': { fecha: '28/05/2026', factura: 'A-00012841', cliente: { n: 'Comercial Andina, C.A.', rif: 'J-31987654-2', dom: 'Av. Lara, Barquisimeto, Edo. Lara' }, transp: { emp: 'Transporte propio', chofer: 'L. Rodríguez', ci: 'V-14.332.110', placa: 'A45BC1D', veh: 'Camión NPR' }, estado: 'Entregado', items: [{ c: 'ART-001', d: 'Café Premium 1 kg', q: 20, u: 'kg' }, { c: 'ART-002', d: 'Surtido de víveres (varios)', q: 1, u: 'bulto' }] },
-      'GD-00030': { fecha: '27/05/2026', factura: 'A-00012839', cliente: { n: 'Supermercados El Sol, C.A.', rif: 'J-30776554-1', dom: 'Av. Bolívar, Caracas' }, transp: { emp: 'Encava 0034', chofer: 'J. Pérez', ci: 'V-12.998.221', placa: 'AA123BB', veh: 'Encava 610' }, estado: 'En ruta', items: [{ c: 'ART-001', d: 'Café Premium 1 kg', q: 50, u: 'kg' }, { c: 'ART-002', d: 'Aceite vegetal 1 L', q: 100, u: 'und' }, { c: 'ART-003', d: 'Surtido mayorista', q: 1, u: 'lote' }] },
-      'GD-00029': { fecha: '26/05/2026', factura: 'A-00012838', cliente: { n: 'Distribuidora Mérida, C.A.', rif: 'J-29881220-4', dom: 'Av. Las Américas, Mérida' }, transp: { emp: 'Cootransporte C.A.', chofer: 'M. Sánchez', ci: 'V-10.554.873', placa: 'AB456CD', veh: 'Furgón 350' }, estado: 'Entregado', items: [{ c: 'ART-001', d: 'Harina de maíz 1 kg', q: 100, u: 'kg' }, { c: 'ART-002', d: 'Surtido de víveres', q: 1, u: 'bulto' }] },
+    // Empresa emisora de la guía: SIEMPRE la empresa activa real
+    const EMPRESA = {
+      get n() { return (window.__EMPRESA_ACTIVA || {}).n || '—'; },
+      get rif() { return (window.__EMPRESA_ACTIVA || {}).rif || '—'; },
+      get dom() { return (window.__EMPRESA_ACTIVA || {}).dom || ''; },
     };
-    let seq = 32; // siguiente correlativo
+
+    // Catálogo de guías (memoria de la sesión; sin datos de ejemplo)
+    const DB = {};
+    let seq = 1; // siguiente correlativo
 
     function bultos(items) { return items.reduce((a, it) => a + Number(it.q), 0); }
 
