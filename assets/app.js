@@ -744,7 +744,7 @@
           { name: 'tipo', label: 'Impuesto', type: 'select', options: ['IVA', 'ISLR'] },
           { name: 'concepto', label: 'Concepto de retención (ISLR)', col: 2, type: 'select', options: CONCEPTOS_ISLR.map((c) => c.act) },
           { name: 'sujeto', label: 'Tipo de sujeto (ISLR)', type: 'select', options: [{ value: 'PNR', label: 'PN Residente' }, { value: 'PNNR', label: 'PN No Residente' }, { value: 'PJD', label: 'PJ Domiciliada' }, { value: 'PJND', label: 'PJ No Domiciliada' }] },
-          { name: 'fecha', label: 'Fecha', type: 'date', value: '2026-06-01' },
+          { name: 'fecha', label: 'Fecha', type: 'date', value: window.__hoyISO() },
           { name: 'nombre', label: 'Tercero (escribe iniciales y elige)', col: 2, type: 'datalist', options: terceros.map((t) => t.nombre), placeholder: 'Proveedor o cliente…' },
           { name: 'rif', label: 'RIF (mayúscula, sin guiones)', upper: true, placeholder: 'J123456789' },
           { name: 'factura', label: 'Factura afectada (elige una registrada)', type: 'datalist', options: [], placeholder: 'Primero elige el tercero…' },
@@ -2551,6 +2551,18 @@
         },
       });
     }
+    // Tras un cobro, actualiza el ESTADO del recibo: Cobrada (total) o Abonada (parcial)
+    async function actualizarEstadoRecibo(ref) {
+      try {
+        const { data: f } = await window.sb.from('facturas').select('id, total').eq('numero', ref).eq('tipo', 'venta').maybeSingle();
+        if (!f) return;
+        const { data: movs } = await window.sb.from('movimientos_tesoreria').select('monto').eq('factura_ref', ref).eq('tipo', 'ingreso');
+        const pagado = (movs || []).reduce((s, m) => s + (Number(m.monto) || 0), 0);
+        const estado = pagado >= (Number(f.total) || 0) - 0.01 ? 'Cobrada' : 'Abonada';
+        await window.sb.from('facturas').update({ estado: estado }).eq('id', f.id);
+        if (window.cargarFacturas) window.cargarFacturas();
+      } catch (e) { console.warn('[Tesorería] No se pudo actualizar el estado del recibo:', e); }
+    }
     async function registrarMovimiento(pre) {
       pre = pre || {};
       let fileEl = null;
@@ -2568,7 +2580,7 @@
         fields: [
           { name: 'cuenta', label: 'Cuenta / Caja (banco o efectivo)', col: 2, type: 'select', options: cuentaOpts },
           { name: 'tipo', label: 'Tipo de movimiento', type: 'select', value: pre.tipo || 'ingreso', options: [{ value: 'ingreso', label: 'Ingreso · cobro de una venta' }, { value: 'egreso', label: 'Egreso · pago de una compra' }] },
-          { name: 'fecha', label: 'Fecha', type: 'date', value: '2026-06-01' },
+          { name: 'fecha', label: 'Fecha', type: 'date', value: window.__hoyISO() },
           { name: 'tercero', label: 'Cliente (a quién le cobras)', col: 2, type: 'datalist', value: pre.tercero || '', options: [], placeholder: 'Escribe las iniciales y elige' },
           { name: 'factura', label: 'Recibo de venta asociado', type: 'datalist', value: pre.factura || '', options: [], placeholder: 'Elige primero el cliente' },
           { name: 'concepto', label: 'Concepto', col: 2, placeholder: 'Se completa solo al elegir la factura' },
@@ -2668,6 +2680,8 @@
                   });
                 }
               }
+              // El recibo asociado pasa a "Cobrada" (o "Abonada" si fue parcial)
+              if (v.tipo === 'ingreso' && v.factura) actualizarEstadoRecibo(v.factura.trim());
               cargarTesoreria();
             });
           };
@@ -2685,6 +2699,7 @@
           if (v.cuenta === '__caja__') {
             window.sb.from('cuentas_tesoreria').insert({ cuenta_id: window.__CUENTA_ID, empresa_id: window.__EMPRESA_ACTIVA.id, nombre: 'Caja (Efectivo)', tipo: 'Efectivo / Caja', moneda: 'Bs', saldo_inicial: 0, color: '#1c8f5a' }).select().single().then(({ data, error }) => {
               if (error || !data) { toast('No se pudo crear la Caja: ' + (error && error.message), 'error'); return; }
+              _cuentas.push(data); // que el asiento la reconozca como CAJA (no Bancos)
               proceder(data.id);
             });
           } else { proceder(v.cuenta); }
@@ -2700,7 +2715,7 @@
           { name: 'origen', label: 'Desde (sale el dinero)', col: 2, type: 'select', options: opts },
           { name: 'destino', label: 'Hacia (entra el dinero)', col: 2, type: 'select', options: opts },
           { name: 'monto', label: 'Monto (Bs)', type: 'number', step: '0.01', placeholder: '0.00' },
-          { name: 'fecha', label: 'Fecha', type: 'date', value: '2026-06-01' },
+          { name: 'fecha', label: 'Fecha', type: 'date', value: window.__hoyISO() },
           { name: 'concepto', label: 'Concepto', col: 2, value: 'Transferencia entre cuentas' },
         ],
         onSave: (v) => {
@@ -5566,6 +5581,7 @@
               window.__postAsiento('Venta s/' + (esRec ? 'recibo ' : 'factura ') + num + ' · ' + cli.n, num, ln, 'auto').then((r) => { if (r && r.error) console.warn('[DigiAccount] No se pudo contabilizar la venta:', r.error.message); });
             }
             if (window.cargarTesoreria) window.cargarTesoreria(); // refresca CxC con el nuevo recibo
+            if (window.cargarFacturas) window.cargarFacturas();   // refresca la lista y los KPIs de Ventas
           });
           // Descontar el stock del inventario por cada producto vendido
           const ups = items.filter((it) => it.pid).map((it) => {
@@ -5624,7 +5640,7 @@
           const tr = document.createElement('tr');
           tr.innerHTML = '<td>' + fc + '</td><td class="mono">' + f.numero + '</td><td class="mono">' + (f.control || '') + '</td>'
             + '<td class="primary">' + (f.cliente_nombre || '') + '</td><td class="mono">' + (f.cliente_rif || '') + '</td>'
-            + '<td class="num">' + fmt(Number(f.total) || 0) + '</td><td><span class="tag cyan">' + (f.estado || 'Por cobrar') + '</span></td>'
+            + '<td class="num">' + fmt(Number(f.total) || 0) + '</td><td><span class="tag ' + (/cobrada|pagada/i.test(f.estado || '') ? 'success' : /abonada/i.test(f.estado || '') ? 'warn' : 'cyan') + '">' + (f.estado || 'Por cobrar') + '</span></td>'
             + '<td><button class="btn btn-ghost" data-ver-factura="' + f.numero + '" style="height:26px;font-size:11px;padding:0 9px;white-space:nowrap;"><i data-lucide="eye"></i> Ver</button></td>';
           tb.appendChild(tr);
           tr.querySelector('[data-ver-factura]').addEventListener('click', () => openFactura(f.numero));
@@ -5638,6 +5654,20 @@
       setK('ventTabCount', String(arr.length));
       setK('ventKpiTicket', fmt(arr.length ? tot / arr.length : 0));
       setK('ventTotalToolbar', 'Bs ' + fmt(tot));
+      // Cobrado y Por cobrar REALES: suma de los cobros (movimientos) vinculados a cada recibo
+      try {
+        let cobrado = 0;
+        const refs = arr.map((f) => f.numero).filter(Boolean);
+        if (refs.length) {
+          const { data: movs } = await window.sb.from('movimientos_tesoreria')
+            .select('monto, factura_ref').eq('tipo', 'ingreso').in('factura_ref', refs);
+          const porRef = {};
+          (movs || []).forEach((m) => { porRef[m.factura_ref] = (porRef[m.factura_ref] || 0) + (Number(m.monto) || 0); });
+          arr.forEach((f) => { cobrado += Math.min(porRef[f.numero] || 0, Number(f.total) || 0); });
+        }
+        setK('ventKpiCobrado', fmt(cobrado));
+        setK('ventKpiCobrar', fmt(Math.max(0, tot - cobrado)));
+      } catch (e) { console.warn('[Ventas] KPIs de cobro:', e); }
       console.log('[DigiAccount] Facturas cargadas:', arr.length);
       drawIcons();
     }
@@ -6234,7 +6264,7 @@
         title: esCompra ? 'Registrar compra (Libro de Compras)' : 'Registrar venta (Libro de Ventas)',
         saveLabel: 'Registrar en el libro',
         fields: [
-          { name: 'fecha', label: 'Fecha de la factura', type: 'date', value: '2026-06-01' },
+          { name: 'fecha', label: 'Fecha de la factura', type: 'date', value: window.__hoyISO() },
           { name: 'tipoDoc', label: 'Tipo de documento', type: 'select', options: esCompra ? ['FC (Factura)', 'NC (Nota de crédito)', 'ND (Nota de débito)'] : ['FV (Factura de venta)', 'NC (Nota de crédito)', 'ND (Nota de débito)'] },
           { name: 'nombre', label: (esCompra ? 'Proveedor' : 'Cliente') + ' (escribe las iniciales y elige)', col: 2, type: 'datalist', options: terceros.map((t) => t.nombre), placeholder: 'Ej. Sum… → Suministros Lara, C.A.' },
           { name: 'rif', label: 'RIF / C.I. (mayúscula, sin guiones)', upper: true, placeholder: 'J123456789' },
