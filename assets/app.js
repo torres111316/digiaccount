@@ -5533,7 +5533,7 @@
       document.getElementById('fvCancel').addEventListener('click', close);
       // Clic fuera NO cierra (evita perder datos del formulario). Usa Cancelar o la X.
 
-      document.getElementById('fvEmitir').addEventListener('click', () => {
+      document.getElementById('fvEmitir').addEventListener('click', async () => {
         const setMsg = (m) => { msgEl.textContent = m; msgEl.classList.add('error'); };
         msgEl.classList.remove('error'); msgEl.textContent = '';
         const cli = clientes[parseInt(selCli.value, 10)];
@@ -5555,19 +5555,27 @@
         if (!items.length) return setMsg('Agrega al menos un renglón: elige un producto, una cantidad y un precio.');
         if (stockError) return setMsg(stockError);
         const esRec = window.__esRecibo ? window.__esRecibo() : true;
+        // Correlativo REAL: se consulta a la BASE DE DATOS y es POR EMPRESA.
+        // (Nunca más desde la memoria: evita heredar números de otra sesión/cuenta.)
+        let numsBD = [];
+        if (window.sb && window.__EMPRESA_ACTIVA && window.__EMPRESA_ACTIVA.id) {
+          const { data: fs } = await window.sb.from('facturas').select('numero, control')
+            .eq('tipo', 'venta').eq('empresa_id', window.__EMPRESA_ACTIVA.id);
+          numsBD = fs || [];
+        }
         let num, ctrl;
         if (esRec) {
-          const recs = Object.keys(DB).filter((k) => /^REC-/.test(k)).map((k) => parseInt(k.slice(4), 10)).filter((n) => !isNaN(n));
+          const recs = numsBD.map((f) => /^REC-/.test(f.numero || '') ? parseInt(f.numero.slice(4), 10) : NaN).filter((n) => !isNaN(n));
           num = 'REC-' + String((recs.length ? Math.max(...recs) : 0) + 1).padStart(6, '0');
           ctrl = '';
         } else {
-          const nums = Object.keys(DB).filter((k) => /^A-/.test(k)).map((k) => parseInt(k.slice(2), 10));
-          num = 'A-' + String((nums.length ? Math.max(...nums) : 12841) + 1).padStart(8, '0');
-          const ctrls = Object.values(DB).map((f) => parseInt((f.control || '').replace(/\D/g, ''), 10)).filter((n) => !isNaN(n));
-          ctrl = '00-' + String((ctrls.length ? Math.max(...ctrls) : 31284) + 1).padStart(6, '0');
+          const nums = numsBD.map((f) => /^A-/.test(f.numero || '') ? parseInt(f.numero.slice(2), 10) : NaN).filter((n) => !isNaN(n));
+          num = 'A-' + String((nums.length ? Math.max(...nums) : 0) + 1).padStart(8, '0');
+          const ctrls = numsBD.map((f) => parseInt((f.control || '').replace(/\D/g, ''), 10)).filter((n) => !isNaN(n));
+          ctrl = '00-' + String((ctrls.length ? Math.max(...ctrls) : 0) + 1).padStart(6, '0');
         }
         const fechaRaw = document.getElementById('fvFecha').value;
-        const fecha = fechaRaw ? fechaRaw.split('-').reverse().join('/') : '31/05/2026';
+        const fecha = fechaRaw ? fechaRaw.split('-').reverse().join('/') : (function () { const d = new Date(); return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear(); })();
         const alic = esRec ? 0 : (parseFloat(document.getElementById('fvAlic').value) || 0);
         DB[num] = { tipo: 'venta', control: ctrl, fecha: fecha, parte: { n: cli.n, rif: cli.rif, dom: cli.dom || '' }, alic: alic, igtf: igtfChk.checked, cond: document.getElementById('fvCond').value, items: items };
         const t = calcFactura(DB[num]);
@@ -5641,6 +5649,8 @@
       if (!window.sb) return;
       const { data, error } = await window.sb.from('facturas').select('*').eq('tipo', 'venta').order('creado_en', { ascending: false });
       if (error) { console.warn('[DigiAccount] No se pudieron cargar facturas:', error.message); return; }
+      // Limpiar la memoria antes de rellenar: sin residuos de otra cuenta/sesión
+      Object.keys(DB).forEach((k) => delete DB[k]);
       const tb = document.querySelector('.ventas-tab[data-tab="facturas"] table.data-table tbody');
       if (tb) tb.innerHTML = '';
       (data || []).forEach((f) => {
@@ -7455,14 +7465,9 @@
       const { data, error } = await window.sb.auth.signInWithPassword({ email: email, password: pass });
       if (error) { toast('Correo o contraseña incorrectos', 'error'); return; }
       window.__marcarActividad();
-      showApp();
-      const perfil = await cargarPerfilActual();
-      if (window.__cuentaBloqueada()) { mostrarBloqueo(); return; }
-      if (window.cargarEmpresas) await window.cargarEmpresas();
-      if (window.cargarTerceros) window.cargarTerceros();
-      if (window.cargarProductos) window.cargarProductos();
-      if (window.cargarFacturas) window.cargarFacturas();
-      if (window.__limpiarTablasInit) window.__limpiarTablasInit();
+      // Recarga completa: contexto 100% LIMPIO para esta sesión (sin residuos en memoria
+      // de otra cuenta usada antes en la misma pestaña). El arranque con sesión hace el resto.
+      window.location.reload();
       if (perfil) {
         const plan = perfil.cuentas && perfil.cuentas.planes ? perfil.cuentas.planes.nombre : '';
         toast('Bienvenido, ' + String(perfil.nombre || '').split(' ')[0] + (plan ? ' · ' + plan : ''), 'success');
@@ -7500,17 +7505,10 @@
       // Si Supabase aún exige confirmar el correo, no hay sesión todavía
       if (!data.session) { toast('Te enviamos un correo para confirmar tu cuenta. Revísalo para entrar.', 'success'); setTab('login'); return; }
       window.__marcarActividad();
-      showApp();
-      await cargarPerfilActual();
-      if (window.__cuentaBloqueada()) { toast('Cuenta creada · en revisión para activación', 'success'); mostrarBloqueo(); return; }
-      if (window.cargarEmpresas) window.cargarEmpresas();
-      if (window.cargarTerceros) window.cargarTerceros();
-      if (window.cargarProductos) window.cargarProductos();
-      if (window.cargarFacturas) window.cargarFacturas();
-      toast('Cuenta creada · ¡bienvenido, ' + name.split(' ')[0] + '!', 'success');
-      // Funnel: cuenta creada → elegir plan → onboarding de empresa → sistema
-      if (window.openPlanOnboarding) setTimeout(() => window.openPlanOnboarding(segmento, name), 350);
-      else if (window.openCompanyWizard) setTimeout(() => window.openCompanyWizard({ fromSignup: true }), 400);
+      // El onboarding (elegir plan) continúa DESPUÉS de la recarga (contexto limpio)
+      try { sessionStorage.setItem('da_onboarding', JSON.stringify({ seg: segmento, nombre: name })); } catch (e) {}
+      // Recarga completa: contexto 100% LIMPIO para la cuenta nueva (sin residuos en memoria)
+      window.location.reload();
     });
     document.getElementById('forgotForm').addEventListener('submit', (e) => {
       e.preventDefault();
@@ -7543,6 +7541,16 @@
         }
         window.__marcarActividad();
         showApp(); await cargarPerfilActual(); if (window.__cuentaBloqueada()) { mostrarBloqueo(); return; } if (window.cargarEmpresas) await window.cargarEmpresas(); if (window.cargarTerceros) window.cargarTerceros(); if (window.cargarProductos) window.cargarProductos(); if (window.cargarFacturas) window.cargarFacturas(); if (window.__limpiarTablasInit) window.__limpiarTablasInit();
+        // Si venimos de un registro recién hecho, continuar el onboarding (elegir plan)
+        try {
+          const ob = sessionStorage.getItem('da_onboarding');
+          if (ob) {
+            sessionStorage.removeItem('da_onboarding');
+            const o = JSON.parse(ob);
+            if (window.openPlanOnboarding) setTimeout(() => window.openPlanOnboarding(o.seg, o.nombre), 600);
+            else if (window.openCompanyWizard) setTimeout(() => window.openCompanyWizard({ fromSignup: true }), 600);
+          }
+        } catch (e) {}
       }
     });
   })();
