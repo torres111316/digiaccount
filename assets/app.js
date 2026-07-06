@@ -2534,10 +2534,44 @@
         if (error) { toast('No se pudo eliminar: ' + error.message, 'error'); return; }
         toast('Cuenta eliminada', 'success'); cargarTesoreria();
       } else if (dm) {
-        if (!window.confirm('¿Eliminar este movimiento?')) return;
+        const mov = _movs.find((m) => m.id === dm.dataset.tesoDelmov);
+        const vinculado = mov && mov.factura_ref && mov.tercero_nombre;
+        if (!window.confirm('¿Eliminar este movimiento?' + (vinculado ? '\n\nComo está vinculado al documento ' + mov.factura_ref + ', se generará el asiento de REVERSO y se recalculará su estado (vuelve a quedar por cobrar/pagar).' : ''))) return;
         const { error } = await window.sb.from('movimientos_tesoreria').delete().eq('id', dm.dataset.tesoDelmov);
         if (error) { toast('No se pudo eliminar: ' + error.message, 'error'); return; }
-        toast('Movimiento eliminado', 'success'); cargarTesoreria();
+        // Reverso contable del cobro/pago eliminado (misma lógica de anticipos con que se contabilizó)
+        if (vinculado && window.__postAsiento) {
+          const refDoc = (mov.factura_ref || '').trim();
+          const doc = _facturas.find((x) => (x.ref || '') === refDoc && x.tipo === (mov.tipo === 'ingreso' ? 'venta' : 'compra'));
+          const totalDoc = doc ? (Number(doc.total) || 0) : null;
+          const previoSin = _movs.filter((m) => m.id !== mov.id && m.tipo === mov.tipo && (m.factura_ref || '').trim() === refDoc)
+            .reduce((s, m) => s + (Number(m.monto) || 0), 0);
+          const monto = Number(mov.monto) || 0;
+          const pend = (totalDoc == null) ? monto : Math.max(0, totalDoc - previoSin);
+          const aplicado = Math.min(monto, pend);
+          const exceso = Math.round((monto - aplicado) * 100) / 100;
+          const c = _cuentas.find((x) => x.id === mov.cuenta_teso_id);
+          const esCaja = c && /efectivo|caja/i.test((c.tipo || '') + ' ' + (c.nombre || ''));
+          const ctaCash = esCaja ? '1.1.1.01 · Caja' : '1.1.1.03 · Bancos';
+          let lineas;
+          if (mov.tipo === 'ingreso') {
+            lineas = [];
+            if (aplicado > 0.005) lineas.push({ cta: '1.1.2.01 · Cuentas por cobrar comerciales', debe: aplicado, haber: 0 });
+            if (exceso > 0.005) lineas.push({ cta: '2.1.6.01 · Anticipos de clientes', debe: exceso, haber: 0 });
+            lineas.push({ cta: ctaCash, debe: 0, haber: monto });
+          } else {
+            lineas = [{ cta: ctaCash, debe: monto, haber: 0 }];
+            if (aplicado > 0.005) lineas.push({ cta: '2.1.1.01 · Cuentas por pagar comerciales', debe: 0, haber: aplicado });
+            if (exceso > 0.005) lineas.push({ cta: '1.1.4.01 · Anticipos a proveedores', debe: 0, haber: exceso });
+          }
+          window.__postAsiento('Reverso ' + (mov.tipo === 'ingreso' ? 'cobro' : 'pago') + ' ' + refDoc + ' · ' + (mov.tercero_nombre || ''), refDoc, lineas, 'auto')
+            .then((r) => { if (r && r.error) console.warn('[DigiAccount] Reverso:', r.error.message); });
+          if (mov.tipo === 'ingreso') actualizarEstadoRecibo(refDoc);
+        }
+        toast('Movimiento eliminado' + (vinculado ? ' · asiento reversado y estado recalculado' : ''), 'success');
+        cargarTesoreria();
+        if (window.cargarFacturas) window.cargarFacturas();
+        if (window.cargarDashboard) window.cargarDashboard();
       }
     });
 
@@ -2570,7 +2604,7 @@
         if (!f) return;
         const { data: movs } = await window.sb.from('movimientos_tesoreria').select('monto').eq('factura_ref', ref).eq('tipo', 'ingreso');
         const pagado = (movs || []).reduce((s, m) => s + (Number(m.monto) || 0), 0);
-        const estado = pagado >= (Number(f.total) || 0) - 0.01 ? 'Cobrada' : 'Abonada';
+        const estado = pagado >= (Number(f.total) || 0) - 0.01 ? 'Cobrada' : (pagado > 0.01 ? 'Abonada' : 'Por cobrar');
         await window.sb.from('facturas').update({ estado: estado }).eq('id', f.id);
         if (window.cargarFacturas) window.cargarFacturas();
       } catch (e) { console.warn('[Tesorería] No se pudo actualizar el estado del recibo:', e); }
