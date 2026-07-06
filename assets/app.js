@@ -132,6 +132,7 @@
         if (window.cargarBoveda) window.cargarBoveda();
         if (window.cargarTesoreria) window.cargarTesoreria();
         if (window.cargarRetenciones) window.cargarRetenciones();
+        if (window.cargarGuias) window.cargarGuias();           // guías de despacho de la empresa
         if (window.__aplicarModoDoc) window.__aplicarModoDoc(); // letrero de modo (recibos/homologado) + RIF en Ventas
         if (window.cargarParametros) window.cargarParametros();
         if (window.cargarEmpleados) window.cargarEmpleados();
@@ -5864,7 +5865,9 @@
 
     // Genera la guía: crea el registro, agrega la fila, descuenta stock y la muestra
     function generarGuia(fac, v) {
-      const num = 'GD-' + String(seq++).padStart(5, '0');
+      // Correlativo por empresa, desde lo ya cargado de la BD (DB se rellena con cargarGuias)
+      const nums = Object.keys(DB).map((k) => parseInt(k.slice(3), 10)).filter((n) => !isNaN(n));
+      const num = 'GD-' + String((nums.length ? Math.max(...nums) : 0) + 1).padStart(5, '0');
       const fecha = new Date().toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' });
       DB[num] = {
         fecha: fecha, factura: fac.num,
@@ -5873,6 +5876,14 @@
         estado: 'En ruta',
         items: fac.f.items.map((it, i) => ({ c: 'ART-' + String(i + 1).padStart(3, '0'), d: it.d, q: it.c, u: 'und' })),
       };
+      // Persistir en la base (la guía sobrevive a recargas y otras sesiones)
+      if (window.sb && window.__CUENTA_ID && window.__EMPRESA_ACTIVA && window.__EMPRESA_ACTIVA.id) {
+        window.sb.from('guias_despacho').insert({
+          cuenta_id: window.__CUENTA_ID, empresa_id: window.__EMPRESA_ACTIVA.id,
+          numero: num, fecha: fecha, factura_ref: fac.num,
+          cliente: DB[num].cliente, transporte: DB[num].transp, items: DB[num].items, estado: 'En ruta',
+        }).then(({ error }) => { if (error) console.warn('[Despachos] No se pudo guardar la guía:', error.message, '(¿creaste la tabla guias_despacho?)'); });
+      }
       addRow(num);
       // Descontar del inventario los artículos despachados (match por nombre)
       let descontados = 0;
@@ -5881,6 +5892,27 @@
       toast('Guía ' + num + ' generada · ' + (descontados ? descontados + ' de ' : '') + tot + ' unidades descontadas del inventario', 'success');
       render(num);
     }
+
+    // Carga las guías REALES de la empresa activa desde la base
+    window.cargarGuias = async function () {
+      if (!window.sb || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) return;
+      const { data, error } = await window.sb.from('guias_despacho')
+        .select('*').eq('empresa_id', window.__EMPRESA_ACTIVA.id).order('creado_en', { ascending: true });
+      if (error) { console.warn('[Despachos] No se pudieron cargar las guías:', error.message); return; }
+      Object.keys(DB).forEach((k) => delete DB[k]);
+      if (tbody) tbody.innerHTML = '';
+      (data || []).forEach((g) => {
+        DB[g.numero] = {
+          fecha: g.fecha || '', factura: g.factura_ref || '',
+          cliente: g.cliente || { n: '—', rif: '', dom: '' },
+          transp: g.transporte || { emp: '', chofer: '', ci: '', placa: '', veh: '' },
+          estado: g.estado || 'En ruta',
+          items: Array.isArray(g.items) ? g.items : [],
+        };
+        addRow(g.numero);
+      });
+      const cnt = document.getElementById('despachosCount'); if (cnt) cnt.textContent = Object.keys(DB).length;
+    };
 
     function camposTransporte(fac) {
       return [
