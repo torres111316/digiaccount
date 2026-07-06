@@ -3911,7 +3911,8 @@
         + '<td>' + cat + '</td>'
         + '<td><div class="stock-cell"><div class="qty">' + stock + ' <span class="unit">' + (p.unidad || 'und') + '</span></div><div class="stock-bar"><span style="width:60%"></span></div><div class="min-note">Mín. ' + min + '</div></div></td>'
         + '<td class="num">' + fmt(costo) + '</td><td class="num">' + fmt(Number(p.precio) || 0) + '</td><td>' + tag + '</td>'
-        + '<td class="num">' + fmt(stock * costo) + '</td><td>' + estado + '</td>';
+        + '<td class="num">' + fmt(stock * costo) + '</td><td style="white-space:nowrap;">' + estado
+        + ' <button class="btn btn-ghost" data-prod-edit="' + (p.id || '') + '" title="Editar o eliminar" style="height:22px;font-size:10px;padding:0 7px;margin-left:4px;"><i data-lucide="pencil" style="width:11px;height:11px;"></i></button></td>';
     }
     // Carga los artículos reales (modo comercial) desde Supabase y los pinta
     async function cargarProductos() {
@@ -3922,6 +3923,7 @@
       const arr = data || [];
       window.__PRODUCTOS = arr;   // disponible para el recibo (selector de productos)
       tb.innerHTML = arr.map((p) => '<tr>' + filaArticulo(p) + '</tr>').join('');
+      tb.querySelectorAll('[data-prod-edit]').forEach((b) => b.addEventListener('click', () => editarArticulo(b.dataset.prodEdit)));
       // Actualizar KPIs y contadores con datos reales
       const total = arr.length;
       const valor = arr.reduce((s, p) => s + (Number(p.stock) || 0) * (Number(p.costo) || 0), 0);
@@ -3936,13 +3938,72 @@
     window.__getProductos = () => window.__PRODUCTOS || [];
     cargarProductos();
 
+    // Categorías: las base + las que el usuario haya creado en sus productos
+    const CATS_BASE = ['Alimentos', 'Bebidas', 'Limpieza', 'Cuidado personal', 'Charcutería', 'Ferretería', 'Repuestos', 'Otros'];
+    function catsActuales() {
+      const set = {};
+      CATS_BASE.forEach((c) => { set[c] = 1; });
+      (window.__PRODUCTOS || []).forEach((p) => { if (p.categoria) set[p.categoria] = 1; });
+      return Object.keys(set).sort();
+    }
+    const UNIDADES = { 'Unidad / pieza': 'und', 'Kg': 'kg', 'Gramo': 'g', 'Litro': 'L', 'Ml': 'ml', 'Metro': 'm', 'Caja': 'caja', 'Bulto': 'bulto', 'Docena': 'doc' };
+
+    // ---- Editar / eliminar artículo ----
+    function editarArticulo(id) {
+      const p = (window.__PRODUCTOS || []).find((x) => String(x.id) === String(id));
+      if (!p) return;
+      const UNI_INV = {}; Object.keys(UNIDADES).forEach((k) => { UNI_INV[UNIDADES[k]] = k; });
+      window.openFormModal && window.openFormModal({
+        title: 'Editar artículo · ' + (p.sku || ''), saveLabel: 'Guardar cambios',
+        fields: [
+          { name: 'nombre', label: 'Nombre del artículo', col: 2, value: p.nombre || '' },
+          { name: 'cat', label: 'Categoría (elige o escribe una nueva)', type: 'datalist', options: catsActuales(), value: p.categoria || '' },
+          { name: 'unidad', label: 'Se vende por', type: 'select', options: Object.keys(UNIDADES), value: UNI_INV[p.unidad] || 'Unidad / pieza' },
+          { name: 'alic', label: 'Alícuota IVA', type: 'select', options: ['16%', '8%', 'Exento'], value: p.alicuota || '16%' },
+          { name: 'stock', label: 'Stock', type: 'number', step: '0.001', value: String(Number(p.stock) || 0) },
+          { name: 'min', label: 'Stock mínimo', type: 'number', step: '0.001', value: String(Number(p.stock_min) || 0) },
+          { name: 'costo', label: 'Costo (Bs) por unidad', type: 'number', step: '0.01', value: String(Number(p.costo) || 0) },
+          { name: 'precio', label: 'Precio venta (Bs) por unidad', type: 'number', step: '0.01', value: String(Number(p.precio) || 0) },
+        ],
+        onSave: (v) => {
+          if (!v.nombre) return 'Indica el nombre del artículo.';
+          const patch = {
+            nombre: v.nombre, categoria: (v.cat || 'Otros').trim(), alicuota: v.alic, unidad: UNIDADES[v.unidad] || 'und',
+            stock: Number(v.stock) || 0, stock_min: Number(v.min) || 0, costo: Number(v.costo) || 0, precio: Number(v.precio) || 0,
+          };
+          window.sb.from('productos').update(patch).eq('id', p.id).then(({ error }) => {
+            if (error && /unidad/.test(error.message || '')) {
+              delete patch.unidad;
+              window.sb.from('productos').update(patch).eq('id', p.id).then(({ error: e2 }) => {
+                if (e2) { toast('No se pudo guardar: ' + e2.message, 'error'); return; }
+                toast('Artículo actualizado (corre el SQL de la columna unidad)', 'info'); cargarProductos();
+              });
+              return;
+            }
+            if (error) { toast('No se pudo guardar: ' + error.message, 'error'); return; }
+            toast('Artículo actualizado', 'success'); cargarProductos();
+          });
+        },
+        onDelete: (closeModal) => {
+          const escrito = window.prompt('⚠️ Vas a ELIMINAR este artículo del inventario (no se puede deshacer).\n\nPara confirmar, escribe el nombre exacto:\n\n' + (p.nombre || ''));
+          if (escrito === null) return;
+          if ((escrito || '').trim() !== String(p.nombre || '').trim()) { toast('El nombre no coincide — eliminación cancelada.', 'info'); return; }
+          window.sb.from('productos').delete().eq('id', p.id).then(({ error }) => {
+            if (error) { toast('No se pudo eliminar: ' + error.message, 'error'); return; }
+            toast('Artículo "' + p.nombre + '" eliminado', 'success'); cargarProductos();
+          });
+          closeModal();
+        },
+      });
+    }
+
     // ---- Nuevo artículo (comercial) ----
     function nuevoArticulo() {
       window.openFormModal && window.openFormModal({
         title: 'Nuevo artículo', saveLabel: 'Crear artículo',
         fields: [
           { name: 'nombre', label: 'Nombre del artículo', col: 2, placeholder: 'Ej. Queso blanco' },
-          { name: 'cat', label: 'Categoría', type: 'select', options: ['Alimentos', 'Bebidas', 'Limpieza', 'Cuidado personal', 'Otros'] },
+          { name: 'cat', label: 'Categoría (elige o escribe una nueva)', type: 'datalist', options: catsActuales(), placeholder: 'Ej. Charcutería' },
           { name: 'unidad', label: 'Se vende por', type: 'select', options: ['Unidad / pieza', 'Kg', 'Gramo', 'Litro', 'Ml', 'Metro', 'Caja', 'Bulto', 'Docena'] },
           { name: 'alic', label: 'Alícuota IVA', type: 'select', options: ['16%', '8%', 'Exento'] },
           { name: 'stock', label: 'Stock inicial', type: 'number', step: '0.001', placeholder: '0' },
@@ -3957,7 +4018,7 @@
           const UNI = { 'Unidad / pieza': 'und', 'Kg': 'kg', 'Gramo': 'g', 'Litro': 'L', 'Ml': 'ml', 'Metro': 'm', 'Caja': 'caja', 'Bulto': 'bulto', 'Docena': 'doc' };
           const fila = {
             cuenta_id: window.__CUENTA_ID,
-            nombre: v.nombre, sku: sku, categoria: v.cat, alicuota: v.alic,
+            nombre: v.nombre, sku: sku, categoria: (v.cat || 'Otros').trim(), alicuota: v.alic,
             unidad: UNI[v.unidad] || 'und',
             stock: Number(v.stock) || 0, stock_min: Number(v.min) || 0,
             costo: Number(v.costo) || 0, precio: Number(v.precio) || 0,
