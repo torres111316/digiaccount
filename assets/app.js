@@ -3904,7 +3904,7 @@
       const nombre = p.nombre || '', sku = p.sku || '', cat = p.categoria || '';
       return '<td><div class="prod-cell"><div class="prod-thumb"><i data-lucide="package"></i></div><div class="info"><div class="n">' + nombre + '</div><div class="sku">' + sku + '</div></div></div></td>'
         + '<td>' + cat + '</td>'
-        + '<td><div class="stock-cell"><div class="qty">' + stock + ' <span class="unit">uds</span></div><div class="stock-bar"><span style="width:60%"></span></div><div class="min-note">Mín. ' + min + '</div></div></td>'
+        + '<td><div class="stock-cell"><div class="qty">' + stock + ' <span class="unit">' + (p.unidad || 'und') + '</span></div><div class="stock-bar"><span style="width:60%"></span></div><div class="min-note">Mín. ' + min + '</div></div></td>'
         + '<td class="num">' + fmt(costo) + '</td><td class="num">' + fmt(Number(p.precio) || 0) + '</td><td>' + tag + '</td>'
         + '<td class="num">' + fmt(stock * costo) + '</td><td>' + estado + '</td>';
     }
@@ -3936,25 +3936,37 @@
       window.openFormModal && window.openFormModal({
         title: 'Nuevo artículo', saveLabel: 'Crear artículo',
         fields: [
-          { name: 'nombre', label: 'Nombre del artículo', col: 2, placeholder: 'Ej. Caraotas negras 1 kg' },
+          { name: 'nombre', label: 'Nombre del artículo', col: 2, placeholder: 'Ej. Queso blanco' },
           { name: 'cat', label: 'Categoría', type: 'select', options: ['Alimentos', 'Bebidas', 'Limpieza', 'Cuidado personal', 'Otros'] },
+          { name: 'unidad', label: 'Se vende por', type: 'select', options: ['Unidad / pieza', 'Kg', 'Gramo', 'Litro', 'Ml', 'Metro', 'Caja', 'Bulto', 'Docena'] },
           { name: 'alic', label: 'Alícuota IVA', type: 'select', options: ['16%', '8%', 'Exento'] },
-          { name: 'stock', label: 'Stock inicial', type: 'number', placeholder: '0' },
-          { name: 'min', label: 'Stock mínimo', type: 'number', placeholder: '0' },
-          { name: 'costo', label: 'Costo prom. (Bs)', type: 'number', step: '0.01', placeholder: '0.00' },
-          { name: 'precio', label: 'Precio venta (Bs)', type: 'number', step: '0.01', placeholder: '0.00' },
+          { name: 'stock', label: 'Stock inicial', type: 'number', step: '0.001', placeholder: '0' },
+          { name: 'min', label: 'Stock mínimo', type: 'number', step: '0.001', placeholder: '0' },
+          { name: 'costo', label: 'Costo prom. (Bs) por esa unidad', type: 'number', step: '0.01', placeholder: '0.00' },
+          { name: 'precio', label: 'Precio venta (Bs) por esa unidad', type: 'number', step: '0.01', placeholder: '0.00' },
         ],
         onSave: (v) => {
           if (!v.nombre) return 'Indica el nombre del artículo.';
           if (!window.sb || !window.__CUENTA_ID) return 'No hay sesión activa. Inicia sesión de nuevo.';
           const sku = 'SKU-' + String(Date.now()).slice(-5);
+          const UNI = { 'Unidad / pieza': 'und', 'Kg': 'kg', 'Gramo': 'g', 'Litro': 'L', 'Ml': 'ml', 'Metro': 'm', 'Caja': 'caja', 'Bulto': 'bulto', 'Docena': 'doc' };
           const fila = {
             cuenta_id: window.__CUENTA_ID,
             nombre: v.nombre, sku: sku, categoria: v.cat, alicuota: v.alic,
+            unidad: UNI[v.unidad] || 'und',
             stock: Number(v.stock) || 0, stock_min: Number(v.min) || 0,
             costo: Number(v.costo) || 0, precio: Number(v.precio) || 0,
           };
           window.sb.from('productos').insert(fila).then(({ error }) => {
+            if (error && /unidad/.test(error.message || '')) {
+              // columna 'unidad' aún no existe en la BD: guarda sin ella para no bloquear
+              delete fila.unidad;
+              window.sb.from('productos').insert(fila).then(({ error: e2 }) => {
+                if (e2) { toast('No se pudo guardar: ' + e2.message, 'error'); return; }
+                toast('Artículo creado (sin unidad: corre el SQL de la columna unidad)', 'info'); cargarProductos();
+              });
+              return;
+            }
             if (error) { toast('No se pudo guardar: ' + error.message, 'error'); return; }
             toast('Artículo "' + v.nombre + '" creado · ' + sku, 'success');
             cargarProductos();
@@ -4175,9 +4187,10 @@
         if (!n || n.textContent.trim().toLowerCase() !== String(nombre).trim().toLowerCase()) return;
         const qtyEl = tr.querySelector('.stock-cell .qty');
         if (!qtyEl) return;
-        const cur = parseInt(qtyEl.textContent.replace(/\D/g, ''), 10) || 0;
+        const uni = (qtyEl.querySelector('.unit') || {}).textContent || 'und';
+        const cur = parseFloat(qtyEl.textContent.replace(/[^\d.,]/g, '').replace(',', '.')) || 0;
         const next = Math.max(0, cur - (Number(cant) || 0));
-        qtyEl.innerHTML = next + ' <span class="unit">uds</span>';
+        qtyEl.innerHTML = next + ' <span class="unit">' + uni + '</span>';
         hit = true;
       });
       return hit;
@@ -6523,7 +6536,7 @@
               const r = document.createElement('div');
               r.className = 'ic-row';
               r.innerHTML = '<input class="ic-prod" list="fm-dl-prodcompra" placeholder="Producto…" autocomplete="off">'
-                + '<input class="ic-cant" type="number" step="1" placeholder="0">'
+                + '<input class="ic-cant" type="number" step="any" placeholder="0 (acepta 2,5 kg)">'
                 + '<input class="ic-costo" type="number" step="0.01" placeholder="0,00">'
                 + '<button type="button" class="btn btn-ghost ic-del" title="Quitar"><i data-lucide="x" style="width:14px;height:14px;"></i></button>';
               rows.appendChild(r);
@@ -6571,16 +6584,30 @@
               });
               if (lineasInv.length) {
                 const prods = window.__getProductos ? window.__getProductos() : [];
-                const noEnc = [];
+                const creados = [];
                 const ups = lineasInv.map((li) => {
                   const pr = prods.find((x) => (x.nombre || '').toLowerCase() === li.nombre.toLowerCase());
-                  if (!pr) { noEnc.push(li.nombre); return null; }
+                  if (!pr) {
+                    // El producto NO existe: se CREA automáticamente con esta compra
+                    // (stock = lo comprado, costo = el de la factura; el precio de venta se fija luego)
+                    creados.push(li.nombre);
+                    return window.sb.from('productos').insert({
+                      cuenta_id: window.__CUENTA_ID,
+                      nombre: li.nombre, sku: 'SKU-' + String(Date.now()).slice(-5) + '-' + Math.floor(Math.random() * 90 + 10),
+                      categoria: 'Otros', alicuota: '16%',
+                      stock: li.cant, stock_min: 0, costo: li.costo || 0, precio: 0,
+                    });
+                  }
                   const patch = { stock: (Number(pr.stock) || 0) + li.cant };
                   if (li.costo > 0) patch.costo = li.costo;
                   return window.sb.from('productos').update(patch).eq('id', pr.id);
-                }).filter(Boolean);
-                if (ups.length) Promise.all(ups).then(() => { if (window.cargarProductos) window.cargarProductos(); toast(ups.length + ' producto(s) repuestos en inventario', 'success'); });
-                if (noEnc.length) toast('No están en inventario (créalos primero): ' + noEnc.join(', '), 'error');
+                });
+                Promise.all(ups).then((rs) => {
+                  const errs = rs.filter((r) => r && r.error);
+                  if (errs.length) { toast('Inventario: ' + errs[0].error.message, 'error'); return; }
+                  if (window.cargarProductos) window.cargarProductos();
+                  toast(lineasInv.length + ' producto(s) al inventario' + (creados.length ? ' · NUEVOS: ' + creados.join(', ') + ' (ponles su precio de venta en Inventario)' : ''), 'success');
+                });
               }
             }
             // VENTA en el Libro: solo contabiliza si la empresa está en modo "libro" (contador).
