@@ -2652,6 +2652,20 @@
           if (!window.sb || !window.__CUENTA_ID || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) return 'No hay una empresa activa seleccionada.';
           if (!v.cuenta) return 'Elige la cuenta o caja.';
           const monto = parseFloat(v.monto) || 0; if (monto <= 0) return 'Indica un monto mayor a cero.';
+          // Aviso ANTES de guardar si el monto excede el saldo pendiente (¿error de tipeo o anticipo real?)
+          if (v.factura) {
+            const refDoc = v.factura.trim();
+            const doc = _facturas.find((x) => (x.ref || '') === refDoc && x.tipo === (v.tipo === 'ingreso' ? 'venta' : 'compra'));
+            if (doc) {
+              const previo = _movs.filter((m) => m.tipo === v.tipo && (m.factura_ref || '').trim() === refDoc).reduce((s, m) => s + (Number(m.monto) || 0), 0);
+              const pend = Math.max(0, (Number(doc.total) || 0) - previo);
+              if (monto > pend + 0.01) {
+                const exc = Math.round((monto - pend) * 100) / 100;
+                const ok = window.confirm('⚠️ El monto (Bs ' + fmt(monto) + ') EXCEDE el saldo pendiente del documento (Bs ' + fmt(pend) + ').\n\nEl excedente de Bs ' + fmt(exc) + ' quedará como ' + (v.tipo === 'ingreso' ? 'SALDO A FAVOR del cliente (Anticipos de clientes).' : 'anticipo a TU favor (Anticipos a proveedores).') + '\n\n¿Registrar así?');
+                if (!ok) return 'Ajusta el monto o confirma el excedente.';
+              }
+            }
+          }
           const p = (v.fecha || '').split('-'); const fecha = p.length === 3 ? (p[2] + '/' + p[1] + '/' + p[0].slice(2)) : '';
           const file = fileEl && fileEl.files && fileEl.files[0];
           const t = terceros.find((x) => x.nombre.toLowerCase() === (v.tercero || '').trim().toLowerCase());
@@ -2670,15 +2684,35 @@
                 const esCaja = cta && /efectivo|caja/i.test((cta.tipo || '') + ' ' + (cta.nombre || ''));
                 const ctaCash = esCaja ? '1.1.1.01 · Caja' : '1.1.1.03 · Bancos';
                 const cashName = cta ? cta.nombre : (esCaja ? 'Caja' : 'Bancos');
+                // PAGO EN EXCESO → ANTICIPO: lo que exceda el saldo pendiente del documento
+                // NO abona a CxC/CxP (quedaría en negativo): va a una cuenta de anticipos.
+                const refDoc = (v.factura || '').trim();
+                const doc = _facturas.find((x) => (x.ref || '') === refDoc && x.tipo === (v.tipo === 'ingreso' ? 'venta' : 'compra'));
+                const totalDoc = doc ? (Number(doc.total) || 0) : null;
+                const previo = _movs.filter((m) => m.tipo === v.tipo && (m.factura_ref || '').trim() === refDoc)
+                  .reduce((s, m) => s + (Number(m.monto) || 0), 0);
+                const pendiente = (totalDoc == null) ? monto : Math.max(0, totalDoc - previo);
+                const aplicado = Math.min(monto, pendiente);
+                const exceso = Math.round((monto - aplicado) * 100) / 100;
                 let lineas, desc;
                 if (v.tipo === 'ingreso') {
-                  lineas = [{ cta: ctaCash, debe: monto, haber: 0 }, { cta: '1.1.2.01 · Cuentas por cobrar comerciales', debe: 0, haber: monto }];
-                  desc = 'Cobro recibo ' + v.factura + ' · ' + v.tercero + ' (' + cashName + ')';
+                  lineas = [{ cta: ctaCash, debe: monto, haber: 0 }];
+                  if (aplicado > 0.005) lineas.push({ cta: '1.1.2.01 · Cuentas por cobrar comerciales', debe: 0, haber: aplicado });
+                  if (exceso > 0.005) lineas.push({ cta: '2.1.6.01 · Anticipos de clientes', debe: 0, haber: exceso });
+                  desc = 'Cobro recibo ' + v.factura + ' · ' + v.tercero + ' (' + cashName + ')' + (exceso > 0.005 ? ' · anticipo Bs ' + fmt(exceso) : '');
                 } else {
-                  lineas = [{ cta: '2.1.1.01 · Cuentas por pagar comerciales', debe: monto, haber: 0 }, { cta: ctaCash, debe: 0, haber: monto }];
-                  desc = 'Pago factura ' + v.factura + ' · ' + v.tercero + ' (' + cashName + ')';
+                  lineas = [];
+                  if (aplicado > 0.005) lineas.push({ cta: '2.1.1.01 · Cuentas por pagar comerciales', debe: aplicado, haber: 0 });
+                  if (exceso > 0.005) lineas.push({ cta: '1.1.4.01 · Anticipos a proveedores', debe: exceso, haber: 0 });
+                  lineas.push({ cta: ctaCash, debe: 0, haber: monto });
+                  desc = 'Pago factura ' + v.factura + ' · ' + v.tercero + ' (' + cashName + ')' + (exceso > 0.005 ? ' · anticipo Bs ' + fmt(exceso) : '');
                 }
                 window.__postAsiento(desc, v.factura, lineas, 'auto').then((r) => { if (r && r.error) console.warn('[DigiAccount] No se pudo contabilizar el movimiento:', r.error.message); });
+                if (exceso > 0.005) {
+                  toast(v.tipo === 'ingreso'
+                    ? 'Bs ' + fmt(exceso) + ' exceden el recibo: quedaron como SALDO A FAVOR del cliente (Anticipos de clientes)'
+                    : 'Bs ' + fmt(exceso) + ' exceden la factura: quedaron como saldo a TU favor (Anticipos a proveedores)', 'info');
+                }
               }
               // IGTF 3% cuando el PAGO se hace en divisas/cripto: egreso adicional + asiento de gasto
               if (v.tipo === 'egreso' && v.igtfDivisas === 'si') {
