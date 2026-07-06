@@ -2420,12 +2420,12 @@
         // Ventas = RECIBOS emitidos (control de cobros), por empresa. NO el libro de ventas (ese es solo para declarar).
         window.sb.from('facturas').select('numero, cliente_nombre, cliente_rif, total, fecha, estado, condicion').eq('tipo', 'venta').eq('empresa_id', emp.id),
         // Compras = facturas registradas en el Libro de Compras (lo que le debes al proveedor).
-        window.sb.from('libro_fiscal').select('numero_factura, tercero_nombre, tercero_rif, total, fecha').eq('empresa_id', emp.id).eq('tipo', 'compra'),
+        window.sb.from('libro_fiscal').select('id, numero_factura, tercero_nombre, tercero_rif, total, fecha').eq('empresa_id', emp.id).eq('tipo', 'compra'),
       ]);
       if (r1.error) { console.warn('[DigiAccount] Tesorería:', r1.error.message); }
       _cuentas = r1.data || []; _movs = r2.data || [];
       const ventas = (r3.data || []).filter((f) => !/anulada/i.test(f.estado || '')).map((f) => ({ ref: f.numero, tercero_nombre: f.cliente_nombre, tercero_rif: f.cliente_rif, total: f.total, fecha: f.fecha, tipo: 'venta', condicion: f.condicion, estado: f.estado }));
-      const compras = (r4.data || []).map((f) => ({ ref: f.numero_factura, tercero_nombre: f.tercero_nombre, tercero_rif: f.tercero_rif, total: f.total, fecha: f.fecha, tipo: 'compra' }));
+      const compras = (r4.data || []).map((f) => ({ _id: f.id, ref: f.numero_factura, tercero_nombre: f.tercero_nombre, tercero_rif: f.tercero_rif, total: f.total, fecha: f.fecha, tipo: 'compra' }));
       _facturas = ventas.concat(compras);
       render();
     }
@@ -2499,6 +2499,10 @@
         let accion = '';
         if (r.pend > 0.01) {
           accion = ' <button class="btn btn-ghost" data-cx-accion="' + (esVenta ? 'cobrar' : 'pagar') + '" data-ref="' + esc(r.f.ref || '') + '" data-terc="' + esc(r.f.tercero_nombre || '') + '" data-pend="' + r.pend.toFixed(2) + '" style="height:22px;font-size:10px;padding:0 9px;margin-left:6px;">' + (esVenta ? 'Cobrar' : 'Pagar') + '</button>';
+        }
+        // Compras: editar/eliminar la factura registrada (sin necesidad del módulo Fiscal)
+        if (!esVenta && r.f._id) {
+          accion += ' <button class="btn btn-ghost" data-cx-edit="' + esc(r.f._id) + '" title="Editar o eliminar esta compra" style="height:22px;font-size:10px;padding:0 7px;margin-left:4px;"><i data-lucide="pencil" style="width:11px;height:11px;"></i></button>';
         }
         return '<tr><td class="primary">' + esc(r.f.tercero_nombre || '—') + '</td><td class="mono">' + esc(r.f.tercero_rif || '') + '</td><td>' + esc(r.f.ref || '') + '</td><td>' + esc(r.f.fecha || '') + '</td>'
           + '<td class="num">' + fmt(r.total) + '</td><td class="num" style="color:#0a7a44;">' + fmt(r.pag) + '</td>'
@@ -3011,8 +3015,9 @@
     // Botones "Cobrar" (CxC en Ventas) y "Pagar" (CxP en Compras): abren el movimiento prefilleado
     document.addEventListener('click', (e) => {
       const b = e.target.closest('[data-cx-accion]');
-      if (!b) return;
-      registrarMovimiento({ tipo: b.dataset.cxAccion === 'cobrar' ? 'ingreso' : 'egreso', tercero: b.dataset.terc, factura: b.dataset.ref, monto: b.dataset.pend });
+      if (b) { registrarMovimiento({ tipo: b.dataset.cxAccion === 'cobrar' ? 'ingreso' : 'egreso', tercero: b.dataset.terc, factura: b.dataset.ref, monto: b.dataset.pend }); return; }
+      const ed = e.target.closest('[data-cx-edit]');
+      if (ed && window.__editLibroFiscal) window.__editLibroFiscal(ed.dataset.cxEdit, 'compra');
     });
     cargarTesoreria();
   })();
@@ -6767,12 +6772,38 @@
             toast((esCompra ? 'Compra' : 'Venta') + ' actualizada · Bs ' + fmtF(total), 'success');
           });
         },
-        onDelete: (closeModal) => {
-          if (!window.confirm('¿Eliminar este registro del libro? Esta acción no se puede deshacer.')) return;
+        onDelete: async (closeModal) => {
+          // Si tiene pagos/cobros vinculados, primero hay que reversarlos en Tesorería
+          const { data: pgs } = await window.sb.from('movimientos_tesoreria')
+            .select('id').eq('factura_ref', r.numero_factura || '').eq('tipo', esCompra ? 'egreso' : 'ingreso').limit(1);
+          if (pgs && pgs.length) {
+            toast('Este documento tiene ' + (esCompra ? 'pagos' : 'cobros') + ' registrados. Elimínalos primero en Tesorería (X del movimiento).', 'error');
+            return;
+          }
+          if (!window.confirm('¿Eliminar este registro del libro?\n\nSe generará el asiento de REVERSO correspondiente. Si esta compra repuso inventario, ajusta el stock manualmente en Inventario.')) return;
           window.sb.from('libro_fiscal').delete().eq('id', id).then(({ error }) => {
             if (error) { toast('No se pudo eliminar: ' + error.message, 'error'); return; }
+            // Reverso contable del registro eliminado
+            if (window.__postAsiento) {
+              const tot = Number(r.total) || 0, ex = Number(r.exento) || 0, base = Number(r.base) || 0, iva = Number(r.iva) || 0, igtf = Number(r.igtf) || 0;
+              let lineas;
+              if (esCompra) {
+                lineas = [{ cta: '2.1.1.01 · Cuentas por pagar comerciales', debe: tot, haber: 0 }];
+                if (base + ex > 0.005) lineas.push({ cta: '1.1.4.01 · Inventario de mercancías', debe: 0, haber: base + ex });
+                if (iva > 0.005) lineas.push({ cta: '1.1.3.01 · IVA crédito fiscal', debe: 0, haber: iva });
+              } else {
+                lineas = [{ cta: '4.1.1.01 · Ventas / Ingresos por servicios', debe: base + ex, haber: 0 }];
+                if (iva > 0.005) lineas.push({ cta: '2.1.3.01 · IVA débito fiscal', debe: iva, haber: 0 });
+                if (igtf > 0.005) lineas.push({ cta: '2.1.4.03 · IGTF por pagar', debe: igtf, haber: 0 });
+                lineas.push({ cta: '1.1.2.01 · Cuentas por cobrar comerciales', debe: 0, haber: tot });
+              }
+              window.__postAsiento('Reverso ' + (esCompra ? 'compra' : 'venta') + ' s/factura ' + (r.numero_factura || '') + ' · ' + (r.tercero_nombre || ''), r.numero_factura || '', lineas, 'auto')
+                .then((rr) => { if (rr && rr.error) console.warn('[DigiAccount] Reverso libro:', rr.error.message); });
+            }
             cargarLibroFiscal(tipo);
-            toast('Registro eliminado', 'success');
+            if (window.cargarTesoreria) window.cargarTesoreria();
+            if (window.cargarDashboard) window.cargarDashboard();
+            toast('Registro eliminado · asiento reversado', 'success');
           });
           closeModal();
         },
@@ -6782,6 +6813,8 @@
       const tr = e.target.closest('tr[data-id][data-libro]');
       if (tr) editLibroFiscal(tr.dataset.id, tr.dataset.libro);
     });
+    // Accesible también desde "Compras y CxP" (empresas sin módulo Fiscal)
+    window.__editLibroFiscal = editLibroFiscal;
 
     const regCompraBtn = document.getElementById('regCompraBtn');
     if (regCompraBtn) regCompraBtn.addEventListener('click', () => registrarMov('compra'));
