@@ -6321,6 +6321,21 @@
       bodyEl.querySelectorAll('input[data-upper]').forEach((el) => {
         el.addEventListener('input', () => { el.value = el.value.toUpperCase().replace(/[\s.\-]/g, ''); });
       });
+      // Campos de dinero: muestra el monto con separador de miles debajo mientras escribes
+      bodyEl.querySelectorAll('input[type="number"]').forEach((el) => {
+        const esDinero = el.step === '0.01';
+        if (!esDinero) return;
+        const hint = document.createElement('div');
+        hint.style.cssText = 'font-size:11px;color:var(--da-cyan-700);margin-top:3px;font-family:var(--font-mono);min-height:13px;';
+        const wrap = el.closest('.fm-field') || el.parentNode;
+        if (wrap) wrap.appendChild(hint);
+        const upd = () => {
+          const n = parseFloat(el.value);
+          hint.textContent = (!isNaN(n) && n !== 0) ? '= Bs ' + n.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '';
+        };
+        el.addEventListener('input', upd);
+        upd();
+      });
       if (typeof cfg.afterRender === 'function') cfg.afterRender(bodyEl);
       const first = bodyEl.querySelector('input,select');
       if (first) first.focus();
@@ -6630,6 +6645,8 @@
           }).then(({ error }) => {
             if (error) { toast('No se pudo guardar: ' + error.message, 'error'); return; }
             if (window.cargarLibroFiscal) window.cargarLibroFiscal(tipo);
+            if (window.cargarTesoreria) window.cargarTesoreria();   // refresca CxP/CxC (panel de Compras/Ventas)
+            if (window.cargarDashboard) window.cargarDashboard();   // y los KPIs del Dashboard
             toast((esCompra ? 'Compra' : 'Venta') + ' registrada en el libro · Bs ' + fmtF(total), 'success');
             // Asiento contable de la COMPRA: Debe Inventario + IVA crédito / Haber CxP.
             // (Las ventas NO se contabilizan desde el libro: eso lo hace el RECIBO. El libro es solo para declarar.)
