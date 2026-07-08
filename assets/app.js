@@ -3328,7 +3328,8 @@
     if (!pill || !panel) return;
 
     let bcv = 145.82, par = 151.3, eur = 158.04;
-    const bcvPrev = 145.21, parPrev = 150.28, eurPrev = 157.55;
+    let bcvPrev = 145.21, parPrev = 150.28, eurPrev = 157.55;
+    let real = false; // true cuando la tasa vino de Supabase (tasas_cambio, alimentada por N8N)
     let secs = 12;
     // Tasas editables manualmente (fuente de verdad para nómina, etc.); persisten en el navegador.
     let manual = false;
@@ -3374,7 +3375,7 @@
     }
 
     function tick() {
-      if (manual) { secs = 0; render(); return; } // tasa fijada a mano: no varía sola
+      if (manual || real) { secs = 0; render(); return; } // tasa real o fijada a mano: no varía sola
       const jitter = () => (Math.random() - 0.42) * 0.18;
       bcv = Math.max(140, bcv + jitter());
       par = Math.max(bcv + 1, par + jitter() * 1.4);
@@ -3439,6 +3440,41 @@
       const el = document.getElementById(pair[0]);
       if (el) { el.style.cursor = 'pointer'; el.title = 'Clic para fijar el valor real'; el.addEventListener('click', (e) => { e.stopPropagation(); editRate(pair[1]); }); }
     });
+
+    // Tasas REALES desde Supabase (tabla tasas_cambio, alimentada por N8N cada día 8:00 AM):
+    // USD = BCV oficial (con fecha VALOR: el sábado rige la del lunes) · USDT = paralelo/Binance.
+    // Reemplaza la simulación: fija las tasas del día y detiene la variación aleatoria.
+    window.cargarTasaBCV = async function () {
+      if (!window.sb) return;
+      const { data, error } = await window.sb.from('tasas_cambio')
+        .select('fecha, tasa, moneda')
+        .in('moneda', ['USD', 'USDT'])
+        .order('fecha', { ascending: false })
+        .limit(8);
+      if (error || !data || !data.length) { console.warn('Tasa BCV: sin datos en tasas_cambio', error); return; }
+      const usd = data.filter((r) => r.moneda === 'USD');
+      const usdt = data.filter((r) => r.moneda === 'USDT');
+      const hoy = usd.length ? parseFloat(usd[0].tasa) : 0;
+      if (!(hoy > 0)) return;
+      bcvPrev = (usd[1] && parseFloat(usd[1].tasa) > 0) ? parseFloat(usd[1].tasa) : hoy;
+      bcv = hoy; real = true; manual = false;
+      // Dólar paralelo (Binance/USDT) real si existe; si no, referencia aproximada editable
+      if (usdt.length && parseFloat(usdt[0].tasa) > 0) {
+        par = parseFloat(usdt[0].tasa);
+        parPrev = (usdt[1] && parseFloat(usdt[1].tasa) > 0) ? parseFloat(usdt[1].tasa) : par;
+      } else if (par < bcv) { par = bcv * 1.045; parPrev = par; }
+      // Euro aún sin fuente propia: referencia aproximada, clic para fijar el valor real
+      if (eur < bcv) { eur = bcv * 1.17; eurPrev = eur; }
+      secs = 0;
+      render();
+      // El checkout de planes usa window.__BCV
+      window.__BCV = hoy;
+      const bt = document.getElementById('bcvTasa'); if (bt) bt.textContent = fmt(hoy);
+      // Fecha VALOR de la tasa BCV en el panel (dd/mm/aaaa)
+      const ff = document.getElementById('fxFecha');
+      if (ff) { const p = String(usd[0].fecha).split('-'); ff.textContent = p[2] + '/' + p[1] + '/' + p[0]; }
+      console.log('Tasas reales — BCV (' + usd[0].fecha + '): Bs ' + hoy + (usdt.length ? ' · Paralelo: Bs ' + par : ''));
+    };
 
     render();
   })();
@@ -7849,7 +7885,7 @@
           return;
         }
         window.__marcarActividad();
-        showApp(); await cargarPerfilActual(); if (window.__cuentaBloqueada()) { mostrarBloqueo(); return; } if (window.cargarEmpresas) await window.cargarEmpresas(); if (window.cargarTerceros) window.cargarTerceros(); if (window.cargarProductos) window.cargarProductos(); if (window.cargarFacturas) window.cargarFacturas(); if (window.__limpiarTablasInit) window.__limpiarTablasInit();
+        showApp(); await cargarPerfilActual(); if (window.__cuentaBloqueada()) { mostrarBloqueo(); return; } if (window.cargarEmpresas) await window.cargarEmpresas(); if (window.cargarTerceros) window.cargarTerceros(); if (window.cargarProductos) window.cargarProductos(); if (window.cargarFacturas) window.cargarFacturas(); if (window.cargarTasaBCV) window.cargarTasaBCV(); if (window.__limpiarTablasInit) window.__limpiarTablasInit();
         // Si venimos de un registro recién hecho, continuar el onboarding (elegir plan)
         try {
           const ob = sessionStorage.getItem('da_onboarding');
@@ -8644,7 +8680,7 @@
     const toast = (m, t) => { if (window.toast) window.toast(m, t); };
     const bsFmt = (n) => Number(n).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-    window.__BCV = 36.80;
+    window.__BCV = 36.80; // valor de respaldo: cargarTasaBCV() lo actualiza con la tasa real de Supabase
     const METODOS = {
       pagomovil: { label: 'Pago Móvil C2P', icon: 'smartphone', moneda: 'Bs', auto: true, nota: 'Confirmación automática vía banco' },
       transferencia: { label: 'Transferencia Bancaria', icon: 'landmark', moneda: 'Bs', auto: false, nota: 'Se verifica contra el estado de cuenta' },
