@@ -7887,15 +7887,28 @@
         window.__marcarActividad();
         showApp(); await cargarPerfilActual(); if (window.__cuentaBloqueada()) { mostrarBloqueo(); return; } if (window.cargarEmpresas) await window.cargarEmpresas(); if (window.cargarTerceros) window.cargarTerceros(); if (window.cargarProductos) window.cargarProductos(); if (window.cargarFacturas) window.cargarFacturas(); if (window.cargarTasaBCV) window.cargarTasaBCV(); if (window.__limpiarTablasInit) window.__limpiarTablasInit();
         // Si venimos de un registro recién hecho, continuar el onboarding (elegir plan)
+        let onboardingLanzado = false;
         try {
           const ob = sessionStorage.getItem('da_onboarding');
           if (ob) {
             sessionStorage.removeItem('da_onboarding');
             const o = JSON.parse(ob);
+            onboardingLanzado = true;
             if (window.openPlanOnboarding) setTimeout(() => window.openPlanOnboarding(o.seg, o.nombre), 600);
             else if (window.openCompanyWizard) setTimeout(() => window.openCompanyWizard({ fromSignup: true }), 600);
           }
         } catch (e) {}
+        // RED DE SEGURIDAD (confirmación por correo): el enlace de confirmación abre una
+        // pestaña NUEVA donde el onboarding guardado en sessionStorage no existe. La fuente
+        // de verdad es la BASE DE DATOS: si la cuenta aún no tiene plan, se relanza la
+        // elección de plan con el segmento real de la cuenta (contador/empresa).
+        if (!onboardingLanzado && !window.__ES_FUNDADOR && window.__PERFIL) {
+          const sinPlan = !(window.__PERFIL.cuentas && window.__PERFIL.cuentas.planes && window.__PERFIL.cuentas.planes.nombre);
+          if (sinPlan && window.openPlanOnboarding) {
+            const seg = (window.__CUENTA_TIPO === 'contador') ? 'contadores' : 'empresas';
+            setTimeout(() => window.openPlanOnboarding(seg, window.__PERFIL.nombre || ''), 800);
+          }
+        }
       }
     });
   })();
@@ -8388,7 +8401,7 @@
             { t: 'Hasta 10 empresas', ok: true }, { t: 'Fiscal · Contabilidad · Nómina', ok: true },
             { t: 'Soporte por email', ok: true }, { t: 'Onboarding 1:1 (1 sesión)', ok: true }] },
           { nombre: 'Firma Contable', precio: 199, popular: false, cta: 'Elegir plan', features: [
-            { t: 'Empresas ilimitadas', ok: true }, { t: 'Fiscal · Contabilidad · Nómina', ok: true },
+            { t: 'Empresas ilimitadas', ok: true }, { t: 'Todos los módulos', ok: true },
             { t: 'Soporte por email y WhatsApp', ok: true }, { t: 'Onboarding + capacitación', ok: true }] },
         ],
       },
@@ -9484,7 +9497,7 @@
     const PLANES = {
       'Contador Básico': { precio: 49, color: '#545e67', empresas: 'Hasta 3 empresas', usuarios: '2 usuarios', modulos: 'Contabilidad · Fiscal' },
       'Contador PRO': { precio: 79, color: '#008ec7', empresas: 'Hasta 10 empresas', usuarios: '10 usuarios', modulos: 'Fiscal · Contabilidad · Nómina' },
-      'Firma Contable': { precio: 199, color: '#003057', empresas: 'Empresas ilimitadas', usuarios: 'Usuarios ilimitados', modulos: 'Fiscal · Contabilidad · Nómina' },
+      'Firma Contable': { precio: 199, color: '#003057', empresas: 'Empresas ilimitadas', usuarios: 'Usuarios ilimitados', modulos: 'Todos los módulos' },
       'Emprendimientos y PYME': { precio: 29, color: '#1c8f5a', empresas: '1 empresa', usuarios: '2 usuarios', modulos: 'Ventas y CxC · Compras y CxP · Tesorería · Inventario' },
       'Empresa Completa': { precio: 99, color: '#c97a14', empresas: '1 empresa', usuarios: 'Usuarios ilimitados', modulos: 'Todos los módulos' },
       'Grupo Empresarial': { precio: 299, color: '#7b54c9', empresas: 'Hasta 5 empresas', usuarios: 'Usuarios ilimitados', modulos: 'Todos los módulos' },
@@ -10111,7 +10124,9 @@
     const PLAN_MODULOS = {
       'Contador Básico': ['contabilidad', 'fiscal'],
       'Contador PRO': ['contabilidad', 'fiscal', 'nomina'],
-      'Firma Contable': ['contabilidad', 'fiscal', 'nomina'],
+      // Firma Contable: TODOS los módulos, incluidos los operativos (decisión de Luis 09/07/2026:
+      // la Firma es el plan tope de contadores y no se le recorta nada).
+      'Firma Contable': EMPRESA_FULL,
       'Emprendimientos y PYME': ['ventas', 'compras', 'tesoreria', 'inventario'],
       'Empresa Completa': EMPRESA_FULL,
       'Grupo Empresarial': EMPRESA_FULL,
@@ -10150,7 +10165,8 @@
       // REFUERZO ANTI-FUGA: una cuenta de CONTADOR nunca tiene módulos operativos
       // (ventas/compras/tesorería/inventario), pase lo que pase con el plan. Esos módulos
       // son el control interno de la empresa; si la empresa los quiere, compra su plan.
-      if (!window.__ES_FUNDADOR && window.__CUENTA_TIPO === 'contador') {
+      // (Excepción: Firma Contable SÍ incluye los operativos — plan tope de contadores.)
+      if (!window.__ES_FUNDADOR && window.__CUENTA_TIPO === 'contador' && plan !== 'Firma Contable') {
         const OPERATIVOS = ['ventas', 'compras', 'tesoreria', 'inventario'];
         incluidos = incluidos.filter((m) => OPERATIVOS.indexOf(m) < 0);
       }
