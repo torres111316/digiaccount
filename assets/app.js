@@ -2685,6 +2685,22 @@
           terc.addEventListener('change', refrescarFacturas); terc.addEventListener('input', refrescarFacturas);
           fact.addEventListener('change', autollenar); fact.addEventListener('input', autollenar);
           refrescarTerceros(); refrescarFacturas(); autollenar();
+          // 🤖 OCR del comprobante (Agente IA): al adjuntar la foto del pago, la lee y
+          // rellena referencia/monto/fecha solos. El usuario revisa y corrige antes de guardar.
+          const refEl = body.querySelector('[data-name="referencia"]');
+          const fechaEl = body.querySelector('[data-name="fecha"]');
+          if (fileEl && window.__ocrComprobante) fileEl.addEventListener('change', async () => {
+            const file = fileEl.files && fileEl.files[0];
+            if (!file) return;
+            toast('🤖 Leyendo el comprobante con IA…', 'info');
+            const d = await window.__ocrComprobante(file);
+            if (!d || !d.ok) { toast('No se pudo leer el comprobante' + (d && d.error ? ': ' + d.error : '') + ' — regístralo manual', 'error'); return; }
+            if (refEl && d.referencia) refEl.value = d.referencia;
+            if (montoEl && !montoEl.value && d.monto != null) montoEl.value = Number(d.monto).toFixed(2);
+            if (fechaEl && d.fecha) { const p = String(d.fecha).split('/'); if (p.length === 3) fechaEl.value = p[2] + '-' + p[1] + '-' + p[0]; }
+            const conf = d.confianza != null ? Math.round(d.confianza * 100) + '%' : '';
+            toast('✓ Comprobante leído' + (d.banco ? ' · ' + d.banco : '') + (d.monto != null ? ' · Bs ' + fmt(Number(d.monto)) : '') + (d.referencia ? ' · ref. ' + d.referencia : '') + (conf ? ' · certeza ' + conf : ''), 'success');
+          });
         },
         onSave: (v) => {
           if (!window.sb || !window.__CUENTA_ID || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) return 'No hay una empresa activa seleccionada.';
