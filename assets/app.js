@@ -2911,17 +2911,50 @@
       function conciliar() {
         const cid = cuentaSel.value;
         if (!cid) { setMsg('Elige una cuenta.'); return; }
-        if (!lineasBanco.length) { setMsg('Sube primero el extracto del banco (CSV).'); return; }
+        if (!lineasBanco.length) { setMsg('Sube primero el extracto del banco (PDF o CSV).'); return; }
         const movs = _movs.map((m, i) => ({ m: m, i: i })).filter((x) => x.m.cuenta_teso_id === cid);
         const usados = new Set();
         const matched = [], soloBanco = [];
+        // Referencias: solo dígitos y sin ceros a la izquierda (el banco suele anteponer ceros)
+        const normRef = (s) => String(s || '').replace(/\D/g, '').replace(/^0+/, '');
         lineasBanco.forEach((lb) => {
-          const cand = movs.find((x) => !usados.has(x.i) && Math.abs(montoMov(x.m) - lb.monto) < 0.01);
+          const rb = normRef(lb.ref);
+          // Pase 1: referencia + monto (máxima certeza) · Pase 2: solo monto
+          let cand = null;
+          if (rb.length >= 4) {
+            cand = movs.find((x) => {
+              if (usados.has(x.i) || Math.abs(montoMov(x.m) - lb.monto) >= 0.01) return false;
+              const rm = normRef(x.m.referencia);
+              return rm.length >= 4 && (rm === rb || rb.endsWith(rm) || rm.endsWith(rb));
+            });
+          }
+          if (!cand) cand = movs.find((x) => !usados.has(x.i) && Math.abs(montoMov(x.m) - lb.monto) < 0.01);
           if (cand) { usados.add(cand.i); matched.push({ banco: lb, mov: cand.m }); } else soloBanco.push(lb);
         });
         const soloLibros = movs.filter((x) => !usados.has(x.i)).map((x) => x.m);
         ultimoMatch = matched;
         render(cid, matched, soloBanco, soloLibros);
+      }
+
+      // Respaldo del extracto importado en la base (auditoría; ignora duplicados por huella)
+      async function persistirExtracto(res) {
+        const cid = cuentaSel.value;
+        if (!window.sb || !window.__CUENTA_ID || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id || !cid) return;
+        const p = String(res.periodo_desde || '').split('/');
+        const periodo = p.length === 3 ? (p[2] + '-' + p[1]) : new Date().toISOString().slice(0, 7);
+        const vistos = {};
+        const filas = (res.movimientos || []).map((m) => {
+          const base = [m.fecha, m.referencia, m.monto, m.descripcion].join('|');
+          const k = (vistos[base] = (vistos[base] || 0) + 1);
+          return {
+            cuenta_id: window.__CUENTA_ID, empresa_id: window.__EMPRESA_ACTIVA.id, cuenta_teso_id: cid,
+            fecha: m.fecha || '', descripcion: m.descripcion || '', referencia: m.referencia || '',
+            monto: m.monto, periodo: periodo, huella: base + '|' + k,
+          };
+        });
+        for (let i = 0; i < filas.length; i += 200) {
+          await window.sb.from('extracto_bancario').upsert(filas.slice(i, i + 200), { onConflict: 'cuenta_teso_id,huella', ignoreDuplicates: true });
+        }
       }
 
       function render(cid, matched, soloBanco, soloLibros) {
@@ -3012,12 +3045,36 @@
         if (lb) registrarDiferencia(lb, cuentaSel.value);
       });
       if (fileEl) fileEl.addEventListener('change', () => { const f = fileEl.files && fileEl.files[0]; if (fileName) fileName.textContent = f ? f.name : ''; });
-      cargarBtn.addEventListener('click', () => {
+      cargarBtn.addEventListener('click', async () => {
         const f = fileEl && fileEl.files && fileEl.files[0];
-        if (!f) { setMsg('Primero elige el archivo CSV del extracto.'); return; }
-        const reader = new FileReader();
-        reader.onload = () => { lineasBanco = parseCSV(String(reader.result || '')); if (!lineasBanco.length) { setMsg('No pude leer líneas. Revisa que el CSV tenga columnas fecha/monto (o débito/crédito).'); return; } conciliar(); };
-        reader.readAsText(f);
+        if (!f) { setMsg('Primero elige el archivo del extracto (PDF del banco o CSV).'); return; }
+        if (!cuentaSel.value) { setMsg('Elige primero la cuenta bancaria a conciliar.'); return; }
+        const esPdf = /pdf$/i.test(f.type) || /\.pdf$/i.test(f.name || '');
+        if (esPdf) {
+          // 🤖 PDF → Agente IA (asíncrono: se envía y se espera el resultado en trabajos_ia)
+          if (!window.__extraerEstadoCuenta || !window.__esperarTrabajoIA) { setMsg('El lector de PDF no está disponible.'); return; }
+          cargarBtn.disabled = true;
+          setMsg('🤖 Enviando el estado de cuenta al <strong>Agente IA</strong>…');
+          const envio = await window.__extraerEstadoCuenta(f);
+          if (!envio.ok) { setMsg('⚠️ ' + esc(envio.error || 'No se pudo enviar')); cargarBtn.disabled = false; return; }
+          setMsg('🤖 El Agente está leyendo el estado de cuenta… los extractos largos tardan <strong>hasta 7 minutos</strong>. Puedes usar otros módulos mientras — pero no recargues la página.');
+          const res = await window.__esperarTrabajoIA(envio.job, (n, seg) => {
+            setMsg('🤖 Leyendo el estado de cuenta… ' + (seg < 60 ? seg + ' s' : Math.round(seg / 6) / 10 + ' min') + ' transcurridos (hasta ~7 min en extractos largos)');
+          });
+          cargarBtn.disabled = false;
+          if (!res || !res.ok) { setMsg('⚠️ No se pudo leer el PDF: ' + esc((res && res.error) || 'error desconocido')); return; }
+          lineasBanco = (res.movimientos || []).map((m) => ({ fecha: m.fecha || '', desc: m.descripcion || '', ref: m.referencia || '', monto: m.monto }));
+          persistirExtracto(res).catch(() => {});
+          const infoCuadre = (res.cuadra === false)
+            ? ' · <span style="color:#b42318;font-weight:700;">⚠️ OJO: la lectura NO cuadra con los saldos del extracto (dif. Bs ' + fmt(Math.abs(res.diferencia || 0)) + ') — verifica contra el PDF</span>'
+            : (res.cuadra === true ? ' · ✓ verificado: cuadra con los saldos del banco (' + fmt(res.saldo_inicial) + ' → ' + fmt(res.saldo_final) + ')' : '');
+          setMsg('Extracto de <strong>' + esc(res.banco || 'tu banco') + '</strong> leído: <strong>' + lineasBanco.length + '</strong> movimientos' + infoCuadre);
+          if (lineasBanco.length) conciliar();
+        } else {
+          const reader = new FileReader();
+          reader.onload = () => { lineasBanco = parseCSV(String(reader.result || '')); if (!lineasBanco.length) { setMsg('No pude leer líneas. Revisa que el CSV tenga columnas fecha/monto (o débito/crédito).'); return; } conciliar(); };
+          reader.readAsText(f);
+        }
       });
       if (confirmBtn) confirmBtn.addEventListener('click', async () => {
         const ids = ultimoMatch.map((pr) => pr.mov.id).filter(Boolean);

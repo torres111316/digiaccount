@@ -53,4 +53,54 @@
       } catch (e) { resolve({ ok: false, error: e.message }); }
     });
   };
+
+  // === Extractor de estados de cuenta (Agente IA asíncrono) ===
+  // El PDF puede tardar varios minutos: se envía, el agente responde por la tabla
+  // trabajos_ia, y la app la consulta hasta que el resultado esté listo.
+  const EXTRACTO_URL = 'https://n8n.digiaccount.io/webhook/extracto-bancario';
+  const uuid = function () {
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+      const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+    });
+  };
+  window.__extraerEstadoCuenta = async function (file) {
+    if (!file || !(/pdf$/i.test(file.type) || /\.pdf$/i.test(file.name || ''))) {
+      return { ok: false, error: 'El estado de cuenta debe ser un PDF' };
+    }
+    if (file.size > 15 * 1024 * 1024) return { ok: false, error: 'El PDF supera 15MB' };
+    if (!window.__CUENTA_ID) return { ok: false, error: 'No hay sesión activa' };
+    const b64 = await new Promise(function (res) {
+      const r = new FileReader();
+      r.onload = function () { res(String(r.result).split(',')[1] || ''); };
+      r.onerror = function () { res(''); };
+      r.readAsDataURL(file);
+    });
+    if (!b64) return { ok: false, error: 'No se pudo leer el archivo' };
+    const job = uuid();
+    try {
+      const resp = await fetch(EXTRACTO_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: OCR_TOKEN, job: job, cuenta_id: window.__CUENTA_ID, archivo: b64, mime: 'application/pdf' }),
+      });
+      if (!resp.ok) return { ok: false, error: 'El agente no respondió (' + resp.status + ')' };
+    } catch (e) { return { ok: false, error: 'Sin conexión con el agente: ' + e.message }; }
+    return { ok: true, job: job };
+  };
+  // Espera el resultado de un trabajo de IA consultando trabajos_ia (hasta ~12 min)
+  window.__esperarTrabajoIA = async function (job, onTick) {
+    const INTERVALO = 8000, MAX = 90;
+    for (let i = 0; i < MAX; i++) {
+      await new Promise(function (r) { setTimeout(r, INTERVALO); });
+      if (onTick) { try { onTick(i + 1, Math.round((i + 1) * INTERVALO / 1000)); } catch (e) {} }
+      try {
+        const { data, error } = await window.sb.from('trabajos_ia').select('estado, resultado').eq('id', job).maybeSingle();
+        if (error || !data) continue;
+        if (data.estado === 'listo') return data.resultado || { ok: false, error: 'Resultado vacío' };
+        if (data.estado === 'error') return (data.resultado && typeof data.resultado === 'object') ? data.resultado : { ok: false, error: 'El agente reportó un error' };
+      } catch (e) {}
+    }
+    return { ok: false, error: 'Tiempo de espera agotado — el agente sigue ocupado, reintenta en unos minutos' };
+  };
 })();

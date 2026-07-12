@@ -2409,8 +2409,8 @@
               <select id="concilCuenta" style="height:32px;border:1px solid var(--border);border-radius:8px;padding:0 8px;font:inherit;background:var(--bg-elev);color:inherit;"></select>
             </label>
             <label class="btn btn-ghost" style="height:32px;font-size:12px;cursor:pointer;">
-              <i data-lucide="upload"></i> Elegir extracto (CSV)
-              <input type="file" id="concilFile" accept=".csv,.txt,text/csv" style="display:none;">
+              <i data-lucide="upload"></i> Elegir extracto (PDF o CSV)
+              <input type="file" id="concilFile" accept=".pdf,.csv,.txt,application/pdf,text/csv" style="display:none;">
             </label>
             <span id="concilFileName" style="font-size:11px;color:var(--fg-muted);"></span>
             <button class="btn btn-primary" id="concilCargarBtn" style="height:32px;font-size:12px;"><i data-lucide="git-compare"></i> Cargar y conciliar</button>
@@ -2418,7 +2418,7 @@
               <button class="btn btn-ghost" id="concilConfirmBtn" style="height:32px;font-size:12px;" disabled><i data-lucide="check-check"></i> Confirmar conciliación</button>
             </div>
           </div>
-          <div id="concilMsg" style="padding:10px 14px;font-size:12px;color:var(--fg-muted);">Elige la cuenta, sube el extracto del banco en <strong>CSV</strong> y pulsa «Cargar y conciliar». Columnas reconocidas: <em>fecha, descripción, referencia, monto</em> (o <em>débito/crédito</em>).</div>
+          <div id="concilMsg" style="padding:10px 14px;font-size:12px;color:var(--fg-muted);">Elige la cuenta y sube el estado de cuenta del banco: <strong>PDF</strong> (lo lee el Agente IA 🤖 — tarda unos minutos) o <strong>CSV</strong> (al instante). Luego pulsa «Cargar y conciliar».</div>
         </div>
 
         <section class="kpi-row" id="concilCuadre" hidden>
