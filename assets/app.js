@@ -2699,6 +2699,8 @@
           if (fileEl && window.__ocrComprobante) fileEl.addEventListener('change', async () => {
             const file = fileEl.files && fileEl.files[0];
             if (!file) return;
+            // El OCR es parte del add-on Agentes IA: sin él, el adjunto se guarda normal
+            if (!(window.__ES_FUNDADOR || window.__ADDON_AGENTES)) return;
             toast('🤖 Leyendo el comprobante con IA…', 'info');
             const d = await window.__ocrComprobante(file);
             if (!d || !d.ok) { toast('No se pudo leer el comprobante' + (d && d.error ? ': ' + d.error : '') + ' — regístralo manual', 'error'); return; }
@@ -3059,6 +3061,7 @@
         const esPdf = /pdf$/i.test(f.type) || /\.pdf$/i.test(f.name || '');
         if (esPdf) {
           // 🤖 PDF → Agente IA (asíncrono: se envía y se espera el resultado en trabajos_ia)
+          if (!(window.__ES_FUNDADOR || window.__ADDON_AGENTES)) { setMsg('La lectura de PDF con IA es parte del add-on <strong>Agentes IA</strong>. Mientras tanto puedes cargar el extracto en formato CSV.'); return; }
           if (!window.__extraerEstadoCuenta || !window.__esperarTrabajoIA) { setMsg('El lector de PDF no está disponible.'); return; }
           cargarBtn.disabled = true;
           setMsg('🤖 Enviando el estado de cuenta al <strong>Agente IA</strong>…');
@@ -7782,6 +7785,13 @@
           window.__TRIAL_VENCIDO = new Date(ce.trial_termina_en) < new Date();
         }
       } catch (e) { /* columna estado aún no existe: se asume activa */ }
+      // ADD-ON "Agentes IA": interruptor POR CUENTA (cuentas.addon_agentes). Consulta
+      // aparte y tolerante: si la columna no existe aún, el add-on queda apagado.
+      window.__ADDON_AGENTES = false;
+      try {
+        const { data: ad } = await window.sb.from('cuentas').select('addon_agentes').eq('id', data.cuenta_id).single();
+        window.__ADDON_AGENTES = !!(ad && ad.addon_agentes);
+      } catch (e) {}
       // Muestra el Panel del Fundador SOLO al super-admin
       const navFund = document.querySelector('.nav-item[data-view="fundador"]');
       if (navFund) navFund.hidden = !window.__ES_FUNDADOR;
@@ -10334,8 +10344,10 @@
         const OPERATIVOS = ['ventas', 'compras', 'tesoreria', 'inventario'];
         incluidos = incluidos.filter((m) => OPERATIVOS.indexOf(m) < 0);
       }
-      // Agentes IA: add-on aparte. SIEMPRE bloqueado para clientes (visible como vitrina con
-      // candado, pero NO usable). Solo el fundador lo tiene activo. Sin "modo demo".
+      // Agentes IA: add-on aparte. Bloqueado por defecto (vitrina con candado); se
+      // enciende POR CUENTA con cuentas.addon_agentes (lo activa solo el fundador,
+      // p. ej. a su propia Firma Contable o a un cliente que compre el add-on).
+      if (!window.__ES_FUNDADOR && window.__ADDON_AGENTES && incluidos.indexOf('agentes') < 0) incluidos = incluidos.concat('agentes');
       const demoAgentes = false;
       window.__demoAgentes = demoAgentes;
       TODOS.forEach((v) => {
