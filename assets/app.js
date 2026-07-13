@@ -7911,11 +7911,14 @@
       if ((pass || '').length < 8) return toast('La contraseña debe tener al menos 8 caracteres', 'error');
       if (!document.getElementById('suTerms').checked) return toast('Debes aceptar los términos', 'error');
       const segmento = (document.getElementById('suSegmento') || {}).value || 'empresas';
+      // Código de invitación (opcional): si es válido, el trigger une a la persona a la
+      // cuenta que la invitó (como auxiliar) en vez de crearle una cuenta nueva de prueba.
+      const codigoInv = ((document.getElementById('suCodigo') || {}).value || '').trim().toUpperCase();
       // Registro REAL en Supabase Auth — el trigger 'on_auth_user_created' crea la cuenta + el perfil
       const { data, error } = await window.sb.auth.signUp({
         email: email,
         password: pass,
-        options: { data: { nombre: name, cedula: cedula, whatsapp: whatsapp, segmento: segmento } }
+        options: { data: { nombre: name, cedula: cedula, whatsapp: whatsapp, segmento: segmento, codigo_invitacion: codigoInv } }
       });
       if (error) { toast('No se pudo crear la cuenta: ' + error.message, 'error'); return; }
       // Registro en la base de contactos (para CRM / email marketing)
@@ -7958,7 +7961,22 @@
           return;
         }
         window.__marcarActividad();
-        showApp(); await cargarPerfilActual(); if (window.__cuentaBloqueada()) { mostrarBloqueo(); return; } if (window.cargarEmpresas) await window.cargarEmpresas(); if (window.cargarTerceros) window.cargarTerceros(); if (window.cargarProductos) window.cargarProductos(); if (window.cargarFacturas) window.cargarFacturas(); if (window.cargarTasaBCV) window.cargarTasaBCV(); if (window.__limpiarTablasInit) window.__limpiarTablasInit();
+        // CANJE DE INVITACIÓN: si esta persona se registró con un código de invitación,
+        // la RPC la muda a la cuenta del equipo que la invitó (con su rol) y elimina la
+        // cuenta de prueba creada por defecto. Idempotente: usado el código, no hace nada.
+        try {
+          const usr = data.session.user || {};
+          const cod = (usr.user_metadata && usr.user_metadata.codigo_invitacion) || '';
+          if (cod) {
+            const { data: rj } = await window.sb.rpc('canjear_invitacion', { p_codigo: cod });
+            if (rj && rj.ok && !rj.repetido) {
+              if (window.toast) setTimeout(() => window.toast('¡Bienvenido al equipo! Tu acceso fue activado ✓', 'success'), 900);
+            } else if (rj && rj.error && rj.error_visible) {
+              if (window.toast) setTimeout(() => window.toast('Invitación: ' + rj.error, 'error'), 900);
+            }
+          }
+        } catch (e) {}
+        showApp(); await cargarPerfilActual(); if (window.__cuentaBloqueada()) { mostrarBloqueo(); return; } if (window.cargarEmpresas) await window.cargarEmpresas(); if (window.cargarTerceros) window.cargarTerceros(); if (window.cargarProductos) window.cargarProductos(); if (window.cargarFacturas) window.cargarFacturas(); if (window.cargarTasaBCV) window.cargarTasaBCV(); if (window.cargarUsuarios) window.cargarUsuarios(); if (window.__limpiarTablasInit) window.__limpiarTablasInit();
         // Si venimos de un registro recién hecho, continuar el onboarding (elegir plan)
         let onboardingLanzado = false;
         try {
@@ -9803,6 +9821,54 @@
       return { v: 0, c: 0, e: 0, d: 0, a: 0 };
     }
 
+    // ---- Carga REAL desde Supabase: perfiles de la cuenta + accesos + invitaciones ----
+    window.cargarUsuarios = async function () {
+      if (!window.sb || !window.__CUENTA_ID) return;
+      const [rPerf, rEmp, rUE, rInv] = await Promise.all([
+        window.sb.from('perfiles').select('id, nombre, rol, email, creado_en').eq('cuenta_id', window.__CUENTA_ID).order('creado_en'),
+        window.sb.from('empresas').select('id, nombre').order('nombre'),
+        window.sb.from('usuario_empresa').select('perfil_id, empresa_id'),
+        window.sb.from('invitaciones').select('*').is('usado_por', null).order('creado_en', { ascending: false }),
+      ]);
+      const emps = rEmp.data || [], ue = rUE.data || [];
+      EMPRESAS.length = 0; emps.forEach((e) => EMPRESAS.push({ value: e.id, label: e.nombre }));
+      USUARIOS.length = 0;
+      (rPerf.data || []).forEach((p, i) => {
+        const ids = ue.filter((x) => x.perfil_id === p.id).map((x) => x.empresa_id);
+        const nombres = ids.map((id) => (emps.find((e) => e.id === id) || {}).nombre).filter(Boolean);
+        USUARIOS.push({
+          _id: p.id, n: p.nombre || p.email || 'Usuario', email: p.email || '', rol: p.rol || 'lectura',
+          emp: p.rol === 'admin' ? ['Todas'] : (nombres.length ? nombres : ['Sin asignar']),
+          empIds: ids, acc: p.creado_en ? new Date(p.creado_en).toLocaleDateString('es-VE') : '—', est: 'Activo',
+          color: ['#003057', '#008ec7', '#1a3f6f', '#c97a14', '#545e67'][i % 5],
+        });
+      });
+      INVIT.length = 0;
+      (rInv.data || []).forEach((iv) => INVIT.push({
+        _id: iv.id, email: iv.email, nombre: iv.nombre, whatsapp: iv.whatsapp, rol: iv.rol, codigo: iv.codigo,
+        vence: iv.expira_en ? new Date(iv.expira_en).toLocaleDateString('es-VE') : '—',
+      }));
+      renderUsuarios(); renderInvit(); renderRoles();
+    };
+
+    // Modal para compartir una invitación (código + WhatsApp — lo natural en Venezuela)
+    function compartirInvitacion(iv) {
+      const msj = 'Hola' + (iv.nombre ? ' ' + iv.nombre.split(' ')[0] : '') + ', te invito a trabajar conmigo en DigiAccount.\n\n1) Regístrate en https://app.digiaccount.io con este correo: ' + iv.email + '\n2) En el registro, coloca este código de invitación: ' + iv.codigo + '\n\n¡Con eso entras directo a mi equipo!';
+      const tel = String(iv.whatsapp || '').replace(/\D/g, '').replace(/^0/, '58');
+      window.openFormModal && window.openFormModal({
+        title: 'Invitación · ' + iv.email, saveLabel: 'Copiar mensaje',
+        fields: [{ name: 'x', label: ' ', col: 2, type: 'static', html:
+          '<div style="text-align:center;padding:6px 0;">'
+          + '<div style="font-size:11px;color:var(--fg-muted);">Código de invitación (vence a los 14 días)</div>'
+          + '<div style="font-family:var(--font-mono);font-size:26px;font-weight:800;letter-spacing:5px;color:var(--da-navy-700);margin:4px 0 10px;">' + iv.codigo + '</div>'
+          + '<div style="font-size:12px;color:var(--fg-body);line-height:1.6;">La persona se registra en <strong>app.digiaccount.io</strong> con el correo <strong>' + esc(iv.email) + '</strong> y coloca el código en el campo «Código de invitación». Entrará directo a tu equipo con su rol.</div>'
+          + (tel ? '<a class="btn btn-primary" style="margin-top:12px;text-decoration:none;" target="_blank" rel="noopener" href="https://wa.me/' + tel + '?text=' + encodeURIComponent(msj) + '"><i data-lucide="message-circle"></i> Enviar por WhatsApp</a>' : '')
+          + '</div>' }],
+        onSave: () => { try { navigator.clipboard.writeText(msj); } catch (e) {} toast('Mensaje copiado ✓', 'success'); },
+      });
+      if (window.lucide) window.lucide.createIcons();
+    }
+
     // ---- Tabla de usuarios ----
     const usuariosBody = document.getElementById('usuariosBody');
     function chips(emp) {
@@ -9834,11 +9900,21 @@
       else invitList.innerHTML = INVIT.map((iv, i) => {
         const r = rolDe(iv.rol);
         return '<div class="invite-row"><div class="invite-icon"><i data-lucide="mail"></i></div>'
-          + '<div class="invite-info"><div class="em">' + iv.email + '</div><div class="meta">' + iv.meta + ' · rol ' + r.nombre + '</div></div>'
+          + '<div class="invite-info"><div class="em">' + esc(iv.email) + '</div><div class="meta">Código <strong style="font-family:var(--font-mono);">' + esc(iv.codigo || '') + '</strong> · vence ' + esc(iv.vence || '—') + ' · rol ' + r.nombre + '</div></div>'
           + '<span class="role-badge ' + r.cls + '"><i data-lucide="' + r.ic + '"></i> ' + r.nombre + '</span>'
-          + '<button class="btn btn-ghost" data-resend="' + i + '" style="height:30px;font-size:11px;">Reenviar</button></div>';
+          + '<button class="btn btn-ghost" data-share="' + i + '" style="height:30px;font-size:11px;">Compartir</button>'
+          + '<button class="btn btn-ghost" data-delinv="' + i + '" style="height:30px;font-size:11px;color:#b42318;">Anular</button></div>';
       }).join('');
-      invitList.querySelectorAll('[data-resend]').forEach((b) => b.addEventListener('click', () => toast('Invitación reenviada', 'success')));
+      invitList.querySelectorAll('[data-share]').forEach((b) => b.addEventListener('click', () => compartirInvitacion(INVIT[parseInt(b.dataset.share, 10)])));
+      invitList.querySelectorAll('[data-delinv]').forEach((b) => b.addEventListener('click', () => {
+        const iv = INVIT[parseInt(b.dataset.delinv, 10)];
+        if (!iv || !window.confirm('¿Anular la invitación de ' + iv.email + '? El código dejará de funcionar.')) return;
+        window.sb.from('invitaciones').delete().eq('id', iv._id).then(({ error }) => {
+          if (error) { toast('No se pudo anular: ' + error.message, 'error'); return; }
+          toast('Invitación anulada', 'success');
+          if (window.cargarUsuarios) window.cargarUsuarios();
+        });
+      }));
       const ki = document.getElementById('usKpiInvit'); if (ki) ki.textContent = INVIT.length;
       if (window.lucide) window.lucide.createIcons();
     }
@@ -9913,11 +9989,20 @@
           if (!v.whatsapp) return 'Indica el número de WhatsApp.';
           if (!v.email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v.email)) return 'Indica un correo válido.';
           if (!(v.empresas || []).length) return 'Asigna acceso a al menos una empresa.';
+          if (!window.sb || !window.__CUENTA_ID) return 'No hay sesión activa.';
           const r = ROLES.find((x) => x.nombre === v.rol) || ROLES[2];
-          INVIT.unshift({ email: v.email, rol: r.id, meta: 'Enviada ahora · ' + (v.empresas.length === EMPRESAS.length ? 'todas las empresas' : v.empresas.length + ' empresa' + (v.empresas.length === 1 ? '' : 's')) });
-          if (window.__registrarContacto) window.__registrarContacto({ tipo: 'Usuario', nombre: v.nombre, doc: '', email: v.email, whatsapp: v.whatsapp, segmento: 'usuario invitado', origen: 'Invitación de usuario' });
-          renderInvit();
-          toast('Invitación enviada a ' + v.nombre + ' (' + v.email + ')', 'success');
+          // Código sin caracteres ambiguos (0/O, 1/I/L) para dictarlo sin errores
+          const AB = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+          const codigo = Array.from({ length: 6 }, () => AB[Math.floor(Math.random() * AB.length)]).join('');
+          window.sb.from('invitaciones').insert({
+            cuenta_id: window.__CUENTA_ID, email: v.email.trim().toLowerCase(), nombre: v.nombre,
+            whatsapp: v.whatsapp, rol: r.id, empresas: v.empresas, codigo: codigo,
+          }).then(({ error }) => {
+            if (error) { toast('No se pudo crear la invitación: ' + error.message, 'error'); return; }
+            if (window.__registrarContacto) window.__registrarContacto({ tipo: 'Usuario', nombre: v.nombre, doc: '', email: v.email, whatsapp: v.whatsapp, segmento: 'usuario invitado', origen: 'Invitación de usuario' });
+            if (window.cargarUsuarios) window.cargarUsuarios();
+            compartirInvitacion({ email: v.email.trim().toLowerCase(), nombre: v.nombre, whatsapp: v.whatsapp, codigo: codigo });
+          });
         },
       });
     }
@@ -9932,16 +10017,26 @@
         fields: [
           { name: 'rol', label: 'Rol', type: 'select', options: ROLES.map((r) => r.nombre), value: rolDe(u.rol).nombre },
           { name: 'est', label: 'Estado', type: 'select', options: ['Activo', 'Suspendido'], value: u.est },
-          { name: 'empresas', label: 'Empresas con acceso', col: 2, type: 'checks', options: EMPRESAS, value: todas ? EMPRESAS.map((e) => e.value) : u.emp },
+          { name: 'empresas', label: 'Empresas con acceso', col: 2, type: 'checks', options: EMPRESAS, value: todas ? EMPRESAS.map((e) => e.value) : (u.empIds || []) },
         ],
         onSave: (v) => {
           const emp = v.empresas || [];
           if (!emp.length) return 'Asigna acceso a al menos una empresa.';
-          const r = ROLES.find((x) => x.nombre === v.rol); if (r) u.rol = r.id;
-          u.est = v.est;
-          u.emp = emp.length === EMPRESAS.length ? ['Todas'] : emp;
-          renderUsuarios(); renderRoles();
-          toast('Usuario ' + u.n + ' actualizado · acceso a ' + (u.emp.includes('Todas') ? 'todas las empresas' : u.emp.length + ' empresa' + (u.emp.length === 1 ? '' : 's')));
+          if (!window.sb || !u._id) return 'Este usuario no está conectado a la base de datos.';
+          const r = ROLES.find((x) => x.nombre === v.rol);
+          const rolId = (r && !String(r.id).startsWith('rol')) ? r.id : u.rol;
+          (async () => {
+            const { error } = await window.sb.from('perfiles').update({ rol: rolId }).eq('id', u._id);
+            if (error) { toast('No se pudo guardar el rol: ' + error.message, 'error'); return; }
+            // El acceso por empresa se reescribe completo (borrar y volver a insertar)
+            await window.sb.from('usuario_empresa').delete().eq('perfil_id', u._id);
+            if (rolId !== 'admin' && emp.length) {
+              const { error: e2 } = await window.sb.from('usuario_empresa').insert(emp.map((eid) => ({ perfil_id: u._id, empresa_id: eid })));
+              if (e2) { toast('Rol guardado, pero falló el acceso a empresas: ' + e2.message, 'error'); return; }
+            }
+            toast('Usuario ' + u.n + ' actualizado', 'success');
+            if (window.cargarUsuarios) window.cargarUsuarios();
+          })();
         },
       });
     }
