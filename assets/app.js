@@ -245,6 +245,9 @@
     // Defensa: el Panel del Fundador solo para el super-admin (aunque la data ya
     // está protegida por RLS, no debe ni mostrarse la vista a otros).
     if (viewId === 'fundador' && !window.__ES_FUNDADOR) { viewId = 'dashboard'; title = 'Dashboard Central'; }
+    // Defensa por ROL: si el rol del usuario no incluye esta vista, vuelve al Dashboard
+    // (el menú ya la oculta; esto cubre atajos, enlaces internos y URLs a mano).
+    if (window.__rolPermiteVista && !window.__rolPermiteVista(viewId)) { viewId = 'dashboard'; title = 'Dashboard Central'; }
     views.forEach((v) => (v.dataset.active = v.id === 'view-' + viewId ? 'true' : 'false'));
     navItems.forEach((n) => (n.dataset.active = n.dataset.view === viewId ? 'true' : 'false'));
     if (title && breadcrumbHere) breadcrumbHere.textContent = title;
@@ -272,7 +275,11 @@
   // Accesos extra a Usuarios y Roles (perfil y botón de ajustes del pie del menú)
   ['sidebarUser', 'sidebarSettingsBtn'].forEach((id) => {
     const el = document.getElementById(id);
-    if (el) el.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); showView('usuarios', 'Usuarios y Roles'); });
+    if (el) el.addEventListener('click', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      if (window.__rolPermiteVista && !window.__rolPermiteVista('usuarios')) return; // solo admin
+      showView('usuarios', 'Usuarios y Roles');
+    });
   });
   const planPill = document.querySelector('.plan-active-pill');
   if (planPill) planPill.addEventListener('click', (e) => { e.preventDefault(); showView('planes', 'Planes y Precios'); });
@@ -7781,7 +7788,8 @@
       // Usuario real en el pie del menú lateral
       const nombre = data.nombre || window.__USER_EMAIL || 'Usuario';
       const ini = (nombre.trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join('') || 'U').toUpperCase();
-      const rol = window.__ES_FUNDADOR ? 'Fundador' : (data.rol || 'Administrador');
+      const ROL_NOMBRE = { admin: 'Administrador', gerente: 'Gerente', contador: 'Contador', operador: 'Vendedor / Operador', lectura: 'Auditor (solo lectura)' };
+      const rol = window.__ES_FUNDADOR ? 'Fundador' : (ROL_NOMBRE[String(data.rol || '').toLowerCase()] || data.rol || 'Administrador');
       const setSb = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
       setSb('sidebarUserAvatar', ini); setSb('sidebarUserName', nombre); setSb('sidebarUserRole', rol);
       // Aplica el plan REAL de la cuenta (gating de módulos por plan + tipo de cuenta).
@@ -7796,6 +7804,8 @@
         pruebaArg = { dias: diasReal };
       }
       try { if (window.aplicarPlan) window.aplicarPlan(planNombre || undefined, pruebaArg); } catch (e) { console.warn('[DigiAccount] aplicarPlan:', e); }
+      // Gating por ROL (después del plan: el rol recorta sobre lo que el plan permite)
+      try { if (window.aplicarRol) window.aplicarRol(); } catch (e) { console.warn('[DigiAccount] aplicarRol:', e); }
       try { if (window.__renderSuscripcion) window.__renderSuscripcion(); } catch (e) { console.warn('[DigiAccount] renderSuscripcion:', e); }
       // El fundador carga el listado real de cuentas del SaaS y sus contactos (CRM)
       if (window.__ES_FUNDADOR && window.cargarCuentasFundador) window.cargarCuentasFundador();
@@ -9790,7 +9800,7 @@
     const ROLES = [
       { id: 'admin', nombre: 'Administrador', cls: 'admin', ic: 'shield-check', color: '#003057', desc: 'Acceso total al sistema, la facturación y la configuración.' },
       { id: 'gerente', nombre: 'Gerente', cls: 'gerente', ic: 'briefcase', color: '#1a3f6f', desc: 'Ve todo, aprueba y edita. Sin gestión de usuarios ni roles.' },
-      { id: 'contador', nombre: 'Contador', cls: 'contador', ic: 'calculator', color: '#008ec7', desc: 'Contabilidad, fiscal, tesorería, terceros y reportes.' },
+      { id: 'contador', nombre: 'Contador', cls: 'contador', ic: 'calculator', color: '#008ec7', desc: 'Contabilidad, fiscal, nómina, tesorería y terceros.' },
       { id: 'operador', nombre: 'Vendedor / Operador', cls: 'operador', ic: 'receipt', color: '#c97a14', desc: 'Ventas, facturación, clientes e inventario.' },
       { id: 'lectura', nombre: 'Auditor (solo lectura)', cls: 'lectura', ic: 'eye', color: '#545e67', desc: 'Consulta todo el sistema sin modificar nada.' },
     ];
@@ -9806,17 +9816,19 @@
     ];
     const ACCIONES = [['v', 'Ver'], ['c', 'Crear'], ['e', 'Editar'], ['d', 'Eliminar'], ['a', 'Aprobar']];
 
+    // Refleja el gating REAL por rol (ROL_VISTAS en rolGating): módulo fuera del rol = sin acceso.
     function perms(rol, mod) {
       if (rol === 'admin') return { v: 1, c: 1, e: 1, d: 1, a: 1 };
-      if (rol === 'lectura') return { v: 1, c: 0, e: 0, d: 0, a: 0 };
-      if (rol === 'gerente') return { v: 1, c: 1, e: 1, d: mod === 'Usuarios y Roles' ? 0 : 0, a: 1 };
+      const ADMIN_SOLO = ['Usuarios y Roles'];
+      if (rol === 'gerente') return ADMIN_SOLO.includes(mod) ? { v: 0, c: 0, e: 0, d: 0, a: 0 } : { v: 1, c: 1, e: 1, d: 0, a: 1 };
+      if (rol === 'lectura') return (ADMIN_SOLO.includes(mod) || mod === 'Agentes IA') ? { v: 0, c: 0, e: 0, d: 0, a: 0 } : { v: 1, c: 0, e: 0, d: 0, a: 0 };
       if (rol === 'contador') {
-        const m = ['Dashboard', 'Tesorería', 'Terceros', 'Contabilidad', 'Fiscal'].includes(mod);
-        return m ? { v: 1, c: 1, e: 1, d: 0, a: 1 } : { v: 1, c: 0, e: 0, d: 0, a: 0 };
+        const m = ['Dashboard', 'Tesorería', 'Terceros', 'Contabilidad', 'Fiscal', 'Nómina'].includes(mod);
+        return m ? { v: 1, c: 1, e: 1, d: 0, a: 1 } : { v: 0, c: 0, e: 0, d: 0, a: 0 };
       }
       if (rol === 'operador') {
         const m = ['Dashboard', 'Ventas', 'Terceros', 'Inventario'].includes(mod);
-        return m ? { v: 1, c: 1, e: 1, d: 0, a: 0 } : { v: mod === 'Tesorería' ? 1 : 0, c: 0, e: 0, d: 0, a: 0 };
+        return m ? { v: 1, c: 1, e: 1, d: 0, a: 0 } : { v: mod === 'Tesorería' ? 1 : 0, c: mod === 'Tesorería' ? 1 : 0, e: 0, d: 0, a: 0 };
       }
       return { v: 0, c: 0, e: 0, d: 0, a: 0 };
     }
@@ -9952,14 +9964,10 @@
         html += '</tr>';
       });
       matrix.innerHTML = html + '</tbody>';
-      // celdas toggleables
+      // La matriz es INFORMATIVA: muestra los permisos reales de cada rol (fijos en
+      // esta versión). Antes se podía "togglear" sin guardar nada — eso confundía.
       matrix.querySelectorAll('td[data-act]').forEach((td) => td.addEventListener('click', () => {
-        if (rolActivo === 'admin') { toast('El Administrador siempre tiene acceso total', 'info'); return; }
-        const span = td.querySelector('.perm-cell');
-        const on = span.classList.contains('perm-yes');
-        span.className = 'perm-cell ' + (on ? 'perm-no' : 'perm-yes');
-        span.innerHTML = '<i data-lucide="' + (on ? 'x' : 'check') + '"></i>';
-        if (window.lucide) window.lucide.createIcons();
+        toast('Los permisos de cada rol son fijos en esta versión', 'info');
       }));
       if (window.lucide) window.lucide.createIcons();
     }
@@ -10042,24 +10050,12 @@
     }
 
     // ---- Nuevo rol ----
-    function nuevoRol() {
-      window.openFormModal && window.openFormModal({
-        title: 'Nuevo rol personalizado', saveLabel: 'Crear rol',
-        fields: [
-          { name: 'nombre', label: 'Nombre del rol', col: 2, placeholder: 'Ej. Asistente de compras' },
-          { name: 'base', label: 'Basado en', type: 'select', options: ROLES.map((r) => r.nombre) },
-          { name: 'desc', label: 'Descripción', col: 2, placeholder: 'Qué puede hacer este rol' },
-        ],
-        onSave: (v) => {
-          if (!v.nombre) return 'Indica el nombre del rol.';
-          const base = ROLES.find((r) => r.nombre === v.base) || ROLES[3];
-          ROLES.push({ id: 'rol' + Date.now(), nombre: v.nombre, cls: base.cls, ic: 'shield', color: '#1a3f6f', desc: v.desc || 'Rol personalizado basado en ' + base.nombre + '.' });
-          renderRoles();
-          toast('Rol "' + v.nombre + '" creado');
-        },
-      });
-    }
-    document.getElementById('nuevoRolBtn').addEventListener('click', nuevoRol);
+    // Los roles personalizados aún no existen de verdad (los 5 roles estándar son
+    // fijos y se aplican en el menú y las vistas). Antes este botón creaba roles
+    // "de mentira" solo en memoria — mejor decirlo claro.
+    document.getElementById('nuevoRolBtn').addEventListener('click', () => {
+      toast('Los roles personalizados llegarán pronto — por ahora usa los 5 roles estándar', 'info');
+    });
 
     // ---- Búsqueda ----
     const search = document.getElementById('usuariosSearch');
@@ -10408,6 +10404,54 @@
 
     // Aplicar el plan por defecto al cargar
     aplicarPlan(planActivo);
+  })();
+
+  /* =========================================================
+     ROL GATING — qué módulos ve cada rol DENTRO de la cuenta
+     (se suma al plan: el plan define qué compró la cuenta; el
+     rol define qué ve cada miembro del equipo. Los módulos
+     fuera del rol se OCULTAN — el candado queda para upsell.)
+     ========================================================= */
+  (function rolGating() {
+    // null = todas las vistas (según el plan). Las demás listas son cerradas.
+    const ROL_VISTAS = {
+      admin: null,
+      gerente: ['dashboard', 'ventas', 'compras', 'tesoreria', 'inventario', 'nomina', 'terceros', 'contabilidad', 'fiscal', 'agentes'],
+      contador: ['dashboard', 'tesoreria', 'terceros', 'contabilidad', 'fiscal', 'nomina'],
+      operador: ['dashboard', 'ventas', 'tesoreria', 'inventario', 'terceros'],
+      lectura: ['dashboard', 'ventas', 'compras', 'tesoreria', 'inventario', 'nomina', 'terceros', 'contabilidad', 'fiscal'],
+    };
+    window.__rolActual = function () {
+      if (window.__ES_FUNDADOR) return 'admin';
+      const r = String((window.__PERFIL && window.__PERFIL.rol) || 'admin').toLowerCase();
+      // Rol desconocido o antiguo ('Administrador') → admin: los dueños de cuenta
+      // existentes se crearon antes de los roles y no deben perder acceso.
+      return Object.prototype.hasOwnProperty.call(ROL_VISTAS, r) ? r : 'admin';
+    };
+    window.__rolPermiteVista = function (v) {
+      const lista = ROL_VISTAS[window.__rolActual()];
+      return !lista || lista.indexOf(v) >= 0;
+    };
+    window.aplicarRol = function () {
+      const esAdmin = !ROL_VISTAS[window.__rolActual()];
+      document.querySelectorAll('.nav-item[data-view]').forEach((item) => {
+        const v = item.dataset.view;
+        if (v === 'fundador') return; // lo gobierna __ES_FUNDADOR
+        item.style.display = window.__rolPermiteVista(v) ? '' : 'none';
+      });
+      // Etiquetas de sección que quedaron sin ítems visibles → se ocultan también
+      document.querySelectorAll('.nav-section-label').forEach((lbl) => {
+        let el = lbl.nextElementSibling, alguno = false;
+        while (el && !el.classList.contains('nav-section-label')) {
+          if (el.classList.contains('nav-item') && !el.hidden && el.style.display !== 'none') alguno = true;
+          el = el.nextElementSibling;
+        }
+        lbl.style.display = alguno ? '' : 'none';
+      });
+      // Botón de ajustes del pie (abre Usuarios y Roles): solo admin
+      const cfgBtn = document.getElementById('sidebarSettingsBtn');
+      if (cfgBtn) cfgBtn.style.display = esAdmin ? '' : 'none';
+    };
   })();
 
   /* Render final de iconos (incluye los inyectados) */
