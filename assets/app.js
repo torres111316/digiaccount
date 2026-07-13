@@ -184,10 +184,11 @@
     const dd = document.getElementById('entityDropdown');
     const addBtn = document.getElementById('entityAddBtn');
     if (!window.sb || !dd || !addBtn) return;
-    const { data, error } = await window.sb
-      .from('empresas')
-      .select('id, nombre, rif, condicion_fiscal, fiscal_activo, firma_empresa')
-      .order('nombre');
+    // SOLO las empresas de MI cuenta: sin este filtro, el fundador (superadmin,
+    // que por RLS ve todo) veía en su selector las empresas de TODOS los clientes.
+    let q = window.sb.from('empresas').select('id, nombre, rif, condicion_fiscal, fiscal_activo, firma_empresa');
+    if (window.__CUENTA_ID) q = q.eq('cuenta_id', window.__CUENTA_ID);
+    const { data, error } = await q.order('nombre');
     if (error) { console.warn('[DigiAccount] No se pudieron cargar las empresas:', error.message); return; }
     // Quitar las opciones de ejemplo (hardcodeadas) y sus etiquetas de grupo
     dd.querySelectorAll('.entity-option, .group-label').forEach((el) => el.remove());
@@ -212,11 +213,15 @@
       opt.dataset.fiscal = String(!!emp.fiscal_activo);
       if (emp.firma_empresa) opt.dataset.firma = emp.firma_empresa;
       const metaTxt = esNatural ? 'Persona Natural' : ('Contribuyente ' + condTxt);
+      const puedeEditar = !window.__rolActual || window.__rolActual() === 'admin';
       opt.innerHTML = '<div class="ea" style="background:var(--da-navy-500);color:#fff">' + ini + '</div>'
-        + '<div class="eo-info"><div class="eo-name">' + nombre + '</div><div class="eo-meta">' + rif + ' · ' + metaTxt + '</div></div>'
+        + '<div class="eo-info"><div class="eo-name">' + esc(nombre) + '</div><div class="eo-meta">' + esc(rif) + ' · ' + metaTxt + '</div></div>'
+        + (puedeEditar ? '<button type="button" class="icon-btn" data-edit-emp title="Editar empresa" style="width:26px;height:26px;flex:none;"><i data-lucide="pencil" style="width:13px;height:13px;"></i></button>' : '')
         + '<i data-lucide="check" class="eo-check" style="width:16px;height:16px;"></i>';
       dd.insertBefore(opt, addBtn);
       if (window.__bindEntityOption) window.__bindEntityOption(opt);
+      const eBtn = opt.querySelector('[data-edit-emp]');
+      if (eBtn) eBtn.addEventListener('click', (ev) => { ev.stopPropagation(); dd.dataset.open = 'false'; editarEmpresa(emp); });
     });
     const first = dd.querySelector('.entity-option');
     if (first) first.click();          // activa la primera empresa (nombre, RIF, badge)
@@ -228,6 +233,29 @@
     console.log('[DigiAccount] Empresas cargadas:', (data || []).length);
   }
   window.cargarEmpresas = cargarEmpresas;
+
+  // Editar los datos básicos de una empresa (nombre, RIF, condición fiscal)
+  function editarEmpresa(emp) {
+    if (!window.openFormModal) return;
+    window.openFormModal({
+      title: 'Editar empresa', saveLabel: 'Guardar cambios',
+      fields: [
+        { name: 'nombre', label: 'Nombre / Razón social', col: 2, value: emp.nombre || '' },
+        { name: 'rif', label: 'RIF', value: emp.rif || '', placeholder: 'J-12345678-9' },
+        { name: 'cond', label: 'Condición fiscal', type: 'select', options: ['ordinario', 'formal', 'especial'], value: emp.condicion_fiscal || 'ordinario' },
+      ],
+      onSave: (v) => {
+        if (!v.nombre) return 'Indica el nombre de la empresa.';
+        if (!v.rif) return 'Indica el RIF.';
+        window.sb.from('empresas').update({ nombre: v.nombre.trim(), rif: v.rif.trim(), condicion_fiscal: v.cond })
+          .eq('id', emp.id).then(({ error }) => {
+            if (error) { if (window.toast) window.toast('No se pudo guardar: ' + error.message, 'error'); return; }
+            if (window.toast) window.toast('Empresa actualizada ✓', 'success');
+            cargarEmpresas();
+          });
+      },
+    });
+  }
 
   function setText(id, val) {
     const el = document.getElementById(id);
