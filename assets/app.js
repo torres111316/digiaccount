@@ -2737,6 +2737,36 @@
             if (fechaEl && d.fecha) { const p = String(d.fecha).split('/'); if (p.length === 3) fechaEl.value = p[2] + '-' + p[1] + '-' + p[0]; }
             const conf = d.confianza != null ? Math.round(d.confianza * 100) + '%' : '';
             toast('✓ Comprobante leído' + (d.banco ? ' · ' + d.banco : '') + (d.monto != null ? ' · Bs ' + fmt(Number(d.monto)) : '') + (d.referencia ? ' · ref. ' + d.referencia : '') + (conf ? ' · certeza ' + conf : ''), 'success');
+            // 🤖 CONCILIACIÓN DE COBROS: con lo leído, el agente ata cabos solo.
+            try {
+              // (1) ANTI-FRAUDE: ¿esta referencia ya fue registrada antes?
+              const refN = String(d.referencia || '').replace(/\D/g, '').replace(/^0+/, '');
+              if (refN.length >= 4) {
+                const dup = _movs.find((m) => {
+                  const r = String(m.referencia || '').replace(/\D/g, '').replace(/^0+/, '');
+                  return r && (r === refN || (r.length >= 6 && refN.length >= 6 && (r.endsWith(refN) || refN.endsWith(r))));
+                });
+                if (dup) setTimeout(() => toast('🚨 OJO: la referencia ' + d.referencia + ' YA está registrada (' + (dup.concepto || 'movimiento') + (dup.fecha ? ' del ' + dup.fecha : '') + ') — posible comprobante repetido', 'error'), 700);
+              }
+              // (2) SUGERIR EL RECIBO: busca ventas por cobrar cuyo saldo pendiente
+              //     coincida con el monto del pago (±5 céntimos)
+              if (esIng() && d.monto != null && fact && !fact.value.trim()) {
+                const monto = Number(d.monto);
+                const cand = _facturas
+                  .filter((f) => f.tipo === 'venta' && !/cobrada|anulada/i.test(f.estado || ''))
+                  .map((f) => ({ f: f, pend: (Number(f.total) || 0) - (window.__cobradoDe ? window.__cobradoDe(f.ref) : 0) }))
+                  .filter((x) => x.pend > 0.01 && Math.abs(x.pend - monto) <= 0.05);
+                if (cand.length === 1) {
+                  const f = cand[0].f;
+                  if (terc && !terc.value.trim()) { terc.value = f.tercero_nombre || ''; terc.dispatchEvent(new Event('input')); }
+                  fact.value = f.ref || '';
+                  fact.dispatchEvent(new Event('input'));
+                  setTimeout(() => toast('🤖 Este pago coincide con el recibo ' + (f.ref || '') + ' de ' + (f.tercero_nombre || '') + ' (pendiente Bs ' + fmt(cand[0].pend) + ') — verifica y registra', 'success'), 1400);
+                } else if (cand.length > 1) {
+                  setTimeout(() => toast('🤖 El monto coincide con ' + cand.length + ' recibos por cobrar: ' + cand.slice(0, 3).map((x) => (x.f.ref || '¿?') + ' · ' + (x.f.tercero_nombre || '')).join(' / ') + (cand.length > 3 ? '…' : '') + ' — elige el cliente para afinar', 'info'), 1400);
+                }
+              }
+            } catch (e) { console.warn('[Tesorería] Sugerencia de conciliación:', e); }
           });
         },
         onSave: (v) => {
