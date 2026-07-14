@@ -2748,20 +2748,37 @@
                 });
                 if (dup) setTimeout(() => toast('🚨 OJO: la referencia ' + d.referencia + ' YA está registrada (' + (dup.concepto || 'movimiento') + (dup.fecha ? ' del ' + dup.fecha : '') + ') — posible comprobante repetido', 'error'), 700);
               }
-              // (2) SUGERIR EL RECIBO: busca ventas por cobrar cuyo saldo pendiente
-              //     coincida con el monto del pago (±5 céntimos)
+              // (2) SUGERIR EL RECIBO: candidatos = ventas por cobrar cuyo saldo pendiente
+              //     coincide con el monto del pago (±5 céntimos).
+              //     REGLA (pedida por Luis): el monto solo NO identifica a nadie (puede ser
+              //     un abono de otro cliente) → se AUTO-ASIGNA únicamente con una SEGUNDA
+              //     coincidencia (el teléfono del pagador = teléfono del cliente). Con solo
+              //     el monto, se sugiere en un aviso y el contador decide.
               if (esIng() && d.monto != null && fact && !fact.value.trim()) {
                 const monto = Number(d.monto);
                 const cand = _facturas
                   .filter((f) => f.tipo === 'venta' && !/cobrada|anulada/i.test(f.estado || ''))
                   .map((f) => ({ f: f, pend: (Number(f.total) || 0) - (window.__cobradoDe ? window.__cobradoDe(f.ref) : 0) }))
                   .filter((x) => x.pend > 0.01 && Math.abs(x.pend - monto) <= 0.05);
-                if (cand.length === 1) {
-                  const f = cand[0].f;
-                  if (terc && !terc.value.trim()) { terc.value = f.tercero_nombre || ''; terc.dispatchEvent(new Event('input')); }
-                  fact.value = f.ref || '';
+                // Segunda firma: teléfono del pagador (pago móvil) vs teléfono del cliente
+                const telPago = String(d.telefono || '').replace(/\D/g, '').slice(-7);
+                const telDe = (nombre) => {
+                  const t = terceros.find((x) => (x.nombre || '').toLowerCase() === (nombre || '').toLowerCase());
+                  return String((t && t.tel) || '').replace(/\D/g, '').slice(-7);
+                };
+                const conTel = telPago.length === 7 ? cand.filter((x) => telDe(x.f.tercero_nombre) === telPago) : [];
+                const elegir = (x, firma) => {
+                  if (terc && !terc.value.trim()) { terc.value = x.f.tercero_nombre || ''; terc.dispatchEvent(new Event('input')); }
+                  fact.value = x.f.ref || '';
                   fact.dispatchEvent(new Event('input'));
-                  setTimeout(() => toast('🤖 Este pago coincide con el recibo ' + (f.ref || '') + ' de ' + (f.tercero_nombre || '') + ' (pendiente Bs ' + fmt(cand[0].pend) + ') — verifica y registra', 'success'), 1400);
+                  setTimeout(() => toast('🤖 Cobro asignado al recibo ' + (x.f.ref || '') + ' de ' + (x.f.tercero_nombre || '') + ' (monto + ' + firma + ' coinciden · pendiente Bs ' + fmt(x.pend) + ') — verifica y registra', 'success'), 1400);
+                };
+                if (conTel.length === 1) {
+                  elegir(conTel[0], 'teléfono del pagador');
+                } else if (cand.length === 1) {
+                  // Solo coincide el monto: NO se asigna — se sugiere
+                  const f = cand[0].f;
+                  setTimeout(() => toast('🤖 Sugerencia: el monto coincide con el recibo ' + (f.ref || '¿?') + ' de ' + (f.tercero_nombre || '') + ' (pendiente Bs ' + fmt(cand[0].pend) + '). Si es ese, elige el cliente — si es un abono de otro, ignora esto', 'info'), 1400);
                 } else if (cand.length > 1) {
                   setTimeout(() => toast('🤖 El monto coincide con ' + cand.length + ' recibos por cobrar: ' + cand.slice(0, 3).map((x) => (x.f.ref || '¿?') + ' · ' + (x.f.tercero_nombre || '')).join(' / ') + (cand.length > 3 ? '…' : '') + ' — elige el cliente para afinar', 'info'), 1400);
                 }
@@ -8231,7 +8248,7 @@
     }
     window.cargarTerceros = cargarTerceros;
     // Getter para que otros módulos (Fiscal) ofrezcan los terceros como autocompletado
-    window.__getTerceros = () => DB.map((t) => ({ id: t._id, nombre: t.nombre, rif: t.rif, cli: t.cli, prov: t.prov, fiscal: t.fiscal }));
+    window.__getTerceros = () => DB.map((t) => ({ id: t._id, nombre: t.nombre, rif: t.rif, cli: t.cli, prov: t.prov, fiscal: t.fiscal, tel: t.tel }));
 
     // ---- Filtros y búsqueda ----
     document.getElementById('tercerosFilters').querySelectorAll('button').forEach((b) => {
