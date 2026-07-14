@@ -54,6 +54,35 @@
     });
   };
 
+  // === OCR del certificado RIF (Agente IA · alta de empresa) ===
+  // Recibe el certificado RIF del SENIAT (PDF o foto) y devuelve los datos:
+  // { ok, rif, razon_social, domicilio, fecha_vencimiento, condicion, tipo, confianza }
+  const RIF_URL = 'https://n8n.digiaccount.io/webhook/ocr-rif';
+  window.__ocrRif = function (file) {
+    return new Promise(function (resolve) {
+      try {
+        const esPdf = file && (/pdf$/i.test(file.type) || /\.pdf$/i.test(file.name || ''));
+        const esImg = file && /^image\/(jpeg|jpg|png|webp)$/.test(file.type);
+        if (!file || (!esPdf && !esImg)) { resolve({ ok: false, error: 'Formato no soportado (usa PDF, JPG, PNG o WebP)' }); return; }
+        if (file.size > 8 * 1024 * 1024) { resolve({ ok: false, error: 'El archivo supera 8MB' }); return; }
+        const r = new FileReader();
+        r.onerror = function () { resolve({ ok: false, error: 'No se pudo leer el archivo' }); };
+        r.onload = function () {
+          const b64 = String(r.result).split(',')[1] || '';
+          fetch(RIF_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: OCR_TOKEN, archivo: b64, mime: esPdf ? 'application/pdf' : file.type }),
+          })
+            .then(function (res) { return res.json(); })
+            .then(function (j) { resolve(j && typeof j === 'object' ? j : { ok: false, error: 'Respuesta inválida' }); })
+            .catch(function (e) { resolve({ ok: false, error: 'Sin conexión con el lector: ' + e.message }); });
+        };
+        r.readAsDataURL(file);
+      } catch (e) { resolve({ ok: false, error: e.message }); }
+    });
+  };
+
   // === Extractor de estados de cuenta (Agente IA asíncrono) ===
   // El PDF puede tardar varios minutos: se envía, el agente responde por la tabla
   // trabajos_ia, y la app la consulta hasta que el resultado esté listo.

@@ -10163,29 +10163,58 @@
       const el = document.getElementById(id); if (el) el.addEventListener('input', updatePreview);
     });
 
-    // Adjuntar RIF → el Agente OCR lo procesará (la lectura real requiere backend)
+    // Adjuntar RIF → el Agente OCR (add-on Agentes IA) lee el certificado y carga
+    // los datos; el archivo queda guardado para archivarlo en la Bóveda Fiscal
+    // de la empresa cuando se cree.
     const ocrBox = document.getElementById('cwOcr');
+    let rifDoc = null; // { file, datos }
     function resetOcr() {
+      rifDoc = null;
       if (!ocrBox) return;
       ocrBox.classList.remove('loading', 'done');
       ocrBox.querySelector('.cw-ocr-txt strong').textContent = '¿Tienes el RIF a la mano?';
       ocrBox.querySelector('.cw-ocr-txt span').textContent = 'Adjúntalo (PDF o foto) y el Agente OCR leerá los datos.';
       const ff = document.getElementById('cwRifFile'); if (ff) ff.value = '';
     }
-    function leerRif() {
+    async function leerRif() {
       const ff = document.getElementById('cwRifFile');
-      const nombreArchivo = (ff && ff.files && ff.files[0]) ? ff.files[0].name : 'documento.pdf';
+      const file = ff && ff.files && ff.files[0];
+      if (!file) return;
+      rifDoc = { file: file, datos: null };
+      const conIA = !!((window.__ES_FUNDADOR || window.__ADDON_AGENTES) && window.__ocrRif);
+      const setTxt = (t, s) => { ocrBox.querySelector('.cw-ocr-txt strong').textContent = t; ocrBox.querySelector('.cw-ocr-txt span').textContent = s; };
+      if (!conIA) {
+        ocrBox.classList.add('done');
+        setTxt('RIF adjunto ✓ · ' + file.name, 'Se archivará en la Bóveda Fiscal al crear la empresa. (La lectura automática es parte del add-on Agentes IA.)');
+        drawIcons(); return;
+      }
       ocrBox.classList.add('loading');
-      ocrBox.querySelector('.cw-ocr-txt strong').textContent = 'Procesando el RIF…';
-      ocrBox.querySelector('.cw-ocr-txt span').textContent = 'El Agente OCR está leyendo ' + nombreArchivo + '.';
+      setTxt('🤖 Leyendo el RIF con IA…', 'El Agente OCR está leyendo ' + file.name + '.');
       drawIcons();
-      setTimeout(() => {
-        ocrBox.classList.remove('loading'); ocrBox.classList.add('done');
-        ocrBox.querySelector('.cw-ocr-txt strong').textContent = 'RIF adjunto ✓ · ' + nombreArchivo;
-        ocrBox.querySelector('.cw-ocr-txt span').textContent = 'El Agente OCR extraerá los datos al activar el backend. Por ahora, complétalos abajo.';
-        if (window.toast) window.toast('RIF adjunto · será procesado por el Agente OCR', 'success');
-        drawIcons();
-      }, 1000);
+      const d = await window.__ocrRif(file);
+      ocrBox.classList.remove('loading');
+      ocrBox.classList.add('done');
+      if (!d || !d.ok) {
+        setTxt('RIF adjunto ✓ · ' + file.name, 'No se pudo leer automáticamente' + (d && d.error ? ' (' + d.error + ')' : '') + ' — completa los datos abajo. Igual se archivará en la Bóveda.');
+        drawIcons(); return;
+      }
+      rifDoc.datos = d;
+      // Tipo de entidad según la letra del RIF (J/G → jurídica; V/E → natural)
+      if (d.tipo === 'juridica' || d.tipo === 'natural') {
+        const val = d.tipo === 'juridica' ? 'Persona jurídica (J)' : 'Persona natural (V/E)';
+        const card = scrim.querySelector('.wiz-choice[data-choice="tipo"] .choice-card[data-val="' + val + '"]');
+        if (card) card.click();
+        updateTipoFields();
+      }
+      if (d.razon_social) { const n = document.getElementById('cwNombre'); if (n) n.value = d.razon_social; }
+      if (d.rif) { const rEl = document.getElementById('cwRif'); if (rEl) rEl.value = d.rif; }
+      if (d.domicilio) { const dom = document.getElementById('cwDom'); if (dom) dom.value = d.domicilio; }
+      if (d.condicion) { const c = document.getElementById('cwCond'); if (c) c.value = d.condicion === 'especial' ? 'Contribuyente especial' : 'Contribuyente ordinario'; }
+      updatePreview();
+      const conf = d.confianza != null ? ' · certeza ' + Math.round(d.confianza * 100) + '%' : '';
+      setTxt('🤖 RIF leído ✓ · ' + (d.rif || file.name) + conf, 'Datos cargados: revisa y corrige lo que haga falta. El documento se archivará en la Bóveda Fiscal de la empresa.');
+      if (window.toast) window.toast('🤖 RIF leído' + (d.razon_social ? ' · ' + d.razon_social : '') + conf, 'success');
+      drawIcons();
     }
     const rifBtn = document.getElementById('cwRifBtn');
     if (rifBtn) rifBtn.addEventListener('click', () => document.getElementById('cwRifFile').click());
@@ -10247,15 +10276,15 @@
           whatsapp: ((document.getElementById('cwWhatsapp') || {}).value || '').trim() || null,
           email: ((document.getElementById('cwEmail') || {}).value || '').trim() || null,
         };
-        window.sb.from('empresas').insert(filaEmp).then(({ error }) => {
+        window.sb.from('empresas').insert(filaEmp).select('id').single().then(({ data: nueva, error }) => {
           if (error && /column|schema cache/i.test(error.message || '')) {
             // columnas de contacto aún no existen: guarda sin ellas (no bloquear el alta)
             delete filaEmp.telefono; delete filaEmp.whatsapp; delete filaEmp.email;
-            return window.sb.from('empresas').insert(filaEmp).then(({ error: e2 }) => manejarAlta(e2));
+            return window.sb.from('empresas').insert(filaEmp).select('id').single().then(({ data: n2, error: e2 }) => manejarAlta(e2, n2));
           }
-          return manejarAlta(error);
+          return manejarAlta(error, nueva);
         });
-        function manejarAlta(error) {
+        function manejarAlta(error, nueva) {
           if (error) {
             console.warn('[DigiAccount] No se pudo guardar la empresa:', error.message);
             if (window.toast) window.toast('No se pudo guardar la empresa: ' + error.message, 'error');
@@ -10263,6 +10292,7 @@
           }
           if (window.cargarEmpresas) window.cargarEmpresas();   // recarga la lista real
           if (window.toast) window.toast('Empresa guardada en la base de datos ✓', 'success');
+          archivarRif(nueva && nueva.id);                        // el RIF adjunto → Bóveda Fiscal
         }
       } else {
         console.warn('[DigiAccount] Falta la sesión o el cuenta_id; la empresa no se guardó en la base.');
@@ -10275,6 +10305,24 @@
       next.textContent = fromSignup ? 'Ir al sistema' : 'Listo';
       step = 'done';
       drawIcons();
+    }
+    // Archiva el certificado RIF adjuntado en la Bóveda Fiscal de la empresa recién creada
+    async function archivarRif(empresaId) {
+      if (!rifDoc || !rifDoc.file || !empresaId || !window.sb || !window.__CUENTA_ID) return;
+      const file = rifDoc.file, d = rifDoc.datos || {};
+      const safe = (s) => (s || '').replace(/[^a-zA-Z0-9._-]/g, '_');
+      const path = window.__CUENTA_ID + '/' + empresaId + '/RIF/' + Date.now() + '_' + safe(file.name);
+      const { error } = await window.sb.storage.from('documentos-fiscales').upload(path, file, { upsert: false, contentType: file.type || undefined });
+      if (error) { console.warn('[DigiAccount] RIF no archivado:', error.message); return; }
+      const { error: e2 } = await window.sb.from('documentos_fiscales').insert({
+        cuenta_id: window.__CUENTA_ID, empresa_id: empresaId,
+        impuesto: 'RIF', periodo: d.fecha_vencimiento ? ('Vence ' + d.fecha_vencimiento) : '—',
+        tipo: 'Certificado electrónico', nombre: file.name,
+        storage_path: path, mime: file.type, tamano: file.size,
+      });
+      if (e2) { console.warn('[DigiAccount] RIF subido pero no registrado en la Bóveda:', e2.message); return; }
+      if (window.toast) window.toast('Certificado RIF archivado en la Bóveda Fiscal ✓', 'success');
+      if (window.cargarBoveda) window.cargarBoveda();
     }
     function close() { scrim.dataset.open = 'false'; }
 
