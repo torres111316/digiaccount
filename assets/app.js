@@ -6751,6 +6751,12 @@
             const conf = d.confianza != null ? ' · certeza ' + Math.round(d.confianza * 100) + '%' : '';
             if (avisos.length) toast('⚠️ Factura leída' + conf + ', PERO: ' + avisos.join(' · '), 'error');
             else toast('✓ Factura leída' + (d.proveedor ? ' · ' + d.proveedor : '') + (d.total != null ? ' · total Bs ' + fmtF(Number(d.total)) : '') + conf + ' — revisa y registra', 'success');
+            // Retención de ISLR: si la factura es de servicios/honorarios/fletes/alquileres/
+            // publicidad (o mixta), además de la retención de IVA toca retener ISLR (Anexo 6.1)
+            const CONCEPTO_ISLR = { servicios: 'servicios', honorarios: 'honorarios profesionales', fletes: 'fletes / transporte', alquileres: 'alquileres', publicidad: 'publicidad y propaganda', mixta: 'parte de servicios (factura mixta)' };
+            if (d.concepto && CONCEPTO_ISLR[d.concepto]) {
+              setTimeout(() => toast('💡 Factura de ' + CONCEPTO_ISLR[d.concepto] + ': recuerda generar también la RETENCIÓN DE ISLR (además de la de IVA) en Fiscal → Retenciones ISLR', 'info'), 1200);
+            }
           });
           const autollenar = () => {
             const t = terceros.find((x) => x.nombre.toLowerCase() === prov.value.trim().toLowerCase());
