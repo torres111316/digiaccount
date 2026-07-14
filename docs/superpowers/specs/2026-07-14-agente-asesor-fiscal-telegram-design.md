@@ -1,120 +1,137 @@
-# Agente Asesor Fiscal por Telegram — Diseño
+# Equipo de Agentes de la Firma (multi-agente) por Telegram — Diseño
 
 **Fecha:** 2026-07-14
 **Cuenta:** Firma Contable de Luis (add-on "Agentes IA")
-**Estado:** Diseño aprobado — pendiente de spec-review y plan de implementación
+**Estado:** Diseño en revisión — arquitectura multi-agente (gerente + 4 especialistas)
 
 ## Objetivo
 
-Un agente conversacional por Telegram que le permita a Luis, desde su teléfono y sin
-entrar a la app, consultar el estado fiscal/operativo de sus clientes y razonar sobre
-normativa venezolana. Es su asistente personal dentro de la Firma.
+Un equipo de agentes conversacionales por Telegram que le permita a Luis, desde su
+teléfono y sin entrar a la app, consultar el estado de sus clientes y razonar sobre
+normativa venezolana con profundidad por dominio. Replica la estructura de una firma real:
+un **gerente** que coordina y **cuatro especialistas** (tributos, contabilidad/finanzas,
+laboral, legal-mercantil).
 
-**Regla de oro:** solo lee e informa. NO ejecuta acciones que escriban datos (nada de
-generar retenciones, asientos ni declaraciones) en esta versión. Cuando razone sobre
-temas legales/fiscales, cita la fuente y recuerda que el contador valida.
+**Regla de oro:** solo leen e informan. NO ejecutan acciones que escriban datos en esta
+versión. Al razonar sobre normativa, citan la fuente y recuerdan que el contador valida.
 
 ## Alcance
 
-Construcción **por etapas** (aprobado):
+Entrega **completa** (los 5 agentes juntos — decisión de Luis 14/07). Orden interno de
+construcción sugerido: primero el esqueleto de orquestación + herramientas de datos, luego
+las cuatro bibliotecas de conocimiento (RAG) a medida que el corpus esté cargado.
 
-- **Etapa 1 (se construye ya):** agente Telegram + herramientas de DATOS (solo lectura)
-  + seguridad + memoria de conversación.
-- **Etapa 2 (cuando Luis reúna el corpus):** herramienta de CONOCIMIENTO (RAG) sobre el
-  corpus tributario + mercantil + contable.
-
-## Arquitectura
+## Arquitectura: orquestador + especialistas
 
 - **Canal:** bot de Telegram. n8n recibe el mensaje, procesa el tiempo que necesite y
-  responde con `sendMessage`. No aplica el límite de 100s de Cloudflare (ventaja sobre
-  los webhooks síncronos), ideal para un agente que encadena varios pasos.
-- **Cerebro:** nodo **AI Agent** de n8n (LangChain) con **Gemini** como chat model
-  (único proveedor disponible en Venezuela). Se asume el **nivel de pago** de Gemini para
-  eliminar los 503 por congestión del free tier.
-- **Memoria:** ventana de conversación por `sessionId` = chat de Telegram, para permitir
-  repreguntas sin repetir contexto.
-- **Datos:** el agente accede a Supabase con la credencial de servicio ya existente
-  (service_role, id `6HTJ7SkRWU2wYkmo`), a través de herramientas acotadas de solo lectura.
-- **Alcance de datos por cuenta:** cada Telegram ID autorizado está asociado en la config a
-  un `cuenta_id` (el de la Firma de Luis). TODAS las herramientas filtran por
-  `empresas.cuenta_id = <cuenta de la Firma>`. Los "clientes" de la Firma son las empresas
-  registradas bajo esa cuenta (plan Firma = empresas ilimitadas). El agente nunca ve datos
-  de otras cuentas de la plataforma.
+  responde con `sendMessage`. No aplica el límite de 100s de Cloudflare (ventaja para un
+  sistema multi-agente que encadena varios pasos).
+- **Patrón:** el agente **Gerente** (nodo AI Agent de n8n) tiene a cada **especialista como
+  una herramienta** (sub-workflow / sub-agente). El gerente lee la pregunta, decide a qué
+  especialista(s) consultar, y sintetiza la respuesta final.
+- **Cerebro:** **Gemini** en todos los agentes (único proveedor en Venezuela). Se asume el
+  **nivel de pago** de Gemini — NECESARIO: cada pregunta encadena 3-4 llamadas.
+- **Memoria:** el Gerente mantiene la ventana de conversación por `sessionId` = chat de
+  Telegram, para repreguntas sin repetir contexto.
+- **Datos:** acceso a Supabase con la credencial de servicio existente (service_role, id
+  `6HTJ7SkRWU2wYkmo`) mediante herramientas acotadas de solo lectura.
 
 ## Seguridad
 
 - **Lista blanca:** el bot solo atiende el/los Telegram ID autorizados (inicialmente solo
-  Luis). Un primer nodo compara el `message.from.id` contra la lista; si no coincide, el
-  flujo termina sin responder (o responde "no autorizado").
-- **Solo lectura:** ninguna herramienta escribe en la base. Sin superficie de daño.
-- El token del bot y la API key viven en credenciales de n8n, nunca en el frontend.
+  Luis). Un primer nodo compara `message.from.id`; si no coincide, termina sin responder.
+- **Alcance de datos por cuenta:** cada Telegram ID autorizado está asociado en la config a
+  un `cuenta_id` (la Firma de Luis). TODAS las herramientas filtran por
+  `empresas.cuenta_id = <cuenta de la Firma>`. Los "clientes" son las empresas registradas
+  bajo esa cuenta. El sistema nunca ve datos de otras cuentas de la plataforma.
+- **Solo lectura:** ninguna herramienta escribe. Sin superficie de daño.
 
-## Etapa 1 — Herramientas de datos (solo lectura)
+## Los agentes
 
-Cada herramienta es una sub-consulta acotada que el AI Agent decide cuándo invocar. Todas
-reciben parámetros vía `$fromAI` y devuelven JSON compacto.
+### Gerente (orquestador)
+- No tiene conocimiento propio; enruta y sintetiza.
+- Herramienta compartida **buscar_cliente(nombre)** — resuelve un nombre parcial a la
+  empresa real dentro de la cuenta de la Firma (id, nombre, RIF, condición). Si hay varias,
+  desambigua. Pasa el `empresa_id` a los especialistas.
+- Decide uno o varios especialistas por pregunta y combina sus respuestas.
 
-1. **buscar_cliente(nombre)** — resuelve un nombre parcial ("Comercial XYZ") a la empresa
-   real dentro de la cuenta de la Firma. Devuelve id, nombre, RIF, condición fiscal. Si hay
-   varias coincidencias, las lista para desambiguar.
-2. **vencimientos_cliente(empresa_id | rango)** — consulta `calendario_fiscal` cruzando el
-   terminal de RIF y la condición de la empresa. Devuelve obligaciones y fechas próximas.
-3. **estado_empresa(empresa_id)** — resumen de `libro_fiscal` (compras/ventas: totales,
-   IVA, período), condición fiscal y datos básicos.
-4. **saldos_tesoreria(empresa_id)** — saldos de `cuentas_tesoreria` y CxC/CxP derivadas de
-   `movimientos_tesoreria` / documentos.
-5. **estado_boveda(empresa_id, período?)** — qué planillas/certificados hay archivados en
-   `documentos_fiscales` por impuesto y período, y qué falta respecto a lo que vencía.
+### Especialista Tributos
+- **Datos:** `vencimientos_cliente` (calendario_fiscal × terminal de RIF), `estado_fiscal`
+  (libro_fiscal compras/ventas, IVA, período), `retenciones`, `estado_boveda`
+  (documentos_fiscales por impuesto/período y qué falta).
+- **Conocimiento:** carpeta `Legislación Tributaria` del Dossier (Constitución, COT, ISLR +
+  reglamentos, IVA + reglamentos + parciales, IGTF, IGP, sucesiones, azar, alcohol,
+  cigarrillos, providencias RIF/facturación/imprentas/sujetos especiales/102/121/ret.IVA).
+  MÁS los manuales/guías SENIAT de la carpeta SENIAT ya existente.
 
-Notas de diseño:
-- Las herramientas devuelven texto/JSON breve y legible; el agente redacta la respuesta
-  final en lenguaje natural.
-- Todas filtran por las empresas que administra la Firma (no exponen otras cuentas).
+### Especialista Contabilidad y Finanzas
+- **Datos:** `libro_contable` (asientos, cuentas_contables), `tesoreria` (cuentas_tesoreria,
+  movimientos_tesoreria, saldos), `cxc_cxp` (por cobrar / por pagar), indicadores básicos.
+- **Conocimiento:** carpeta `Boletines de Aplicación VEN-NIF` (BA VEN-NIF 0,2,4,5,8,9,10,11,12)
+  + carpeta `SECP` (normas del ejercicio profesional del contador). `NIIF Completas` está
+  vacía por ahora; se sumarán las NIIF completas en una iteración posterior (opcional).
 
-## Etapa 2 — Herramienta de conocimiento (RAG)
+### Especialista Laboral
+- **Datos:** `nomina` (empleados, recibos_nomina, parametros_nomina, novedades_nomina).
+- **Conocimiento:** carpeta `Legislación Laboral` (LOTTT, Reglamento LOT, Reglamento Parcial
+  LOTTT, LOPCYMAT, Ley Orgánica Procesal del Trabajo). Los decretos de salario mínimo y
+  cestaticket se añaden como documentos sueltos cuando Luis los aporte.
 
-- **consultar_normativa(pregunta)** — recuperación aumentada sobre el corpus:
-  - **Corpus:** manuales/guías SENIAT (IVA, ISLR, IGTF, IGP, DPP, Facturación Electrónica
-    — providencias 102/121) que Luis ya tiene, MÁS los textos legales que reunirá:
-    tributario (COT, Ley y Reglamento de IVA, Ley y Reglamento de ISLR, Ley del IGTF, Ley
-    del IGP, Ley de Protección de las Pensiones), mercantil (Código de Comercio) y contable
-    (VEN-NIF / BA VEN-NIF).
-  - **Vector store:** Supabase con `pgvector`; **embeddings de Gemini**; ingesta por
-    fragmentos (chunking) con metadatos (fuente, impuesto, artículo/sección).
-  - El agente **cita la fuente** de cada afirmación y aclara que es orientativo.
+### Especialista Legal-Mercantil
+- **Datos:** `datos_empresa` (tipo societario, RIF, condición) y `terceros`.
+- **Conocimiento:** carpeta `Legislación Mercantil` (Código de Comercio, Ley de Registros y
+  Notarías, providencias SAREN).
 
-## Reglas de comportamiento (system prompt)
+## Conocimiento (RAG) — cuatro bibliotecas separadas
 
-- Solo informa; no ejecuta acciones de escritura.
-- Cita la fuente en temas normativos; recuerda que el contador valida.
-- Si no tiene el dato o la norma, lo dice; no inventa.
+- **Fuente:** `C:\Users\torre\OneDrive\Documentos\Contabilidad\Dossier del Contador`, ya
+  organizada por área (una carpeta por dominio). Corpus prácticamente completo.
+- **Vector store:** Supabase con `pgvector`; **embeddings de Gemini**; ingesta por
+  fragmentos con metadatos (fuente, dominio, artículo/sección).
+- **Partición por dominio:** cada especialista recupera SOLO de su biblioteca (una consulta
+  tributaria no trae normas laborales). Esto es el principal motivo para separar agentes.
+- Cada especialista **cita la fuente** de sus afirmaciones normativas.
+- **Aduana:** NO se crea especialista de Aduana por ahora (poco frecuente). El único
+  documento (`Ley Orgánica de Aduanas`) se adjunta a la biblioteca de Tributos como apoyo,
+  para preguntas puntuales de importación de proveedores. Si Aduana se vuelve frecuente, se
+  promueve a especialista propio.
+
+## Reglas de comportamiento (system prompt, todos los agentes)
+
+- Solo informan; no ejecutan acciones de escritura.
+- Citan la fuente en temas normativos; recuerdan que el contador valida.
+- Si no tienen el dato o la norma, lo dicen; no inventan.
 - Fechas en formato venezolano; montos en Bs con separadores locales.
 - Respuestas concretas y accionables (para leerse en el teléfono).
 
 ## Manejo de errores
 
-- **Gemini 503 (congestión):** reintento + mensaje claro ("el asistente está ocupado,
-  reintenta en un momento"). El nivel de pago lo minimiza.
-- **Cliente no encontrado / ambiguo:** el agente pide precisión en vez de adivinar.
-- **Sin datos para el período:** lo indica explícitamente.
+- **Gemini 503 (congestión):** reintento + mensaje claro. El nivel de pago lo minimiza;
+  con multi-agente es crítico por el mayor número de llamadas.
+- **Cliente no encontrado / ambiguo:** el gerente pide precisión en vez de adivinar.
+- **Especialista sin datos/norma:** lo indica explícitamente al gerente.
+- **Latencia:** una pregunta puede tardar varios segundos por los saltos entre agentes;
+  aceptable en Telegram (sin límite de Cloudflare).
 
-## Prerrequisitos
+## Prerrequisitos (a cargo de Luis)
 
-- **Luis:** crear el bot con **@BotFather** y entregar el token.
-- **Luis:** reunir el corpus legal (tributario + mercantil + contable) para la Etapa 2.
-- **Luis:** activar el nivel de pago de Gemini (recomendado antes de clientes reales).
+- Crear el bot con **@BotFather** y entregar el token.
+- Activar el **nivel de pago de Gemini** (necesario para multi-agente).
+- Corpus: **ya reunido** en el Dossier del Contador (tributaria, laboral, mercantil,
+  VEN-NIF, SECP). Opcionales a futuro: NIIF completas y decretos de salario mínimo/
+  cestaticket. El build ya NO está bloqueado por falta de material.
 
 ## Fuera de alcance (por ahora)
 
 - Acciones que escriban (generar retenciones, asientos, declaraciones) — futura, con
   aprobación humana explícita.
 - Multiusuario / acceso del equipo de la Firma — futura (ampliar la lista blanca).
-- Canal WhatsApp — reservado para lo externo/comercial, no para este agente interno.
+- Canal WhatsApp — reservado para lo externo/comercial.
 
-## Criterios de éxito (Etapa 1)
+## Criterios de éxito
 
-- Desde Telegram, Luis pregunta "¿qué le vence a <cliente> esta semana?" y recibe la
-  respuesta correcta cruzando calendario + terminal de RIF.
-- Consultas de estado de empresa, saldos y bóveda devuelven datos reales y correctos.
-- El bot ignora a cualquier usuario no autorizado.
-- Ninguna herramienta puede modificar datos.
+- Desde Telegram, una pregunta se enruta al especialista correcto y devuelve datos reales.
+- Una pregunta que cruza dominios (ej. "¿este pago a un proveedor de servicios lleva
+  retención y cómo lo asiento?") activa a Tributos y a Contabilidad y el gerente combina.
+- Cada especialista razona solo con su biblioteca; cita fuentes.
+- El bot ignora a cualquier usuario no autorizado; ninguna herramienta modifica datos.
