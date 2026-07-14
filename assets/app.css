@@ -1868,6 +1868,18 @@
   .cw-ocr.done { border-style: solid; border-color: var(--da-success); background: var(--da-success-tint); }
   .cw-ocr.done .cw-ocr-ic { background: var(--da-success); color: #fff; }
   .cw-ocr.done #cwRifBtn { display: none; }
+  /* Lector de RIF en la ficha de terceros (mismo estilo que el del wizard) */
+  .ter-ocr { display: flex; align-items: center; gap: 14px; padding: 12px 14px; margin-bottom: 16px; border: 1.5px dashed var(--da-cyan-200); border-radius: var(--radius-md); background: var(--da-cyan-50); transition: background .2s, border-color .2s; }
+  .ter-ocr .ter-ocr-ic { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 11px; background: var(--da-cyan-500); color: var(--da-navy-900); }
+  .ter-ocr .ter-ocr-ic i { width: 21px; height: 21px; }
+  .ter-ocr .ter-ocr-txt { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .ter-ocr .ter-ocr-txt strong { font-size: 13px; color: var(--fg-primary); }
+  .ter-ocr .ter-ocr-txt span { font-size: 12px; color: var(--fg-muted); }
+  .ter-ocr.loading { border-color: var(--da-cyan-500); }
+  .ter-ocr.loading .ter-ocr-ic { animation: ocrPulse 1s ease-in-out infinite; }
+  .ter-ocr.done { border-style: solid; border-color: var(--da-success); background: var(--da-success-tint); }
+  .ter-ocr.done .ter-ocr-ic { background: var(--da-success); color: #fff; }
+  .ter-ocr.done #terRifBtn { display: none; }
   .choice-card {
     border: 1px solid var(--border-default); border-radius: var(--radius-md);
     padding: 16px; cursor: pointer; position: relative;

@@ -2025,7 +2025,7 @@
       <div class="fiscal-tab" data-tab="boveda">
         <div style="background:var(--da-cyan-50);border:1px solid var(--da-cyan-100);border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--da-cyan-700);display:flex;gap:8px;align-items:flex-start;">
           <i data-lucide="shield" style="width:15px;height:15px;flex-shrink:0;margin-top:1px;"></i>
-          <span>Tu respaldo fiscal en un solo lugar: guarda las <strong>planillas de declaración</strong>, <strong>planillas/compromisos de pago</strong> y <strong>certificados electrónicos</strong> que emite el SENIAT, por empresa, impuesto y período. Archivos privados (cada cuenta ve solo los suyos).</span>
+          <span>Tu respaldo fiscal en un solo lugar: <strong>planillas de declaración</strong>, <strong>compromisos de pago</strong> y <strong>certificados electrónicos</strong>, por empresa, impuesto y período. Como el SENIAT no los envía por correo, hay dos formas de archivarlos: <strong>(1)</strong> descarga la planilla del portal y súbela con «Subir documento»; <strong>(2)</strong> reenvíala a <strong>boveda@digiaccount.io</strong> y el Asistente IA la clasifica sola. Archivos privados (cada cuenta ve solo los suyos).</span>
         </div>
         <div class="data-table-wrap">
           <div class="table-toolbar">
@@ -4761,6 +4761,12 @@
     <div class="ter-body">
       <!-- General -->
       <div class="ter-pane" data-tab="general" data-active="true">
+        <div class="ter-ocr" id="terOcrBox">
+          <input type="file" id="terRifFile" accept=".pdf,image/*" hidden>
+          <span class="ter-ocr-ic"><i data-lucide="scan-text"></i></span>
+          <div class="ter-ocr-txt"><strong>¿Tienes el RIF a la mano?</strong><span>Adjúntalo (PDF o foto) y el Asistente IA llena los datos.</span></div>
+          <button type="button" class="btn btn-primary" id="terRifBtn" style="height:34px;font-size:12px;"><i data-lucide="upload"></i> Leer RIF</button>
+        </div>
         <div class="ter-grid">
           <label class="ter-f"><span>Tipo de RIF / persona</span><select data-tk="tipo"><option>Persona jurídica (J)</option><option>Persona natural · Venezolano (V)</option><option>Persona natural · Extranjero (E)</option><option>Firma Personal · F.P. (V)</option><option>Emprendimiento (J)</option><option>Ente gubernamental (G)</option><option>Pasaporte (P)</option><option>Consejo comunal (C)</option></select></label>
           <label class="ter-f"><span>RIF / C.I.</span><input type="text" data-tk="rif" placeholder="J000000000 (sin guiones)"></label>

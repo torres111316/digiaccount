@@ -2727,8 +2727,8 @@
           if (fileEl && window.__ocrComprobante) fileEl.addEventListener('change', async () => {
             const file = fileEl.files && fileEl.files[0];
             if (!file) return;
-            // El OCR es parte del add-on Agentes IA: sin él, el adjunto se guarda normal
-            if (!(window.__ES_FUNDADOR || window.__ADDON_AGENTES)) return;
+            // OCR del comprobante + conciliación de cobros: función GRATIS para todas las
+            // cuentas (Asistente IA incluido). El costo de lectura es despreciable.
             toast('🤖 Leyendo el comprobante con IA…', 'info');
             const d = await window.__ocrComprobante(file);
             if (!d || !d.ok) { toast('No se pudo leer el comprobante' + (d && d.error ? ': ' + d.error : '') + ' — regístralo manual', 'error'); return; }
@@ -8297,9 +8297,46 @@
     }
     document.getElementById('terAddContact').addEventListener('click', () => addContact());
 
+    // 🤖 Lector de RIF (Asistente IA · gratis): al adjuntar el RIF de un cliente/proveedor,
+    // llena tipo, RIF, nombre, condición fiscal y domicilio. El usuario revisa antes de guardar.
+    const terOcrBox = document.getElementById('terOcrBox');
+    const terRifFile = document.getElementById('terRifFile');
+    const terRifBtn = document.getElementById('terRifBtn');
+    function resetTerOcr() {
+      if (!terOcrBox) return;
+      terOcrBox.classList.remove('loading', 'done');
+      terOcrBox.querySelector('.ter-ocr-txt strong').textContent = '¿Tienes el RIF a la mano?';
+      terOcrBox.querySelector('.ter-ocr-txt span').textContent = 'Adjúntalo (PDF o foto) y el Asistente IA llena los datos.';
+      if (terRifFile) terRifFile.value = '';
+    }
+    const TIPO_POR_LETRA = { J: 'Persona jurídica (J)', V: 'Persona natural · Venezolano (V)', E: 'Persona natural · Extranjero (E)', G: 'Ente gubernamental (G)', P: 'Pasaporte (P)', C: 'Consejo comunal (C)' };
+    async function leerRifTercero() {
+      const file = terRifFile && terRifFile.files && terRifFile.files[0];
+      if (!file || !window.__ocrRif) return;
+      const setTxt = (a, b) => { terOcrBox.querySelector('.ter-ocr-txt strong').textContent = a; terOcrBox.querySelector('.ter-ocr-txt span').textContent = b; };
+      terOcrBox.classList.remove('done'); terOcrBox.classList.add('loading');
+      setTxt('🤖 Leyendo el RIF…', 'El Asistente IA está leyendo ' + file.name + '.');
+      if (window.lucide) window.lucide.createIcons();
+      const d = await window.__ocrRif(file);
+      terOcrBox.classList.remove('loading'); terOcrBox.classList.add('done');
+      if (!d || !d.ok) { setTxt('No se pudo leer el RIF', (d && d.error ? d.error + ' — ' : '') + 'complétalo a mano.'); return; }
+      const letra = (d.rif || '').charAt(0).toUpperCase();
+      if (TIPO_POR_LETRA[letra]) get('tipo').value = TIPO_POR_LETRA[letra];
+      if (d.rif) { get('rif').value = d.rif; const e = get('idsis'); if (e) e.value = idSistema(d.rif); }
+      if (d.razon_social) get('nombre').value = d.razon_social;
+      if (d.domicilio) get('dom').value = d.domicilio;
+      if (d.condicion) get('fiscalCond').value = d.condicion === 'especial' ? 'Contribuyente especial' : 'Contribuyente ordinario';
+      const conf = d.confianza != null ? ' · certeza ' + Math.round(d.confianza * 100) + '%' : '';
+      setTxt('🤖 RIF leído ✓' + conf, 'Datos cargados: revisa y marca si es cliente, proveedor o ambos.');
+      toast('🤖 RIF leído' + (d.razon_social ? ' · ' + d.razon_social : ''), 'success');
+    }
+    if (terRifBtn) terRifBtn.addEventListener('click', () => terRifFile.click());
+    if (terRifFile) terRifFile.addEventListener('change', () => { if (terRifFile.files && terRifFile.files.length) leerRifTercero(); });
+
     let editIdx = null;
     function openFicha(t) {
       editIdx = t ? DB.indexOf(t) : null;
+      resetTerOcr();
       document.getElementById('terModalTitle').textContent = t ? t.nombre : 'Nuevo tercero';
       document.getElementById('terMsg').textContent = '';
       const setV = (k, v) => { const e = get(k); if (e) e.value = v; };
@@ -10268,11 +10305,12 @@
       const file = ff && ff.files && ff.files[0];
       if (!file) return;
       rifDoc = { file: file, datos: null };
-      const conIA = !!((window.__ES_FUNDADOR || window.__ADDON_AGENTES) && window.__ocrRif);
+      // Lectura del RIF: función GRATIS para todas las cuentas (Asistente IA incluido).
+      const conIA = !!window.__ocrRif;
       const setTxt = (t, s) => { ocrBox.querySelector('.cw-ocr-txt strong').textContent = t; ocrBox.querySelector('.cw-ocr-txt span').textContent = s; };
       if (!conIA) {
         ocrBox.classList.add('done');
-        setTxt('RIF adjunto ✓ · ' + file.name, 'Se archivará en la Bóveda Fiscal al crear la empresa. (La lectura automática es parte del add-on Agentes IA.)');
+        setTxt('RIF adjunto ✓ · ' + file.name, 'Se archivará en la Bóveda Fiscal al crear la empresa.');
         drawIcons(); return;
       }
       ocrBox.classList.add('loading');
