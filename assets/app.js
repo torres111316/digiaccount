@@ -6695,7 +6695,9 @@
       window.openFormModal && window.openFormModal({
         title: esCompra ? 'Registrar compra (Libro de Compras)' : 'Registrar venta (Libro de Ventas)',
         saveLabel: 'Registrar en el libro',
-        fields: [
+        fields: (esCompra && (window.__ES_FUNDADOR || window.__ADDON_AGENTES) && window.__ocrFactura ? [
+          { name: 'facturaFile', label: '🤖 Factura del proveedor (PDF o foto) — el Agente IA la lee y llena el formulario', col: 2, type: 'file' },
+        ] : []).concat([
           { name: 'fecha', label: 'Fecha de la factura', type: 'date', value: window.__hoyISO() },
           { name: 'tipoDoc', label: 'Tipo de documento', type: 'select', options: esCompra ? ['FC (Factura)', 'NC (Nota de crédito)', 'ND (Nota de débito)'] : ['FV (Factura de venta)', 'NC (Nota de crédito)', 'ND (Nota de débito)'] },
           { name: 'nombre', label: (esCompra ? 'Proveedor' : 'Cliente') + ' (escribe las iniciales y elige)', col: 2, type: 'datalist', options: terceros.map((t) => t.nombre), placeholder: 'Ej. Sum… → Suministros Lara, C.A.' },
@@ -6713,11 +6715,43 @@
         ]).concat([
           { name: 'retPct', label: (esCompra ? 'IVA que le retienes al proveedor' : 'IVA que te retuvo el cliente') + ' (opcional)', type: 'select', options: ['Sin retención', '75%', '100%'] },
           { name: 'retComp', label: 'N° comprobante de retención' + (esCompra ? ' (vacío = se genera)' : ' (el que te dio el cliente)'), placeholder: esCompra ? 'Se genera solo' : 'Ej. 20260600000123' },
-        ]),
+        ])),
         afterRender: (body) => {
           const prov = body.querySelector('[data-name="nombre"]');
           const rif = body.querySelector('[data-name="rif"]');
           if (!prov) return;
+          // 🤖 OCR de la factura (Agente IA · add-on): al adjuntarla, llena el formulario.
+          // El usuario revisa y corrige antes de registrar — la IA propone, él decide.
+          const factEl = body.querySelector('[data-name="facturaFile"]');
+          if (factEl && window.__ocrFactura) factEl.addEventListener('change', async () => {
+            const file = factEl.files && factEl.files[0];
+            if (!file) return;
+            toast('🤖 Leyendo la factura con IA…', 'info');
+            const d = await window.__ocrFactura(file);
+            if (!d || !d.ok) { toast('No se pudo leer la factura' + (d && d.error ? ': ' + d.error : '') + ' — regístrala manual', 'error'); return; }
+            const setV = (n, val) => { const el = body.querySelector('[data-name="' + n + '"]'); if (el && val != null && val !== '') el.value = val; };
+            if (d.fecha) { const p = String(d.fecha).split('/'); if (p.length === 3) setV('fecha', p[2] + '-' + p[1] + '-' + p[0]); }
+            setV('nombre', d.proveedor);
+            setV('rif', d.rif);
+            setV('numFactura', d.numero_factura);
+            setV('numControl', d.numero_control);
+            const tipoMap = { factura: 'FC (Factura)', nota_credito: 'NC (Nota de crédito)', nota_debito: 'ND (Nota de débito)' };
+            setV('tipoDoc', tipoMap[d.tipo_documento] || 'FC (Factura)');
+            // Alícuota y base: general (16%) manda; si solo hay reducida (8%), se usa esa
+            const bg = Number(d.base_general) || 0, br = Number(d.base_reducida) || 0, ex = Number(d.exento) || 0;
+            if (bg > 0) { setV('base', bg.toFixed(2)); setV('alic', '16%'); }
+            else if (br > 0) { setV('base', br.toFixed(2)); setV('alic', '8%'); }
+            else if (ex > 0) { setV('alic', 'Exento'); }
+            if (ex > 0) setV('exento', ex.toFixed(2));
+            const avisos = [];
+            if (bg > 0 && br > 0) avisos.push('trae TAMBIÉN base reducida 8% (Bs ' + fmtF(br) + ' + IVA ' + fmtF(Number(d.iva_reducida) || 0) + ') — regístrala en una línea aparte');
+            if (d.cuadra === false) avisos.push('los montos NO cuadran con el total leído (Bs ' + fmtF(Number(d.total) || 0) + ') — verifica contra el papel');
+            if (d.iva_ok === false) avisos.push('el IVA leído no es 16% exacto de la base — revísalo');
+            if (d.moneda === 'USD') avisos.push('la factura está en DÓLARES — el libro va en Bs: convierte a la tasa de la fecha');
+            const conf = d.confianza != null ? ' · certeza ' + Math.round(d.confianza * 100) + '%' : '';
+            if (avisos.length) toast('⚠️ Factura leída' + conf + ', PERO: ' + avisos.join(' · '), 'error');
+            else toast('✓ Factura leída' + (d.proveedor ? ' · ' + d.proveedor : '') + (d.total != null ? ' · total Bs ' + fmtF(Number(d.total)) : '') + conf + ' — revisa y registra', 'success');
+          });
           const autollenar = () => {
             const t = terceros.find((x) => x.nombre.toLowerCase() === prov.value.trim().toLowerCase());
             if (t) {
