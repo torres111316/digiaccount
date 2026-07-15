@@ -126,6 +126,7 @@
         if (window.cargarActivosFijos) window.cargarActivosFijos();
         if (window.cargarCriptoactivos) window.cargarCriptoactivos();
         if (window.cargarLibroFiscal) { window.cargarLibroFiscal('compra'); window.cargarLibroFiscal('venta'); }
+        if (window.cargarCalendarioFiscal) window.cargarCalendarioFiscal(); // vencimientos reales de esta empresa
         if (window.__cargarCobrosEmp) window.__cargarCobrosEmp(opt.dataset.empresaId); // métodos de cobro guardados
         if (window.__renderDPP) window.__renderDPP();
         if (window.__renderIGP) window.__renderIGP();
@@ -3215,42 +3216,129 @@
   })();
 
   /* =========================================================
-     CALENDARIO FISCAL (Mayo 2026)
+     CALENDARIO FISCAL — datos REALES (tabla calendario_fiscal,
+     Gaceta 43.273) cruzados con el terminal de RIF y la condición
+     de la empresa activa. Nada de fechas de ejemplo.
      ========================================================= */
   (function calendar() {
     const calGrid = document.getElementById('calGrid');
     if (!calGrid) return;
     const titleEl = document.getElementById('calTitle');
     const meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+    const mesCorto = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC'];
     const dows = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
-    let y = 2026, m = 4; // mayo 2026
+    const hoy = new Date();
+    const hoyISO = window.__hoyISO ? window.__hoyISO() : hoy.toISOString().slice(0, 10);
+    let y = hoy.getFullYear(), m = hoy.getMonth();   // arranca en el mes REAL
+    let EVENTOS = [];        // [{fecha:'YYYY-MM-DD', impuesto, descripcion}]
+    let cargadoPara = '';    // control de recarga por empresa/año
+
+    // Etiqueta corta y legible por impuesto
+    const IMP = {
+      RET_IVA_1Q: 'Retenciones IVA · 1ra quincena', RET_IVA_2Q: 'Retenciones IVA · 2da quincena',
+      RET_ISLR: 'Retenciones de ISLR', ISLR_ESTIMADA: 'ISLR estimada (porción)',
+      ISLR_ANUAL: 'ISLR anual (autoliquidación)', IGP: 'Grandes Patrimonios',
+      DPP: 'Protección de Pensiones', IVA: 'Declaración de IVA',
+    };
+    const etiqueta = (imp) => IMP[imp] || imp;
+
+    async function cargarEventos() {
+      const emp = window.__EMPRESA_ACTIVA;
+      if (!window.sb || !emp || !emp.id) { EVENTOS = []; return; }
+      const digitos = String(emp.rif || '').replace(/\D/g, '');
+      const terminal = digitos.slice(-1);
+      if (!terminal) { EVENTOS = []; return; }
+      const esEspecial = /especial/i.test(emp.cond || '');
+      const esOrdinario = /ordinario/i.test(emp.cond || '');
+      const { data, error } = await window.sb.from('calendario_fiscal')
+        .select('fecha, impuesto, descripcion, ambito, terminales')
+        .gte('fecha', y + '-01-01').lte('fecha', y + '-12-31');
+      if (error) { console.warn('[Calendario] ', error.message); EVENTOS = []; return; }
+      // Aplica SOLO lo que le toca a esta empresa: su terminal de RIF, y lo
+      // 'especial' únicamente si es sujeto pasivo especial.
+      EVENTOS = (data || []).filter((e) =>
+        String(e.terminales || '').indexOf(terminal) >= 0 &&
+        (e.ambito !== 'especial' || esEspecial)
+      ).map((e) => ({ fecha: e.fecha, impuesto: e.impuesto, descripcion: e.descripcion }));
+      // Regla general de los ORDINARIOS: IVA del mes anterior, hasta el día 15.
+      if (esOrdinario) {
+        for (let mm = 0; mm < 12; mm++) {
+          const f = y + '-' + String(mm + 1).padStart(2, '0') + '-15';
+          EVENTOS.push({ fecha: f, impuesto: 'IVA',
+            descripcion: 'Declaración y pago de IVA de ' + meses[(mm + 11) % 12].toLowerCase() + ' (contribuyente ordinario — hasta el 15)' });
+        }
+      }
+      EVENTOS.sort((a, b) => a.fecha.localeCompare(b.fecha));
+    }
+
+    function eventosDe(fechaISO) { return EVENTOS.filter((e) => e.fecha === fechaISO); }
 
     function render() {
-      const offset = (new Date(y, m, 1).getDay() + 6) % 7; // inicio en lunes
+      const offset = (new Date(y, m, 1).getDay() + 6) % 7; // semana inicia en lunes
       const dias = new Date(y, m + 1, 0).getDate();
-      const today = (y === 2026 && m === 4) ? 28 : -1; // "hoy" sólo en mayo 2026
-      const events = { 15: { type: 'cyan', label: 'Declaración IVA · 1ra quincena' } };
-      events[dias] = { type: 'urgent', label: 'Declaración IVA · 2da quincena' };
-      let html = dows.map((d) => `<div class="cal-dow">${d}</div>`).join('');
+      let html = dows.map((d) => '<div class="cal-dow">' + d + '</div>').join('');
       for (let i = 0; i < offset; i++) html += '<div class="cal-day empty"></div>';
       for (let d = 1; d <= dias; d++) {
-        let cls = 'cal-day', dot = '';
-        if (d === today) cls += ' today';
-        else if (events[d]) {
-          cls += events[d].type === 'urgent' ? ' has-event urgent' : ' has-event';
+        const iso = y + '-' + String(m + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+        const evs = eventosDe(iso);
+        let cls = 'cal-day', dot = '', title = '';
+        if (iso === hoyISO) cls += ' today';
+        if (evs.length) {
+          const dias_faltan = Math.round((new Date(iso + 'T12:00:00') - new Date(hoyISO + 'T12:00:00')) / 86400000);
+          const urgente = dias_faltan >= 0 && dias_faltan <= 3;
+          cls += urgente ? ' has-event urgent' : ' has-event';
           dot = '<span class="ev-dot"></span>';
+          title = evs.map((e) => etiqueta(e.impuesto)).join(' · ');
         }
-        html += `<div class="${cls}" title="${events[d] ? events[d].label : ''}">${d}${dot}</div>`;
+        html += '<div class="' + cls + '" title="' + esc(title) + '">' + d + dot + '</div>';
       }
       calGrid.innerHTML = html;
       if (titleEl) titleEl.textContent = 'Calendario fiscal · ' + meses[m] + ' ' + y;
+      renderProximos();
+      if (window.lucide) window.lucide.createIcons();
     }
+
+    // Panel "Próximos vencimientos": lo que viene DESDE HOY, real.
+    function renderProximos() {
+      const cont = document.getElementById('fiscalDeadlines');
+      if (!cont) return;
+      const emp = window.__EMPRESA_ACTIVA;
+      const sub = document.getElementById('calVencSub');
+      if (sub) sub.textContent = emp && emp.cond ? ('Para ' + emp.cond + (emp.rif ? ' · RIF ' + emp.rif : '')) : 'Selecciona una empresa';
+      if (!emp || !emp.id) {
+        cont.innerHTML = '<div style="text-align:center;color:var(--fg-muted);padding:28px 18px;font-size:13px;">Selecciona una empresa para ver sus vencimientos.</div>';
+        return;
+      }
+      const proximos = EVENTOS.filter((e) => e.fecha >= hoyISO).slice(0, 6);
+      if (!proximos.length) {
+        cont.innerHTML = '<div style="text-align:center;color:var(--fg-muted);padding:28px 18px;font-size:13px;">Sin vencimientos próximos registrados para el terminal de RIF de esta empresa en ' + y + '.</div>';
+        return;
+      }
+      cont.innerHTML = proximos.map((e) => {
+        const dd = new Date(e.fecha + 'T12:00:00');
+        const faltan = Math.round((dd - new Date(hoyISO + 'T12:00:00')) / 86400000);
+        const cls = faltan <= 3 ? 'deadline urgent' : faltan <= 7 ? 'deadline warn' : 'deadline';
+        const txt = faltan === 0 ? 'HOY' : faltan === 1 ? 'mañana' : 'en ' + faltan + ' días';
+        return '<div class="' + cls + '">'
+          + '<div class="when"><span class="day">' + dd.getDate() + '</span><span class="mon">' + mesCorto[dd.getMonth()] + '</span></div>'
+          + '<div class="what"><div class="t">' + esc(etiqueta(e.impuesto)) + '</div><div class="s">' + esc(e.descripcion || '') + '</div></div>'
+          + '<div class="countdown"><strong>' + txt + '</strong></div></div>';
+      }).join('');
+    }
+
+    async function refrescar() {
+      const emp = window.__EMPRESA_ACTIVA;
+      const clave = (emp && emp.id ? emp.id : 'sin') + '|' + y;
+      if (clave !== cargadoPara) { cargadoPara = clave; await cargarEventos(); }
+      render();
+    }
+    window.cargarCalendarioFiscal = refrescar;   // lo llama el cambio de empresa
 
     const prev = document.getElementById('calPrevBtn');
     const next = document.getElementById('calNextBtn');
-    if (prev) prev.addEventListener('click', () => { m--; if (m < 0) { m = 11; y--; } render(); });
-    if (next) next.addEventListener('click', () => { m++; if (m > 11) { m = 0; y++; } render(); });
-    render();
+    if (prev) prev.addEventListener('click', () => { m--; if (m < 0) { m = 11; y--; } refrescar(); });
+    if (next) next.addEventListener('click', () => { m++; if (m > 11) { m = 0; y++; } refrescar(); });
+    refrescar();
   })();
 
   /* =========================================================
