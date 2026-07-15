@@ -4043,6 +4043,49 @@
   /* =========================================================
      RESPONSIVE MÓVIL — sidebar off-canvas con hamburguesa
      ========================================================= */
+  /* =========================================================
+     MENÚ DE LA CUENTA (engranaje del pie del menú lateral)
+     ========================================================= */
+  .sidebar-footer { position: relative; }
+  .acct-menu {
+    position: absolute; bottom: calc(100% + 8px); right: 12px; z-index: 1400;
+    min-width: 210px; padding: 6px;
+    background: var(--da-white); border: 1px solid var(--border-default);
+    border-radius: var(--radius-md); box-shadow: var(--shadow-xl);
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  .acct-menu[hidden] { display: none; }
+  .acct-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 10px; border: 0; border-radius: var(--radius-sm);
+    background: transparent; cursor: pointer; text-align: left;
+    font-family: inherit; font-size: 13px; color: var(--fg-body);
+    transition: background var(--dur-fast) var(--ease-out);
+  }
+  .acct-item:hover { background: var(--da-slate-50); }
+  .acct-item i { width: 15px; height: 15px; flex: none; color: var(--fg-muted); }
+  .acct-item.danger { color: var(--da-danger); }
+  .acct-item.danger i { color: var(--da-danger); }
+  .acct-item.danger:hover { background: var(--da-danger-tint); }
+  .acct-sep { height: 1px; background: var(--border-default); margin: 4px 2px; }
+
+  /* Aviso de versión nueva disponible */
+  .update-bar {
+    position: fixed; left: 50%; transform: translateX(-50%); bottom: 18px; z-index: 2000;
+    display: flex; align-items: center; gap: 12px;
+    padding: 11px 14px; border-radius: var(--radius-pill);
+    background: var(--da-navy-800); color: var(--da-white);
+    box-shadow: var(--shadow-xl); font-size: 13px;
+    max-width: calc(100vw - 24px);
+  }
+  .update-bar[hidden] { display: none; }
+  .update-bar button {
+    border: 0; border-radius: var(--radius-pill); cursor: pointer;
+    padding: 6px 13px; font-family: inherit; font-size: 12.5px;
+    font-weight: var(--fw-semibold); background: var(--da-cyan-500);
+    color: var(--da-navy-900); flex: none;
+  }
+
   .topbar-burger { display: none; width: 38px; height: 38px; border: 0; background: transparent; color: var(--fg-body); border-radius: var(--radius-sm); cursor: pointer; align-items: center; justify-content: center; flex: none; margin-right: 4px; }
   .topbar-burger:hover { background: var(--bg-surface-alt); }
   .topbar-burger svg { width: 21px; height: 21px; }
@@ -6963,6 +7006,39 @@
   .ic-row .ic-del { height: 36px; width: 36px; min-width: 36px; padding: 0; margin: 0; flex: none; display: inline-flex; align-items: center; justify-content: center; }
   .ic-empty { font-size: 12px; color: var(--fg-muted); padding: 4px 0 8px; }
   @media (max-width: 560px) { .fm-grid { grid-template-columns: 1fr; } }
+
+  /* =========================================================
+     TELÉFONO · formularios y fichas (registrar compra, venta,
+     tercero, inventario, movimiento…). Sin esto, los formularios
+     de 2 y 5 columnas quedan ilegibles en pantallas angostas.
+     ========================================================= */
+  @media (max-width: 560px) {
+    /* Modal genérico (compras, ventas, inventario, tesorería, invitar usuario…) */
+    .form-modal-overlay { padding: 12px 10px; }
+    .fm-bar { padding: 12px 14px; }
+    .fm-body { padding: 16px 14px; }
+    /* 16px en los campos evita que el teléfono haga ZOOM automático al tocarlos,
+       y 42px de alto los hace cómodos para el dedo. */
+    .fm-field input, .fm-field select { height: 42px; font-size: 16px; }
+    .fm-check { padding: 11px 12px; }
+
+    /* Ficha de tercero (cliente / proveedor) */
+    .ter-overlay { padding: 12px 10px; }
+    .ter-bar { padding: 13px 14px; }
+    .ter-body { padding: 14px; max-height: 66vh; }
+    .ter-grid { grid-template-columns: 1fr; }          /* antes: 2 columnas fijas */
+    .ter-f input, .ter-f select { height: 42px; font-size: 16px; }
+    .ter-roles { margin: 12px 0; padding: 11px 12px; }
+    /* Contactos: 5 columnas en una fila es imposible en teléfono → se apilan de a 2
+       y el botón de borrar pasa a su propia línea. */
+    .ter-contact {
+      grid-template-columns: 1fr 1fr; gap: 6px;
+      padding-bottom: 10px; margin-bottom: 12px;
+      border-bottom: 1px solid var(--border-default);
+    }
+    .ter-contact input { height: 40px; font-size: 15px; }
+    .ter-contact .ter-cdel { grid-column: 1 / -1; height: 36px; }
+  }
 
   /* Panel de notificaciones */
   .notif-panel {

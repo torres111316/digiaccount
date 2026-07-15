@@ -224,14 +224,30 @@
           <div class="ur" id="sidebarUserRole">—</div>
         </div>
       </div>
-      <button class="icon-btn" id="sidebarSettingsBtn" data-view="usuarios" data-title="Usuarios y Roles" style="border-color:rgba(255,255,255,0.10); background:transparent; color:var(--da-slate-400);" title="Usuarios, roles y ajustes">
+      <button class="icon-btn" id="sidebarSettingsBtn" style="border-color:rgba(255,255,255,0.10); background:transparent; color:var(--da-slate-400);" title="Menú de la cuenta" aria-haspopup="true" aria-expanded="false">
         <i data-lucide="settings"></i>
       </button>
+      <!-- Menú de la cuenta (se abre desde el engranaje) -->
+      <div class="acct-menu" id="acctMenu" hidden>
+        <button class="acct-item" data-acct="usuarios"><i data-lucide="users-round"></i> Usuarios y Roles</button>
+        <button class="acct-item" data-acct="config"><i data-lucide="settings-2"></i> Configuración</button>
+        <button class="acct-item" data-acct="suscripcion"><i data-lucide="credit-card"></i> Mi Suscripción</button>
+        <div class="acct-sep"></div>
+        <button class="acct-item" data-acct="update"><i data-lucide="refresh-cw"></i> Buscar actualizaciones</button>
+        <div class="acct-sep"></div>
+        <button class="acct-item danger" data-acct="logout"><i data-lucide="log-out"></i> Cerrar sesión</button>
+      </div>
     </div>
   </aside>
 
   <!-- ============== MAIN ============== -->
   <div class="nav-scrim" id="navScrim"></div>
+
+  <!-- Aviso de versión nueva (PWA): aparece solo cuando hay una actualización lista -->
+  <div class="update-bar" id="updateBar" hidden>
+    <span id="updateBarTxt">Hay una versión nueva de DigiAccount.</span>
+    <button id="updateBarBtn">Actualizar</button>
+  </div>
 
   <main class="main">
 

@@ -301,15 +301,55 @@
     });
   });
 
-  // Accesos extra a Usuarios y Roles (perfil y botón de ajustes del pie del menú)
-  ['sidebarUser', 'sidebarSettingsBtn'].forEach((id) => {
-    const el = document.getElementById(id);
-    if (el) el.addEventListener('click', (e) => {
-      e.preventDefault(); e.stopPropagation();
-      if (window.__rolPermiteVista && !window.__rolPermiteVista('usuarios')) return; // solo admin
-      showView('usuarios', 'Usuarios y Roles');
-    });
+  // El nombre del usuario lleva a Usuarios y Roles (si su rol lo permite)
+  const sbUser = document.getElementById('sidebarUser');
+  if (sbUser) sbUser.addEventListener('click', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    if (window.__rolPermiteVista && !window.__rolPermiteVista('usuarios')) return; // solo admin
+    showView('usuarios', 'Usuarios y Roles');
   });
+
+  /* =========================================================
+     MENÚ DE LA CUENTA (engranaje del pie) — antes no hacía nada
+     útil; ahora agrupa los accesos y el CERRAR SESIÓN, que en el
+     teléfono no se alcanzaba desde la barra superior.
+     ========================================================= */
+  (function menuCuenta() {
+    const btn = document.getElementById('sidebarSettingsBtn');
+    const menu = document.getElementById('acctMenu');
+    if (!btn || !menu) return;
+    const cerrar = () => { menu.hidden = true; btn.setAttribute('aria-expanded', 'false'); };
+    btn.addEventListener('click', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const abierto = !menu.hidden;
+      if (abierto) { cerrar(); return; }
+      // Oculta las opciones que el rol no permite ver
+      menu.querySelectorAll('[data-acct]').forEach((it) => {
+        const v = it.dataset.acct;
+        const esVista = ['usuarios', 'config', 'suscripcion'].indexOf(v) >= 0;
+        it.style.display = (esVista && window.__rolPermiteVista && !window.__rolPermiteVista(v)) ? 'none' : '';
+      });
+      menu.hidden = false;
+      btn.setAttribute('aria-expanded', 'true');
+      if (window.lucide) window.lucide.createIcons();
+    });
+    document.addEventListener('click', (e) => { if (!menu.contains(e.target) && e.target !== btn) cerrar(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') cerrar(); });
+
+    const TITULOS = { usuarios: 'Usuarios y Roles', config: 'Configuración', suscripcion: 'Mi Suscripción' };
+    menu.querySelectorAll('[data-acct]').forEach((it) => it.addEventListener('click', async () => {
+      const accion = it.dataset.acct;
+      cerrar();
+      if (TITULOS[accion]) { showView(accion, TITULOS[accion]); return; }
+      if (accion === 'update') { if (window.__buscarActualizacion) window.__buscarActualizacion(true); return; }
+      if (accion === 'logout') {
+        if (!window.confirm('¿Cerrar sesión en DigiAccount?')) return;
+        try { if (window.sb) await window.sb.auth.signOut(); } catch (err) {}
+        try { localStorage.removeItem('da_last_activity'); } catch (err) {}
+        window.location.reload();   // recarga = borra todo el estado en memoria
+      }
+    }));
+  })();
   const planPill = document.querySelector('.plan-active-pill');
   if (planPill) planPill.addEventListener('click', (e) => { e.preventDefault(); showView('planes', 'Planes y Precios'); });
 
@@ -10768,9 +10808,64 @@
      SERVICE WORKER — registro (PWA · instalable + offline)
      Se registra aquí (y no inline en el HTML) para cumplir la CSP.
      ========================================================= */
+  /* En la app instalada (PWA) no existe Ctrl+Shift+R: sin esto, el usuario se
+     queda con la versión vieja sin enterarse. Ahora la app detecta que hay una
+     versión nueva y ofrece actualizar con un botón. */
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', function () {
-      navigator.serviceWorker.register('sw.js').catch(function (e) { console.warn('SW no registrado:', e); });
+      navigator.serviceWorker.register('sw.js').then(function (reg) {
+        const bar = document.getElementById('updateBar');
+        const txt = document.getElementById('updateBarTxt');
+        const btn = document.getElementById('updateBarBtn');
+        let esperando = null;
+
+        function ofrecer(sw) {
+          esperando = sw;
+          if (txt) txt.textContent = 'Hay una versión nueva de DigiAccount.';
+          if (btn) btn.hidden = false;
+          if (bar) bar.hidden = false;
+        }
+        // ¿Ya había una esperando al abrir?
+        if (reg.waiting && navigator.serviceWorker.controller) ofrecer(reg.waiting);
+        // Nueva versión descargándose
+        reg.addEventListener('updatefound', function () {
+          const nuevo = reg.installing;
+          if (!nuevo) return;
+          nuevo.addEventListener('statechange', function () {
+            // 'installed' + ya hay un controller = es una ACTUALIZACIÓN (no la 1ra vez)
+            if (nuevo.state === 'installed' && navigator.serviceWorker.controller) ofrecer(nuevo);
+          });
+        });
+        if (btn) btn.addEventListener('click', function () {
+          if (esperando) { try { esperando.postMessage({ tipo: 'ACTIVAR_YA' }); } catch (e) {} }
+          if (bar) bar.hidden = true;
+          setTimeout(function () { window.location.reload(); }, 300);
+        });
+        // Cuando el SW nuevo toma el control, recargar una sola vez
+        let recargado = false;
+        navigator.serviceWorker.addEventListener('controllerchange', function () {
+          if (recargado) return; recargado = true; window.location.reload();
+        });
+
+        // Buscar actualizaciones: al abrir, al volver a la app, y cada 30 min.
+        // manual=true → avisa también cuando YA está al día (lo llama el menú).
+        window.__buscarActualizacion = function (manual) {
+          if (manual && window.toast) window.toast('Buscando actualizaciones…', 'info');
+          reg.update().then(function () {
+            setTimeout(function () {
+              if (manual && (!bar || bar.hidden)) {
+                if (window.toast) window.toast('Ya tienes la última versión ✓', 'success');
+              }
+            }, 1500);
+          }).catch(function () {
+            if (manual && window.toast) window.toast('No se pudo verificar (¿sin conexión?)', 'error');
+          });
+        };
+        document.addEventListener('visibilitychange', function () {
+          if (!document.hidden) reg.update().catch(function () {});
+        });
+        setInterval(function () { reg.update().catch(function () {}); }, 30 * 60 * 1000);
+      }).catch(function (e) { console.warn('SW no registrado:', e); });
     });
   }
 })();

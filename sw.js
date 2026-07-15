@@ -1,7 +1,13 @@
-﻿/* Service Worker Â· DigiAccount PWA
-   Estrategia: network-first (siempre trae lo Ãºltimo con conexiÃ³n;
-   usa la copia en cachÃ© como respaldo cuando no hay red). */
-const CACHE = 'digiaccount-v4';
+/* Service Worker · DigiAccount PWA
+   Estrategia: network-first (con conexión siempre trae lo último; usa la copia
+   en caché como respaldo cuando no hay red).
+
+   Actualizaciones: la versión nueva NO se activa sola (nada de skipWaiting al
+   instalar). Queda "esperando" y la app muestra el aviso "Hay una versión nueva
+   → Actualizar". Al pulsarlo, la app manda ACTIVAR_YA y recién ahí toma el
+   control. Así el usuario nunca pierde lo que está haciendo, pero tampoco se
+   queda atascado en una versión vieja (en el teléfono no hay Ctrl+Shift+R). */
+const CACHE = 'digiaccount-v5';
 const ASSETS = [
   './',
   './index.html',
@@ -18,9 +24,8 @@ const ASSETS = [
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(
-    caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting())
-  );
+  // Se precarga el caché nuevo, pero NO se activa: espera el visto bueno del usuario.
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)));
 });
 
 self.addEventListener('activate', (e) => {
@@ -29,6 +34,11 @@ self.addEventListener('activate', (e) => {
       .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
+});
+
+// La app pide activar la versión nueva (botón "Actualizar")
+self.addEventListener('message', (e) => {
+  if (e.data && e.data.tipo === 'ACTIVAR_YA') self.skipWaiting();
 });
 
 self.addEventListener('fetch', (e) => {
