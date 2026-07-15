@@ -3250,15 +3250,21 @@
       if (!terminal) { EVENTOS = []; return; }
       const esEspecial = /especial/i.test(emp.cond || '');
       const esOrdinario = /ordinario/i.test(emp.cond || '');
+      // DPP (Protección de Pensiones): SOLO personas jurídicas privadas (RIF J).
+      // Fuentes: PA SNAT/2025/000093 art.1 ("las personas jurídicas... de carácter
+      // privado") y manual SENIAT TRI.GR.03.031 ("dirigido a las personas Jurídicas (J)").
+      // Una firma personal es persona natural (V) → NO declara DPP, aunque sea especial.
+      const esJuridica = /^\s*J/i.test(String(emp.rif || ''));
       const { data, error } = await window.sb.from('calendario_fiscal')
         .select('fecha, impuesto, descripcion, ambito, terminales')
         .gte('fecha', y + '-01-01').lte('fecha', y + '-12-31');
       if (error) { console.warn('[Calendario] ', error.message); EVENTOS = []; return; }
-      // Aplica SOLO lo que le toca a esta empresa: su terminal de RIF, y lo
-      // 'especial' únicamente si es sujeto pasivo especial.
+      // Aplica SOLO lo que le toca a esta empresa: su terminal de RIF, lo 'especial'
+      // únicamente si es sujeto pasivo especial, y el DPP solo si es persona jurídica.
       EVENTOS = (data || []).filter((e) =>
         String(e.terminales || '').indexOf(terminal) >= 0 &&
-        (e.ambito !== 'especial' || esEspecial)
+        (e.ambito !== 'especial' || esEspecial) &&
+        (e.impuesto !== 'DPP' || esJuridica)
       ).map((e) => ({ fecha: e.fecha, impuesto: e.impuesto, descripcion: e.descripcion }));
       // Regla general de los ORDINARIOS: IVA del mes anterior, hasta el día 15.
       if (esOrdinario) {
@@ -3309,7 +3315,7 @@
         cont.innerHTML = '<div style="text-align:center;color:var(--fg-muted);padding:28px 18px;font-size:13px;">Selecciona una empresa para ver sus vencimientos.</div>';
         return;
       }
-      const proximos = EVENTOS.filter((e) => e.fecha >= hoyISO).slice(0, 6);
+      const proximos = EVENTOS.filter((e) => e.fecha >= hoyISO).slice(0, 4); // solo los 4 más cercanos
       if (!proximos.length) {
         cont.innerHTML = '<div style="text-align:center;color:var(--fg-muted);padding:28px 18px;font-size:13px;">Sin vencimientos próximos registrados para el terminal de RIF de esta empresa en ' + y + '.</div>';
         return;

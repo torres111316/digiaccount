@@ -4076,6 +4076,27 @@
     .pay-scrim, .rec-scrim { padding: 12px; }
     .cfg-fields { grid-template-columns: 1fr; }
     .sh-metrics { grid-template-columns: 1fr; }
+
+    /* --- TELÉFONO: la barra superior debe caber completa ---
+       Antes: gap 20px entre 7 elementos + breadcrumb + tasa + 4 iconos = se
+       desbordaba y "Cerrar sesión" (el último) quedaba fuera de pantalla. */
+    .topbar { padding: 0 10px; gap: 6px; }
+    .topbar .breadcrumb { display: none; }        /* el título ya se ve en la página */
+    .topbar-icon { width: 34px; height: 34px; flex: none; }
+    .topbar-burger { flex: none; margin-right: 0; }
+    .fx-pill { flex: none; padding: 0 8px; gap: 6px; }
+    .topbar .spacer { flex: 1; min-width: 0; }
+
+    /* --- Cabeceras de panel: que los botones (ej. ‹ › del calendario)
+           nunca se salgan; el título cede espacio, los botones no. --- */
+    .panel-head { gap: 10px; padding: 14px 14px 12px; }
+    .panel-title-block { min-width: 0; }
+    .panel-title-block .title { font-size: 14px; }
+    .panel-actions { flex: none; }
+
+    /* Vencimientos: que el texto largo no empuje la cuenta regresiva */
+    .deadline .what { min-width: 0; }
+    .deadline .what .s { white-space: normal; }
   }
 
   /* =========================================================
