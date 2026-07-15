@@ -4121,14 +4121,32 @@
     .sh-metrics { grid-template-columns: 1fr; }
 
     /* --- TELÉFONO: la barra superior debe caber completa ---
-       Antes: gap 20px entre 7 elementos + breadcrumb + tasa + 4 iconos = se
-       desbordaba y "Cerrar sesión" (el último) quedaba fuera de pantalla. */
-    .topbar { padding: 0 10px; gap: 6px; }
+       El desbordamiento venía sobre todo de la píldora de la tasa (punto en
+       vivo + etiqueta + tasa + % de variación + flecha). En móvil se deja solo
+       lo esencial: la tasa. Así "Cerrar sesión" (el último) ya no se sale. */
+    .topbar { padding: 0 8px; gap: 4px; }
     .topbar .breadcrumb { display: none; }        /* el título ya se ve en la página */
     .topbar-icon { width: 34px; height: 34px; flex: none; }
-    .topbar-burger { flex: none; margin-right: 0; }
-    .fx-pill { flex: none; padding: 0 8px; gap: 6px; }
+    .topbar-burger { flex: none; margin-right: 0; width: 34px; height: 34px; }
     .topbar .spacer { flex: 1; min-width: 0; }
+    /* Píldora de la tasa: compacta (sin % ni flecha, que no son imprescindibles) */
+    .fx-pill { flex: none; padding: 0 8px; gap: 5px; }
+    .fx-pill .fx-delta,
+    .fx-pill .fx-chev { display: none; }
+    .fx-pill .fx-rate { font-size: 12px; }
+
+    /* Panel de la tasa: en escritorio cuelga de la píldora (right:0), pero en
+       teléfono la píldora está a media barra y el panel de 380px se salía por
+       la izquierda. En móvil se fija y se CENTRA en la pantalla. */
+    .fx-panel {
+      position: fixed; top: 56px; left: 50%; right: auto;
+      width: calc(100vw - 20px); max-width: 380px;
+      max-height: calc(100vh - 74px); overflow-y: auto;
+      z-index: 1500;
+      transform: translate(-50%, -6px);
+    }
+    .fx-panel[data-open="true"] { transform: translate(-50%, 0); }
+    .fx-conv-row { gap: 8px; }
 
     /* --- Cabeceras de panel: que los botones (ej. ‹ › del calendario)
            nunca se salgan; el título cede espacio, los botones no. --- */

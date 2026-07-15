@@ -7620,11 +7620,6 @@
       if (window.showView) window.showView('fiscal', 'Módulo Fiscal · SENIAT');
       if (window.gotoFiscalTab) window.gotoFiscalTab('agenda');
     });
-    // Ayuda
-    const ayuda = document.getElementById('ayudaBtn');
-    if (ayuda) ayuda.addEventListener('click', () => {
-      if (window.toast) window.toast('Centro de ayuda de DigiAccount · disponible próximamente', 'info');
-    });
   })();
 
   /* =========================================================
