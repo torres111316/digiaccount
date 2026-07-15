@@ -18,10 +18,16 @@ create table if not exists public.conocimiento (
   creado_en  timestamptz default now()
 );
 
--- 3) Índices: por dominio (para filtrar) y por similitud (para la búsqueda vectorial)
+-- 3) Índice por dominio (para filtrar)
 create index if not exists idx_conocimiento_dominio on public.conocimiento(dominio);
-create index if not exists idx_conocimiento_embedding
-  on public.conocimiento using ivfflat (embedding vector_cosine_ops) with (lists = 100);
+
+-- OJO — SIN índice vectorial a propósito (lección aprendida 15/07/2026):
+-- Un índice ivfflat creado sobre la tabla VACÍA nace sin clusters entrenados y las
+-- búsquedas devuelven CERO filas aunque haya datos. Con ~3.300 fragmentos, la búsqueda
+-- exacta (scan secuencial) tarda milisegundos y tiene precisión perfecta.
+-- Si el corpus crece a decenas de miles, crear un índice HNSW (tolera inserciones):
+--   create index on public.conocimiento using hnsw (embedding vector_cosine_ops);
+drop index if exists idx_conocimiento_embedding;
 
 -- 4) Seguridad: solo el service_role (n8n) accede; sin políticas públicas
 alter table public.conocimiento enable row level security;
