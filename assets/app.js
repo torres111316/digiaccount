@@ -97,7 +97,8 @@
         // Empresa activa = emisor de los recibos/facturas + dueña de sus libros contables
         const fiscalActivo = opt.dataset.fiscal === 'true';
         window.__EMPRESA_ACTIVA = {
-          id: opt.dataset.empresaId || '', n: name, rif: rif, dom: '',
+          id: opt.dataset.empresaId || '', n: name, rif: rif,
+          dom: opt.dataset.direccion || '', tel: opt.dataset.telefono || '',
           cond: /especial/i.test(cond) ? 'Contribuyente Especial' : /formal/i.test(cond) ? 'Contribuyente Formal' : (type === 'natural' ? 'Persona Natural' : 'Contribuyente Ordinario'),
           fiscalActivo: fiscalActivo,
           modo: fiscalActivo ? 'libro' : 'recibos', // DERIVADO del módulo Fiscal: activo→libros, inactivo→recibos
@@ -187,7 +188,7 @@
     if (!window.sb || !dd || !addBtn) return;
     // SOLO las empresas de MI cuenta: sin este filtro, el fundador (superadmin,
     // que por RLS ve todo) veía en su selector las empresas de TODOS los clientes.
-    let q = window.sb.from('empresas').select('id, nombre, rif, condicion_fiscal, fiscal_activo, firma_empresa');
+    let q = window.sb.from('empresas').select('id, nombre, rif, condicion_fiscal, fiscal_activo, firma_empresa, direccion, telefono');
     if (window.__CUENTA_ID) q = q.eq('cuenta_id', window.__CUENTA_ID);
     const { data, error } = await q.order('nombre');
     if (error) { console.warn('[DigiAccount] No se pudieron cargar las empresas:', error.message); return; }
@@ -213,6 +214,8 @@
       opt.dataset.empresaId = emp.id || '';
       opt.dataset.fiscal = String(!!emp.fiscal_activo);
       if (emp.firma_empresa) opt.dataset.firma = emp.firma_empresa;
+      if (emp.direccion) opt.dataset.direccion = emp.direccion;
+      if (emp.telefono) opt.dataset.telefono = emp.telefono;
       const metaTxt = esNatural ? 'Persona Natural' : ('Contribuyente ' + condTxt);
       const puedeEditar = !window.__rolActual || window.__rolActual() === 'admin';
       opt.innerHTML = '<div class="ea" style="background:var(--da-navy-500);color:#fff">' + ini + '</div>'
@@ -244,11 +247,13 @@
         { name: 'nombre', label: 'Nombre / Razón social', col: 2, value: emp.nombre || '' },
         { name: 'rif', label: 'RIF', value: emp.rif || '', placeholder: 'J-12345678-9' },
         { name: 'cond', label: 'Condición fiscal', type: 'select', options: ['ordinario', 'formal', 'especial'], value: emp.condicion_fiscal || 'ordinario' },
+        { name: 'direccion', label: 'Dirección (aparece en los recibos)', col: 2, placeholder: 'Ej. Cambural - Edo. Yaracuy', value: emp.direccion || '' },
+        { name: 'telefono', label: 'Teléfono', placeholder: '0414-1234567', value: emp.telefono || '' },
       ],
       onSave: (v) => {
         if (!v.nombre) return 'Indica el nombre de la empresa.';
         if (!v.rif) return 'Indica el RIF.';
-        window.sb.from('empresas').update({ nombre: v.nombre.trim(), rif: v.rif.trim(), condicion_fiscal: v.cond })
+        window.sb.from('empresas').update({ nombre: v.nombre.trim(), rif: v.rif.trim(), condicion_fiscal: v.cond, direccion: (v.direccion || '').trim() || null, telefono: (v.telefono || '').trim() || null })
           .eq('id', emp.id).then(({ error }) => {
             if (error) { if (window.toast) window.toast('No se pudo guardar: ' + error.message, 'error'); return; }
             if (window.toast) window.toast('Empresa actualizada ✓', 'success');
@@ -4996,17 +5001,20 @@
       };
       const k = kinds[tab];
       modalTitle.textContent = k.title;
-      const fecha = '30/05/2026';
-      const numDoc = k.num + '-2026-' + emp.id.toUpperCase() + '04';
+      const hoyK = new Date();
+      const fecha = ('0' + hoyK.getDate()).slice(-2) + '/' + ('0' + (hoyK.getMonth() + 1)).slice(-2) + '/' + hoyK.getFullYear();
+      const numDoc = k.num + '-' + hoyK.getFullYear() + '-' + emp.id.toUpperCase() + '04';
 
       const rows = reciboRows(tab, c).map((r) => {
         if (r[0] === 'sec') return '<tr class="sec"><td colspan="3">' + r[1] + '</td></tr>';
         return '<tr class="' + r[0] + '"><td>' + r[1] + (r[2] ? '<span class="sub">' + r[2] + '</span>' : '') + '</td><td class="num">Bs</td><td class="num">' + fmt(r[3]) + '</td></tr>';
       }).join('');
 
+      const EMPK = window.__EMPRESA_ACTIVA || {};
       doc.innerHTML =
         '<div class="recibo-head">'
-        + '<div><div class="rh-co">' + (((window.__EMPRESA_ACTIVA || {}).n) || '—') + '</div><div class="rh-meta"><span class="mono">RIF ' + (((window.__EMPRESA_ACTIVA || {}).rif) || '—') + '</span></div></div>'
+        + '<div><div class="rh-co">' + (EMPK.n || '—') + '</div><div class="rh-meta"><span class="mono">RIF ' + (EMPK.rif || '—') + '</span>'
+        + (EMPK.dom ? '<br>' + EMPK.dom : '') + (EMPK.tel ? '<br>Telf. ' + EMPK.tel : '') + '</div></div>'
         + '<div class="rh-kind"><div class="k">' + k.title + '</div><div class="num">N° ' + numDoc + '</div></div>'
         + '</div>'
         + '<div class="recibo-party">'
@@ -5229,8 +5237,9 @@
     function openReciboPago(emp) {
       const p = calcPago(emp);
       modalTitle.textContent = 'Recibo de Pago de Nómina';
-      const fecha = '31/05/2026';
-      const numDoc = p.f.doc + '-2026-10-' + emp.id.toUpperCase();
+      const hoyR = new Date();
+      const fecha = ('0' + hoyR.getDate()).slice(-2) + '/' + ('0' + (hoyR.getMonth() + 1)).slice(-2) + '/' + hoyR.getFullYear();
+      const numDoc = p.f.doc + '-' + hoyR.getFullYear() + '-10-' + emp.id.toUpperCase();
 
       const rows = [['sec', 'Asignaciones salariales', '', null]];
       rows.push(['asig', p.f.etiqueta + ' (salario base)', 'Salario base cotizable · Bs ' + fmt(emp.salarioMes) + '/mes', p.sueldo]);
@@ -5260,15 +5269,19 @@
         return '<tr class="' + r[0] + '"><td>' + r[1] + (r[2] ? '<span class="sub">' + r[2] + '</span>' : '') + '</td><td class="num">Bs</td><td class="num">' + signo + fmt(r[3]) + '</td></tr>';
       }).join('');
 
+      const EMPR = window.__EMPRESA_ACTIVA || {};
+      const ingresoTxt = (emp.ingreso && emp.ingreso.getDate) ? (('0' + emp.ingreso.getDate()).slice(-2) + '/' + ('0' + (emp.ingreso.getMonth() + 1)).slice(-2) + '/' + emp.ingreso.getFullYear()) : '—';
       doc.innerHTML =
         '<div class="recibo-head">'
-        + '<div><div class="rh-co">' + (((window.__EMPRESA_ACTIVA || {}).n) || '—') + '</div><div class="rh-meta"><span class="mono">RIF ' + (((window.__EMPRESA_ACTIVA || {}).rif) || '—') + '</span></div></div>'
+        + '<div><div class="rh-co">' + (EMPR.n || '—') + '</div><div class="rh-meta"><span class="mono">RIF ' + (EMPR.rif || '—') + '</span>'
+        + (EMPR.dom ? '<br>' + EMPR.dom : '') + (EMPR.tel ? '<br>Telf. ' + EMPR.tel : '') + '</div></div>'
         + '<div class="rh-kind"><div class="k">Recibo de Pago</div><div class="num">N° ' + numDoc + '</div></div>'
         + '</div>'
         + '<div class="recibo-party">'
         + '<div class="rp"><div class="l">Trabajador</div><div class="v">' + emp.nombre + '</div></div>'
         + '<div class="rp"><div class="l">Cédula</div><div class="v mono">' + emp.cedula + '</div></div>'
         + '<div class="rp"><div class="l">Cargo</div><div class="v">' + emp.cargo + ' · ' + emp.depto + '</div></div>'
+        + '<div class="rp"><div class="l">Fecha de ingreso</div><div class="v">' + ingresoTxt + '</div></div>'
         + '<div class="rp"><div class="l">Tipo de trabajador</div><div class="v">' + emp.tipo + (emp.tipo === 'Planta' ? ' · producción' : '') + '</div></div>'
         + '<div class="rp"><div class="l">Período de pago</div><div class="v">' + p.f.periodo + '</div></div>'
         + '<div class="rp"><div class="l">Forma de pago</div><div class="v">' + emp.formaPago + '</div></div>'
@@ -5379,6 +5392,7 @@
         formaPago: r.forma_pago || 'Transferencia', frecHabitual: r.frecuencia || 'quincenal',
         prestamoCuota: Number(r.prestamo_cuota) || 0, cajaAhorroPct: (Number(r.caja_ahorro_pct) || 0) / 100,
         contingenciaUSD: Number(r.contingencia_usd) || 0,
+        correo: r.correo || '', whatsapp: r.whatsapp || '',
         horasExtra: 0, horasNoct: 0, diasFeriado: 0, comisionBs: 0, bonoProdBs: 0, anticipoSueldo: 0,
         color: r.color || PAL[i % PAL.length], ini: r.ini || (r.nombre || '?').split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase(),
       }));
@@ -5415,6 +5429,8 @@
           { name: 'frec', label: 'Frecuencia (automática según el tipo)', type: 'select', value: emp ? emp.frecHabitual : 'quincenal', options: [{ value: 'quincenal', label: 'Quincenal' }, { value: 'semanal', label: 'Semanal' }, { value: 'mensual', label: 'Mensual' }] },
           { name: 'dpp', label: '¿Sujeto a DPP? (Protección Pensiones 9%)', type: 'select', value: emp ? (emp.sujetoDpp ? 'Sí' : 'No') : 'No', options: ['No', 'Sí'] },
           { name: 'cajaAhorroPct', label: 'Caja de ahorro (% del sueldo, opcional)', type: 'number', step: '0.1', placeholder: '0', value: emp && emp.cajaAhorroPct ? String(emp.cajaAhorroPct * 100) : '' },
+          { name: 'correo', label: 'Correo (opcional)', placeholder: 'trabajador@correo.com', value: emp ? (emp.correo || '') : '' },
+          { name: 'whatsapp', label: 'WhatsApp (opcional)', placeholder: '0412-1234567', value: emp ? (emp.whatsapp || '') : '' },
         ],
         afterRender: (bodyEl) => {
           ['nombre', 'cedula', 'cargo', 'depto'].forEach((n) => {
@@ -5437,6 +5453,7 @@
             nombre: v.nombre.trim(), cedula: v.cedula.trim(), cargo: v.cargo.trim(), depto: (v.depto || '').trim() || null,
             tipo: v.tipo, salario_mes: sal, contingencia_usd: parseFloat(v.contingenciaUSD) || 0, transporte_usd: parseFloat(v.transporteUSD) || 0,
             forma_pago: v.formaPago, frecuencia: v.frec, sujeto_dpp: (v.dpp === 'Sí'), caja_ahorro_pct: parseFloat(v.cajaAhorroPct) || 0, ini: ini,
+            correo: (v.correo || '').trim() || null, whatsapp: (v.whatsapp || '').trim() || null,
           };
           const accion = esEdit
             ? window.sb.from('empleados').update(datos).eq('id', emp.id)
