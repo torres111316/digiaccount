@@ -3751,9 +3751,19 @@
       if (error || !data || !data.length) { console.warn('Tasa BCV: sin datos en tasas_cambio', error); return; }
       const usd = data.filter((r) => r.moneda === 'USD');
       const usdt = data.filter((r) => r.moneda === 'USDT');
-      const hoy = usd.length ? parseFloat(usd[0].tasa) : 0;
+      // Vigente = última fila con fecha valor <= hoy (rige ventas/IGTF/panel).
+      // Si existe una fila FUTURA (el viernes en la tarde el BCV publica la del lunes),
+      // esa es la tasa de NÓMINA: la semana pagada el sábado se liquida con la del lunes.
+      const hoyVE = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Caracas' });
+      const iVig = usd.findIndex((r) => String(r.fecha) <= hoyVE);
+      const vig = iVig >= 0 ? usd[iVig] : usd[0];
+      const prox = (usd[0] && String(usd[0].fecha) > hoyVE) ? usd[0] : null;
+      const hoy = vig ? parseFloat(vig.tasa) : 0;
       if (!(hoy > 0)) return;
-      bcvPrev = (usd[1] && parseFloat(usd[1].tasa) > 0) ? parseFloat(usd[1].tasa) : hoy;
+      window.__bcvRateNomina = (prox && parseFloat(prox.tasa) > 0) ? parseFloat(prox.tasa) : hoy;
+      window.__bcvFechaNomina = prox ? String(prox.fecha) : String(vig.fecha);
+      const sig = usd[iVig >= 0 ? iVig + 1 : 1];
+      bcvPrev = (sig && parseFloat(sig.tasa) > 0) ? parseFloat(sig.tasa) : hoy;
       bcv = hoy; real = true; manual = false;
       // Dólar paralelo (Binance/USDT) real si existe; si no, referencia aproximada editable
       if (usdt.length && parseFloat(usdt[0].tasa) > 0) {
@@ -3769,8 +3779,8 @@
       const bt = document.getElementById('bcvTasa'); if (bt) bt.textContent = fmt(hoy);
       // Fecha VALOR de la tasa BCV en el panel (dd/mm/aaaa)
       const ff = document.getElementById('fxFecha');
-      if (ff) { const p = String(usd[0].fecha).split('-'); ff.textContent = p[2] + '/' + p[1] + '/' + p[0]; }
-      console.log('Tasas reales — BCV (' + usd[0].fecha + '): Bs ' + hoy + (usdt.length ? ' · Paralelo: Bs ' + par : ''));
+      if (ff) { const p = String(vig.fecha).split('-'); ff.textContent = p[2] + '/' + p[1] + '/' + p[0]; }
+      console.log('Tasas reales — BCV (' + vig.fecha + '): Bs ' + hoy + (prox ? ' · Nómina (' + prox.fecha + '): Bs ' + window.__bcvRateNomina : '') + (usdt.length ? ' · Paralelo: Bs ' + par : ''));
     };
 
     render();
@@ -5184,7 +5194,9 @@
       const f = freqInfo[payFreq];
       f.periodo = periodoNomina(payFreq);
       const factor = 2 / f.div; // proporción respecto a la quincena (quincenal=1, mensual=2, semanal≈0,46)
-      const tasa = window.__bcvRate || 145.82;
+      // Nómina se liquida con la tasa de FECHA VALOR más reciente publicada por el BCV:
+      // el sábado de pago usa la del lunes siguiente (publicada el viernes en la tarde).
+      const tasa = window.__bcvRateNomina || window.__bcvRate || 145.82;
 
       // Salario base COTIZABLE = el que se declara para el trabajador.
       // El Bono de Contingencia es un complemento NO salarial (no cotizable), explícito.
