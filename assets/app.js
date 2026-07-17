@@ -5156,13 +5156,33 @@
     let payFreq = 'quincenal';
     let CESTATICKET_USD = 40; // cestaticket mensual: $ pagado en Bs a la tasa BCV (Ley de Alimentación) — no salarial · editable en Parámetros
     const freqInfo = {
-      semanal:   { div: 52 / 12, periodo: 'Semana 4 · 24–30 may 2026', etiqueta: 'Sueldo semanal',   doc: 'SEM' },
-      quincenal: { div: 2,       periodo: 'Quincena 16–31 may 2026',   etiqueta: 'Sueldo quincenal', doc: 'NOM' },
-      mensual:   { div: 1,       periodo: 'Mes de mayo 2026',          etiqueta: 'Sueldo mensual',   doc: 'MEN' },
+      semanal:   { div: 52 / 12, periodo: '', etiqueta: 'Sueldo semanal',   doc: 'SEM' },
+      quincenal: { div: 2,       periodo: '', etiqueta: 'Sueldo quincenal', doc: 'NOM' },
+      mensual:   { div: 1,       periodo: '', etiqueta: 'Sueldo mensual',   doc: 'MEN' },
     };
+    // Período de pago REAL según la frecuencia (semana = lunes a domingo, pago típico el sábado)
+    const MESES_NOM = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+    function periodoNomina(freq) {
+      const hoy = new Date();
+      const dd = (n) => String(n).padStart(2, '0');
+      const fmt = (d) => dd(d.getDate()) + '/' + dd(d.getMonth() + 1) + '/' + d.getFullYear();
+      if (freq === 'semanal') {
+        const lun = new Date(hoy); lun.setDate(hoy.getDate() - ((hoy.getDay() + 6) % 7)); // lunes de esta semana
+        const dom = new Date(lun); dom.setDate(lun.getDate() + 6);
+        return 'Semana ' + fmt(lun) + ' al ' + fmt(dom);
+      }
+      if (freq === 'quincenal') {
+        const ult = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).getDate();
+        return hoy.getDate() <= 15
+          ? ('Quincena 01/' + dd(hoy.getMonth() + 1) + ' al 15/' + dd(hoy.getMonth() + 1) + '/' + hoy.getFullYear())
+          : ('Quincena 16/' + dd(hoy.getMonth() + 1) + ' al ' + ult + '/' + dd(hoy.getMonth() + 1) + '/' + hoy.getFullYear());
+      }
+      return 'Mes de ' + MESES_NOM[hoy.getMonth()] + ' ' + hoy.getFullYear();
+    }
 
     function calcPago(emp) {
       const f = freqInfo[payFreq];
+      f.periodo = periodoNomina(payFreq);
       const factor = 2 / f.div; // proporción respecto a la quincena (quincenal=1, mensual=2, semanal≈0,46)
       const tasa = window.__bcvRate || 145.82;
 
