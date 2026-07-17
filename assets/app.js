@@ -7145,6 +7145,12 @@
         },
       });
     }
+    // Período fiscal REAL del módulo: los libros se filtran por mes (fecha dd/mm/aa termina en /mm/aa).
+    // Necesario desde la migración de libros históricos: sin filtro, los totales mezclarían todos los meses.
+    const MESES_FIS = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+    const _hoyFis = new Date();
+    let _fiscalPer = { mm: String(_hoyFis.getMonth() + 1).padStart(2, '0'), aa: String(_hoyFis.getFullYear()).slice(2) };
+    const _perLabel = () => MESES_FIS[parseInt(_fiscalPer.mm, 10) - 1] + ' 20' + _fiscalPer.aa;
     const _libroData = { compra: [], venta: [] }; // últimas filas cargadas por tipo (para editar/eliminar)
     async function cargarLibroFiscal(tipo) {
       const tabName = tipo === 'compra' ? 'compras' : 'ventas';
@@ -7167,9 +7173,11 @@
       if (!window.sb || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) { vacio(); return; }
       const { data, error } = await window.sb.from('libro_fiscal').select('*').eq('empresa_id', window.__EMPRESA_ACTIVA.id).eq('tipo', tipo).order('fecha');
       if (error) { console.warn('[DigiAccount] No se pudo cargar el libro fiscal:', error.message); vacio('No se pudieron cargar (¿creaste la tabla libro_fiscal?).'); return; }
-      const arr = data || [];
+      // Solo las operaciones del período fiscal seleccionado (fecha dd/mm/aa)
+      const sufPer = '/' + _fiscalPer.mm + '/' + _fiscalPer.aa;
+      const arr = (data || []).filter((r) => String(r.fecha || '').endsWith(sufPer));
       _libroData[tipo] = arr;
-      if (!arr.length) { vacio(); return; }
+      if (!arr.length) { vacio('Sin registros en ' + _perLabel() + '. Cambia el período arriba o usa "Registrar ' + tipo + '".'); return; }
       let tTot = 0, tEx = 0, tBase = 0, tIva = 0, tIgtf = 0;
       let base16 = 0, iva16 = 0, base8 = 0, iva8 = 0;
       tbody.innerHTML = arr.map((r, i) => {
@@ -7327,29 +7335,33 @@
     if (emitir) emitir.addEventListener('click', () =>
       toast('Comprobante de retención emitido y registrado · incluido en el TXT del período'));
 
-    // Selector de período fiscal del módulo
+    // Selector de período fiscal del módulo: cambia el mes y recarga los libros filtrados
     const periodo = document.getElementById('fiscalPeriodo');
-    if (periodo) periodo.querySelectorAll('button').forEach((b) => {
-      b.addEventListener('click', () => {
-        if (b.classList.contains('custom-date')) {
-          window.openFormModal && window.openFormModal({
-            title: 'Cambiar período fiscal',
-            saveLabel: 'Aplicar',
-            fields: [{ name: 'periodo', label: 'Período a consultar', col: 2, type: 'select',
-              options: ['Marzo 2026', 'Abril 2026', 'Mayo 2026', 'Junio 2026', 'Julio 2026'] }],
-            onSave: (v) => {
-              const main = periodo.querySelector('button:not(.custom-date)');
-              if (main) main.textContent = v.periodo;
-              toast('Período fiscal cambiado a ' + v.periodo);
-            },
-          });
-          return;
-        }
-        periodo.querySelectorAll('button').forEach((x) => x.removeAttribute('data-active'));
-        b.dataset.active = 'true';
-        toast('Período fiscal actualizado a ' + b.textContent.trim());
-      });
-    });
+    if (periodo) {
+      const mainBtn = periodo.querySelector('button:not(.custom-date)');
+      if (mainBtn) mainBtn.textContent = _perLabel();
+      const opciones = [];
+      const dOp = new Date();
+      for (let i = 0; i < 14; i++) { opciones.push(MESES_FIS[dOp.getMonth()] + ' ' + dOp.getFullYear()); dOp.setMonth(dOp.getMonth() - 1); }
+      const abrirSelector = () => {
+        window.openFormModal && window.openFormModal({
+          title: 'Cambiar período fiscal',
+          saveLabel: 'Aplicar',
+          fields: [{ name: 'periodo', label: 'Período a consultar', col: 2, type: 'select', options: opciones, value: _perLabel() }],
+          onSave: (v) => {
+            const p = String(v.periodo || '').split(' ');
+            const idx = MESES_FIS.findIndex((m) => m === p[0]);
+            if (idx < 0 || !p[1]) return 'Período inválido.';
+            _fiscalPer = { mm: String(idx + 1).padStart(2, '0'), aa: p[1].slice(2) };
+            if (mainBtn) mainBtn.textContent = _perLabel();
+            cargarLibroFiscal('compra');
+            cargarLibroFiscal('venta');
+            toast('Período fiscal: ' + _perLabel() + ' · libros recargados');
+          },
+        });
+      };
+      periodo.querySelectorAll('button').forEach((b) => b.addEventListener('click', abrirSelector));
+    }
 
     // Calendario fiscal: el botón Configurar (la navegación ◀▶ la maneja el IIFE calendar)
     const agenda = view.querySelector('.fiscal-tab[data-tab="agenda"]');
