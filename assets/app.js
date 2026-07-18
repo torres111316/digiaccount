@@ -5201,7 +5201,6 @@
       // Salario base COTIZABLE = el que se declara para el trabajador.
       // El Bono de Contingencia es un complemento NO salarial (no cotizable), explícito.
       const sueldo = (emp.salarioMes || 0) / f.div;
-      const bonoContingencia = (emp.contingenciaUSD || 0) * tasa / f.div; // contingencia en $ pagada en Bs a tasa BCV
       const transporteBs = (emp.transporteUSD || 0) * tasa / f.div; // bono de transporte mensual en divisa, pagado en Bs a tasa BCV (no salarial)
 
       const salDia = SALARIO_MINIMO / 30;            // recargos legales sobre el salario base
@@ -5225,8 +5224,18 @@
       const comision = (emp.comisionBs || 0);
       const bonoProd = (emp.bonoProdBs || 0);
 
-      // Cestaticket / bono de alimentación: $40/mes pagado en Bs a tasa BCV (no salarial, sin deducciones)
-      const cestaticket = (CESTATICKET_USD * tasa) / f.div;
+      // Cestaticket / bono de alimentación: $40/mes pagado en Bs a tasa BCV (no salarial, sin deducciones).
+      // Semanal se calcula (40/30)×7 = 9,33 $/semana (convención de la firma); quincenal /2, mensual completo.
+      const cestaticket = CESTATICKET_USD * tasa * (payFreq === 'semanal' ? 7 / 30 : 1 / f.div);
+
+      // Bono de Contingencia (modelo de la firma): emp.contingenciaUSD es el PAQUETE TOTAL
+      // en USD del PERÍODO DE PAGO del trabajador (ej. 70 $ semanales). El bono completa el
+      // paquete después del salario neto de ley y el cestaticket, de modo que el trabajador
+      // reciba EXACTAMENTE su paquete en Bs a la tasa BCV, muevan lo que muevan las deducciones.
+      const dedSueldo = Math.min(sueldo, TOPE_IVSS / f.div) * R_IVSS_T
+        + Math.min(sueldo, TOPE_RPE / f.div) * R_RPE_T + sueldo * R_FAOV_T;
+      const paqueteBs = (emp.contingenciaUSD || 0) * tasa;
+      const bonoContingencia = Math.max(0, paqueteBs - cestaticket - (sueldo - dedSueldo));
 
       // Base salarial total (asignaciones salariales que devenga el trabajador)
       const baseSalarial = sueldo + montoExtra + montoNoct + montoFeriado + comision + bonoProd;
@@ -5281,7 +5290,7 @@
       if (p.comision > 0) rows.push(['asig', 'Comisiones por ventas', '2% sobre ventas del período', p.comision]);
       if (p.bonoProd > 0) rows.push(['asig', 'Bono de producción', 'Meta de planta alcanzada', p.bonoProd]);
       rows.push(['sec', 'Beneficios no salariales (no cotizables)', '', null]);
-      if (p.bonoContingencia > 0) rows.push(['asig', 'Bono de contingencia', '$' + (emp.contingenciaUSD || 0) + ' a tasa BCV (Bs ' + fmt(p.tasa) + '/$) · no salarial', p.bonoContingencia]);
+      if (p.bonoContingencia > 0) rows.push(['asig', 'Bono de contingencia', 'completa el paquete de $' + (emp.contingenciaUSD || 0) + ' del período (Bs ' + fmt(p.tasa) + '/$) · no salarial', p.bonoContingencia]);
       rows.push(['asig', 'Cestaticket · Bono de alimentación', '$40/mes a tasa BCV (Bs ' + fmt(p.tasa) + '/$) · exento de deducciones', p.cestaticket]);
       if (p.transporteBs > 0) rows.push(['asig', 'Bono de transporte', '$' + (emp.transporteUSD || 0) + ' a tasa BCV (Bs ' + fmt(p.tasa) + '/$) · pagado en Bs', p.transporteBs]);
       rows.push(['sec', 'Deducciones de ley', '', null]);
@@ -5371,21 +5380,22 @@
       }
       const tbody = table.querySelector('tbody');
       if (!tbody) return;
-      const pendientes = [3, 4, 13, 20]; // algunos con estado "Pendiente" (demo)
+      // Columna de período: sigue la frecuencia seleccionada (Semana / Quincena / Mes)
+      const perTh = document.getElementById('empPeriodoTh');
+      if (perTh) perTh.textContent = payFreq === 'semanal' ? 'Semana' : payFreq === 'mensual' ? 'Mes' : 'Quincena';
+      const divPer = payFreq === 'semanal' ? (52 / 12) : payFreq === 'mensual' ? 1 : 2;
+      const FREC_TAG = { semanal: '<span class="tag success">Semanal</span>', quincenal: '<span class="tag">Quincenal</span>', mensual: '<span class="tag warn">Mensual</span>' };
       tbody.innerHTML = empleados.map((emp, i) => {
-        const estado = pendientes.includes(i)
-          ? '<span class="tag warn">Pendiente</span>'
-          : '<span class="tag success">Procesada</span>';
         return '<tr>'
           + '<td><div class="emp-cell"><div class="emp-avatar" style="background:' + emp.color + ';">' + emp.ini + '</div>'
-          + '<div class="info"><div class="n">' + emp.nombre + '</div><div class="r">' + emp.cargo + '</div></div></div></td>'
+          + '<div class="info"><div class="n">' + emp.nombre + '</div><div class="r">' + (emp.depto !== '—' ? emp.depto : ('$' + (emp.contingenciaUSD || 0) + ' / período')) + '</div></div></div></td>'
           + '<td class="mono">' + emp.cedula + '</td>'
-          + '<td>' + emp.depto + '</td>'
+          + '<td>' + (emp.cargo || '—') + '</td>'
           + '<td class="num">' + fmt(emp.salarioMes) + '</td>'
-          + '<td class="num">' + (emp.bonoLabel || '—') + '</td>'
+          + '<td class="num">' + (emp.contingenciaUSD ? '$' + emp.contingenciaUSD : '—') + '</td>'
           + '<td>' + emp.formaPago + '</td>'
-          + '<td class="num">' + fmt(emp.salarioMes / 2) + '</td>'
-          + '<td>' + estado + '</td>'
+          + '<td class="num">' + fmt(emp.salarioMes / divPer) + '</td>'
+          + '<td>' + (FREC_TAG[emp.frecHabitual] || FREC_TAG.quincenal) + '</td>'
           + '<td style="white-space:nowrap;"><button class="btn btn-ghost" data-emp-edit="' + i + '" title="Editar trabajador" style="height:28px;font-size:11px;padding:0 9px;"><i data-lucide="pencil"></i></button> <button class="btn btn-ghost" data-emp-idx="' + i + '" style="height:28px;font-size:11px;padding:0 10px;"><i data-lucide="file-text"></i> Recibo</button></td>'
           + '</tr>';
       }).join('');
@@ -5455,7 +5465,7 @@
           { name: 'depto', label: 'Departamento', placeholder: 'Ej. Administración', value: emp && emp.depto !== '—' ? emp.depto : '' },
           { name: 'tipo', label: 'Tipo de trabajador', type: 'select', value: emp ? emp.tipo : 'Administrativo', options: ['Administrativo', 'Planta', 'Producción', 'Gerencia'] },
           { name: 'salarioMes', label: 'Salario base mensual cotizable (Bs)', type: 'number', step: '0.01', placeholder: '0.00', value: emp ? String(emp.salarioMes) : '' },
-          { name: 'contingenciaUSD', label: 'Bono de Contingencia (USD → Bs a BCV, no cotizable)', type: 'number', step: '0.01', placeholder: '0', value: emp ? String(emp.contingenciaUSD || '') : '' },
+          { name: 'contingenciaUSD', label: 'Paquete del período en USD (ej. 70 semanales — el Bono de Contingencia completa: paquete − cesta − salario)', type: 'number', step: '0.01', placeholder: '0', value: emp ? String(emp.contingenciaUSD || '') : '' },
           { name: 'transporteUSD', label: 'Bono de transporte (USD → Bs a BCV)', type: 'number', step: '0.01', placeholder: '0', value: emp ? String(emp.transporteUSD || '') : '' },
           { name: 'formaPago', label: 'Forma de pago', type: 'select', value: emp ? emp.formaPago : 'Transferencia', options: ['Transferencia', 'Efectivo', 'Pago móvil'] },
           { name: 'frec', label: 'Frecuencia (automática según el tipo)', type: 'select', value: emp ? emp.frecHabitual : 'quincenal', options: [{ value: 'quincenal', label: 'Quincenal' }, { value: 'semanal', label: 'Semanal' }, { value: 'mensual', label: 'Mensual' }] },
@@ -5560,6 +5570,7 @@
           b.dataset.active = 'true';
           payFreq = b.dataset.freq;
           if (hint) hint.innerHTML = '<i data-lucide="info" style="width:13px;height:13px;"></i> ' + (hints[payFreq] || '');
+          renderEmpTable(); // la columna de período del cuadro sigue a la frecuencia elegida
           drawIcons();
         });
       });
