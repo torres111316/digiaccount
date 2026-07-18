@@ -5225,8 +5225,10 @@
       const bonoProd = (emp.bonoProdBs || 0);
 
       // Cestaticket / bono de alimentación: $40/mes pagado en Bs a tasa BCV (no salarial, sin deducciones).
-      // Semanal se calcula (40/30)×7 = 9,33 $/semana (convención de la firma); quincenal /2, mensual completo.
-      const cestaticket = CESTATICKET_USD * tasa * (payFreq === 'semanal' ? 7 / 30 : 1 / f.div);
+      // Semanal se calcula (40/30)×7 = 9,33 $/semana (convención de la firma, redondeado a 2
+      // decimales en USD para casar con las planillas); quincenal /2, mensual completo.
+      const cestaUsdPeriodo = Math.round(CESTATICKET_USD * (payFreq === 'semanal' ? 7 / 30 : 1 / f.div) * 100) / 100;
+      const cestaticket = cestaUsdPeriodo * tasa;
 
       // Bono de Contingencia (modelo de la firma): emp.contingenciaUSD es el PAQUETE TOTAL
       // en USD del PERÍODO DE PAGO del trabajador (ej. 70 $ semanales). El bono completa el
@@ -5269,13 +5271,23 @@
         valHoraExtra, horas, montoExtra,
         valBonoNoct, horasNoct, montoNoct,
         diasFeriado, montoFeriado, comision, bonoProd,
-        cestaticket, ivss, spf, faov, dedLey,
+        cestaticket, cestaUsdPeriodo, ivss, spf, faov, dedLey,
         cajaAhorro, prestamo, anticipo, dedOtras, ded,
         asigSalarial, asig, neto,
       };
     }
 
     function openReciboPago(emp) {
+      // El recibo SIEMPRE usa la frecuencia propia del trabajador (semanal/quincenal/mensual):
+      // el selector de arriba queda para la relación de nómina, no puede dañar un recibo.
+      if (emp.frecHabitual && emp.frecHabitual !== payFreq) {
+        payFreq = emp.frecHabitual;
+        const selFreq = document.getElementById('payFreq');
+        if (selFreq) selFreq.querySelectorAll('button').forEach((x) => {
+          if (x.dataset.freq === payFreq) { x.dataset.active = 'true'; } else { x.removeAttribute('data-active'); }
+        });
+        renderEmpTable();
+      }
       const p = calcPago(emp);
       modalTitle.textContent = 'Recibo de Pago de Nómina';
       const hoyR = new Date();
@@ -5291,7 +5303,7 @@
       if (p.bonoProd > 0) rows.push(['asig', 'Bono de producción', 'Meta de planta alcanzada', p.bonoProd]);
       rows.push(['sec', 'Beneficios no salariales (no cotizables)', '', null]);
       if (p.bonoContingencia > 0) rows.push(['asig', 'Bono de contingencia', 'completa el paquete de $' + (emp.contingenciaUSD || 0) + ' del período (Bs ' + fmt(p.tasa) + '/$) · no salarial', p.bonoContingencia]);
-      rows.push(['asig', 'Cestaticket · Bono de alimentación', '$40/mes a tasa BCV (Bs ' + fmt(p.tasa) + '/$) · exento de deducciones', p.cestaticket]);
+      rows.push(['asig', 'Cestaticket · Bono de alimentación', '$' + (p.cestaUsdPeriodo || 0) + ' del período ($40/mes) a tasa BCV (Bs ' + fmt(p.tasa) + '/$) · exento de deducciones', p.cestaticket]);
       if (p.transporteBs > 0) rows.push(['asig', 'Bono de transporte', '$' + (emp.transporteUSD || 0) + ' a tasa BCV (Bs ' + fmt(p.tasa) + '/$) · pagado en Bs', p.transporteBs]);
       rows.push(['sec', 'Deducciones de ley', '', null]);
       rows.push(['ded', 'IVSS · Seguro Social', fmt(R_IVSS_T * 100) + '% · base tope 5 sal. mín.', p.ivss]);
