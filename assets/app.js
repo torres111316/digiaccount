@@ -1707,10 +1707,34 @@
       return (g === '1' || g === '5' || g === '6') ? (c.debe - c.haber) : (c.haber - c.debe);
     }
 
+    // ===== Estados financieros por NIVELES (práctica del contador): =====
+    // nivel 1 = solo cuentas mayores, cada nivel baja un escalón del plan; 0 = detalle completo.
+    let _finNivel = 0;
+    let _planNombres = null;
+    function nombreCta(code) {
+      if (!_planNombres) {
+        _planNombres = { '1': 'Activo', '2': 'Pasivo', '3': 'Patrimonio', '4': 'Ingresos', '5': 'Costos', '6': 'Gastos' };
+        try { getCuentasPlan().forEach((c) => { if (!_planNombres[c.code]) _planNombres[c.code] = c.name; }); } catch (e) { /* plan aún no pintado */ }
+      }
+      return _planNombres[code] || code;
+    }
+    // Enrolla los saldos de las cuentas hijas hacia su cuenta padre a la profundidad pedida
+    function rollUp(cuentas, nivel) {
+      if (!nivel) return cuentas;
+      const m = new Map();
+      cuentas.forEach((c) => {
+        const code = c.code.split('.').slice(0, nivel).join('.');
+        if (!m.has(code)) m.set(code, { code: code, nombre: nombreCta(code), debe: 0, haber: 0 });
+        const e = m.get(code);
+        e.debe += c.debe; e.haber += c.haber;
+      });
+      return Array.from(m.values());
+    }
+
     function renderEstadoResultados(map) {
       const tab = view.querySelector('.conta-tab[data-tab="resultados"]');
       if (!tab) return 0;
-      const cuentas = Array.from(map.values()).filter((c) => c.debe !== 0 || c.haber !== 0);
+      const cuentas = rollUp(Array.from(map.values()).filter((c) => c.debe !== 0 || c.haber !== 0), _finNivel);
       const porGrupo = (g) => cuentas.filter((c) => c.code.charAt(0) === g).sort((a, b) => a.code.localeCompare(b.code));
       const sum = (arr) => arr.reduce((s, c) => s + saldoNatural(c), 0);
       const ing = porGrupo('4'), cos = porGrupo('5'), gas = porGrupo('6');
@@ -1738,7 +1762,9 @@
     function renderBalanceGeneral(map, utilNeta) {
       const tab = view.querySelector('.conta-tab[data-tab="general"]');
       if (!tab) return;
-      const cuentas = Array.from(map.values()).filter((c) => c.debe !== 0 || c.haber !== 0);
+      // El Balance necesita separar corriente/no corriente → profundidad mínima 2
+      const nivelBG = _finNivel === 1 ? 2 : _finNivel;
+      const cuentas = rollUp(Array.from(map.values()).filter((c) => c.debe !== 0 || c.haber !== 0), nivelBG);
       const byPfx = (p) => cuentas.filter((c) => c.code.indexOf(p) === 0).sort((a, b) => a.code.localeCompare(b.code));
       const sum = (arr) => arr.reduce((s, c) => s + saldoNatural(c), 0);
       const aC = byPfx('1.1'), aNC = byPfx('1.2'), pC = byPfx('2.1'), pNC = byPfx('2.2'), pat = cuentas.filter((c) => c.code.charAt(0) === '3').sort((a, b) => a.code.localeCompare(b.code));
@@ -1822,6 +1848,29 @@
       const banner = tab.querySelector('.balance-check-banner');
       if (banner) banner.innerHTML = '<i data-lucide="check-circle-2"></i> Conciliado · Efectivo final Bs ' + fmt2(final) + ' coincide con el saldo de Caja y Bancos.';
     }
+
+    // Selector de nivel (1 / 2 / 3 / Detalle) en Resultados y Balance General
+    (function wireNiveles() {
+      ['resultados', 'general'].forEach((t) => {
+        const head = view.querySelector('.conta-tab[data-tab="' + t + '"] .fin-statement-head');
+        if (!head || head.querySelector('.fin-nivel')) return;
+        const d = document.createElement('div');
+        d.className = 'fin-nivel';
+        d.style.cssText = 'display:flex;gap:6px;align-items:center;margin-top:6px;';
+        d.innerHTML = '<span style="font-size:11px;color:var(--fg-muted);font-weight:600;">Nivel de detalle:</span>'
+          + [1, 2, 3, 0].map((n) => '<button class="btn btn-ghost" data-fin-nivel="' + n + '" style="height:24px;font-size:11px;padding:0 8px;"' + (n === _finNivel ? ' data-active="true"' : '') + '>' + (n === 0 ? 'Detalle' : 'Nivel ' + n) + '</button>').join('');
+        head.appendChild(d);
+      });
+      view.addEventListener('click', (e) => {
+        const b = e.target.closest('button[data-fin-nivel]');
+        if (!b) return;
+        _finNivel = parseInt(b.dataset.finNivel, 10);
+        view.querySelectorAll('button[data-fin-nivel]').forEach((x) => {
+          if (parseInt(x.dataset.finNivel, 10) === _finNivel) { x.dataset.active = 'true'; } else { x.removeAttribute('data-active'); }
+        });
+        renderReportes();
+      });
+    })();
 
     function renderReportes() {
       const map = agregarPorCuenta();
