@@ -4701,22 +4701,27 @@
       const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
       const relnFreqEl = document.getElementById('relnFreq');
       freq = freq || (relnFreqEl ? relnFreqEl.value : 'quincenal');
-      const div = freq === 'semanal' ? (52 / 12) : freq === 'mensual' ? 1 : 2;
       const periodoLbl = freq === 'semanal' ? 'Semanal' : freq === 'mensual' ? 'Mensual' : 'Quincenal';
-      const DED_LEY = R_IVSS_T + R_RPE_T + R_FAOV_T; // deducciones de ley al trabajador (el INCES 0,5% va sobre utilidades)
-      // Solo los trabajadores con ESTA frecuencia de pago
+      // Solo los trabajadores con ESTA frecuencia de pago. Cada fila usa calcPago (el
+      // MISMO cálculo del recibo): sueldo + bono de contingencia + cestaticket + otras.
       const lista = empleados.filter((e) => (e.frecHabitual || 'quincenal') === freq);
-      let totA = 0, totD = 0, totN = 0;
+      let tS = 0, tC = 0, tCe = 0, tO = 0, totA = 0, totD = 0, totN = 0;
       tbody.innerHTML = lista.length ? lista.map((e, i) => {
-        const asig = (Number(e.salarioMes) || 0) / div;
-        const ded = asig * DED_LEY;
-        const neto = asig - ded;
-        totA += asig; totD += ded; totN += neto;
+        const p = calcPago(e, freq);
+        const otras = p.montoExtra + p.montoNoct + p.montoFeriado + p.comision + p.bonoProd + p.transporteBs;
+        tS += p.sueldo; tC += p.bonoContingencia; tCe += p.cestaticket; tO += otras;
+        totA += p.asig; totD += p.ded; totN += p.neto;
         return '<tr><td class="ctr">' + (i + 1) + '</td><td>' + esc(e.nombre)
           + '</td><td class="mono">' + esc(e.cedula) + '</td><td>' + esc(e.cargo)
-          + '</td><td class="num">' + fmt(asig) + '</td><td class="num">' + fmt(ded)
-          + '</td><td class="num">' + fmt(neto) + '</td></tr>';
-      }).join('') : '<tr><td colspan="7" style="text-align:center;color:var(--fg-muted);padding:18px;">Sin trabajadores con pago ' + periodoLbl.toLowerCase() + '.</td></tr>';
+          + '</td><td class="num">' + fmt(p.sueldo) + '</td><td class="num">' + fmt(p.bonoContingencia)
+          + '</td><td class="num">' + fmt(p.cestaticket) + '</td><td class="num">' + fmt(otras)
+          + '</td><td class="num">' + fmt(p.asig) + '</td><td class="num">' + fmt(p.ded)
+          + '</td><td class="num">' + fmt(p.neto) + '</td></tr>';
+      }).join('') : '<tr><td colspan="11" style="text-align:center;color:var(--fg-muted);padding:18px;">Sin trabajadores con pago ' + periodoLbl.toLowerCase() + '.</td></tr>';
+      set('relnTotSue', fmt(tS));
+      set('relnTotCon', fmt(tC));
+      set('relnTotCes', fmt(tCe));
+      set('relnTotOtr', fmt(tO));
       set('relnTotA', fmt(totA));
       set('relnTotD', fmt(totD));
       set('relnTotN', fmt(totN));
@@ -5190,9 +5195,10 @@
       return 'Mes de ' + MESES_NOM[hoy.getMonth()] + ' ' + hoy.getFullYear();
     }
 
-    function calcPago(emp) {
-      const f = freqInfo[payFreq];
-      f.periodo = periodoNomina(payFreq);
+    function calcPago(emp, freqOver) {
+      const fq = freqOver || payFreq;
+      const f = freqInfo[fq];
+      f.periodo = periodoNomina(fq);
       const factor = 2 / f.div; // proporción respecto a la quincena (quincenal=1, mensual=2, semanal≈0,46)
       // Nómina se liquida con la tasa de FECHA VALOR más reciente publicada por el BCV:
       // el sábado de pago usa la del lunes siguiente (publicada el viernes en la tarde).
@@ -5227,7 +5233,7 @@
       // Cestaticket / bono de alimentación: $40/mes pagado en Bs a tasa BCV (no salarial, sin deducciones).
       // Semanal se calcula (40/30)×7 = 9,33 $/semana (convención de la firma, redondeado a 2
       // decimales en USD para casar con las planillas); quincenal /2, mensual completo.
-      const cestaUsdPeriodo = Math.round(CESTATICKET_USD * (payFreq === 'semanal' ? 7 / 30 : 1 / f.div) * 100) / 100;
+      const cestaUsdPeriodo = Math.round(CESTATICKET_USD * (fq === 'semanal' ? 7 / 30 : 1 / f.div) * 100) / 100;
       const cestaticket = cestaUsdPeriodo * tasa;
 
       // Bono de Contingencia (modelo de la firma): emp.contingenciaUSD es el PAQUETE TOTAL
