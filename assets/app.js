@@ -102,6 +102,7 @@
           cond: /especial/i.test(cond) ? 'Contribuyente Especial' : /formal/i.test(cond) ? 'Contribuyente Formal' : (type === 'natural' ? 'Persona Natural' : 'Contribuyente Ordinario'),
           fiscalActivo: fiscalActivo,
           modo: fiscalActivo ? 'libro' : 'recibos', // DERIVADO del módulo Fiscal: activo→libros, inactivo→recibos
+          declaraDpp: opt.dataset.dpp !== 'false', // emprendimientos NO declaran Protección a las Pensiones
           firmaEmpresa: opt.dataset.firma || '',
         };
         aplicarFiscal(fiscalActivo);
@@ -127,6 +128,7 @@
         if (window.cargarActivosFijos) window.cargarActivosFijos();
         if (window.cargarCriptoactivos) window.cargarCriptoactivos();
         if (window.cargarLibroFiscal) { window.cargarLibroFiscal('compra'); window.cargarLibroFiscal('venta'); }
+        if (window.cargarCierres) window.cargarCierres(); // meses cerrados (bloqueados) de esta empresa
         if (window.cargarCalendarioFiscal) window.cargarCalendarioFiscal(); // vencimientos reales de esta empresa
         if (window.__cargarCobrosEmp) window.__cargarCobrosEmp(opt.dataset.empresaId); // métodos de cobro guardados
         if (window.__renderDPP) window.__renderDPP();
@@ -213,6 +215,7 @@
       opt.dataset.cond = cond;
       opt.dataset.empresaId = emp.id || '';
       opt.dataset.fiscal = String(!!emp.fiscal_activo);
+      opt.dataset.dpp = String(emp.declara_dpp !== false); // emprendimientos: exentos de Protección a las Pensiones
       if (emp.firma_empresa) opt.dataset.firma = emp.firma_empresa;
       if (emp.direccion) opt.dataset.direccion = emp.direccion;
       if (emp.telefono) opt.dataset.telefono = emp.telefono;
@@ -1484,8 +1487,9 @@
           + '</tbody><tfoot><tr class="asiento-foot"><td colspan="2" class="total-label">Sumas iguales</td><td class="deb">' + fmt2(tot) + '</td><td class="haber">' + fmt2(tot) + '</td></tr></tfoot></table>'
           + '<div class="asiento-glosa"><strong>Concepto:</strong> ' + (a.descripcion || '') + '</div></div>';
       }
-      // Carga los asientos reales de la empresa activa desde Supabase
-      async function cargarAsientos() {
+      // Carga los asientos reales de la empresa activa desde Supabase (Diario paginado: 10 por página)
+      let _diarioPage = 1;
+      async function cargarAsientos(page) {
         if (!window.sb || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) return;
         const journal = view.querySelector('.conta-tab[data-tab="diario"] .journal');
         if (!journal) return;
@@ -1493,9 +1497,20 @@
         if (error) { console.warn('[DigiAccount] No se pudieron cargar asientos:', error.message); return; }
         journal.innerHTML = '';
         let maxNum = 0;
-        (data || []).forEach((a) => { if (a.numero > maxNum) maxNum = a.numero; journal.insertAdjacentHTML('beforeend', asientoHTML(a)); });
+        (data || []).forEach((a) => { if (a.numero > maxNum) maxNum = a.numero; });
         asientoNum = maxNum;
         asientosData = data || [];
+        const DIARIO_PAG = 10;
+        const totalPagD = Math.max(1, Math.ceil(asientosData.length / DIARIO_PAG));
+        _diarioPage = Math.min(Math.max(1, page || _diarioPage || 1), totalPagD);
+        const iniD = (_diarioPage - 1) * DIARIO_PAG;
+        asientosData.slice(iniD, iniD + DIARIO_PAG).forEach((a) => journal.insertAdjacentHTML('beforeend', asientoHTML(a)));
+        if (totalPagD > 1) {
+          journal.insertAdjacentHTML('beforeend', '<div style="display:flex;justify-content:center;align-items:center;gap:14px;padding:10px;font-size:12px;color:var(--fg-muted);">'
+            + '<button class="btn btn-ghost" data-dp-dir="-1"' + (_diarioPage <= 1 ? ' disabled' : '') + ' style="height:26px;font-size:11px;">« Anterior</button>'
+            + '<span>Página ' + _diarioPage + ' de ' + totalPagD + ' · ' + asientosData.length + ' asientos</span>'
+            + '<button class="btn btn-ghost" data-dp-dir="1"' + (_diarioPage >= totalPagD ? ' disabled' : '') + ' style="height:26px;font-size:11px;">Siguiente »</button></div>');
+        }
         if (typeof renderReportes === 'function') renderReportes();   // recalcula Mayor y Balance
         // KPIs de la cabecera de Contabilidad (datos reales)
         const totDebe = asientosData.reduce((s, a) => s + (Number(a.total) || 0), 0);
@@ -1513,6 +1528,10 @@
         drawIcons();
       }
       window.cargarAsientos = cargarAsientos;
+      view.addEventListener('click', (e) => {
+        const b = e.target.closest('button[data-dp-dir]');
+        if (b && !b.disabled) cargarAsientos(_diarioPage + parseInt(b.dataset.dpDir, 10));
+      });
     })();
 
     // Ayudante reutilizable: cualquier módulo puede generar un asiento contable (depreciación, cripto, etc.)
@@ -1660,8 +1679,10 @@
       if (cnt) cnt.innerHTML = cuentas.length + ' cuentas con movimiento · <strong>Débitos = Créditos</strong> y <strong>Saldos deudores = acreedores</strong>';
     }
 
-    function renderMayorLedger(code, map) {
+    let _mayorPage = 1, _mayorCode = null, _mayorMap = null; // paginación del Mayor (20 movimientos por página)
+    function renderMayorLedger(code, map, page) {
       const c = map.get(code); if (!c) return;
+      _mayorCode = code; _mayorMap = map;
       const setTxt = (id, t) => { const e = document.getElementById(id); if (e) e.textContent = t; };
       const saldo = c.debe - c.haber;
       setTxt('mayorBadge', c.code); setTxt('mayorTitle', c.nombre);
@@ -1669,16 +1690,32 @@
       setTxt('mayorSaldoLbl', saldo >= 0 ? 'Saldo final deudor' : 'Saldo final acreedor');
       setTxt('mayorSaldoVal', 'Bs ' + fmt2(Math.abs(saldo)));
       const tbody = document.getElementById('mayorBody');
+      // Saldo corrido calculado sobre TODOS los movimientos (correcto en cualquier página)
       let run = 0;
-      const rows = (c.movs || []).map((m) => {
-        run += (m.d || 0) - (m.h || 0);
+      const movs = (c.movs || []).map((m) => { run += (m.d || 0) - (m.h || 0); return { m: m, run: run }; });
+      const MP = 20;
+      const totalPagM = Math.max(1, Math.ceil(movs.length / MP));
+      _mayorPage = Math.min(Math.max(1, page || 1), totalPagM);
+      const iniM = (_mayorPage - 1) * MP;
+      let rows = movs.slice(iniM, iniM + MP).map((x) => {
+        const m = x.m;
         return '<tr><td>' + (m.fecha || '') + '</td><td class="mono">#0' + m.num + '</td><td class="primary">' + (m.desc || '') + '</td>'
           + '<td class="mono">' + (m.ref || '—') + '</td><td class="num">' + (m.d ? fmt2(m.d) : '—') + '</td><td class="num">' + (m.h ? fmt2(m.h) : '—') + '</td>'
-          + '<td class="saldo">' + fmt2(Math.abs(run)) + '</td></tr>';
+          + '<td class="saldo">' + fmt2(Math.abs(x.run)) + '</td></tr>';
       }).join('');
+      if (totalPagM > 1) {
+        rows += '<tr><td colspan="7" style="padding:6px 10px;"><div style="display:flex;justify-content:center;align-items:center;gap:14px;font-size:12px;color:var(--fg-muted);">'
+          + '<button class="btn btn-ghost" data-mp-dir="-1"' + (_mayorPage <= 1 ? ' disabled' : '') + ' style="height:26px;font-size:11px;">« Anterior</button>'
+          + '<span>Página ' + _mayorPage + ' de ' + totalPagM + ' · ' + movs.length + ' movimientos</span>'
+          + '<button class="btn btn-ghost" data-mp-dir="1"' + (_mayorPage >= totalPagM ? ' disabled' : '') + ' style="height:26px;font-size:11px;">Siguiente »</button></div></td></tr>';
+      }
       if (tbody) tbody.innerHTML = rows || '<tr><td colspan="7" style="text-align:center;color:var(--fg-muted);padding:14px;">Sin movimientos</td></tr>';
       setTxt('mayorTotDeb', fmt2(c.debe)); setTxt('mayorTotHaber', fmt2(c.haber)); setTxt('mayorTotSaldo', fmt2(Math.abs(saldo)));
     }
+    view.addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-mp-dir]');
+      if (b && !b.disabled && _mayorCode && _mayorMap) renderMayorLedger(_mayorCode, _mayorMap, _mayorPage + parseInt(b.dataset.mpDir, 10));
+    });
 
     function renderMayorTree(map) {
       const body = view.querySelector('.conta-tab[data-tab="mayor"] .account-tree-body');
@@ -2380,6 +2417,22 @@
     const fmt = (n) => Number(n || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const $ = (id) => document.getElementById(id);
     function render() {
+      // Emprendimientos NO declaran Protección a las Pensiones (aunque su RIF sea J):
+      // sin cálculos, sin planilla y sin avisos para la empresa exenta.
+      const eAct = window.__EMPRESA_ACTIVA || {};
+      const exenta = eAct.declaraDpp === false;
+      const doc = $('pensionDoc');
+      let banner = $('dppExentoBanner');
+      if (!banner && doc && doc.parentElement) {
+        banner = document.createElement('div');
+        banner.id = 'dppExentoBanner';
+        banner.style.cssText = 'display:none;margin:10px 0;padding:12px 14px;border:1px solid var(--border-strong);border-radius:10px;font-size:13px;color:var(--fg-muted);';
+        banner.innerHTML = '✅ <strong>Esta empresa no declara Protección a las Pensiones</strong> — emprendimiento exento. Cálculo, planilla y avisos de DPP desactivados para ella.';
+        doc.parentElement.insertBefore(banner, doc);
+      }
+      if (banner) banner.style.display = exenta ? 'block' : 'none';
+      if (doc) doc.style.display = exenta ? 'none' : '';
+      if (exenta) return;
       const emp = parseInt(($('dppEmpInput') || {}).value, 10) || 0;
       const base = parseFloat(($('dppBaseInput') || {}).value) || 0;
       const imp = base * 0.09;
@@ -4758,6 +4811,38 @@
     const paramBtn = document.getElementById('parametrosNominaBtn');
     if (paramBtn) paramBtn.addEventListener('click', formParametros);
 
+    // ---- Contabilizar la nómina del período: UN asiento resumen (modelo del contador) ----
+    // Gastos (sueldos + beneficios) / retenciones parafiscales por enterar + pago neto por banco.
+    const relnContab = document.getElementById('relnContabilizar');
+    if (relnContab) relnContab.addEventListener('click', async () => {
+      const d = window.__RELN_ACTUAL;
+      if (!d || !d.lista || !d.lista.length) { if (window.toast) window.toast('Genera primero la relación del período.', 'error'); return; }
+      let salarial = 0, beneficios = 0, ivssT = 0, spfT = 0, faovT = 0, otrasDed = 0;
+      d.lista.forEach((e) => {
+        const p = calcPago(e, d.freq);
+        salarial += p.asigSalarial;
+        beneficios += p.bonoContingencia + p.cestaticket + p.transporteBs;
+        ivssT += p.ivss; spfT += p.spf; faovT += p.faov;
+        otrasDed += p.dedOtras;
+      });
+      const per = periodoNomina(d.freq);
+      const r2n = (x) => Math.round(x * 100) / 100;
+      const lineas = [
+        { cta: '6.1.1.01 · Sueldos y salarios', debe: r2n(salarial), haber: 0 },
+        { cta: '6.1.1.02 · Beneficios laborales', debe: r2n(beneficios), haber: 0 },
+      ];
+      if (ivssT > 0.005) lineas.push({ cta: '2.1.3.04 · S.S.O. por pagar', debe: 0, haber: r2n(ivssT) });
+      if (spfT > 0.005) lineas.push({ cta: '2.1.3.05 · Régimen Prestacional de Empleo (RPE) por pagar', debe: 0, haber: r2n(spfT) });
+      if (faovT > 0.005) lineas.push({ cta: '2.1.3.06 · FAOV por pagar', debe: 0, haber: r2n(faovT) });
+      if (otrasDed > 0.005) lineas.push({ cta: '2.1.5 · Otras Cuentas por Pagar', debe: 0, haber: r2n(otrasDed) });
+      const debeT = lineas.reduce((s, l) => s + l.debe, 0), habT = lineas.reduce((s, l) => s + l.haber, 0);
+      lineas.push({ cta: '1.1.1.03 · Bancos', debe: 0, haber: r2n(debeT - habT) }); // neto pagado
+      if (!window.confirm('¿Contabilizar la nómina ' + d.freq + '?\n' + per + '\n\n' + d.lista.length + ' trabajadores · Neto pagado por banco: Bs ' + fmt(r2n(debeT - habT)))) return;
+      const r = await window.__postAsiento('Nómina ' + d.freq + ' · ' + per + ' · ' + d.lista.length + ' trabajadores (pagada por banco)', 'NOM-' + per.replace(/[^0-9]/g, '').slice(0, 8), lineas, 'auto');
+      if (r && r.error) { if (window.toast) window.toast('No se pudo contabilizar: ' + r.error.message, 'error'); return; }
+      if (window.toast) window.toast('Nómina contabilizada · revisa el asiento en el Libro Diario', 'success');
+    });
+
     let empleados = [];   // se carga desde Supabase (cargarEmpleados)
     // (datos de ejemplo eliminados: la nómina trabaja con empleados reales de Supabase)
 
@@ -4797,6 +4882,8 @@
       set('relnTotA', fmt(totA));
       set('relnTotD', fmt(totD));
       set('relnTotN', fmt(totN));
+      // Datos del período para el asiento resumen de nómina ("Contabilizar")
+      window.__RELN_ACTUAL = { freq: freq, lista: lista };
       set('relnSubLabel', 'TOTALES · ' + periodoLbl.toUpperCase() + ' · ' + lista.length + ' trabajador' + (lista.length === 1 ? '' : 'es'));
       // Cabecera real del documento
       const emp = window.__EMPRESA_ACTIVA || {};
@@ -7162,6 +7249,7 @@
         },
         onSave: (v) => {
           if (!window.sb || !window.__CUENTA_ID || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) return 'No hay una empresa activa seleccionada.';
+          if (window.__mesCerrado && window.__mesCerrado(v.fecha)) return '🔒 El período de esa fecha está CERRADO (declarado). Reábrelo con el botón del período en Fiscal si necesitas registrar.';
           if (!v.nombre) return 'Indica el ' + (esCompra ? 'proveedor' : 'cliente') + '.';
           const base = parseFloat(v.base) || 0, exento = parseFloat(v.exento) || 0;
           const alic = v.alic === '8%' ? 0.08 : v.alic === 'Exento' ? 0 : 0.16;
@@ -7182,7 +7270,9 @@
             // Asiento contable de la COMPRA: Debe Inventario + IVA crédito / Haber CxP.
             // (Las ventas NO se contabilizan desde el libro: eso lo hace el RECIBO. El libro es solo para declarar.)
             if (esCompra && window.__postAsiento) {
-              const ln = [{ cta: '1.1.4.01 · Inventario de mercancías', debe: base + exento, haber: 0 }];
+              // Modelo del contador externo: la compra va directo a COSTO (grupo 5) para
+              // que baje al Estado de Resultados; el inventario físico se ajusta al cierre.
+              const ln = [{ cta: '5.1.1.01 · Costo de mercancía vendida', debe: base + exento, haber: 0 }];
               if (iva > 0.005) ln.push({ cta: '1.1.3.01 · IVA crédito fiscal', debe: iva, haber: 0 });
               ln.push({ cta: '2.1.1.01 · Cuentas por pagar comerciales', debe: 0, haber: total });
               window.__postAsiento('Compra s/factura ' + v.numFactura + ' · ' + v.nombre, v.numFactura, ln, 'auto').then((r) => { if (r && r.error) console.warn('[DigiAccount] No se pudo contabilizar la compra:', r.error.message); });
@@ -7392,6 +7482,7 @@
         },
         onSave: (v) => {
           if (!window.sb) return 'Sin conexión.';
+          if (window.__mesCerrado && (window.__mesCerrado(r.fecha) || window.__mesCerrado(v.fecha))) return '🔒 Este registro pertenece a un período CERRADO (declarado). Reábrelo en Fiscal para modificarlo.';
           if (!v.nombre) return 'Indica el ' + (esCompra ? 'proveedor' : 'cliente') + '.';
           const base = parseFloat(v.base) || 0, exento = parseFloat(v.exento) || 0;
           const alic = v.alic === '8%' ? 0.08 : v.alic === 'Exento' ? 0 : 0.16;
@@ -7408,6 +7499,10 @@
           });
         },
         onDelete: async (closeModal) => {
+          if (window.__mesCerrado && window.__mesCerrado(r.fecha)) {
+            toast('🔒 Este registro pertenece a un período CERRADO (declarado). Reábrelo en Fiscal para eliminarlo.', 'error');
+            return;
+          }
           // Si tiene pagos/cobros vinculados, primero hay que reversarlos en Tesorería
           const { data: pgs } = await window.sb.from('movimientos_tesoreria')
             .select('id').eq('factura_ref', r.numero_factura || '').eq('tipo', esCompra ? 'egreso' : 'ingreso').limit(1);
@@ -7424,7 +7519,7 @@
               let lineas;
               if (esCompra) {
                 lineas = [{ cta: '2.1.1.01 · Cuentas por pagar comerciales', debe: tot, haber: 0 }];
-                if (base + ex > 0.005) lineas.push({ cta: '1.1.4.01 · Inventario de mercancías', debe: 0, haber: base + ex });
+                if (base + ex > 0.005) lineas.push({ cta: '5.1.1.01 · Costo de mercancía vendida', debe: 0, haber: base + ex });
                 if (iva > 0.005) lineas.push({ cta: '1.1.3.01 · IVA crédito fiscal', debe: 0, haber: iva });
               } else {
                 lineas = [{ cta: '4.1.1.01 · Ventas / Ingresos por servicios', debe: base + ex, haber: 0 }];
@@ -7493,12 +7588,129 @@
             if (mainBtn) mainBtn.textContent = _perLabel();
             cargarLibroFiscal('compra');
             cargarLibroFiscal('venta');
+            if (window.__pintarCierreBtn) window.__pintarCierreBtn();
             toast('Período fiscal: ' + _perLabel() + ' · libros recargados');
           },
         });
       };
       periodo.querySelectorAll('button').forEach((b) => b.addEventListener('click', abrirSelector));
     }
+
+    // ===== CIERRE MENSUAL: al declarar el mes se cierran los libros y quedan =====
+    // ===== BLOQUEADOS contra modificaciones (reversible con "Reabrir").      =====
+    let _cierres = new Set();
+    const perKey = () => '20' + _fiscalPer.aa + '-' + _fiscalPer.mm;
+    window.__mesCerrado = (fecha) => {   // acepta dd/mm/aa, dd/mm/aaaa o aaaa-mm-dd
+      const s = String(fecha || '');
+      let aa = '', mm = '';
+      if (/^\d{4}-/.test(s)) { aa = s.slice(0, 4); mm = s.slice(5, 7); }
+      else { const p = s.split('/'); if (p.length < 3) return false; mm = String(p[1]).padStart(2, '0'); aa = p[2].length === 4 ? p[2] : '20' + p[2]; }
+      return _cierres.has(aa + '-' + mm);
+    };
+    async function cargarCierres() {
+      _cierres = new Set();
+      if (window.sb && window.__EMPRESA_ACTIVA && window.__EMPRESA_ACTIVA.id) {
+        const { data } = await window.sb.from('cierres_mensuales').select('periodo').eq('empresa_id', window.__EMPRESA_ACTIVA.id);
+        (data || []).forEach((c) => _cierres.add(c.periodo));
+      }
+      pintarCierreBtn();
+    }
+    window.cargarCierres = cargarCierres;
+    let btnCierre = null;
+    function pintarCierreBtn() {
+      if (!periodo) return;
+      if (!btnCierre) {
+        btnCierre = document.createElement('button');
+        btnCierre.id = 'cerrarMesBtn';
+        btnCierre.className = 'btn btn-ghost';
+        btnCierre.style.cssText = 'height:32px;font-size:12px;margin-left:8px;';
+        periodo.insertAdjacentElement('afterend', btnCierre);
+        btnCierre.addEventListener('click', onCerrarMes);
+      }
+      const cerrado = _cierres.has(perKey());
+      btnCierre.innerHTML = cerrado ? '🔒 Mes cerrado · Reabrir' : '🔐 Cerrar mes';
+      btnCierre.title = cerrado
+        ? 'El período está bloqueado contra modificaciones. Clic para reabrirlo.'
+        : 'Genera los asientos resumen del mes (si faltan) y bloquea sus transacciones';
+    }
+    window.__pintarCierreBtn = pintarCierreBtn;
+    async function onCerrarMes() {
+      if (!window.sb || !window.__CUENTA_ID || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) return;
+      const key = perKey(), empId = window.__EMPRESA_ACTIVA.id;
+      if (_cierres.has(key)) {
+        if (!window.confirm('¿REABRIR ' + _perLabel() + '?\n\nSe desbloquean las transacciones del período (los asientos generados no se tocan).')) return;
+        const { error } = await window.sb.from('cierres_mensuales').delete().eq('empresa_id', empId).eq('periodo', key);
+        if (error) { toast('No se pudo reabrir: ' + error.message, 'error'); return; }
+        _cierres.delete(key); pintarCierreBtn();
+        toast('Período ' + _perLabel() + ' reabierto para modificaciones');
+        return;
+      }
+      if (!window.confirm('¿CERRAR ' + _perLabel() + '?\n\nSe generan los asientos resumen del mes (ventas, compras y liquidación de IVA, si aún no existen) y las transacciones del período quedan BLOQUEADAS. Podrás reabrirlo cuando quieras.')) return;
+      const mm = _fiscalPer.mm, anio = '20' + _fiscalPer.aa;
+      const sufPer = '/' + mm + '/' + _fiscalPer.aa;
+      // ¿Ya existen los asientos del mes? (meses migrados o cierres previos → solo bloquear)
+      const { data: yaLV } = await window.sb.from('asientos').select('id').eq('empresa_id', empId).eq('referencia', 'LV-' + mm + '/' + anio).limit(1);
+      const { data: yaLC } = await window.sb.from('asientos').select('id').eq('empresa_id', empId).eq('referencia', 'LC-' + mm + '/' + anio).limit(1);
+      const { data: filas, error: e1 } = await window.sb.from('libro_fiscal').select('*').eq('empresa_id', empId);
+      if (e1) { toast('No se pudo leer el libro: ' + e1.message, 'error'); return; }
+      const mes = (filas || []).filter((r) => String(r.fecha || '').endsWith(sufPer));
+      const v = { tot: 0, be: 0, iva: 0 }, c = { tot: 0, be: 0, iva: 0 };
+      mes.forEach((r) => { const o = r.tipo === 'venta' ? v : c; o.tot += Number(r.total) || 0; o.be += (Number(r.base) || 0) + (Number(r.exento) || 0); o.iva += Number(r.iva) || 0; });
+      const { data: rets } = await window.sb.from('retenciones').select('monto,fecha').eq('empresa_id', empId).eq('direccion', 'sufrida').eq('tipo', 'iva');
+      const retMes = (rets || []).filter((r) => String(r.fecha || '').endsWith(sufPer)).reduce((s, r) => s + (Number(r.monto) || 0), 0);
+      const r2c = (x) => Math.round(x * 100) / 100;
+      const ultDia = new Date(parseInt(anio, 10), parseInt(mm, 10), 0).getDate();
+      const fechaAsi = String(ultDia).padStart(2, '0') + '/' + mm + '/' + anio;
+      // Saldos actuales de crédito fiscal y retenciones (para el arrastre de la liquidación)
+      const { data: asiAll } = await window.sb.from('asientos').select('numero,lineas').eq('empresa_id', empId);
+      let maxNum = 0;
+      const saldoDe = (pref) => (asiAll || []).reduce((s, a) => {
+        if (a.numero > maxNum) maxNum = a.numero;
+        return s + (Array.isArray(a.lineas) ? a.lineas : []).reduce((x, l) => x + (String(l.cta || '').indexOf(pref) === 0 ? (Number(l.debe) || 0) - (Number(l.haber) || 0) : 0), 0);
+      }, 0);
+      let credDisp = saldoDe('1.1.3.01'), retDisp = saldoDe('1.1.3.03');
+      (asiAll || []).forEach((a) => { if (a.numero > maxNum) maxNum = a.numero; });
+      const nuevos = [];
+      const mkAsiento = (desc, ref, lineas) => { maxNum += 1; nuevos.push({ cuenta_id: window.__CUENTA_ID, empresa_id: empId, numero: maxNum, fecha: fechaAsi, descripcion: desc, referencia: ref, origen: 'auto', lineas: lineas, total: r2c(lineas.reduce((s, l) => s + l.debe, 0)) }); };
+      if (!(yaLV && yaLV.length) && v.tot > 0.005) {
+        const ln = [{ cta: '1.1.1.03 · Bancos', debe: r2c(v.tot - retMes), haber: 0 }];
+        if (retMes > 0.005) ln.push({ cta: '1.1.3.03 · Retenciones IVA soportadas', debe: r2c(retMes), haber: 0 });
+        ln.push({ cta: '4.1.1.01 · Ventas / Ingresos por servicios', debe: 0, haber: r2c(v.be) });
+        if (v.iva > 0.005) ln.push({ cta: '2.1.3.01 · IVA débito fiscal', debe: 0, haber: r2c(v.iva) });
+        mkAsiento('Ventas del mes (resumen Libro de Ventas) · ' + _perLabel(), 'LV-' + mm + '/' + anio, ln);
+        retDisp = r2c(retDisp + retMes);
+      }
+      if (!(yaLC && yaLC.length) && c.tot > 0.005) {
+        const ln = [{ cta: '5.1.1.01 · Costo de mercancía vendida', debe: r2c(c.be), haber: 0 }];
+        if (c.iva > 0.005) ln.push({ cta: '1.1.3.01 · IVA crédito fiscal', debe: r2c(c.iva), haber: 0 });
+        ln.push({ cta: '1.1.1.03 · Bancos', debe: 0, haber: r2c(c.tot) });
+        mkAsiento('Compras del mes (resumen Libro de Compras) · ' + _perLabel(), 'LC-' + mm + '/' + anio, ln);
+        credDisp = r2c(credDisp + c.iva);
+      }
+      const { data: yaF30 } = await window.sb.from('asientos').select('id').eq('empresa_id', empId).eq('referencia', 'F30-' + mm + '/' + anio).limit(1);
+      if (!(yaF30 && yaF30.length) && v.iva > 0.005 && !(yaLV && yaLV.length)) {
+        const debito = r2c(v.iva);
+        const credAp = Math.min(debito, Math.max(0, credDisp));
+        const resto = r2c(debito - credAp);
+        const retAp = Math.min(resto, Math.max(0, retDisp));
+        const pago = r2c(resto - retAp);
+        const ln = [{ cta: '2.1.3.01 · IVA débito fiscal', debe: debito, haber: 0 }];
+        if (credAp > 0.005) ln.push({ cta: '1.1.3.01 · IVA crédito fiscal', debe: 0, haber: r2c(credAp) });
+        if (retAp > 0.005) ln.push({ cta: '1.1.3.03 · Retenciones IVA soportadas', debe: 0, haber: r2c(retAp) });
+        if (pago > 0.005) ln.push({ cta: '1.1.1.03 · Bancos', debe: 0, haber: pago });
+        mkAsiento('Liquidación IVA declarado (Forma 30) · ' + _perLabel(), 'F30-' + mm + '/' + anio, ln);
+      }
+      if (nuevos.length) {
+        const { error: e2 } = await window.sb.from('asientos').insert(nuevos);
+        if (e2) { toast('No se pudieron generar los asientos: ' + e2.message, 'error'); return; }
+      }
+      const { error: e3 } = await window.sb.from('cierres_mensuales').insert({ cuenta_id: window.__CUENTA_ID, empresa_id: empId, periodo: key, cerrado_por: (window.__PERFIL && window.__PERFIL.email) || '' });
+      if (e3) { toast('Asientos listos, pero no se pudo bloquear el mes: ' + e3.message + ' (¿corriste el SQL dpp_y_cierres.sql?)', 'error'); return; }
+      _cierres.add(key); pintarCierreBtn();
+      if (window.cargarAsientos) window.cargarAsientos();
+      toast('✅ ' + _perLabel() + ' CERRADO · ' + (nuevos.length ? nuevos.length + ' asientos resumen generados y ' : '') + 'transacciones del período bloqueadas', 'success');
+    }
+    cargarCierres();
 
     // Calendario fiscal: el botón Configurar (la navegación ◀▶ la maneja el IIFE calendar)
     const agenda = view.querySelector('.fiscal-tab[data-tab="agenda"]');
