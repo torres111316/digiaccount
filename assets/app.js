@@ -5059,7 +5059,8 @@
         + '\r\n----------------------------------------\r\n'
         + 'TOTAL A PAGAR: Bs ' + fmt(k.total) + '\r\n'
         + 'Son: ' + capitalizar(montoEnLetras(k.total)) + '\r\n';
-      lastReciboName = k.num + '_' + emp.id + '_2026.txt';
+      lastReciboName = (k.title + ' ' + emp.nombre).replace(/[\\/:*?"<>|]/g, '-') + '.txt';
+      currentReciboPago = null; // este es el recibo de prestaciones: el PDF toma SU nombre, no el del último recibo de pago
 
       overlay.dataset.open = 'true';
       drawIcons();
@@ -5073,6 +5074,7 @@
     if (overlay) overlay.addEventListener('click', (e) => { if (e.target === overlay) closeRecibo(); });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && overlay && overlay.dataset.open === 'true') closeRecibo(); });
     const rp = document.getElementById('reciboPrint');
+    let tituloOriginal = null; // para restaurar el título tras imprimir/guardar PDF
     if (rp) rp.addEventListener('click', () => {
       // Clonar el recibo a un portal fuera de .app → una sola hoja, sin páginas en blanco
       let portal = document.getElementById('printPortal');
@@ -5082,12 +5084,23 @@
       clon.classList.add('recibo-print');
       portal.appendChild(clon);
       document.body.classList.add('printing-comp');
+      // "Guardar como PDF" usa el título del documento como nombre de archivo:
+      // → "Recibo ABRAHAN JOSE REYES MAJANO - Semana 13-07-2026 al 19-07-2026.pdf"
+      tituloOriginal = document.title;
+      let nombrePdf = '';
+      if (currentReciboPago && currentReciboPago.emp) {
+        nombrePdf = 'Recibo ' + currentReciboPago.emp.nombre + ' - ' + String(currentReciboPago.periodo || '');
+      } else if (lastReciboName && lastReciboName !== 'recibo.txt') {
+        nombrePdf = lastReciboName.replace(/\.txt$/i, '');
+      }
+      if (nombrePdf) document.title = nombrePdf.replace(/[\\/:*?"<>|]/g, '-');
       window.print();
     });
     window.addEventListener('afterprint', () => {
       document.body.classList.remove('printing-comp');
       const portal = document.getElementById('printPortal');
       if (portal) portal.innerHTML = '';
+      if (tituloOriginal != null) { document.title = tituloOriginal; tituloOriginal = null; }
     });
     const rd = document.getElementById('reciboDownload');
     if (rd) rd.addEventListener('click', () => {
@@ -5377,7 +5390,7 @@
         + '----------------------------------------\r\n'
         + 'NETO A PAGAR: Bs ' + fmt(p.neto) + '\r\n'
         + 'Son: ' + capitalizar(montoEnLetras(p.neto)) + '\r\n';
-      lastReciboName = p.f.doc + '_' + emp.id + '_2026.txt';
+      lastReciboName = ('Recibo ' + emp.nombre + ' - ' + p.f.periodo).replace(/[\\/:*?"<>|]/g, '-') + '.txt';
       currentReciboPago = { emp: emp, p: p, rows: rows, periodo: p.f.periodo, frecuencia: payFreq };
 
       overlay.dataset.open = 'true';
