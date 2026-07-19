@@ -663,13 +663,36 @@
         + '<td class="num">' + pctTxt + '</td><td class="num">' + fmt(Number(r.monto) || 0) + '</td>'
         + '<td><span class="tag success">' + esc(r.estado || 'Registrado') + '</span></td></tr>';
     }
-    function pintar(dir, arr) {
+    const _retPage = { practicadas: 1, sufridas: 1 };   // página actual por dirección (20 por página)
+    const _retPageArr = { practicadas: [], sufridas: [] }; // datos vigentes para re-pintar al paginar
+    function pintar(dir, arr, page) {
       const v = document.querySelector('.ret-view[data-retview="' + dir + '"]');
       const tb = v && v.querySelector('tbody');
       if (!tb) return;
-      tb.innerHTML = arr.length ? arr.map(rowHtml).join('')
-        : '<tr class="ret-empty"><td colspan="10" style="text-align:center;color:var(--fg-muted);padding:16px;">Sin retenciones registradas. Usa “Registrar retención”.</td></tr>';
+      _retPageArr[dir] = arr;
+      if (!arr.length) {
+        tb.innerHTML = '<tr class="ret-empty"><td colspan="10" style="text-align:center;color:var(--fg-muted);padding:16px;">Sin retenciones registradas. Usa “Registrar retención”.</td></tr>';
+        return;
+      }
+      const PAG = 20;
+      const totalPag = Math.max(1, Math.ceil(arr.length / PAG));
+      const pag = Math.min(Math.max(1, page || 1), totalPag);
+      _retPage[dir] = pag;
+      const ini = (pag - 1) * PAG;
+      let html = arr.slice(ini, ini + PAG).map(rowHtml).join('');
+      if (totalPag > 1) {
+        html += '<tr><td colspan="10" style="padding:6px 10px;"><div style="display:flex;justify-content:center;align-items:center;gap:14px;font-size:12px;color:var(--fg-muted);">'
+          + '<button class="btn btn-ghost" data-rp="' + dir + '" data-rp-dir="-1"' + (pag <= 1 ? ' disabled' : '') + ' style="height:26px;font-size:11px;">« Anterior</button>'
+          + '<span>Página ' + pag + ' de ' + totalPag + ' · ' + arr.length + ' retenciones</span>'
+          + '<button class="btn btn-ghost" data-rp="' + dir + '" data-rp-dir="1"' + (pag >= totalPag ? ' disabled' : '') + ' style="height:26px;font-size:11px;">Siguiente »</button>'
+          + '</div></td></tr>';
+      }
+      tb.innerHTML = html;
     }
+    document.addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-rp]');
+      if (b && !b.disabled) pintar(b.dataset.rp, _retPageArr[b.dataset.rp] || [], (_retPage[b.dataset.rp] || 1) + parseInt(b.dataset.rpDir, 10));
+    });
     let _retData = []; // últimas retenciones cargadas (para editar/eliminar por id)
 
     // Mini-cuadro de retenciones dentro de una Forma 30 (compras=practicadas, ventas=sufridas)
@@ -7194,7 +7217,8 @@
     let _fiscalPer = { mm: String(_hoyFis.getMonth() + 1).padStart(2, '0'), aa: String(_hoyFis.getFullYear()).slice(2) };
     const _perLabel = () => MESES_FIS[parseInt(_fiscalPer.mm, 10) - 1] + ' 20' + _fiscalPer.aa;
     const _libroData = { compra: [], venta: [] }; // últimas filas cargadas por tipo (para editar/eliminar)
-    async function cargarLibroFiscal(tipo) {
+    const _libroPage = { compra: 1, venta: 1 }; // página actual de cada libro (20 filas por página)
+    async function cargarLibroFiscal(tipo, page) {
       const tabName = tipo === 'compra' ? 'compras' : 'ventas';
       const sel = tipo === 'compra' ? 'table.libro-compras' : 'table.libro-ventas:not(.libro-maquina)';
       const table = view.querySelector('.fiscal-tab[data-tab="' + tabName + '"] ' + sel);
@@ -7220,19 +7244,36 @@
       const arr = (data || []).filter((r) => String(r.fecha || '').endsWith(sufPer));
       _libroData[tipo] = arr;
       if (!arr.length) { vacio('Sin registros en ' + _perLabel() + '. Cambia el período arriba o usa "Registrar ' + tipo + '".'); return; }
+      // Totales y Forma 30: SIEMPRE sobre el mes completo (la paginación es solo visual)
       let tTot = 0, tEx = 0, tBase = 0, tIva = 0, tIgtf = 0;
       let base16 = 0, iva16 = 0, base8 = 0, iva8 = 0;
-      tbody.innerHTML = arr.map((r, i) => {
+      arr.forEach((r) => {
         const tot = Number(r.total) || 0, ex = Number(r.exento) || 0, base = Number(r.base) || 0, iva = Number(r.iva) || 0, igtf = Number(r.igtf) || 0, alic = Number(r.alicuota) || 0;
         tTot += tot; tEx += ex; tBase += base; tIva += iva; tIgtf += igtf;
         if (alic >= 0.15) { base16 += base; iva16 += iva; } else if (alic > 0) { base8 += base; iva8 += iva; }
+      });
+      // Paginación: lotes de 20 operaciones por página
+      const PAG_FILAS = 20;
+      const totalPag = Math.max(1, Math.ceil(arr.length / PAG_FILAS));
+      const pag = Math.min(Math.max(1, page || 1), totalPag);
+      _libroPage[tipo] = pag;
+      const inicio = (pag - 1) * PAG_FILAS;
+      tbody.innerHTML = arr.slice(inicio, inicio + PAG_FILAS).map((r, i) => {
+        const tot = Number(r.total) || 0, ex = Number(r.exento) || 0, base = Number(r.base) || 0, iva = Number(r.iva) || 0, igtf = Number(r.igtf) || 0, alic = Number(r.alicuota) || 0;
         const alicTxt = alic > 0 ? (Math.round(alic * 100) + '%') : 'Ex.';
-        return '<tr data-id="' + (r.id || '') + '" data-libro="' + tipo + '" style="cursor:pointer;" title="Clic para editar o eliminar"><td class="ctr">' + (i + 1) + '</td><td>' + (r.fecha || '') + '</td><td class="mono">' + (r.tercero_rif || '') + '</td><td class="primary">' + (r.tercero_nombre || '') + '</td>'
+        return '<tr data-id="' + (r.id || '') + '" data-libro="' + tipo + '" style="cursor:pointer;" title="Clic para editar o eliminar"><td class="ctr">' + (inicio + i + 1) + '</td><td>' + (r.fecha || '') + '</td><td class="mono">' + (r.tercero_rif || '') + '</td><td class="primary">' + (r.tercero_nombre || '') + '</td>'
           + '<td class="mono">' + (r.numero_factura || '') + '</td><td class="mono">' + (r.numero_control || '') + '</td><td class="ctr">' + (r.tipo_doc || (esCompra ? 'FC' : 'FV')) + '</td>'
           + '<td class="num">' + fmtF(tot) + '</td><td class="num">' + fmtF(ex) + '</td><td class="num">' + fmtF(base) + '</td><td class="ctr">' + alicTxt + '</td><td class="num">' + fmtF(iva) + '</td>'
           + (esCompra ? '' : '<td class="num">' + fmtF(igtf) + '</td>') + '</tr>';
       }).join('');
-      if (tfoot) tfoot.innerHTML = totRow(tTot, tEx, tBase, tIva, tIgtf);
+      const pagerRow = totalPag > 1
+        ? '<tr><td colspan="' + (esCompra ? 12 : 13) + '" style="padding:6px 10px;"><div style="display:flex;justify-content:center;align-items:center;gap:14px;font-size:12px;color:var(--fg-muted);">'
+          + '<button class="btn btn-ghost" data-lp="' + tipo + '" data-lp-dir="-1"' + (pag <= 1 ? ' disabled' : '') + ' style="height:26px;font-size:11px;">« Anterior</button>'
+          + '<span>Página ' + pag + ' de ' + totalPag + ' · ' + arr.length + ' operaciones del período</span>'
+          + '<button class="btn btn-ghost" data-lp="' + tipo + '" data-lp-dir="1"' + (pag >= totalPag ? ' disabled' : '') + ' style="height:26px;font-size:11px;">Siguiente »</button>'
+          + '</div></td></tr>'
+        : '';
+      if (tfoot) tfoot.innerHTML = totRow(tTot, tEx, tBase, tIva, tIgtf) + pagerRow;
       // Traslado a la Forma 30: desglose por alícuota
       if (esCompra) {
         _credF = tIva;
@@ -7355,6 +7396,11 @@
       });
     }
     view.addEventListener('click', (e) => {
+      const pb = e.target.closest('button[data-lp]');
+      if (pb && !pb.disabled) {
+        cargarLibroFiscal(pb.dataset.lp, (_libroPage[pb.dataset.lp] || 1) + parseInt(pb.dataset.lpDir, 10));
+        return;
+      }
       const tr = e.target.closest('tr[data-id][data-libro]');
       if (tr) editLibroFiscal(tr.dataset.id, tr.dataset.libro);
     });
