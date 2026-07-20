@@ -3018,7 +3018,7 @@
 
       <header class="dash-header">
         <div class="dash-title-block">
-          <div class="overline">Recursos Humanos · Quincena 16–31 may</div>
+          <div class="overline" id="nominaOverline">Recursos Humanos</div>
           <div class="dash-title-row">
             <h1 class="dash-title">Nómina y Parafiscales</h1>
             <span class="contrib-badge"><i data-lucide="users"></i> 0 empleados activos</span>
@@ -3218,7 +3218,7 @@
           </div>
 
           <!-- Aporte patronal: Protección a las Pensiones -->
-          <div class="panel">
+          <div class="panel" id="ppPatronalCard">
             <div class="panel-head">
               <div class="panel-title-block">
                 <div class="title">Protección a las Pensiones</div>
@@ -3237,14 +3237,14 @@
                 </div>
                 <div class="vals">
                   <div class="pct">9,00%</div>
-                  <div class="amt patronal">Bs 196.605</div>
+                  <div class="amt patronal" id="ppPatronalMonto">Bs 0,00</div>
                 </div>
               </div>
             </div>
             <div class="pp-foot">
               <div class="pp-base">
-                <span>Base imponible (salarios + bonificaciones)</span>
-                <span class="mono">Bs 2.184.500,00</span>
+                <span>Base imponible (salarios cotizables del mes)</span>
+                <span class="mono" id="ppPatronalBase">Bs 0,00</span>
               </div>
               <a href="#" data-goto-fiscaltab="pensiones" class="pp-link"><i data-lucide="file-text"></i> Ir a la declaración (Forma 99019) →</a>
             </div>

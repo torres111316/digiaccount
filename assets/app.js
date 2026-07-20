@@ -2631,7 +2631,11 @@
       if (r1.error) { console.warn('[DigiAccount] Tesorería:', r1.error.message); }
       _cuentas = r1.data || []; _movs = r2.data || [];
       const ventas = (r3.data || []).filter((f) => !/anulada/i.test(f.estado || '')).map((f) => ({ ref: f.numero, tercero_nombre: f.cliente_nombre, tercero_rif: f.cliente_rif, total: f.total, fecha: f.fecha, tipo: 'venta', condicion: f.condicion, estado: f.estado }));
-      const compras = (r4.data || []).map((f) => ({ _id: f.id, ref: f.numero_factura, tercero_nombre: f.tercero_nombre, tercero_rif: f.tercero_rif, total: f.total, fecha: f.fecha, tipo: 'compra' }));
+      // Modelo del contador externo: en modo LIBRO (fiscal) las compras se presumen PAGADAS
+      // al momento (por banco) — el asiento ya acreditó Bancos. Si el cliente da el detalle
+      // real de cobranza, se registran pagos y el saldo se ajusta.
+      const presunto = (emp.modo === 'libro');
+      const compras = (r4.data || []).map((f) => ({ _id: f.id, ref: f.numero_factura, tercero_nombre: f.tercero_nombre, tercero_rif: f.tercero_rif, total: f.total, fecha: f.fecha, tipo: 'compra', presuntoPagado: presunto }));
       _facturas = ventas.concat(compras);
       render();
     }
@@ -2694,14 +2698,17 @@
     function renderCxList(tipo, bodyId, totalId, countId, tabCountId) {
       const body = document.getElementById(bodyId); if (!body) return;
       const rows = _facturas.filter((f) => f.tipo === tipo).map((f) => {
-        const total = Number(f.total) || 0; const pag = pagadoDe(f); const pend = Math.max(0, total - pag);
-        return { f: f, total: total, pag: pag, pend: pend };
+        const total = Number(f.total) || 0; const pagReal = pagadoDe(f);
+        // Presunción de pago (modo libro): si no hay pagos reales registrados, se toma como pagada.
+        const pag = (f.presuntoPagado && pagReal <= 0.01) ? total : pagReal;
+        const pend = Math.max(0, total - pag);
+        return { f: f, total: total, pag: pag, pend: pend, presunto: f.presuntoPagado && pagReal <= 0.01 };
       }).sort((a, b) => b.pend - a.pend);
       let totalPend = 0, pendientes = 0;
       const esVenta = tipo === 'venta';
       const html = rows.map((r) => {
         if (r.pend > 0.01) { pendientes++; totalPend += r.pend; }
-        const estado = r.pend <= 0.01 ? badge('Pagada', '#0a7a44', '#d5f0e0') : (r.pag > 0.01 ? badge('Parcial', '#9a6700', '#fdf0d0') : badge('Pendiente', '#b42318', '#fde0dd'));
+        const estado = r.presunto ? badge('Pagada', '#0a7a44', '#d5f0e0') : (r.pend <= 0.01 ? badge('Pagada', '#0a7a44', '#d5f0e0') : (r.pag > 0.01 ? badge('Parcial', '#9a6700', '#fdf0d0') : badge('Pendiente', '#b42318', '#fde0dd')));
         let accion = '';
         if (r.pend > 0.01) {
           accion = ' <button class="btn btn-ghost" data-cx-accion="' + (esVenta ? 'cobrar' : 'pagar') + '" data-ref="' + esc(r.f.ref || '') + '" data-terc="' + esc(r.f.tercero_nombre || '') + '" data-pend="' + r.pend.toFixed(2) + '" style="height:22px;font-size:10px;padding:0 9px;margin-left:6px;">' + (esVenta ? 'Cobrar' : 'Pagar') + '</button>';
@@ -4813,19 +4820,18 @@
 
     // ---- Contabilizar la nómina del período: UN asiento resumen (modelo del contador) ----
     // Gastos (sueldos + beneficios) / retenciones parafiscales por enterar + pago neto por banco.
-    const relnContab = document.getElementById('relnContabilizar');
-    if (relnContab) relnContab.addEventListener('click', async () => {
-      const d = window.__RELN_ACTUAL;
-      if (!d || !d.lista || !d.lista.length) { if (window.toast) window.toast('Genera primero la relación del período.', 'error'); return; }
+    async function contabilizarNomina(freq) {
+      const lista = empleados.filter((e) => (e.frecHabitual || 'quincenal') === freq);
+      if (!lista.length) { if (window.toast) window.toast('No hay trabajadores con pago ' + freq + '.', 'info'); return false; }
       let salarial = 0, beneficios = 0, ivssT = 0, spfT = 0, faovT = 0, otrasDed = 0;
-      d.lista.forEach((e) => {
-        const p = calcPago(e, d.freq);
+      lista.forEach((e) => {
+        const p = calcPago(e, freq);
         salarial += p.asigSalarial;
         beneficios += p.bonoContingencia + p.cestaticket + p.transporteBs;
         ivssT += p.ivss; spfT += p.spf; faovT += p.faov;
         otrasDed += p.dedOtras;
       });
-      const per = periodoNomina(d.freq);
+      const per = periodoNomina(freq);
       const r2n = (x) => Math.round(x * 100) / 100;
       const lineas = [
         { cta: '6.1.1.01 · Sueldos y salarios', debe: r2n(salarial), haber: 0 },
@@ -4837,10 +4843,18 @@
       if (otrasDed > 0.005) lineas.push({ cta: '2.1.5 · Otras Cuentas por Pagar', debe: 0, haber: r2n(otrasDed) });
       const debeT = lineas.reduce((s, l) => s + l.debe, 0), habT = lineas.reduce((s, l) => s + l.haber, 0);
       lineas.push({ cta: '1.1.1.03 · Bancos', debe: 0, haber: r2n(debeT - habT) }); // neto pagado
-      if (!window.confirm('¿Contabilizar la nómina ' + d.freq + '?\n' + per + '\n\n' + d.lista.length + ' trabajadores · Neto pagado por banco: Bs ' + fmt(r2n(debeT - habT)))) return;
-      const r = await window.__postAsiento('Nómina ' + d.freq + ' · ' + per + ' · ' + d.lista.length + ' trabajadores (pagada por banco)', 'NOM-' + per.replace(/[^0-9]/g, '').slice(0, 8), lineas, 'auto');
-      if (r && r.error) { if (window.toast) window.toast('No se pudo contabilizar: ' + r.error.message, 'error'); return; }
-      if (window.toast) window.toast('Nómina contabilizada · revisa el asiento en el Libro Diario', 'success');
+      if (!window.confirm('¿Contabilizar la nómina ' + freq + '?\n' + per + '\n\n' + lista.length + ' trabajadores · Neto pagado por banco: Bs ' + fmt(r2n(debeT - habT)))) return false;
+      const r = await window.__postAsiento('Nómina ' + freq + ' · ' + per + ' · ' + lista.length + ' trabajadores (pagada por banco)', 'NOM-' + per.replace(/[^0-9]/g, '').slice(0, 8), lineas, 'auto');
+      if (r && r.error) { if (window.toast) window.toast('No se pudo contabilizar: ' + r.error.message, 'error'); return false; }
+      if (window.toast) window.toast('Nómina ' + freq + ' contabilizada · revisa el asiento en el Libro Diario', 'success');
+      return true;
+    }
+    window.__contabilizarNomina = contabilizarNomina;
+    const relnContab = document.getElementById('relnContabilizar');
+    if (relnContab) relnContab.addEventListener('click', () => {
+      const d = window.__RELN_ACTUAL;
+      if (!d) { if (window.toast) window.toast('Genera primero la relación del período.', 'error'); return; }
+      contabilizarNomina(d.freq);
     });
 
     let empleados = [];   // se carga desde Supabase (cargarEmpleados)
@@ -4929,10 +4943,18 @@
       return Math.max(0, m);
     }
 
-    function calc(emp) {
-      // Base cotizable = salario mínimo (el Bono de Contingencia no es cotizable
-      // ni incide en prestaciones, vacaciones ni utilidades)
-      const salBaseMes = SALARIO_MINIMO;
+    // Base mensual manual por trabajador para prestaciones (Vac./Util./Liq.).
+    // En Venezuela el mínimo legal es irrisorio: el contador ajusta la base a lo que
+    // realmente se paga (en $ o un aproximado). Se guarda por empleado en memoria.
+    const _basePrest = {};
+    function baseCalcMes(emp) {
+      if (_basePrest[emp.id] != null) return _basePrest[emp.id];
+      return SALARIO_MINIMO; // por defecto el mínimo cotizable; editable en cada cálculo
+    }
+    function calc(emp, baseOverrideMes) {
+      // Base para prestaciones: el mínimo cotizable por defecto, o el monto que fije el
+      // contador (salario real en Bs/$). El Bono de Contingencia sigue siendo no salarial.
+      const salBaseMes = (baseOverrideMes != null && baseOverrideMes > 0) ? baseOverrideMes : baseCalcMes(emp);
       const salDia = salBaseMes / 30;
       const y = aniosServicio(emp.ingreso);
       const fracMeses = mesesFraccion(emp.ingreso);
@@ -5061,8 +5083,19 @@
       if (!host) return;
       const emp = empById(state[tab]);
       if (!emp) { host.innerHTML = '<div class="calc-card" style="padding:28px;text-align:center;color:var(--fg-muted);font-size:13px;">Registra empleados para calcular prestaciones.</div>'; return; }
-      const c = calc(emp);
+      const baseMes = baseCalcMes(emp);
+      const c = calc(emp, baseMes);
+      const ajustada = Math.abs(baseMes - SALARIO_MINIMO) > 0.01;
       let html = '<div class="calc-card">';
+      // Base de cálculo EDITABLE: el contador ajusta el salario a la realidad (Bs/$)
+      html += '<div class="calc-basebar" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 12px;margin-bottom:10px;border:1px solid var(--border-strong);border-radius:10px;background:var(--bg-subtle);">'
+        + '<span style="font-size:12px;font-weight:600;">Salario base mensual del cálculo:</span>'
+        + '<div style="display:flex;align-items:center;gap:4px;"><span style="font-size:12px;color:var(--fg-muted);">Bs</span>'
+        + '<input type="number" step="0.01" id="basePrestInput" value="' + baseMes.toFixed(2) + '" style="width:150px;height:32px;border:1px solid var(--border-strong);border-radius:8px;padding:0 10px;font:inherit;text-align:right;background:var(--bg-surface);color:inherit;"></div>'
+        + '<button class="btn btn-ghost" id="basePrestMin" style="height:30px;font-size:11px;" title="Usar el salario mínimo cotizable">Mínimo legal</button>'
+        + '<button class="btn btn-ghost" id="basePrestUsd" style="height:30px;font-size:11px;" title="Convertir un monto en USD a Bs a la tasa BCV">Desde $…</button>'
+        + '<span style="font-size:11px;color:' + (ajustada ? '#0a7a44' : 'var(--fg-muted)') + ';">' + (ajustada ? '✓ base ajustada' : 'base = mínimo legal') + '</span>'
+        + '</div>';
 
       if (tab === 'vacaciones') {
         html += calcHead(emp, c, 'Período', String(HOY.getFullYear()));
@@ -5118,6 +5151,19 @@
       html += '</div>';
       host.innerHTML = html;
       drawIcons();
+      // Base editable: aplica y re-renderiza en vivo
+      const baseInput = host.querySelector('#basePrestInput');
+      const aplicarBase = (v) => { const n = parseFloat(v); if (n > 0) { _basePrest[emp.id] = n; renderCalc(tab); renderPicker(tab); } };
+      if (baseInput) baseInput.addEventListener('change', () => aplicarBase(baseInput.value));
+      const btnMin = host.querySelector('#basePrestMin');
+      if (btnMin) btnMin.addEventListener('click', () => { delete _basePrest[emp.id]; renderCalc(tab); renderPicker(tab); });
+      const btnUsd = host.querySelector('#basePrestUsd');
+      if (btnUsd) btnUsd.addEventListener('click', () => {
+        const tasa = window.__bcvRate || 0;
+        const usd = parseFloat(window.prompt('Salario mensual en USD (se convierte a Bs a la tasa BCV ' + (tasa ? 'Bs ' + fmt(tasa) : 'del día') + '):', '100'));
+        if (usd > 0 && tasa > 0) aplicarBase(usd * tasa);
+        else if (!tasa) { if (window.toast) window.toast('Aún no cargó la tasa BCV; escribe el monto en Bs directamente.', 'info'); }
+      });
       const btn = host.querySelector('[data-recibo]');
       if (btn) btn.addEventListener('click', () => openRecibo(tab, emp, c));
     }
@@ -5573,6 +5619,21 @@
       // Columna de período: sigue la frecuencia seleccionada (Semana / Quincena / Mes)
       const perTh = document.getElementById('empPeriodoTh');
       if (perTh) perTh.textContent = payFreq === 'semanal' ? 'Semana' : payFreq === 'mensual' ? 'Mes' : 'Quincena';
+      // Overline del módulo: período real según la frecuencia del cuadro (ya no fijo "16-31 may")
+      const ovl = document.getElementById('nominaOverline');
+      if (ovl) ovl.textContent = 'Recursos Humanos · ' + periodoNomina(payFreq);
+      // Tarjeta patronal de Protección a las Pensiones: real, y OCULTA si la empresa es exenta
+      const ppCard = document.getElementById('ppPatronalCard');
+      const exentaDpp = (window.__EMPRESA_ACTIVA || {}).declaraDpp === false;
+      if (ppCard) {
+        ppCard.style.display = exentaDpp ? 'none' : '';
+        if (!exentaDpp) {
+          const baseDpp = empleados.reduce((s, e) => s + (Number(e.salarioMes) || 0), 0); // salario cotizable mensual
+          const setPP = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = 'Bs ' + fmt(v); };
+          setPP('ppPatronalBase', baseDpp);
+          setPP('ppPatronalMonto', baseDpp * 0.09);
+        }
+      }
       const divPer = payFreq === 'semanal' ? (52 / 12) : payFreq === 'mensual' ? 1 : 2;
       const FREC_TAG = { semanal: '<span class="tag success">Semanal</span>', quincenal: '<span class="tag">Quincenal</span>', mensual: '<span class="tag warn">Mensual</span>' };
       tbody.innerHTML = empleados.map((emp, i) => {
@@ -5709,16 +5770,15 @@
       const nuevoTrab = document.getElementById('nuevoTrabajadorBtn');
       if (nuevoTrab) nuevoTrab.addEventListener('click', () => formEmpleado(null));
 
+      // Procesar nómina = generar el ASIENTO CONTABLE del período (gasto de nómina + parafiscales
+      // por enterar + pago neto por banco), según la frecuencia elegida en el cuadro.
       const procesar = document.getElementById('procesarNominaBtn');
       if (procesar) procesar.addEventListener('click', () => {
-        // Marca como "Procesada" a las pendientes de la tabla
-        let n = 0;
-        if (table) table.querySelectorAll('tbody tr .tag.warn').forEach((tag) => {
-          tag.className = 'tag success'; tag.textContent = 'Procesada'; n++;
-        });
-        t('Nómina procesada · ' + empleados.length + ' recibos generados' + (n ? ' (' + n + ' pendientes liquidadas)' : ''));
+        if (!empleados.length) { t('Registra trabajadores primero.', 'error'); return; }
+        if (window.__contabilizarNomina) window.__contabilizarNomina(payFreq);
       });
 
+      // Recalcular = recarga parámetros y empleados vigentes y vuelve a calcular todo el cuadro.
       const recalc = document.getElementById('recalcularNominaBtn');
       if (recalc) recalc.addEventListener('click', () => {
         if (window.cargarParametros) window.cargarParametros(); // recarga parámetros vigentes + re-render
