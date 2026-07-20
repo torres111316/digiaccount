@@ -7456,11 +7456,14 @@
         actualizarAutoliquidacion();
       };
       if (!window.sb || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) { vacio(); return; }
-      const { data, error } = await window.sb.from('libro_fiscal').select('*').eq('empresa_id', window.__EMPRESA_ACTIVA.id).eq('tipo', tipo).order('fecha');
-      if (error) { console.warn('[DigiAccount] No se pudo cargar el libro fiscal:', error.message); vacio('No se pudieron cargar (¿creaste la tabla libro_fiscal?).'); return; }
-      // Solo las operaciones del período fiscal seleccionado (fecha dd/mm/aa)
+      // Se consulta SOLO el período fiscal seleccionado (fecha dd/mm/aa) directamente en la BD:
+      // evita el tope de 1000 filas de PostgREST cuando la empresa tiene miles de operaciones.
       const sufPer = '/' + _fiscalPer.mm + '/' + _fiscalPer.aa;
-      const arr = (data || []).filter((r) => String(r.fecha || '').endsWith(sufPer));
+      const { data, error } = await window.sb.from('libro_fiscal').select('*')
+        .eq('empresa_id', window.__EMPRESA_ACTIVA.id).eq('tipo', tipo)
+        .like('fecha', '%' + sufPer).order('fecha');
+      if (error) { console.warn('[DigiAccount] No se pudo cargar el libro fiscal:', error.message); vacio('No se pudieron cargar (¿creaste la tabla libro_fiscal?).'); return; }
+      const arr = data || [];
       _libroData[tipo] = arr;
       if (!arr.length) { vacio('Sin registros en ' + _perLabel() + '. Cambia el período arriba o usa "Registrar ' + tipo + '".'); return; }
       // Totales y Forma 30: SIEMPRE sobre el mes completo (la paginación es solo visual)
@@ -7733,9 +7736,10 @@
       // ¿Ya existen los asientos del mes? (meses migrados o cierres previos → solo bloquear)
       const { data: yaLV } = await window.sb.from('asientos').select('id').eq('empresa_id', empId).eq('referencia', 'LV-' + mm + '/' + anio).limit(1);
       const { data: yaLC } = await window.sb.from('asientos').select('id').eq('empresa_id', empId).eq('referencia', 'LC-' + mm + '/' + anio).limit(1);
-      const { data: filas, error: e1 } = await window.sb.from('libro_fiscal').select('*').eq('empresa_id', empId);
+      // Solo el mes que se cierra (like en BD → evita el tope de 1000 filas de PostgREST)
+      const { data: filas, error: e1 } = await window.sb.from('libro_fiscal').select('*').eq('empresa_id', empId).like('fecha', '%' + sufPer);
       if (e1) { toast('No se pudo leer el libro: ' + e1.message, 'error'); return; }
-      const mes = (filas || []).filter((r) => String(r.fecha || '').endsWith(sufPer));
+      const mes = filas || [];
       const v = { tot: 0, be: 0, iva: 0 }, c = { tot: 0, be: 0, iva: 0 };
       mes.forEach((r) => { const o = r.tipo === 'venta' ? v : c; o.tot += Number(r.total) || 0; o.be += (Number(r.base) || 0) + (Number(r.exento) || 0); o.iva += Number(r.iva) || 0; });
       const { data: rets } = await window.sb.from('retenciones').select('monto,fecha').eq('empresa_id', empId).eq('direccion', 'sufrida').eq('tipo', 'iva');
