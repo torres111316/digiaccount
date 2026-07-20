@@ -755,7 +755,10 @@
       if (!window.sb || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) return vacio();
       const { data, error } = await window.sb.from('retenciones').select('*').eq('empresa_id', window.__EMPRESA_ACTIVA.id).order('fecha', { ascending: false });
       if (error) { console.warn('[DigiAccount] No se pudieron cargar retenciones:', error.message); return vacio(); }
-      const arr = data || [];
+      // Solo las retenciones del PERÍODO FISCAL seleccionado (fecha dd/mm/aa) — coherente con los libros
+      const per = window.__fiscalPer;
+      let arr = data || [];
+      if (per && per.mm && per.aa) arr = arr.filter((r) => String(r.fecha || '').endsWith('/' + per.mm + '/' + per.aa));
       _retData = arr;
       pintar('practicadas', arr.filter((r) => r.direccion === 'practicada'));
       pintar('sufridas', arr.filter((r) => r.direccion === 'sufrida'));
@@ -4907,22 +4910,26 @@
       set('relnCount', String(lista.length));
 
       // Aportes patronales sobre la base mensual del grupo de esta frecuencia
+      const exentaDppReln = (window.__EMPRESA_ACTIVA || {}).declaraDpp === false;
       const baseMes = lista.reduce((s, e) => s + (Number(e.salarioMes) || 0), 0);
       const ivss = baseMes * R_IVSS_P, spf = baseMes * R_RPE_P, faov = baseMes * R_FAOV_P, inces = baseMes * R_INCES_P;
-      const baseDpp = lista.filter((e) => e.sujetoDpp).reduce((s, e) => s + (Number(e.salarioMes) || 0), 0);
+      // DPP: cero para empresas exentas (emprendimientos) y para trabajadores no sujetos
+      const baseDpp = exentaDppReln ? 0 : lista.filter((e) => e.sujetoDpp).reduce((s, e) => s + (Number(e.salarioMes) || 0), 0);
       const pp = baseDpp * R_DPP;
       set('raIvss', fmt(ivss));
       set('raSpf', fmt(spf));
       set('raFaov', fmt(faov));
       set('raInces', fmt(inces));
       set('raPp', fmt(pp));
+      const raPpRow = document.getElementById('raPpRow'); // oculta la fila DPP si la empresa es exenta
+      if (raPpRow) raPpRow.style.display = exentaDppReln ? 'none' : '';
       const raPpMeta = document.getElementById('raPpMeta');
-      if (raPpMeta) raPpMeta.textContent = lista.filter((e) => e.sujetoDpp).length + ' sujeto(s)';
+      if (raPpMeta) raPpMeta.textContent = exentaDppReln ? 'exento' : (lista.filter((e) => e.sujetoDpp).length + ' sujeto(s)');
       set('raTotal', fmt(ivss + spf + faov + inces + pp));
 
       // KPIs de la cabecera de Nómina: sobre TODOS los trabajadores (no solo el grupo)
       const baseTodos = empleados.reduce((s, e) => s + (Number(e.salarioMes) || 0), 0);
-      const dppTodos = empleados.filter((e) => e.sujetoDpp).reduce((s, e) => s + (Number(e.salarioMes) || 0), 0);
+      const dppTodos = exentaDppReln ? 0 : empleados.filter((e) => e.sujetoDpp).reduce((s, e) => s + (Number(e.salarioMes) || 0), 0);
       set('nomKpiCosto', fmt(baseTodos));
       set('nomKpiAportes', fmt(baseTodos * (R_IVSS_P + R_RPE_P + R_FAOV_P + R_INCES_P) + dppTodos * R_DPP));
       const kc = document.getElementById('nomKpiCount'); if (kc) kc.textContent = String(empleados.length);
@@ -6801,18 +6808,30 @@
 
     function printLibro(scope) {
       const tab = scope.closest('.fiscal-tab') || scope;
+      const tipo = (tab.dataset.tab === 'compras') ? 'compra' : 'venta';
+      const esCompra = tipo === 'compra';
       let portal = document.getElementById('printPortal');
       if (!portal) { portal = document.createElement('div'); portal.id = 'printPortal'; document.body.appendChild(portal); }
       portal.innerHTML = '';
       const cont = document.createElement('div');
       cont.className = 'libro-print';
-      // Membrete del tab + tabla y resumen de la vista visible
       const head = tab.querySelector('.libro-head');
       if (head) cont.appendChild(head.cloneNode(true));
-      ['.data-table-wrap', '.libro-resumen'].forEach((sel) => {
-        const el = scope.querySelector(sel);
-        if (el) cont.appendChild(el.cloneNode(true));
-      });
+      // Tabla LIMPIA con TODAS las filas del período (sin paginación ni botones), compacta
+      const arr = _libroData[tipo] || [];
+      let tTot = 0, tEx = 0, tBase = 0, tIva = 0, tIgtf = 0;
+      const filas = arr.map((r, i) => {
+        const tot = Number(r.total) || 0, ex = Number(r.exento) || 0, base = Number(r.base) || 0, iva = Number(r.iva) || 0, igtf = Number(r.igtf) || 0, alic = Number(r.alicuota) || 0;
+        tTot += tot; tEx += ex; tBase += base; tIva += iva; tIgtf += igtf;
+        const alicTxt = alic > 0 ? (Math.round(alic * 100) + '%') : 'Ex.';
+        return '<tr><td>' + (i + 1) + '</td><td>' + (r.fecha || '') + '</td><td>' + (r.tercero_rif || '') + '</td><td>' + (r.tercero_nombre || '') + '</td>'
+          + '<td>' + (r.numero_factura || '') + '</td><td>' + (r.numero_control || '') + '</td><td>' + (r.tipo_doc || (esCompra ? 'FC' : 'FV')) + '</td>'
+          + '<td class="num">' + fmtF(tot) + '</td><td class="num">' + fmtF(ex) + '</td><td class="num">' + fmtF(base) + '</td><td>' + alicTxt + '</td><td class="num">' + fmtF(iva) + '</td>'
+          + (esCompra ? '' : '<td class="num">' + fmtF(igtf) + '</td>') + '</tr>';
+      }).join('');
+      const th = '<tr><th>N°</th><th>Fecha</th><th>RIF</th><th>' + (esCompra ? 'Proveedor' : 'Cliente') + '</th><th>Factura</th><th>Control</th><th>Doc</th><th>Total</th><th>Exento</th><th>Base</th><th>Alíc.</th><th>IVA</th>' + (esCompra ? '' : '<th>IGTF</th>') + '</tr>';
+      const foot = '<tr class="libro-tot"><td colspan="7" style="text-align:right;">TOTALES DEL PERÍODO (' + arr.length + ' operaciones)</td><td class="num">' + fmtF(tTot) + '</td><td class="num">' + fmtF(tEx) + '</td><td class="num">' + fmtF(tBase) + '</td><td></td><td class="num">' + fmtF(tIva) + '</td>' + (esCompra ? '' : '<td class="num">' + fmtF(tIgtf) + '</td>') + '</tr>';
+      cont.insertAdjacentHTML('beforeend', '<table class="libro-table libro-print-table" style="width:100%;border-collapse:collapse;font-size:9px;"><thead>' + th + '</thead><tbody>' + (filas || '<tr><td colspan="13">Sin operaciones en el período.</td></tr>') + '</tbody><tfoot>' + foot + '</tfoot></table>');
       portal.appendChild(cont);
       document.body.classList.add('printing-comp');
       window.print();
@@ -7414,6 +7433,7 @@
     const MESES_FIS = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
     const _hoyFis = new Date();
     let _fiscalPer = { mm: String(_hoyFis.getMonth() + 1).padStart(2, '0'), aa: String(_hoyFis.getFullYear()).slice(2) };
+    window.__fiscalPer = _fiscalPer; // expuesto para que las retenciones filtren por el mismo período
     const _perLabel = () => MESES_FIS[parseInt(_fiscalPer.mm, 10) - 1] + ' 20' + _fiscalPer.aa;
     const _libroData = { compra: [], venta: [] }; // últimas filas cargadas por tipo (para editar/eliminar)
     const _libroPage = { compra: 1, venta: 1 }; // página actual de cada libro (20 filas por página)
@@ -7645,9 +7665,11 @@
             const idx = MESES_FIS.findIndex((m) => m === p[0]);
             if (idx < 0 || !p[1]) return 'Período inválido.';
             _fiscalPer = { mm: String(idx + 1).padStart(2, '0'), aa: p[1].slice(2) };
+            window.__fiscalPer = _fiscalPer;
             if (mainBtn) mainBtn.textContent = _perLabel();
             cargarLibroFiscal('compra');
             cargarLibroFiscal('venta');
+            if (window.cargarRetenciones) window.cargarRetenciones(); // retenciones del mismo período
             if (window.__pintarCierreBtn) window.__pintarCierreBtn();
             toast('Período fiscal: ' + _perLabel() + ' · libros recargados');
           },
