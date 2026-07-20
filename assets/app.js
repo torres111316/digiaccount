@@ -7497,20 +7497,26 @@
           + '</div></td></tr>'
         : '';
       if (tfoot) tfoot.innerHTML = totRow(tTot, tEx, tBase, tIva, tIgtf) + pagerRow;
-      // Traslado a la Forma 30: desglose por alícuota
+      // Traslado a la Forma 30: el IVA se declara sobre la BASE TOTAL por alícuota × la tasa
+      // (método del SENIAT), NO sumando el IVA céntimo a céntimo de cada factura. Así el
+      // Débito/Crédito declarado coincide con lo que calcula el portal (evita ±céntimos).
+      const r2f = (x) => Math.round((x + 1e-9) * 100) / 100;
+      const iva16D = r2f(base16 * 0.16);
+      const iva8D = r2f(base8 * 0.08);
+      const ivaTotD = r2f(iva16D + iva8D);
       if (esCompra) {
-        _credF = tIva;
+        _credF = ivaTotD;
         setN('f30c-ex', tEx);
-        setN('f30c-base16', base16); setN('f30c-iva16', iva16);
-        setN('f30c-base8', base8); setN('f30c-iva8', iva8);
-        setN('f30c-baseTot', base16 + base8 + tEx); setN('f30c-ivaTot', iva16 + iva8);
-        setN('f30c-ded', tIva); setN('f30c-dedTot', tIva); setN('f30c-credTot', tIva);
+        setN('f30c-base16', base16); setN('f30c-iva16', iva16D);
+        setN('f30c-base8', base8); setN('f30c-iva8', iva8D);
+        setN('f30c-baseTot', base16 + base8 + tEx); setN('f30c-ivaTot', ivaTotD);
+        setN('f30c-ded', ivaTotD); setN('f30c-dedTot', ivaTotD); setN('f30c-credTot', ivaTotD);
       } else {
-        _debF = tIva;
-        setN('f30v-base16', base16); setN('f30v-iva16', iva16);
-        setN('f30v-base8', base8); setN('f30v-iva8', iva8);
-        setN('f30v-baseTot', base16 + base8 + tEx); setN('f30v-ivaTot', iva16 + iva8);
-        setN('f30v-debTot', tIva);
+        _debF = ivaTotD;
+        setN('f30v-base16', base16); setN('f30v-iva16', iva16D);
+        setN('f30v-base8', base8); setN('f30v-iva8', iva8D);
+        setN('f30v-baseTot', base16 + base8 + tEx); setN('f30v-ivaTot', ivaTotD);
+        setN('f30v-debTot', ivaTotD);
         setN('f30v-igtf', tIgtf); setN('f30v-igtfBase', tIgtf > 0 ? tIgtf / 0.03 : 0);
         window.__IGTF_VENTAS = { base: tIgtf > 0 ? tIgtf / 0.03 : 0, ops: arr.filter((r) => Number(r.igtf) > 0).length, monto: tIgtf };
         if (window.__renderIGTF) window.__renderIGTF();
