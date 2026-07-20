@@ -14,6 +14,25 @@
 
   console.log('[DigiAccount] Cliente Supabase listo ✓');
 
+  // === Lectura COMPLETA sin el tope de 1000 filas de PostgREST ===
+  // Pagina en bloques de 1000 con .range() hasta traer todo. Se usa donde una
+  // consulta puede superar las 1000 filas (libros históricos, movimientos, etc.).
+  // Uso: await window.__sbAll((q) => q.eq('empresa_id', id).eq('tipo', 'compra'), 'libro_fiscal', '*')
+  window.__sbAll = async function (aplicarFiltros, tabla, columnas) {
+    const PASO = 1000;
+    let desde = 0, todo = [];
+    for (;;) {
+      let q = window.sb.from(tabla).select(columnas || '*');
+      q = aplicarFiltros ? aplicarFiltros(q) : q;
+      const { data, error } = await q.range(desde, desde + PASO - 1);
+      if (error) return { data: todo, error: todo.length ? null : error };
+      todo = todo.concat(data || []);
+      if (!data || data.length < PASO) break; // última página
+      desde += PASO;
+    }
+    return { data: todo, error: null };
+  };
+
   // === Modo del documento de venta ===
   //  'recibo'  = por defecto. DigiAccount aún sin homologación SENIAT → emite RECIBOS (no fiscales).
   //  'factura' = al homologar ante el SENIAT → reactiva TODO el comportamiento fiscal

@@ -753,7 +753,7 @@
     async function cargarRetenciones() {
       const vacio = () => { _retData = []; pintar('practicadas', []); pintar('sufridas', []); refreshSummary(); applyFilter(); aplicarAForma30([]); };
       if (!window.sb || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) return vacio();
-      const { data, error } = await window.sb.from('retenciones').select('*').eq('empresa_id', window.__EMPRESA_ACTIVA.id).order('fecha', { ascending: false });
+      const { data, error } = await window.__sbAll((q) => q.eq('empresa_id', window.__EMPRESA_ACTIVA.id).order('fecha', { ascending: false }), 'retenciones', '*');
       if (error) { console.warn('[DigiAccount] No se pudieron cargar retenciones:', error.message); return vacio(); }
       // Solo las retenciones del PERÍODO FISCAL seleccionado (fecha dd/mm/aa) — coherente con los libros
       const per = window.__fiscalPer;
@@ -1496,7 +1496,7 @@
         if (!window.sb || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) return;
         const journal = view.querySelector('.conta-tab[data-tab="diario"] .journal');
         if (!journal) return;
-        const { data, error } = await window.sb.from('asientos').select('*').eq('empresa_id', window.__EMPRESA_ACTIVA.id).order('numero', { ascending: false });
+        const { data, error } = await window.__sbAll((q) => q.eq('empresa_id', window.__EMPRESA_ACTIVA.id).order('numero', { ascending: false }), 'asientos', '*');
         if (error) { console.warn('[DigiAccount] No se pudieron cargar asientos:', error.message); return; }
         journal.innerHTML = '';
         let maxNum = 0;
@@ -2625,11 +2625,12 @@
       if (!window.sb || !emp || !emp.id) { _cuentas = []; _movs = []; _facturas = []; render(); return; }
       const [r1, r2, r3, r4] = await Promise.all([
         window.sb.from('cuentas_tesoreria').select('*').eq('empresa_id', emp.id).order('creado_en'),
-        window.sb.from('movimientos_tesoreria').select('*').eq('empresa_id', emp.id),
+        // Movimientos y compras pueden superar 1000 filas → paginado (evita el tope de PostgREST)
+        window.__sbAll((q) => q.eq('empresa_id', emp.id), 'movimientos_tesoreria', '*'),
         // Ventas = RECIBOS emitidos (control de cobros), por empresa. NO el libro de ventas (ese es solo para declarar).
-        window.sb.from('facturas').select('numero, cliente_nombre, cliente_rif, total, fecha, estado, condicion').eq('tipo', 'venta').eq('empresa_id', emp.id),
+        window.__sbAll((q) => q.eq('tipo', 'venta').eq('empresa_id', emp.id), 'facturas', 'numero, cliente_nombre, cliente_rif, total, fecha, estado, condicion'),
         // Compras = facturas registradas en el Libro de Compras (lo que le debes al proveedor).
-        window.sb.from('libro_fiscal').select('id, numero_factura, tercero_nombre, tercero_rif, total, fecha').eq('empresa_id', emp.id).eq('tipo', 'compra'),
+        window.__sbAll((q) => q.eq('empresa_id', emp.id).eq('tipo', 'compra'), 'libro_fiscal', 'id, numero_factura, tercero_nombre, tercero_rif, total, fecha'),
       ]);
       if (r1.error) { console.warn('[DigiAccount] Tesorería:', r1.error.message); }
       _cuentas = r1.data || []; _movs = r2.data || [];
@@ -3938,9 +3939,9 @@
       }
       const [rc, rm, rf, rlc] = await Promise.all([
         window.sb.from('cuentas_tesoreria').select('id, nombre, banco, numero, tipo, color, saldo_inicial, moneda').eq('empresa_id', emp.id),
-        window.sb.from('movimientos_tesoreria').select('cuenta_teso_id, tipo, monto, factura_ref').eq('empresa_id', emp.id),
-        window.sb.from('facturas').select('numero, total, estado').eq('tipo', 'venta').eq('empresa_id', emp.id),
-        window.sb.from('libro_fiscal').select('numero_factura, total').eq('tipo', 'compra').eq('empresa_id', emp.id),
+        window.__sbAll((q) => q.eq('empresa_id', emp.id), 'movimientos_tesoreria', 'cuenta_teso_id, tipo, monto, factura_ref'),
+        window.__sbAll((q) => q.eq('tipo', 'venta').eq('empresa_id', emp.id), 'facturas', 'numero, total, estado'),
+        window.__sbAll((q) => q.eq('tipo', 'compra').eq('empresa_id', emp.id), 'libro_fiscal', 'numero_factura, total'),
       ]);
       const cuentas = rc.data || [], movs = rm.data || [], compras = rlc.data || [];
       const recibos = (rf.data || []).filter((f) => !/anulada/i.test(f.estado || '')); // anulados no cuentan
