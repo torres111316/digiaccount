@@ -89,6 +89,7 @@
     function bindEntityOption(opt) {
       opt.addEventListener('click', (e) => {
         e.stopPropagation();
+        window.__EMP_YA_ELEGIDA = true; // ya hay empresa activa: no reabrir el selector al recargar la lista
         document.querySelectorAll('.entity-option').forEach((o) => o.removeAttribute('data-active'));
         opt.dataset.active = 'true';
 
@@ -231,7 +232,16 @@
       if (eBtn) eBtn.addEventListener('click', (ev) => { ev.stopPropagation(); dd.dataset.open = 'false'; editarEmpresa(emp); });
     });
     const first = dd.querySelector('.entity-option');
-    if (first) first.click();          // activa la primera empresa (nombre, RIF, badge)
+    // Al iniciar sesión: si hay UNA empresa se activa sola; si hay VARIAS se abre el
+    // selector para que el usuario elija con cuál trabajar (evita empezar en la equivocada).
+    if (first) {
+      if ((data || []).length > 1 && !window.__EMP_YA_ELEGIDA) {
+        if (window.__abrirSelectorEmpresa) window.__abrirSelectorEmpresa(data);
+        else first.click();
+      } else {
+        first.click();
+      }
+    }
     dd.dataset.open = 'false';
     window.__NUM_EMPRESAS = (data || []).length;   // para aplicar el tope de empresas del plan
     const kEmp = document.getElementById('usKpiEmpresas');
@@ -240,6 +250,41 @@
     console.log('[DigiAccount] Empresas cargadas:', (data || []).length);
   }
   window.cargarEmpresas = cargarEmpresas;
+
+  // ===== Selector de empresa al iniciar sesión (elige con cuál trabajar) =====
+  window.__abrirSelectorEmpresa = function (empresas) {
+    if (document.getElementById('empPickerOverlay')) return;
+    const ov = document.createElement('div');
+    ov.id = 'empPickerOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:9000;background:rgba(8,18,30,.55);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:20px;';
+    const filas = (empresas || []).map((emp) => {
+      const nombre = emp.nombre || 'Empresa', rif = emp.rif || '';
+      const esNatural = /^\s*[VE]/i.test(rif);
+      const ini = (nombre.replace(/[^A-Za-zÁÉÍÓÚÑ ]/g, '').trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join('') || 'EM').toUpperCase();
+      const metaTxt = esNatural ? 'Persona Natural' : ('Contribuyente ' + (emp.condicion_fiscal || 'ordinario'));
+      return '<button type="button" class="emp-pick-row" data-pick-id="' + esc(emp.id) + '" style="display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:12px 14px;border:1px solid var(--border-strong);border-radius:12px;background:var(--bg-surface);cursor:pointer;color:inherit;transition:.12s;">'
+        + '<div style="width:40px;height:40px;border-radius:10px;background:var(--da-navy-500);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex:none;">' + ini + '</div>'
+        + '<div style="min-width:0;"><div style="font-weight:600;font-size:14px;">' + esc(nombre) + '</div><div style="font-size:12px;color:var(--fg-muted);">' + esc(rif) + ' · ' + esc(metaTxt) + '</div></div>'
+        + '<i data-lucide="chevron-right" style="width:16px;height:16px;margin-left:auto;color:var(--fg-muted);flex:none;"></i></button>';
+    }).join('');
+    ov.innerHTML = '<div style="background:var(--bg-elevated,var(--bg-surface));border-radius:18px;max-width:460px;width:100%;max-height:86vh;overflow:auto;box-shadow:0 24px 60px rgba(0,0,0,.35);">'
+      + '<div style="padding:20px 22px 8px;"><div style="font-size:17px;font-weight:700;">¿Con cuál empresa vas a trabajar?</div>'
+      + '<div style="font-size:13px;color:var(--fg-muted);margin-top:3px;">Selecciona una para comenzar. Podrás cambiarla luego desde el selector de arriba.</div></div>'
+      + '<div style="display:flex;flex-direction:column;gap:8px;padding:14px 22px 22px;">' + filas + '</div></div>';
+    document.body.appendChild(ov);
+    if (window.lucide) window.lucide.createIcons();
+    const elegir = (id) => {
+      window.__EMP_YA_ELEGIDA = true;
+      const opt = document.querySelector('.entity-option[data-empresa-id="' + id + '"]');
+      if (opt) opt.click();
+      ov.remove();
+    };
+    ov.querySelectorAll('[data-pick-id]').forEach((b) => {
+      b.addEventListener('mouseenter', () => { b.style.borderColor = 'var(--da-navy-500)'; b.style.background = 'var(--bg-subtle,var(--bg-surface))'; });
+      b.addEventListener('mouseleave', () => { b.style.borderColor = 'var(--border-strong)'; b.style.background = 'var(--bg-surface)'; });
+      b.addEventListener('click', () => elegir(b.dataset.pickId));
+    });
+  };
 
   // Editar los datos básicos de una empresa (nombre, RIF, condición fiscal)
   function editarEmpresa(emp) {
