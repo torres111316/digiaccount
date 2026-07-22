@@ -800,10 +800,13 @@
       if (!window.sb || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) return vacio();
       const { data, error } = await window.__sbAll((q) => q.eq('empresa_id', window.__EMPRESA_ACTIVA.id).order('fecha', { ascending: false }), 'retenciones', '*');
       if (error) { console.warn('[DigiAccount] No se pudieron cargar retenciones:', error.message); return vacio(); }
-      // Solo las retenciones del PERÍODO FISCAL seleccionado (fecha dd/mm/aa) — coherente con los libros
+      // Solo las retenciones del PERÍODO DE DECLARACIÓN seleccionado (sigue al de la factura)
       const per = window.__fiscalPer;
       let arr = data || [];
-      if (per && per.mm && per.aa) arr = arr.filter((r) => String(r.fecha || '').endsWith('/' + per.mm + '/' + per.aa));
+      if (per && per.mm && per.aa) {
+        const perDecl = '20' + per.aa + '-' + per.mm, suf = '/' + per.mm + '/' + per.aa;
+        arr = arr.filter((r) => r.periodo ? r.periodo === perDecl : String(r.fecha || '').endsWith(suf));
+      }
       _retData = arr;
       pintar('practicadas', arr.filter((r) => r.direccion === 'practicada'));
       pintar('sufridas', arr.filter((r) => r.direccion === 'sufrida'));
@@ -7241,6 +7244,26 @@
       setN('f30v-pagar', pagar);
     }
     window.__recalcAutoliq = actualizarAutoliquidacion;
+    // Período de declaración: clave 'aaaa-mm' y etiqueta 'Mes aaaa'
+    const _MESES_PER = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+    function _periodoActualKey() {
+      const p = window.__fiscalPer;
+      if (p && p.mm && p.aa) return '20' + p.aa + '-' + p.mm;
+      const h = new Date();
+      return h.getFullYear() + '-' + String(h.getMonth() + 1).padStart(2, '0');
+    }
+    function _opcionesPeriodo() {
+      // Del período actual hacia atrás 24 meses (para declarar facturas rezagadas)
+      const out = [];
+      const base = _periodoActualKey();
+      let y = parseInt(base.slice(0, 4), 10), m = parseInt(base.slice(5, 7), 10);
+      for (let i = 0; i < 24; i++) {
+        const key = y + '-' + String(m).padStart(2, '0');
+        out.push({ value: key, label: _MESES_PER[m - 1] + ' ' + y });
+        m--; if (m < 1) { m = 12; y--; }
+      }
+      return out;
+    }
     function registrarMov(tipo) {
       const esCompra = tipo === 'compra';
       let invBox = null; // contenedor de líneas para reponer inventario (solo compras)
@@ -7255,6 +7278,8 @@
           { name: 'facturaFile', label: '🤖 Factura del proveedor (PDF o foto) — el Agente IA la lee y llena el formulario', col: 2, type: 'file' },
         ] : []).concat([
           { name: 'fecha', label: 'Fecha de la factura', type: 'date', value: window.__hoyISO() },
+          // Período en que se DECLARA (puede diferir de la fecha: facturas de compra recibidas tarde).
+          { name: 'periodo', label: 'Período de declaración' + (esCompra ? ' (si la factura es de un mes anterior, elige el mes en que la declaras)' : ''), type: 'select', options: _opcionesPeriodo(), value: _periodoActualKey() },
           { name: 'tipoDoc', label: 'Tipo de documento', type: 'select', options: esCompra ? ['FC (Factura)', 'NC (Nota de crédito)', 'ND (Nota de débito)'] : ['FV (Factura de venta)', 'NC (Nota de crédito)', 'ND (Nota de débito)'] },
           { name: 'nombre', label: (esCompra ? 'Proveedor' : 'Cliente') + ' (escribe las iniciales y elige)', col: 2, type: 'datalist', options: terceros.map((t) => t.nombre), placeholder: 'Ej. Sum… → Suministros Lara, C.A.' },
           { name: 'rif', label: 'RIF / C.I. (mayúscula, sin guiones)', upper: true, placeholder: 'J123456789' },
@@ -7374,7 +7399,8 @@
         },
         onSave: (v) => {
           if (!window.sb || !window.__CUENTA_ID || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) return 'No hay una empresa activa seleccionada.';
-          if (window.__mesCerrado && window.__mesCerrado(v.fecha)) return '🔒 El período de esa fecha está CERRADO (declarado). Reábrelo con el botón del período en Fiscal si necesitas registrar.';
+          const periodo = v.periodo || _periodoActualKey();  // período de declaración
+          if (window.__periodoCerrado && window.__periodoCerrado(periodo)) return '🔒 El período de declaración elegido está CERRADO. Reábrelo con el botón del período en Fiscal si necesitas registrar.';
           if (!v.nombre) return 'Indica el ' + (esCompra ? 'proveedor' : 'cliente') + '.';
           const base = parseFloat(v.base) || 0, exento = parseFloat(v.exento) || 0;
           const alic = v.alic === '8%' ? 0.08 : v.alic === 'Exento' ? 0 : 0.16;
@@ -7383,7 +7409,7 @@
           const p = (v.fecha || '').split('-');
           const fecha = p.length === 3 ? (p[2] + '/' + p[1] + '/' + p[0].slice(2)) : '';
           window.sb.from('libro_fiscal').insert({
-            cuenta_id: window.__CUENTA_ID, empresa_id: window.__EMPRESA_ACTIVA.id, tipo: tipo, fecha: fecha,
+            cuenta_id: window.__CUENTA_ID, empresa_id: window.__EMPRESA_ACTIVA.id, tipo: tipo, fecha: fecha, periodo: periodo,
             tercero_nombre: v.nombre, tercero_rif: normRif(v.rif), numero_factura: v.numFactura, numero_control: v.numControl,
             tipo_doc: (v.tipoDoc || (esCompra ? 'FC' : 'FV')).slice(0, 2), exento: exento, base: base, alicuota: alic, iva: iva, igtf: igtf, total: total,
           }).then(({ error }) => {
@@ -7461,7 +7487,7 @@
               if (!comp && esCompra && p.length === 3) comp = p[0] + p[1] + String(Date.now()).slice(-8);
               window.sb.from('retenciones').insert({
                 cuenta_id: window.__CUENTA_ID, empresa_id: window.__EMPRESA_ACTIVA.id,
-                direccion: esCompra ? 'practicada' : 'sufrida', tipo: 'iva', fecha: fecha, comprobante: comp,
+                direccion: esCompra ? 'practicada' : 'sufrida', tipo: 'iva', fecha: fecha, periodo: periodo, comprobante: comp,
                 tercero_nombre: v.nombre, tercero_rif: normRif(v.rif), factura: v.numFactura, numero_control: v.numControl,
                 base: iva, pct: retPctNum, monto: retMonto, estado: 'Registrado',
               }).then(({ error: e2 }) => {
@@ -7502,12 +7528,15 @@
         actualizarAutoliquidacion();
       };
       if (!window.sb || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) { vacio(); return; }
-      // Se consulta SOLO el período fiscal seleccionado (fecha dd/mm/aa) directamente en la BD:
-      // evita el tope de 1000 filas de PostgREST cuando la empresa tiene miles de operaciones.
-      const sufPer = '/' + _fiscalPer.mm + '/' + _fiscalPer.aa;
-      const { data, error } = await window.sb.from('libro_fiscal').select('*')
+      // Se consulta por el PERÍODO DE DECLARACIÓN seleccionado (no por la fecha de la factura):
+      // una compra recibida tarde se declara en el período en que llega la factura.
+      // Filtrar en la BD evita el tope de 1000 filas de PostgREST.
+      const perDecl = '20' + _fiscalPer.aa + '-' + _fiscalPer.mm; // 'aaaa-mm'
+      const sufPer = '/' + _fiscalPer.mm + '/' + _fiscalPer.aa;   // respaldo por fecha (filas sin período)
+      const { data, error } = await window.__sbAll((q) => q
         .eq('empresa_id', window.__EMPRESA_ACTIVA.id).eq('tipo', tipo)
-        .like('fecha', '%' + sufPer).order('fecha');
+        .or('periodo.eq.' + perDecl + ',and(periodo.is.null,fecha.like.*' + sufPer + ')')
+        .order('fecha'), 'libro_fiscal', '*');
       if (error) { console.warn('[DigiAccount] No se pudo cargar el libro fiscal:', error.message); vacio('No se pudieron cargar (¿creaste la tabla libro_fiscal?).'); return; }
       const arr = data || [];
       _libroData[tipo] = arr;
@@ -7584,6 +7613,7 @@
         saveLabel: 'Guardar cambios',
         fields: [
           { name: 'fecha', label: 'Fecha (dd/mm/aa)', value: r.fecha || '' },
+          { name: 'periodo', label: 'Período de declaración', type: 'select', options: _opcionesPeriodo(), value: r.periodo || _periodoActualKey() },
           { name: 'tipoDoc', label: 'Tipo de documento', type: 'select', options: esCompra ? ['FC (Factura)', 'NC (Nota de crédito)', 'ND (Nota de débito)'] : ['FV (Factura de venta)', 'NC (Nota de crédito)', 'ND (Nota de débito)'], value: tdMap[r.tipo_doc] || (esCompra ? 'FC (Factura)' : 'FV (Factura de venta)') },
           { name: 'nombre', label: esCompra ? 'Proveedor' : 'Cliente', col: 2, value: r.tercero_nombre || '' },
           { name: 'rif', label: 'RIF', upper: true, value: r.tercero_rif || '' },
@@ -7617,14 +7647,15 @@
         },
         onSave: (v) => {
           if (!window.sb) return 'Sin conexión.';
-          if (window.__mesCerrado && (window.__mesCerrado(r.fecha) || window.__mesCerrado(v.fecha))) return '🔒 Este registro pertenece a un período CERRADO (declarado). Reábrelo en Fiscal para modificarlo.';
+          const perNuevo = v.periodo || r.periodo || _periodoActualKey();
+          if (window.__periodoCerrado && (window.__periodoCerrado(r.periodo) || window.__periodoCerrado(perNuevo))) return '🔒 Este registro pertenece a un período CERRADO (declarado). Reábrelo en Fiscal para modificarlo.';
           if (!v.nombre) return 'Indica el ' + (esCompra ? 'proveedor' : 'cliente') + '.';
           const base = parseFloat(v.base) || 0, exento = parseFloat(v.exento) || 0;
           const alic = v.alic === '8%' ? 0.08 : v.alic === 'Exento' ? 0 : 0.16;
           const iva = base * alic, total = base + iva + exento;
           const igtf = /s[ií]/i.test(v.igtfAplica || '') ? total * 0.03 : 0; // IGTF sobre el total de la factura
           window.sb.from('libro_fiscal').update({
-            fecha: v.fecha, tipo_doc: (v.tipoDoc || '').slice(0, 2), tercero_nombre: v.nombre,
+            fecha: v.fecha, periodo: perNuevo, tipo_doc: (v.tipoDoc || '').slice(0, 2), tercero_nombre: v.nombre,
             tercero_rif: (v.rif || '').toUpperCase().replace(/[\s.\-]/g, ''), numero_factura: v.numFactura, numero_control: v.numControl,
             exento: exento, base: base, alicuota: alic, iva: iva, igtf: igtf, total: total,
           }).eq('id', id).then(({ error }) => {
@@ -7634,7 +7665,7 @@
           });
         },
         onDelete: async (closeModal) => {
-          if (window.__mesCerrado && window.__mesCerrado(r.fecha)) {
+          if (window.__periodoCerrado && window.__periodoCerrado(r.periodo)) {
             toast('🔒 Este registro pertenece a un período CERRADO (declarado). Reábrelo en Fiscal para eliminarlo.', 'error');
             return;
           }
@@ -7744,6 +7775,8 @@
       else { const p = s.split('/'); if (p.length < 3) return false; mm = String(p[1]).padStart(2, '0'); aa = p[2].length === 4 ? p[2] : '20' + p[2]; }
       return _cierres.has(aa + '-' + mm);
     };
+    // ¿El período de declaración 'aaaa-mm' está cerrado? (usa el período, no la fecha de factura)
+    window.__periodoCerrado = (periodo) => _cierres.has(String(periodo || ''));
     async function cargarCierres() {
       _cierres = new Set();
       if (window.sb && window.__EMPRESA_ACTIVA && window.__EMPRESA_ACTIVA.id) {
@@ -7784,18 +7817,19 @@
       }
       if (!window.confirm('¿CERRAR ' + _perLabel() + '?\n\nSe generan los asientos resumen del mes (ventas, compras y liquidación de IVA, si aún no existen) y las transacciones del período quedan BLOQUEADAS. Podrás reabrirlo cuando quieras.')) return;
       const mm = _fiscalPer.mm, anio = '20' + _fiscalPer.aa;
-      const sufPer = '/' + mm + '/' + _fiscalPer.aa;
+      const perDecl = anio + '-' + mm, sufPer = '/' + mm + '/' + _fiscalPer.aa;
       // ¿Ya existen los asientos del mes? (meses migrados o cierres previos → solo bloquear)
       const { data: yaLV } = await window.sb.from('asientos').select('id').eq('empresa_id', empId).eq('referencia', 'LV-' + mm + '/' + anio).limit(1);
       const { data: yaLC } = await window.sb.from('asientos').select('id').eq('empresa_id', empId).eq('referencia', 'LC-' + mm + '/' + anio).limit(1);
-      // Solo el mes que se cierra (like en BD → evita el tope de 1000 filas de PostgREST)
-      const { data: filas, error: e1 } = await window.sb.from('libro_fiscal').select('*').eq('empresa_id', empId).like('fecha', '%' + sufPer);
+      // Del PERÍODO DE DECLARACIÓN que se cierra (no por fecha de factura)
+      const { data: filas, error: e1 } = await window.__sbAll((q) => q.eq('empresa_id', empId)
+        .or('periodo.eq.' + perDecl + ',and(periodo.is.null,fecha.like.*' + sufPer + ')'), 'libro_fiscal', '*');
       if (e1) { toast('No se pudo leer el libro: ' + e1.message, 'error'); return; }
       const mes = filas || [];
       const v = { tot: 0, be: 0, iva: 0 }, c = { tot: 0, be: 0, iva: 0 };
       mes.forEach((r) => { const o = r.tipo === 'venta' ? v : c; o.tot += Number(r.total) || 0; o.be += (Number(r.base) || 0) + (Number(r.exento) || 0); o.iva += Number(r.iva) || 0; });
-      const { data: rets } = await window.sb.from('retenciones').select('monto,fecha').eq('empresa_id', empId).eq('direccion', 'sufrida').eq('tipo', 'iva');
-      const retMes = (rets || []).filter((r) => String(r.fecha || '').endsWith(sufPer)).reduce((s, r) => s + (Number(r.monto) || 0), 0);
+      const { data: rets } = await window.__sbAll((q) => q.eq('empresa_id', empId).eq('direccion', 'sufrida').eq('tipo', 'iva'), 'retenciones', 'monto,fecha,periodo');
+      const retMes = (rets || []).filter((r) => r.periodo ? r.periodo === perDecl : String(r.fecha || '').endsWith(sufPer)).reduce((s, r) => s + (Number(r.monto) || 0), 0);
       const r2c = (x) => Math.round(x * 100) / 100;
       const ultDia = new Date(parseInt(anio, 10), parseInt(mm, 10), 0).getDate();
       const fechaAsi = String(ultDia).padStart(2, '0') + '/' + mm + '/' + anio;
