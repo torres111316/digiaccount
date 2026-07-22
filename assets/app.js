@@ -7631,7 +7631,7 @@
         ].concat(esCompra ? [] : [
           { name: 'igtfAplica', label: '¿Aplica IGTF? (3%)', type: 'select', options: ['No', 'Sí (3%)'], value: (Number(r.igtf) > 0 ? 'Sí (3%)' : 'No') },
           { name: 'igtfShow', label: 'IGTF 3% (calculado del total con IVA)', type: 'static', html: '<span class="mono" id="igtfShowVal">Bs ' + fmtF(Number(r.igtf) || 0) + '</span>' },
-        ]),
+        ])),
         afterRender: (body) => {
           const baseEl = body.querySelector('[data-name="base"]');
           const alicEl = body.querySelector('[data-name="alic"]');
