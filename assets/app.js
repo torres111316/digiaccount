@@ -6886,26 +6886,34 @@
     function celda(td) { return td.textContent.replace(/\s+/g, ' ').trim(); }
 
     function exportLibro(scope) {
-      // El membrete vive en el .fiscal-tab; la tabla, en la vista visible (scope)
       const tab = scope.closest('.fiscal-tab') || scope;
+      const tipo = (tab.dataset.tab === 'compras') ? 'compra' : 'venta';
+      const esCompra = tipo === 'compra';
       const titulo = (tab.querySelector('.lh-title') || {}).textContent ? tab.querySelector('.lh-title').textContent.trim() : 'Libro';
       const co = (tab.querySelector('.lh-co') || {}).textContent || '';
       const data = (tab.querySelector('.lh-data') || {}).textContent || '';
-      const table = scope.querySelector('table.libro-table');
-      if (!table) return;
-
+      const arr = (window.__libroData && window.__libroData[tipo]) || [];   // TODAS las filas del período
       const rows = [[titulo], [co.trim()], [data.replace(/\s+/g, ' ').trim()], []];
-      rows.push([...table.querySelectorAll('thead th')].map((th) => celda(th)));
-      table.querySelectorAll('tbody tr').forEach((tr) => rows.push([...tr.querySelectorAll('td')].map(celda)));
-      table.querySelectorAll('tfoot tr').forEach((tr) => rows.push([...tr.querySelectorAll('td')].map(celda)));
-
-      // CSV con separador ';' (Excel en español) y comillas
-      const csv = rows.map((r) => r.map((c) => '"' + String(c || '').replace(/"/g, '""') + '"').join(';')).join('\r\n');
+      rows.push(['N°', 'Fecha', 'RIF', esCompra ? 'Proveedor' : 'Cliente', 'Factura', 'Control', 'Doc', 'Total', 'Exento', 'Base', 'Alíc.', 'IVA'].concat(esCompra ? [] : ['IGTF']));
+      let tTot = 0, tEx = 0, tBase = 0, tIva = 0, tIgtf = 0;
+      arr.forEach((r, i) => {
+        const tot = Number(r.total) || 0, ex = Number(r.exento) || 0, base = Number(r.base) || 0, iva = Number(r.iva) || 0, igtf = Number(r.igtf) || 0, alic = Number(r.alicuota) || 0;
+        tTot += tot; tEx += ex; tBase += base; tIva += iva; tIgtf += igtf;
+        const fila = [i + 1, r.fecha || '', r.tercero_rif || '', r.tercero_nombre || '', r.numero_factura || '', r.numero_control || '', r.tipo_doc || (esCompra ? 'FC' : 'FV'), fmtF(tot), fmtF(ex), fmtF(base), (alic > 0 ? Math.round(alic * 100) + '%' : 'Ex.'), fmtF(iva)];
+        if (!esCompra) fila.push(fmtF(igtf));
+        rows.push(fila);
+      });
+      const foot = ['', '', '', '', '', '', 'TOTALES', fmtF(tTot), fmtF(tEx), fmtF(tBase), '', fmtF(tIva)];
+      if (!esCompra) foot.push(fmtF(tIgtf));
+      rows.push(foot);
+      const csv = rows.map((r) => r.map((c) => '"' + String(c == null ? '' : c).replace(/"/g, '""') + '"').join(';')).join('\r\n');
       const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
       const url = URL.createObjectURL(blob);
+      const emp = window.__EMPRESA_ACTIVA || {};
+      const per = (window.__fiscalPer ? ('20' + window.__fiscalPer.aa + window.__fiscalPer.mm) : '');
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'Libro_' + (titulo.indexOf('Compras') >= 0 ? 'Compras' : 'Ventas') + '_J304567890_202605.csv';
+      a.download = 'Libro_' + (esCompra ? 'Compras' : 'Ventas') + '_' + (emp.rif || '') + '_' + per + '.csv';
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
       URL.revokeObjectURL(url);
     }
@@ -6922,7 +6930,7 @@
       const head = tab.querySelector('.libro-head');
       if (head) cont.appendChild(head.cloneNode(true));
       // Tabla LIMPIA con TODAS las filas del período (sin paginación ni botones), compacta
-      const arr = _libroData[tipo] || [];
+      const arr = (window.__libroData && window.__libroData[tipo]) || [];
       let tTot = 0, tEx = 0, tBase = 0, tIva = 0, tIgtf = 0;
       const filas = arr.map((r, i) => {
         const tot = Number(r.total) || 0, ex = Number(r.exento) || 0, base = Number(r.base) || 0, iva = Number(r.iva) || 0, igtf = Number(r.igtf) || 0, alic = Number(r.alicuota) || 0;
@@ -7684,6 +7692,7 @@
       if (error) { console.warn('[DigiAccount] No se pudo cargar el libro fiscal:', error.message); vacio('No se pudieron cargar (¿creaste la tabla libro_fiscal?).'); return; }
       const arr = data || [];
       _libroData[tipo] = arr;
+      window.__libroData = _libroData; // expuesto para la impresión (printLibro está en otro IIFE)
       if (!arr.length) { vacio('Sin registros en ' + _perLabel() + '. Cambia el período arriba o usa "Registrar ' + tipo + '".'); return; }
       // Totales y Forma 30: SIEMPRE sobre el mes completo (la paginación es solo visual)
       let tTot = 0, tEx = 0, tBase = 0, tIva = 0, tIgtf = 0;
