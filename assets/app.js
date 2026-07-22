@@ -128,6 +128,7 @@
         if (window.cargarCuentasContables) window.cargarCuentasContables();
         if (window.cargarActivosFijos) window.cargarActivosFijos();
         if (window.cargarCriptoactivos) window.cargarCriptoactivos();
+        if (window.__syncFiscalHeader) window.__syncFiscalHeader(); // RIF y condición del módulo Fiscal
         if (window.cargarLibroFiscal) { window.cargarLibroFiscal('compra'); window.cargarLibroFiscal('venta'); }
         if (window.cargarCierres) window.cargarCierres(); // meses cerrados (bloqueados) de esta empresa
         if (window.cargarCalendarioFiscal) window.cargarCalendarioFiscal(); // vencimientos reales de esta empresa
@@ -7241,15 +7242,26 @@
       const descontadas = Math.min(cuota, retTotal);           // ítem 38: se descuenta hasta agotar la cuota
       const saldoRet = retTotal - descontadas;                 // ítem 39: retenciones no aplicadas → mes siguiente
       const pagar = Math.max(0, cuota - descontadas);          // ítem 48: lo que realmente se paga
-      setN('f30v-credPer', _credF);
-      setN('f30v-excedAnt', _excedAnt);
-      setN('f30v-credDisp', credDisp);
+      // Sección de COMPRAS: excedente del mes anterior (ítem 21) → Total Créditos Fiscales (ítem 26, cód. 39)
+      setN('f30c-excedAnt', _excedAnt);
+      setN('f30c-credTot', _credF + _excedAnt);
       setN('f30v-cuota', cuota);
       setN('f30v-exced', exced);
       setN('f30v-ret33', _retAcumAnt);
       setN('f30v-ret66', retIva); setN('f30v-ret74', retTotal);
       setN('f30v-ret55', descontadas); setN('f30v-ret67', saldoRet);
       setN('f30v-pagar', pagar);
+      // KPIs del encabezado del módulo (indicadores de IVA del período)
+      setN('fisKpiDebito', _debF);
+      setN('fisKpiCredito', _credF);
+      const kIva = document.getElementById('fisKpiIva');
+      if (kIva) kIva.textContent = fmtF(exced > 0 ? exced : pagar);
+      const kLbl = document.getElementById('fisKpiIvaLabel');
+      const kSub = document.getElementById('fisKpiIvaSub');
+      const esEspecial = /especial/i.test((window.__EMPRESA_ACTIVA || {}).cond || '');
+      const periodicidad = esEspecial ? 'Quincena' : 'Mes';
+      if (kLbl) kLbl.textContent = (exced > 0 ? 'Excedente de crédito · ' : 'IVA a pagar · ') + periodicidad;
+      if (kSub) kSub.textContent = exced > 0 ? 'A favor, pasa al mes siguiente' : 'Débito − crédito − retenciones';
     }
     // Calcula los ARRASTRES del período anterior (excedente de crédito e ítem 33 de retenciones)
     // recorriendo TODOS los períodos previos de la empresa con la lógica de la Forma 30.
@@ -7293,6 +7305,24 @@
     window.__calcularArrastres = calcularArrastres;
     window.__invalidarArrastres = () => { _arrClave = ''; }; // forzar recálculo tras modificar datos
     window.__recalcAutoliq = actualizarAutoliquidacion;
+    // Sincroniza el encabezado del módulo Fiscal (RIF, condición) y el membrete de los libros
+    window.__syncFiscalHeader = function () {
+      const emp = window.__EMPRESA_ACTIVA || {};
+      const cond = emp.cond || 'Contribuyente Ordinario';
+      const pill = document.getElementById('fiscalRifPill');
+      if (pill) pill.textContent = emp.rif || '—';
+      const txt = document.getElementById('fiscalContribTxt');
+      const badge = document.getElementById('fiscalContribBadge');
+      if (txt) txt.textContent = cond;
+      if (badge) badge.className = 'contrib-badge' + (/especial/i.test(cond) ? ' especial' : '');
+      // Membrete de los libros (compras y ventas): empresa, RIF, condición y período reales
+      const perTxt = (typeof _perLabel === 'function') ? _perLabel() : '';
+      document.querySelectorAll('.fiscal-tab[data-tab="compras"] .libro-head, .fiscal-tab[data-tab="ventas"] .libro-head').forEach((h) => {
+        const coEl = h.querySelector('.lh-co'); if (coEl) coEl.textContent = emp.n || '—';
+        const dataEl = h.querySelector('.lh-data');
+        if (dataEl) dataEl.innerHTML = '<span class="mono">RIF ' + (emp.rif || '—') + '</span> · ' + cond + ' · Período de imposición: <strong>' + perTxt + '</strong>';
+      });
+    };
     // Período de declaración: clave 'aaaa-mm' y etiqueta 'Mes aaaa'
     const _MESES_PER = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
     function _periodoActualKey() {
@@ -7818,6 +7848,7 @@
             cargarLibroFiscal('compra');
             cargarLibroFiscal('venta');
             if (window.cargarRetenciones) window.cargarRetenciones(); // retenciones del mismo período
+            if (window.__syncFiscalHeader) window.__syncFiscalHeader(); // membrete con el nuevo período
             if (window.__pintarCierreBtn) window.__pintarCierreBtn();
             toast('Período fiscal: ' + _perLabel() + ' · libros recargados');
           },

@@ -630,8 +630,8 @@
           <div class="overline">SENIAT · Cumplimiento fiscal</div>
           <div class="dash-title-row">
             <h1 class="dash-title">Módulo Fiscal</h1>
-            <span class="rif-pill"><span class="rif-label">RIF</span> J304567890</span>
-            <span class="contrib-badge especial"><i data-lucide="shield-check"></i> Contribuyente Especial</span>
+            <span class="rif-pill"><span class="rif-label">RIF</span> <span id="fiscalRifPill">—</span></span>
+            <span class="contrib-badge" id="fiscalContribBadge"><i data-lucide="shield-check"></i> <span id="fiscalContribTxt">Contribuyente Ordinario</span></span>
           </div>
         </div>
         <div class="dash-actions">
@@ -642,17 +642,31 @@
         </div>
       </header>
 
-      <!-- KPI strip -->
+      <!-- KPI strip: indicadores de IVA del período + ISLR -->
       <section class="kpi-row">
         <div class="kpi">
           <div class="kpi-head">
-            <span class="label">IVA por pagar · Quincena</span>
+            <span class="label">Débito Fiscal · Período</span>
+            <span class="kpi-icon"><i data-lucide="arrow-up-right"></i></span>
+          </div>
+          <div class="kpi-value"><span class="currency">Bs</span> <span id="fisKpiDebito">0,00</span></div>
+          <div class="kpi-sub"><span class="meta">IVA de las ventas</span></div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-head">
+            <span class="label">Crédito Fiscal · Período</span>
+            <span class="kpi-icon"><i data-lucide="arrow-down-left"></i></span>
+          </div>
+          <div class="kpi-value"><span class="currency">Bs</span> <span id="fisKpiCredito">0,00</span></div>
+          <div class="kpi-sub"><span class="meta">IVA de las compras</span></div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-head">
+            <span class="label" id="fisKpiIvaLabel">IVA a pagar · Período</span>
             <span class="kpi-icon"><i data-lucide="receipt"></i></span>
           </div>
           <div class="kpi-value"><span class="currency">Bs</span> <span id="fisKpiIva">0,00</span></div>
-          <div class="kpi-sub">
-            <span class="meta">Débito − crédito del período</span>
-          </div>
+          <div class="kpi-sub"><span class="meta" id="fisKpiIvaSub">Débito − crédito − retenciones</span></div>
         </div>
         <div class="kpi">
           <div class="kpi-head">
@@ -660,29 +674,7 @@
             <span class="kpi-icon"><i data-lucide="percent"></i></span>
           </div>
           <div class="kpi-value"><span class="currency">Bs</span> <span id="fisKpiIslr">0,00</span></div>
-          <div class="kpi-sub">
-            <span class="meta">Comprobantes emitidos</span>
-          </div>
-        </div>
-        <div class="kpi">
-          <div class="kpi-head">
-            <span class="label">IGTF cobrado · Mes</span>
-            <span class="kpi-icon warning"><i data-lucide="coins"></i></span>
-          </div>
-          <div class="kpi-value"><span class="currency">Bs</span> <span id="fisKpiIgtf">0,00</span></div>
-          <div class="kpi-sub">
-            <span class="meta">3% sobre divisas</span>
-          </div>
-        </div>
-        <div class="kpi">
-          <div class="kpi-head">
-            <span class="label">Próximo vencimiento</span>
-            <span class="kpi-icon danger"><i data-lucide="alarm-clock"></i></span>
-          </div>
-          <div class="kpi-value">—</div>
-          <div class="kpi-sub">
-            <span class="meta">Según el calendario fiscal</span>
-          </div>
+          <div class="kpi-sub"><span class="meta">Comprobantes emitidos</span></div>
         </div>
       </section>
 
@@ -767,7 +759,6 @@
               <i data-lucide="search"></i>
               <input type="text" placeholder="Buscar por RIF, factura, proveedor…">
             </label>
-            <button class="filter-chip active">Mayo 2026 <i data-lucide="x"></i></button>
             <button class="filter-chip"><i data-lucide="percent"></i> Alícuota: Todas</button>
             <div class="right">
               <button class="btn btn-ghost" style="height:32px;font-size:12px;" data-libro-action="print"><i data-lucide="printer"></i> Imprimir</button>
@@ -842,7 +833,7 @@
                 <tr><td class="item">18</td><td class="concepto">Créditos Fiscales Totalmente Deducibles</td><td class="cod"></td><td class="num"></td><td class="cod">70</td><td class="num" id="f30c-ded">0,00</td></tr>
                 <tr><td class="item">19</td><td class="concepto">Créditos Fiscales producto de la Aplicación del porcentaje de la prorrata</td><td class="cod"></td><td class="num"></td><td class="cod">37</td><td class="num">0,00</td></tr>
                 <tr class="subtot"><td class="item">20</td><td class="concepto">Total créditos fiscales deducibles (70 + 37)</td><td class="cod"></td><td class="num"></td><td class="cod">71</td><td class="num" id="f30c-dedTot">0,00</td></tr>
-                <tr><td class="item">21</td><td class="concepto">Excedente Créditos Fiscales del mes Anterior (ítem 60 declaración anterior)</td><td class="cod"></td><td class="num"></td><td class="cod">20</td><td class="num">0,00</td></tr>
+                <tr><td class="item">21</td><td class="concepto">Excedente Créditos Fiscales del mes Anterior (ítem 60 declaración anterior)</td><td class="cod"></td><td class="num"></td><td class="cod">20</td><td class="num" id="f30c-excedAnt">0,00</td></tr>
                 <tr><td class="item">22</td><td class="concepto">Reintegro Solicitado (sólo Exportadores)</td><td class="cod"></td><td class="num"></td><td class="cod">21</td><td class="num">0,00</td></tr>
                 <tr><td class="item">23</td><td class="concepto">Reintegro Solicitado (quien suministre bienes o servicios a entes exonerados)</td><td class="cod"></td><td class="num"></td><td class="cod">81</td><td class="num">0,00</td></tr>
                 <tr><td class="item">24</td><td class="concepto">Ajustes a los Créditos Fiscales de períodos anteriores</td><td class="cod"></td><td class="num"></td><td class="cod">38</td><td class="num">0,00</td></tr>
@@ -914,7 +905,6 @@
               <i data-lucide="search"></i>
               <input type="text" placeholder="Buscar por RIF, factura, cliente…">
             </label>
-            <button class="filter-chip active">Mayo 2026 <i data-lucide="x"></i></button>
             <button class="filter-chip"><i data-lucide="percent"></i> Alícuota: Todas</button>
             <div class="right">
               <button class="btn btn-ghost" style="height:32px;font-size:12px;" data-libro-action="print"><i data-lucide="printer"></i> Imprimir</button>
@@ -990,9 +980,6 @@
                 <tr><td class="item">8</td><td class="concepto">Certificados de Débitos Fiscales Exonerados (recibos de entes exonerados)</td><td class="cod"></td><td class="num"></td><td class="cod">80</td><td class="num">0,00</td></tr>
                 <tr class="total"><td class="item">9</td><td class="concepto">Total Débitos Fiscales</td><td class="cod"></td><td class="num"></td><td class="cod">49</td><td class="num" id="f30v-debTot">0,00</td></tr>
                 <tr class="sec"><td colspan="6">Autoliquidación del IVA del Período</td></tr>
-                <tr><td class="item">19</td><td class="concepto">Total Créditos Fiscales del Período (traslado del Libro de Compras)</td><td class="cod"></td><td class="num"></td><td class="cod">30</td><td class="num" id="f30v-credPer">0,00</td></tr>
-                <tr><td class="item">21</td><td class="concepto">Excedente de Crédito Fiscal del mes anterior (ítem 60 declaración anterior)</td><td class="cod"></td><td class="num"></td><td class="cod">20</td><td class="num" id="f30v-excedAnt">0,00</td></tr>
-                <tr class="subtot"><td class="item">26</td><td class="concepto">Total Crédito Fiscal Disponible para la Determinación</td><td class="cod"></td><td class="num"></td><td class="cod">39</td><td class="num" id="f30v-credDisp">0,00</td></tr>
                 <tr><td class="item">27</td><td class="concepto">Total Cuota Tributaria del Período (Débitos 49 − Créditos 39)</td><td class="cod"></td><td class="num"></td><td class="cod">53</td><td class="num" id="f30v-cuota">0,00</td></tr>
                 <tr><td class="item">28</td><td class="concepto">Excedente de Crédito Fiscal para el mes siguiente</td><td class="cod"></td><td class="num"></td><td class="cod">60</td><td class="num" id="f30v-exced">0,00</td></tr>
                 <tr><td class="item">33</td><td class="concepto">Retenciones Acumuladas de períodos anteriores por Descontar</td><td class="cod"></td><td class="num"></td><td class="cod">65</td><td class="num" id="f30v-ret33">0,00</td></tr>
