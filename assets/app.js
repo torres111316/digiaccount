@@ -3491,10 +3491,12 @@
       if (error) { console.warn('[Calendario] ', error.message); EVENTOS = []; return; }
       // Aplica SOLO lo que le toca a esta empresa: su terminal de RIF, lo 'especial'
       // únicamente si es sujeto pasivo especial, y el DPP solo si es persona jurídica.
+      // DPP: además de ser jurídica, la empresa debe DECLARAR DPP (emprendimientos exentos = declaraDpp false)
+      const declaraDpp = esJuridica && emp.declaraDpp !== false;
       EVENTOS = (data || []).filter((e) =>
         String(e.terminales || '').indexOf(terminal) >= 0 &&
         (e.ambito !== 'especial' || esEspecial) &&
-        (e.impuesto !== 'DPP' || esJuridica)
+        (e.impuesto !== 'DPP' || declaraDpp)
       ).map((e) => ({ fecha: e.fecha, impuesto: e.impuesto, descripcion: e.descripcion }));
       // Regla general de los ORDINARIOS: IVA del mes anterior, hasta el día 15.
       if (esOrdinario) {
