@@ -412,8 +412,8 @@
                 <stop offset="100%" stop-color="#1c8f5a" stop-opacity="0"/>
               </linearGradient>
             </defs>
-            <path d="M0,28 L14,26 L28,22 L42,24 L56,18 L70,20 L84,14 L98,16 L112,10 L126,12 L140,8 L154,11 L168,7 L182,5 L200,2 L200,36 L0,36 Z" fill="url(#sparkBank)"/>
-            <path d="M0,28 L14,26 L28,22 L42,24 L56,18 L70,20 L84,14 L98,16 L112,10 L126,12 L140,8 L154,11 L168,7 L182,5 L200,2" fill="none" stroke="#1c8f5a" stroke-width="1.5"/>
+            <path id="spBankF" d="M0,36 L200,36 L200,36 L0,36 Z" fill="url(#sparkBank)"/>
+            <path id="spBankL" d="M0,36 L200,36" fill="none" stroke="#1c8f5a" stroke-width="1.5"/>
           </svg>
           <div class="kpi-sub">
             <span class="meta"><span id="dashBancoCuentas">0</span> cuentas · bancos + Caja</span>
@@ -436,8 +436,8 @@
                 <stop offset="100%" stop-color="#00bfff" stop-opacity="0"/>
               </linearGradient>
             </defs>
-            <path d="M0,20 L14,22 L28,18 L42,24 L56,16 L70,18 L84,12 L98,14 L112,10 L126,8 L140,12 L154,9 L168,6 L182,9 L200,5 L200,36 L0,36 Z" fill="url(#sparkCxc)"/>
-            <path d="M0,20 L14,22 L28,18 L42,24 L56,16 L70,18 L84,12 L98,14 L112,10 L126,8 L140,12 L154,9 L168,6 L182,9 L200,5" fill="none" stroke="#00bfff" stroke-width="1.5"/>
+            <path id="spCxcF" d="M0,36 L200,36 L200,36 L0,36 Z" fill="url(#sparkCxc)"/>
+            <path id="spCxcL" d="M0,36 L200,36" fill="none" stroke="#00bfff" stroke-width="1.5"/>
           </svg>
           <div class="kpi-sub">
             <span class="meta"><span id="dashCxcCount">0</span> recibos con saldo</span>
@@ -460,8 +460,8 @@
                 <stop offset="100%" stop-color="#c97a14" stop-opacity="0"/>
               </linearGradient>
             </defs>
-            <path d="M0,14 L14,16 L28,12 L42,18 L56,15 L70,20 L84,17 L98,22 L112,18 L126,24 L140,20 L154,26 L168,22 L182,28 L200,24 L200,36 L0,36 Z" fill="url(#sparkCxp)"/>
-            <path d="M0,14 L14,16 L28,12 L42,18 L56,15 L70,20 L84,17 L98,22 L112,18 L126,24 L140,20 L154,26 L168,22 L182,28 L200,24" fill="none" stroke="#c97a14" stroke-width="1.5"/>
+            <path id="spCxpF" d="M0,36 L200,36 L200,36 L0,36 Z" fill="url(#sparkCxp)"/>
+            <path id="spCxpL" d="M0,36 L200,36" fill="none" stroke="#c97a14" stroke-width="1.5"/>
           </svg>
           <div class="kpi-sub">
             <span class="meta"><span id="dashCxpCount">0</span> facturas con saldo</span>
@@ -471,7 +471,7 @@
         <!-- 4. Margen / EBITDA -->
         <div class="kpi">
           <div class="kpi-head">
-            <span class="label">Ventas registradas (recibos)</span>
+            <span class="label" id="dashVentasLabel">Ventas registradas</span>
             <span class="kpi-icon"><i data-lucide="receipt"></i></span>
           </div>
           <div class="kpi-value fx-amount" id="dashVentas" data-bs="0">
@@ -484,8 +484,8 @@
                 <stop offset="100%" stop-color="#003057" stop-opacity="0"/>
               </linearGradient>
             </defs>
-            <path d="M0,24 L14,22 L28,25 L42,20 L56,22 L70,18 L84,20 L98,15 L112,17 L126,13 L140,15 L154,10 L168,12 L182,8 L200,6 L200,36 L0,36 Z" fill="url(#sparkEbi)"/>
-            <path d="M0,24 L14,22 L28,25 L42,20 L56,22 L70,18 L84,20 L98,15 L112,17 L126,13 L140,15 L154,10 L168,12 L182,8 L200,6" fill="none" stroke="#003057" stroke-width="1.5"/>
+            <path id="spVenF" d="M0,36 L200,36 L200,36 L0,36 Z" fill="url(#sparkEbi)"/>
+            <path id="spVenL" d="M0,36 L200,36" fill="none" stroke="#003057" stroke-width="1.5"/>
           </svg>
           <div class="kpi-sub">
             <span class="meta"><span id="dashVentasCount">0</span> recibos emitidos</span>

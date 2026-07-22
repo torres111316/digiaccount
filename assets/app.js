@@ -3986,26 +3986,43 @@
         ['dashIngresos', 'dashEgresos', 'dashNeto', 'dashPosNeta', 'dashBankTotal'].forEach((id) => setVal(id, 0));
         return;
       }
-      const [rc, rm, rf, rlc] = await Promise.all([
+      // Modo LIBRO (contador externo): compras y ventas se presumen pagadas/cobradas por banco
+      // mientras el cliente no indique crédito → sin CxC/CxP fantasmas. Las ventas salen del
+      // libro fiscal (no de recibos). Modo RECIBOS: control real de cobros/pagos por factura.
+      const modoLibro = !!(emp.fiscalActivo || emp.modo === 'libro');
+      const [rc, rm, rf, rlc, rlv] = await Promise.all([
         window.sb.from('cuentas_tesoreria').select('id, nombre, banco, numero, tipo, color, saldo_inicial, moneda').eq('empresa_id', emp.id),
         window.__sbAll((q) => q.eq('empresa_id', emp.id), 'movimientos_tesoreria', 'cuenta_teso_id, tipo, monto, factura_ref'),
         window.__sbAll((q) => q.eq('tipo', 'venta').eq('empresa_id', emp.id), 'facturas', 'numero, total, estado'),
-        window.__sbAll((q) => q.eq('tipo', 'compra').eq('empresa_id', emp.id), 'libro_fiscal', 'numero_factura, total'),
+        window.__sbAll((q) => q.eq('tipo', 'compra').eq('empresa_id', emp.id), 'libro_fiscal', 'numero_factura, total, periodo, fecha'),
+        window.__sbAll((q) => q.eq('tipo', 'venta').eq('empresa_id', emp.id), 'libro_fiscal', 'numero_factura, total, periodo, fecha'),
       ]);
       const cuentas = rc.data || [], movs = rm.data || [], compras = rlc.data || [];
       const recibos = (rf.data || []).filter((f) => !/anulada/i.test(f.estado || '')); // anulados no cuentan
+      const ventasLibro = rlv.data || [];
       const saldoDe = (cid, ini) => { let s = Number(ini) || 0; movs.filter((m) => m.cuenta_teso_id === cid).forEach((m) => { s += (m.tipo === 'ingreso' ? 1 : -1) * (Number(m.monto) || 0); }); return s; };
       let disp = 0;
       cuentas.filter((c) => (c.moneda || 'Bs') !== 'USD').forEach((c) => { disp += saldoDe(c.id, c.saldo_inicial); });
       const sumBy = (tipo) => { const o = {}; movs.filter((m) => m.tipo === tipo).forEach((m) => { const r = (m.factura_ref || '').trim(); if (r) o[r] = (o[r] || 0) + (Number(m.monto) || 0); }); return o; };
       const cobros = sumBy('ingreso'), pagos = sumBy('egreso');
-      let cxc = 0, cxcN = 0; recibos.forEach((f) => { const p = Math.max(0, (Number(f.total) || 0) - (cobros[(f.numero || '').trim()] || 0)); if (p > 0.01) cxcN++; cxc += p; });
-      let cxp = 0, cxpN = 0; compras.forEach((f) => { const p = Math.max(0, (Number(f.total) || 0) - (pagos[(f.numero_factura || '').trim()] || 0)); if (p > 0.01) cxpN++; cxp += p; });
-      const ventas = recibos.reduce((s, f) => s + (Number(f.total) || 0), 0);
+      let cxc = 0, cxcN = 0, cxp = 0, cxpN = 0;
+      if (!modoLibro) {
+        // Modo recibos: CxC/CxP reales según cobros/pagos registrados
+        recibos.forEach((f) => { const p = Math.max(0, (Number(f.total) || 0) - (cobros[(f.numero || '').trim()] || 0)); if (p > 0.01) cxcN++; cxc += p; });
+        compras.forEach((f) => { const p = Math.max(0, (Number(f.total) || 0) - (pagos[(f.numero_factura || '').trim()] || 0)); if (p > 0.01) cxpN++; cxp += p; });
+      }
+      // Ventas: libro fiscal en modo libro; recibos en modo recibos
+      const ventas = modoLibro
+        ? ventasLibro.reduce((s, f) => s + (Number(f.total) || 0), 0)
+        : recibos.reduce((s, f) => s + (Number(f.total) || 0), 0);
+      const ventasCount = modoLibro ? ventasLibro.length : recibos.length;
       const ingresos = movs.filter((m) => m.tipo === 'ingreso').reduce((s, m) => s + (Number(m.monto) || 0), 0);
       const egresos = movs.filter((m) => m.tipo === 'egreso').reduce((s, m) => s + (Number(m.monto) || 0), 0);
       setKpi('dashBanco', disp); setKpi('dashCxc', cxc); setKpi('dashCxp', cxp); setKpi('dashVentas', ventas);
-      setTxt('dashBancoCuentas', cuentas.length); setTxt('dashCxcCount', cxcN); setTxt('dashCxpCount', cxpN); setTxt('dashVentasCount', recibos.length);
+      setTxt('dashBancoCuentas', cuentas.length);
+      setTxt('dashCxcCount', modoLibro ? 'Cobrado (presunción de banco)' : cxcN);
+      setTxt('dashCxpCount', modoLibro ? 'Pagado (presunción de banco)' : cxpN);
+      setTxt('dashVentasCount', ventasCount);
       setVal('dashIngresos', ingresos); setVal('dashEgresos', egresos); setVal('dashNeto', ingresos - egresos); setVal('dashPosNeta', disp + cxc - cxp);
       // Saldo por cuenta (banco strip)
       setTxt('dashBankCount', cuentas.length + (cuentas.length === 1 ? ' cuenta' : ' cuentas'));
@@ -4023,6 +4040,43 @@
             + '<div class="bl-amt">Bs ' + fmtBs(s) + '</div></div>';
         }).join('') : '<div style="padding:14px;color:var(--fg-muted);font-size:12px;">Aún no hay cuentas de tesorería.</div>';
       }
+      // Etiqueta del 4º KPI según el modo
+      setTxt('dashVentasLabel', modoLibro ? 'Ventas del libro fiscal' : 'Ventas registradas (recibos)');
+      // ===== Sparklines con datos REALES por mes (últimos 12 meses) =====
+      // Serie mensual de un conjunto de filas {total, periodo|fecha}
+      const mesKey = (r) => r.periodo || (String(r.fecha || '').split('/').length === 3 ? ('20' + r.fecha.split('/')[2] + '-' + String(r.fecha.split('/')[1]).padStart(2, '0')) : '');
+      const serieMensual = (filas) => {
+        const m = {};
+        filas.forEach((r) => { const k = mesKey(r); if (k) m[k] = (m[k] || 0) + (Number(r.total) || 0); });
+        return Object.keys(m).sort().slice(-12).map((k) => m[k]);
+      };
+      // Construye el path de una sparkline (área + línea) a partir de valores
+      const setSpark = (fillId, lineId, vals) => {
+        const f = document.getElementById(fillId), l = document.getElementById(lineId);
+        if (!f || !l) return;
+        const W = 200, H = 36, pad = 3;
+        if (!vals || vals.length < 2 || vals.every((v) => v === vals[0])) {
+          // Sin serie o plana → línea recta a media altura (honesta, no ascendente falsa)
+          const y = vals && vals.length && vals[0] > 0 ? pad : H - pad;
+          l.setAttribute('d', 'M0,' + y + ' L' + W + ',' + y);
+          f.setAttribute('d', 'M0,' + y + ' L' + W + ',' + y + ' L' + W + ',' + H + ' L0,' + H + ' Z');
+          return;
+        }
+        const max = Math.max(...vals), min = Math.min(...vals), rng = (max - min) || 1;
+        const pts = vals.map((v, i) => {
+          const x = Math.round((i / (vals.length - 1)) * W);
+          const y = Math.round(H - pad - ((v - min) / rng) * (H - 2 * pad));
+          return x + ',' + y;
+        });
+        l.setAttribute('d', 'M' + pts.join(' L'));
+        f.setAttribute('d', 'M' + pts.join(' L') + ' L' + W + ',' + H + ' L0,' + H + ' Z');
+      };
+      const serieV = modoLibro ? serieMensual(ventasLibro) : []; // ventas por mes (real)
+      const serieC = serieMensual(compras);                       // compras por mes (real)
+      setSpark('spVenF', 'spVenL', serieV.length > 1 ? serieV : (ventas > 0 ? [ventas, ventas] : [0, 0]));
+      setSpark('spBankF', 'spBankL', serieC.length > 1 ? serieC : [disp, disp]); // Banco: compras/mes como proxy de actividad
+      setSpark('spCxcF', 'spCxcL', cxc > 0 ? [cxc, cxc] : [0, 0]);
+      setSpark('spCxpF', 'spCxpL', cxp > 0 ? [cxp, cxp] : [0, 0]);
       if (window.lucide) window.lucide.createIcons();
     }
     window.cargarDashboard = cargar;
