@@ -7198,6 +7198,8 @@
     // ===== Libros fiscales (registro manual de facturas reales) =====
     const fmtF = (n) => Number(n).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     let _credF = 0, _debF = 0; // crédito fiscal (compras) y débito fiscal (ventas) del período
+    let _excedAnt = 0, _retAcumAnt = 0; // arrastres del período anterior: excedente de crédito e ítem 33 (retenciones acumuladas)
+    let _arrClave = '';                 // cache: 'empresa|periodo' de los arrastres ya calculados
     // Recuadro de ISLR en la Forma 30 de Ventas — depende del régimen de la empresa:
     //  · Especial  → Anticipo de ISLR (Decreto 3.719): 1% sobre ingresos brutos, se genera
     //    AUTOMÁTICAMENTE con la declaración de IVA y sigue su periodicidad:
@@ -7231,18 +7233,65 @@
     }
     function actualizarAutoliquidacion() {
       const setN = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = fmtF(v); };
-      const cuota = Math.max(0, _debF - _credF);               // ítem 27: débito − crédito
-      const exced = Math.max(0, _credF - _debF);               // ítem 28: excedente de crédito
-      const retIva = Number(window.__RET_IVA_SUFRIDA) || 0;    // IVA retenido por los clientes (sufrido)
-      const descontadas = Math.min(cuota, retIva);             // solo se descuenta hasta agotar la cuota
-      const saldoRet = retIva - descontadas;                   // retenciones no aplicadas → al mes siguiente
+      const credDisp = _credF + _excedAnt;                     // crédito del período + excedente del mes anterior
+      const cuota = Math.max(0, _debF - credDisp);             // ítem 27: débito − crédito disponible
+      const exced = Math.max(0, credDisp - _debF);             // ítem 28: excedente de crédito → mes siguiente
+      const retIva = Number(window.__RET_IVA_SUFRIDA) || 0;    // ítem 34: IVA retenido por clientes ESTE período
+      const retTotal = retIva + _retAcumAnt;                   // ítem 37 = ítem 33 (acumuladas) + ítem 34 (del período)
+      const descontadas = Math.min(cuota, retTotal);           // ítem 38: se descuenta hasta agotar la cuota
+      const saldoRet = retTotal - descontadas;                 // ítem 39: retenciones no aplicadas → mes siguiente
       const pagar = Math.max(0, cuota - descontadas);          // ítem 48: lo que realmente se paga
+      setN('f30v-credPer', _credF);
+      setN('f30v-excedAnt', _excedAnt);
+      setN('f30v-credDisp', credDisp);
       setN('f30v-cuota', cuota);
       setN('f30v-exced', exced);
-      setN('f30v-ret66', retIva); setN('f30v-ret74', retIva);
+      setN('f30v-ret33', _retAcumAnt);
+      setN('f30v-ret66', retIva); setN('f30v-ret74', retTotal);
       setN('f30v-ret55', descontadas); setN('f30v-ret67', saldoRet);
       setN('f30v-pagar', pagar);
     }
+    // Calcula los ARRASTRES del período anterior (excedente de crédito e ítem 33 de retenciones)
+    // recorriendo TODOS los períodos previos de la empresa con la lógica de la Forma 30.
+    async function calcularArrastres() {
+      const emp = window.__EMPRESA_ACTIVA;
+      if (!window.sb || !emp || !emp.id) { _excedAnt = 0; _retAcumAnt = 0; return; }
+      const perActual = '20' + _fiscalPer.aa + '-' + _fiscalPer.mm;
+      const clave = emp.id + '|' + perActual;
+      if (_arrClave === clave) return; // ya calculado para este empresa+período
+      const r2 = (x) => Math.round((x + 1e-9) * 100) / 100;
+      const perDe = (row) => row.periodo || (String(row.fecha || '').split('/').length === 3 ? ('20' + row.fecha.split('/')[2] + '-' + String(row.fecha.split('/')[1]).padStart(2, '0')) : '');
+      const [libRes, retRes] = await Promise.all([
+        window.__sbAll((q) => q.eq('empresa_id', emp.id), 'libro_fiscal', 'tipo,periodo,fecha,base,exento,alicuota'),
+        window.__sbAll((q) => q.eq('empresa_id', emp.id).eq('direccion', 'sufrida').eq('tipo', 'iva'), 'retenciones', 'periodo,fecha,monto'),
+      ]);
+      const M = {}; // período → {vb16,vb8,cb16,cb8,ret}
+      const g = (k) => { if (!M[k]) M[k] = { vb16: 0, vb8: 0, cb16: 0, cb8: 0, ret: 0 }; return M[k]; };
+      (libRes.data || []).forEach((row) => {
+        const k = perDe(row); if (!k || k >= perActual) return; // solo períodos ANTERIORES
+        const m = g(k), base = Number(row.base) || 0, al = Number(row.alicuota) || 0;
+        if (row.tipo === 'venta') { if (al >= 0.15) m.vb16 += base; else if (al > 0) m.vb8 += base; }
+        else { if (al >= 0.15) m.cb16 += base; else if (al > 0) m.cb8 += base; }
+      });
+      (retRes.data || []).forEach((row) => { const k = perDe(row); if (k && k < perActual) g(k).ret += Number(row.monto) || 0; });
+      let exc = 0, sret = 0;
+      Object.keys(M).sort().forEach((k) => {
+        const m = M[k];
+        const debito = r2(r2(m.vb16 * 0.16) + r2(m.vb8 * 0.08));
+        const credito = r2(r2(m.cb16 * 0.16) + r2(m.cb8 * 0.08));
+        const credDisp = r2(credito + exc);
+        const credAp = Math.min(debito, credDisp);
+        const resto = r2(debito - credAp);
+        const retDisp = r2(m.ret + sret);
+        const retAp = Math.min(resto, retDisp);
+        exc = r2(credDisp - credAp);
+        sret = r2(retDisp - retAp);
+      });
+      _excedAnt = exc; _retAcumAnt = sret; _arrClave = clave;
+      actualizarAutoliquidacion();
+    }
+    window.__calcularArrastres = calcularArrastres;
+    window.__invalidarArrastres = () => { _arrClave = ''; }; // forzar recálculo tras modificar datos
     window.__recalcAutoliq = actualizarAutoliquidacion;
     // Período de declaración: clave 'aaaa-mm' y etiqueta 'Mes aaaa'
     const _MESES_PER = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
@@ -7418,6 +7467,7 @@
             tipo_doc: (v.tipoDoc || (esCompra ? 'FC' : 'FV')).slice(0, 2), exento: exento, base: base, alicuota: alic, iva: iva, igtf: igtf, total: total,
           }).then(({ error }) => {
             if (error) { toast('No se pudo guardar: ' + error.message, 'error'); return; }
+            if (window.__invalidarArrastres) window.__invalidarArrastres(); // el nuevo registro puede cambiar los arrastres
             if (window.cargarLibroFiscal) window.cargarLibroFiscal(tipo);
             if (window.cargarTesoreria) window.cargarTesoreria();   // refresca CxP/CxC (panel de Compras/Ventas)
             if (window.cargarDashboard) window.cargarDashboard();   // y los KPIs del Dashboard
@@ -7601,6 +7651,7 @@
         renderIslrBox(tBase + tEx);
       }
       actualizarAutoliquidacion();
+      calcularArrastres(); // trae excedente de crédito y retenciones acumuladas del período anterior
     }
     window.cargarLibroFiscal = cargarLibroFiscal;
 
@@ -7669,6 +7720,7 @@
             exento: exento, base: base, alicuota: alic, iva: iva, igtf: igtf, total: total,
           }).eq('id', id).then(({ error }) => {
             if (error) { toast('No se pudo actualizar: ' + error.message, 'error'); return; }
+            if (window.__invalidarArrastres) window.__invalidarArrastres();
             cargarLibroFiscal(tipo);
             toast((esCompra ? 'Compra' : 'Venta') + ' actualizada · Bs ' + fmtF(total), 'success');
           });
@@ -7705,6 +7757,7 @@
               window.__postAsiento('Reverso ' + (esCompra ? 'compra' : 'venta') + ' s/factura ' + (r.numero_factura || '') + ' · ' + (r.tercero_nombre || ''), r.numero_factura || '', lineas, 'auto')
                 .then((rr) => { if (rr && rr.error) console.warn('[DigiAccount] Reverso libro:', rr.error.message); });
             }
+            if (window.__invalidarArrastres) window.__invalidarArrastres();
             cargarLibroFiscal(tipo);
             if (window.cargarTesoreria) window.cargarTesoreria();
             if (window.cargarDashboard) window.cargarDashboard();
