@@ -7264,6 +7264,10 @@
       const periodicidad = esEspecial ? 'Quincena' : 'Mes';
       if (kLbl) kLbl.textContent = (exced > 0 ? 'Excedente de crédito · ' : 'IVA a pagar · ') + periodicidad;
       if (kSub) kSub.textContent = exced > 0 ? 'A favor, pasa al mes siguiente' : 'Débito − crédito − retenciones';
+      // 4º KPI: retenciones de IVA del período (sufridas → reducen lo que se paga)
+      setN('fisKpiRetIva', retIva);
+      const kRetSub = document.getElementById('fisKpiRetSub');
+      if (kRetSub) kRetSub.textContent = _retAcumAnt > 0 ? ('+ Bs ' + fmtF(_retAcumAnt) + ' acumuladas del mes anterior') : 'IVA retenido por los clientes';
     }
     // Calcula los ARRASTRES del período anterior (excedente de crédito e ítem 33 de retenciones)
     // recorriendo TODOS los períodos previos de la empresa con la lógica de la Forma 30.
