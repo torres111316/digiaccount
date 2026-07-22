@@ -3450,10 +3450,11 @@
         <div class="data-table-wrap" style="margin-bottom:16px;">
           <div class="table-toolbar">
             <label class="quick-search"><i data-lucide="search"></i><input type="text" placeholder="Buscar por cuenta, referencia, descripción…"></label>
-            <button class="filter-chip"><i data-lucide="sparkles"></i> Origen: Todos</button>
-            <button class="filter-chip"><i data-lucide="filter"></i> Más filtros</button>
+            <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--fg-muted);">Mes:
+              <select id="diarioMesSel" style="height:32px;border:1px solid var(--border-strong);border-radius:8px;padding:0 8px;font:inherit;background:var(--bg-surface);color:inherit;"><option value="">Todos</option></select>
+            </label>
             <div class="right">
-              <span style="font-size:11px;color:var(--fg-muted);">Movimiento del mes: <strong id="contaMovMes" style="color:var(--fg-primary);font-family:var(--font-mono);">Bs 0,00</strong></span>
+              <span style="font-size:11px;color:var(--fg-muted);">Movimiento del período: <strong id="contaMovMes" style="color:var(--fg-primary);font-family:var(--font-mono);">Bs 0,00</strong></span>
               <button class="btn btn-ghost" style="height:32px;font-size:12px;" id="diarioPrintBtn"><i data-lucide="printer"></i> Imprimir</button>
             </div>
           </div>
@@ -3918,6 +3919,7 @@
                 <tr><td class="mono">5</td><td class="primary">COSTOS</td><td><span class="tag navy">Grupo</span></td><td>Deudora</td><td class="num">0,00</td><td><span class="tag success">Activa</span></td></tr>
                 <tr><td class="mono">5.1</td><td class="primary">&nbsp;&nbsp;&nbsp;Costo de Ventas</td><td><span class="tag navy">Grupo</span></td><td>Deudora</td><td class="num">0,00</td><td><span class="tag success">Activa</span></td></tr>
                 <tr><td class="mono">5.1.1.01</td><td class="primary">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Costo de mercancía vendida</td><td><span class="tag slate">Cuenta</span></td><td>Deudora</td><td class="num">0,00</td><td><span class="tag success">Activa</span></td></tr>
+                <tr><td class="mono">5.1.1.02</td><td class="primary">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Compra de Mercancía</td><td><span class="tag slate">Cuenta</span></td><td>Deudora</td><td class="num">0,00</td><td><span class="tag success">Activa</span></td></tr>
                 <tr><td class="mono">5.1.2.01</td><td class="primary">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Costo de producción</td><td><span class="tag slate">Cuenta</span></td><td>Deudora</td><td class="num">0,00</td><td><span class="tag success">Activa</span></td></tr>
                 <tr><td class="mono">6</td><td class="primary">GASTOS</td><td><span class="tag navy">Grupo</span></td><td>Deudora</td><td class="num">0,00</td><td><span class="tag success">Activa</span></td></tr>
                 <tr><td class="mono">6.1</td><td class="primary">&nbsp;&nbsp;&nbsp;Gastos de Administración</td><td><span class="tag navy">Grupo</span></td><td>Deudora</td><td class="num">0,00</td><td><span class="tag success">Activa</span></td></tr>

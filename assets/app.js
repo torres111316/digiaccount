@@ -1540,7 +1540,9 @@
           + '<div class="asiento-glosa"><strong>Concepto:</strong> ' + (a.descripcion || '') + '</div></div>';
       }
       // Carga los asientos reales de la empresa activa desde Supabase (Diario paginado: 10 por página)
-      let _diarioPage = 1;
+      let _diarioPage = 1, _diarioMes = '';
+      const _asiMes = (a) => { const p = String(a.fecha || '').split('/'); return p.length === 3 ? ('20' + (p[2].length === 2 ? p[2] : p[2].slice(2)) + '-' + String(p[1]).padStart(2, '0')) : ''; };
+      const _MESES_D = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
       async function cargarAsientos(page) {
         if (!window.sb || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) return;
         const journal = view.querySelector('.conta-tab[data-tab="diario"] .journal');
@@ -1552,20 +1554,34 @@
         (data || []).forEach((a) => { if (a.numero > maxNum) maxNum = a.numero; });
         asientoNum = maxNum;
         asientosData = data || [];
+        // Poblar el selector de meses (una vez por carga) con los meses que tienen asientos
+        const sel = document.getElementById('diarioMesSel');
+        if (sel) {
+          const meses = Array.from(new Set(asientosData.map(_asiMes).filter(Boolean))).sort().reverse();
+          const cur = sel.value;
+          sel.innerHTML = '<option value="">Todos los meses</option>' + meses.map((m) => '<option value="' + m + '">' + _MESES_D[parseInt(m.slice(5, 7), 10) - 1] + ' ' + m.slice(0, 4) + '</option>').join('');
+          if (meses.indexOf(cur) >= 0) sel.value = cur; else _diarioMes = '';
+          _diarioMes = sel.value;
+        }
+        // Asientos del mes seleccionado (o todos), en orden cronológico para el Diario
+        const delMes = (_diarioMes ? asientosData.filter((a) => _asiMes(a) === _diarioMes) : asientosData.slice())
+          .sort((a, b) => (a.numero || 0) - (b.numero || 0));
         const DIARIO_PAG = 10;
-        const totalPagD = Math.max(1, Math.ceil(asientosData.length / DIARIO_PAG));
+        const totalPagD = Math.max(1, Math.ceil(delMes.length / DIARIO_PAG));
         _diarioPage = Math.min(Math.max(1, page || _diarioPage || 1), totalPagD);
         const iniD = (_diarioPage - 1) * DIARIO_PAG;
-        asientosData.slice(iniD, iniD + DIARIO_PAG).forEach((a) => journal.insertAdjacentHTML('beforeend', asientoHTML(a)));
+        if (!delMes.length) journal.innerHTML = '<div style="text-align:center;color:var(--fg-muted);padding:32px;">Sin asientos en el período seleccionado.</div>';
+        delMes.slice(iniD, iniD + DIARIO_PAG).forEach((a) => journal.insertAdjacentHTML('beforeend', asientoHTML(a)));
         if (totalPagD > 1) {
           journal.insertAdjacentHTML('beforeend', '<div style="display:flex;justify-content:center;align-items:center;gap:14px;padding:10px;font-size:12px;color:var(--fg-muted);">'
             + '<button class="btn btn-ghost" data-dp-dir="-1"' + (_diarioPage <= 1 ? ' disabled' : '') + ' style="height:26px;font-size:11px;">« Anterior</button>'
-            + '<span>Página ' + _diarioPage + ' de ' + totalPagD + ' · ' + asientosData.length + ' asientos</span>'
+            + '<span>Página ' + _diarioPage + ' de ' + totalPagD + ' · ' + delMes.length + ' asientos</span>'
             + '<button class="btn btn-ghost" data-dp-dir="1"' + (_diarioPage >= totalPagD ? ' disabled' : '') + ' style="height:26px;font-size:11px;">Siguiente »</button></div>');
         }
+        window.__diarioDelMes = delMes; // para imprimir el período visible
         if (typeof renderReportes === 'function') renderReportes();   // recalcula Mayor y Balance
         // KPIs de la cabecera de Contabilidad (datos reales)
-        const totDebe = asientosData.reduce((s, a) => s + (Number(a.total) || 0), 0);
+        const totDebe = delMes.reduce((s, a) => s + (Number(a.total) || 0), 0);
         const ctas = new Set();
         asientosData.forEach((a) => { (Array.isArray(a.lineas) ? a.lineas : []).forEach((l) => { const c = (l.cta || '').split(' · ')[0]; if (c) ctas.add(c); }); });
         const setC = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
@@ -1574,15 +1590,25 @@
         setC('contaKpiDebe', fmt2(totDebe));
         setC('contaKpiHaber', fmt2(totDebe));
         setC('contaKpiCuentas', String(ctas.size));
-        setC('contaDiarioCount', String(asientosData.length));
+        setC('contaDiarioCount', String(delMes.length));
         setC('contaMovMes', 'Bs ' + fmt2(totDebe));
         console.log('[DigiAccount] Asientos cargados:', (data || []).length);
         drawIcons();
       }
       window.cargarAsientos = cargarAsientos;
+      // Datos para imprimir el Libro Diario del mes seleccionado (todos los asientos, sin paginar)
+      window.__diarioPrintData = () => {
+        const sel = document.getElementById('diarioMesSel');
+        const lbl = sel && sel.selectedOptions[0] ? sel.selectedOptions[0].textContent : 'Todos los meses';
+        return { html: (window.__diarioDelMes || []).map(asientoHTML).join(''), titulo: 'Libro Diario · ' + lbl };
+      };
       view.addEventListener('click', (e) => {
         const b = e.target.closest('button[data-dp-dir]');
         if (b && !b.disabled) cargarAsientos(_diarioPage + parseInt(b.dataset.dpDir, 10));
+      });
+      // Cambio de mes en el Libro Diario
+      view.addEventListener('change', (e) => {
+        if (e.target && e.target.id === 'diarioMesSel') { _diarioMes = e.target.value; _diarioPage = 1; cargarAsientos(1); }
       });
     })();
 
@@ -2129,8 +2155,12 @@
     // ---- Imprimir Libro Diario (vertical) ----
     const diarioPrint = document.getElementById('diarioPrintBtn');
     if (diarioPrint) diarioPrint.addEventListener('click', () => {
-      const journal = view.querySelector('.conta-tab[data-tab="diario"] .journal');
-      printContaDoc(journal, { titulo: 'Libro Diario · Mayo 2026', orient: 'portrait' });
+      // Imprime TODOS los asientos del mes seleccionado (no solo la página visible)
+      const d = window.__diarioPrintData ? window.__diarioPrintData() : null;
+      const tmp = document.createElement('div');
+      tmp.className = 'journal';
+      tmp.innerHTML = d && d.html ? d.html : '<div style="padding:20px;">Sin asientos en el período.</div>';
+      printContaDoc(tmp, { titulo: d ? d.titulo : 'Libro Diario', orient: 'portrait' });
     });
     window.addEventListener('afterprint', () => {
       document.body.classList.remove('printing-comp');
@@ -7577,7 +7607,7 @@
             if (esCompra && window.__postAsiento) {
               // Modelo del contador externo: la compra va directo a COSTO (grupo 5) para
               // que baje al Estado de Resultados; el inventario físico se ajusta al cierre.
-              const ln = [{ cta: '5.1.1.01 · Costo de mercancía vendida', debe: base + exento, haber: 0 }];
+              const ln = [{ cta: '5.1.1.02 · Compra de Mercancía', debe: base + exento, haber: 0 }];
               if (iva > 0.005) ln.push({ cta: '1.1.3.01 · IVA crédito fiscal', debe: iva, haber: 0 });
               ln.push({ cta: '2.1.1.01 · Cuentas por pagar comerciales', debe: 0, haber: total });
               window.__postAsiento('Compra s/factura ' + v.numFactura + ' · ' + v.nombre, v.numFactura, ln, 'auto').then((r) => { if (r && r.error) console.warn('[DigiAccount] No se pudo contabilizar la compra:', r.error.message); });
@@ -7847,7 +7877,7 @@
               let lineas;
               if (esCompra) {
                 lineas = [{ cta: '2.1.1.01 · Cuentas por pagar comerciales', debe: tot, haber: 0 }];
-                if (base + ex > 0.005) lineas.push({ cta: '5.1.1.01 · Costo de mercancía vendida', debe: 0, haber: base + ex });
+                if (base + ex > 0.005) lineas.push({ cta: '5.1.1.02 · Compra de Mercancía', debe: 0, haber: base + ex });
                 if (iva > 0.005) lineas.push({ cta: '1.1.3.01 · IVA crédito fiscal', debe: 0, haber: iva });
               } else {
                 lineas = [{ cta: '4.1.1.01 · Ventas / Ingresos por servicios', debe: base + ex, haber: 0 }];
@@ -8017,7 +8047,7 @@
         retDisp = r2c(retDisp + retMes);
       }
       if (!(yaLC && yaLC.length) && c.tot > 0.005) {
-        const ln = [{ cta: '5.1.1.01 · Costo de mercancía vendida', debe: r2c(c.be), haber: 0 }];
+        const ln = [{ cta: '5.1.1.02 · Compra de Mercancía', debe: r2c(c.be), haber: 0 }];
         if (c.iva > 0.005) ln.push({ cta: '1.1.3.01 · IVA crédito fiscal', debe: r2c(c.iva), haber: 0 });
         ln.push({ cta: '1.1.1.03 · Bancos', debe: 0, haber: r2c(c.tot) });
         mkAsiento('Compras del mes (resumen Libro de Compras) · ' + _perLabel(), 'LC-' + mm + '/' + anio, ln);
