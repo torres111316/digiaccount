@@ -46,10 +46,5 @@ update public.libro_fiscal set periodo = '2026-02'
 update public.libro_fiscal set periodo = '2026-04'
  where empresa_id = '129f28e9-22fe-4f43-80ff-e3d3fa959925' and tipo = 'compra'
    and numero_factura = 'C011273';
--- Ventas cuya hoja de declaración difiere de la fecha de la factura
-update public.libro_fiscal set periodo = '2026-02'
- where empresa_id = '129f28e9-22fe-4f43-80ff-e3d3fa959925' and tipo = 'venta'
-   and numero_factura = '000872';
-update public.libro_fiscal set periodo = '2026-03'
- where empresa_id = '129f28e9-22fe-4f43-80ff-e3d3fa959925' and tipo = 'venta'
-   and numero_factura in ('000978','000979');
+-- Las VENTAS quedan SIEMPRE en el período de su fecha (las emite la empresa):
+-- el default derivado de la fecha ya es el correcto, no se sobrescriben.

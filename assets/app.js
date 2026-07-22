@@ -7278,8 +7278,10 @@
           { name: 'facturaFile', label: '🤖 Factura del proveedor (PDF o foto) — el Agente IA la lee y llena el formulario', col: 2, type: 'file' },
         ] : []).concat([
           { name: 'fecha', label: 'Fecha de la factura', type: 'date', value: window.__hoyISO() },
-          // Período en que se DECLARA (puede diferir de la fecha: facturas de compra recibidas tarde).
-          { name: 'periodo', label: 'Período de declaración' + (esCompra ? ' (si la factura es de un mes anterior, elige el mes en que la declaras)' : ''), type: 'select', options: _opcionesPeriodo(), value: _periodoActualKey() },
+        ]).concat(esCompra ? [
+          // Solo COMPRAS: el crédito se declara en el período en que llega la factura (puede diferir de su fecha).
+          { name: 'periodo', label: 'Período de declaración (si la factura es de un mes anterior, elige el mes en que la declaras)', type: 'select', options: _opcionesPeriodo(), value: _periodoActualKey() },
+        ] : []).concat([
           { name: 'tipoDoc', label: 'Tipo de documento', type: 'select', options: esCompra ? ['FC (Factura)', 'NC (Nota de crédito)', 'ND (Nota de débito)'] : ['FV (Factura de venta)', 'NC (Nota de crédito)', 'ND (Nota de débito)'] },
           { name: 'nombre', label: (esCompra ? 'Proveedor' : 'Cliente') + ' (escribe las iniciales y elige)', col: 2, type: 'datalist', options: terceros.map((t) => t.nombre), placeholder: 'Ej. Sum… → Suministros Lara, C.A.' },
           { name: 'rif', label: 'RIF / C.I. (mayúscula, sin guiones)', upper: true, placeholder: 'J123456789' },
@@ -7399,7 +7401,9 @@
         },
         onSave: (v) => {
           if (!window.sb || !window.__CUENTA_ID || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) return 'No hay una empresa activa seleccionada.';
-          const periodo = v.periodo || _periodoActualKey();  // período de declaración
+          // Ventas: período = el de su fecha (las emite la empresa). Compras: el mes en que se declara.
+          const fP = (v.fecha || '').split('-');
+          const periodo = esCompra ? (v.periodo || _periodoActualKey()) : (fP.length === 3 ? fP[0] + '-' + fP[1] : _periodoActualKey());
           if (window.__periodoCerrado && window.__periodoCerrado(periodo)) return '🔒 El período de declaración elegido está CERRADO. Reábrelo con el botón del período en Fiscal si necesitas registrar.';
           if (!v.nombre) return 'Indica el ' + (esCompra ? 'proveedor' : 'cliente') + '.';
           const base = parseFloat(v.base) || 0, exento = parseFloat(v.exento) || 0;
@@ -7613,7 +7617,9 @@
         saveLabel: 'Guardar cambios',
         fields: [
           { name: 'fecha', label: 'Fecha (dd/mm/aa)', value: r.fecha || '' },
+        ].concat(esCompra ? [
           { name: 'periodo', label: 'Período de declaración', type: 'select', options: _opcionesPeriodo(), value: r.periodo || _periodoActualKey() },
+        ] : []).concat([
           { name: 'tipoDoc', label: 'Tipo de documento', type: 'select', options: esCompra ? ['FC (Factura)', 'NC (Nota de crédito)', 'ND (Nota de débito)'] : ['FV (Factura de venta)', 'NC (Nota de crédito)', 'ND (Nota de débito)'], value: tdMap[r.tipo_doc] || (esCompra ? 'FC (Factura)' : 'FV (Factura de venta)') },
           { name: 'nombre', label: esCompra ? 'Proveedor' : 'Cliente', col: 2, value: r.tercero_nombre || '' },
           { name: 'rif', label: 'RIF', upper: true, value: r.tercero_rif || '' },
@@ -7647,7 +7653,10 @@
         },
         onSave: (v) => {
           if (!window.sb) return 'Sin conexión.';
-          const perNuevo = v.periodo || r.periodo || _periodoActualKey();
+          // Ventas: período sigue a la fecha (dd/mm/aa). Compras: el período elegido.
+          let perNuevo;
+          if (esCompra) perNuevo = v.periodo || r.periodo || _periodoActualKey();
+          else { const fp = (v.fecha || '').split('/'); perNuevo = fp.length === 3 ? '20' + fp[2] + '-' + String(fp[1]).padStart(2, '0') : (r.periodo || _periodoActualKey()); }
           if (window.__periodoCerrado && (window.__periodoCerrado(r.periodo) || window.__periodoCerrado(perNuevo))) return '🔒 Este registro pertenece a un período CERRADO (declarado). Reábrelo en Fiscal para modificarlo.';
           if (!v.nombre) return 'Indica el ' + (esCompra ? 'proveedor' : 'cliente') + '.';
           const base = parseFloat(v.base) || 0, exento = parseFloat(v.exento) || 0;
