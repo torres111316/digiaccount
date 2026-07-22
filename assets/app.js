@@ -7247,10 +7247,12 @@
       setN('f30c-credTot', _credF + _excedAnt);
       setN('f30v-cuota', cuota);
       setN('f30v-exced', exced);
+      setN('f30v-subt1', cuota);        // ítem 32: sub-total (sin sustitutivas = cuota)
       setN('f30v-ret33', _retAcumAnt);
       setN('f30v-ret66', retIva); setN('f30v-ret74', retTotal);
       setN('f30v-ret55', descontadas); setN('f30v-ret67', saldoRet);
-      setN('f30v-pagar', pagar);
+      setN('f30v-subt2', pagar);        // ítem 40: sub-total tras retenciones
+      setN('f30v-pagar', pagar);        // ítem 48: total a pagar (percepciones = 0)
       // KPIs del encabezado del módulo (indicadores de IVA del período)
       setN('fisKpiDebito', _debF);
       setN('fisKpiCredito', _credF);
