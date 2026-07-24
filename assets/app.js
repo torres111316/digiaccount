@@ -8133,15 +8133,34 @@
       }
       const { data: yaF30 } = await window.sb.from('asientos').select('id').eq('empresa_id', empId).eq('referencia', 'F30-' + mm + '/' + anio).limit(1);
       if (!(yaF30 && yaF30.length) && v.iva > 0.005 && !(yaLV && yaLV.length)) {
+        // Modelo de cuentas dedicadas: el crédito y las retenciones del mes se
+        // cancelan por completo (1.1.3.01 y 1.1.3.03 vuelven a 0) y lo que se
+        // traslada al mes siguiente queda EXPLÍCITO en 1.1.3.04 (excedente de
+        // crédito) y 1.1.3.05 (retenciones por descontar), como manda la Forma 30.
         const debito = r2c(v.iva);
-        const credAp = Math.min(debito, Math.max(0, credDisp));
+        const credMes = Math.max(0, credDisp);                 // 1.1.3.01 · crédito del mes
+        const retMesAc = Math.max(0, retDisp);                 // 1.1.3.03 · retenciones del mes
+        const excPrev = Math.max(0, saldoDe('1.1.3.04'));      // excedente trasladado del mes anterior
+        const retPrev = Math.max(0, saldoDe('1.1.3.05'));      // retenciones por descontar del mes anterior
+        const cDisp = r2c(credMes + excPrev);
+        const credAp = Math.min(debito, cDisp);
         const resto = r2c(debito - credAp);
-        const retAp = Math.min(resto, Math.max(0, retDisp));
+        const rDisp = r2c(retMesAc + retPrev);
+        const retAp = Math.min(resto, rDisp);
         const pago = r2c(resto - retAp);
+        const excNew = r2c(cDisp - credAp);                    // excedente a trasladar
+        const retNew = r2c(rDisp - retAp);                     // retenciones a trasladar
+        const net04 = r2c(excNew - excPrev), net05 = r2c(retNew - retPrev);
         const ln = [{ cta: '2.1.3.01 · IVA débito fiscal', debe: debito, haber: 0 }];
-        if (credAp > 0.005) ln.push({ cta: '1.1.3.01 · IVA crédito fiscal', debe: 0, haber: r2c(credAp) });
-        if (retAp > 0.005) ln.push({ cta: '1.1.3.03 · Retenciones IVA soportadas', debe: 0, haber: r2c(retAp) });
-        if (pago > 0.005) ln.push({ cta: '1.1.1.03 · Bancos', debe: 0, haber: pago });
+        if (credMes > 0.005) ln.push({ cta: '1.1.3.01 · IVA crédito fiscal', debe: 0, haber: r2c(credMes) });
+        if (retMesAc > 0.005) ln.push({ cta: '1.1.3.03 · Retenciones IVA soportadas', debe: 0, haber: r2c(retMesAc) });
+        if (net04 > 0.005) ln.push({ cta: '1.1.3.04 · Excedente de crédito fiscal IVA', debe: r2c(net04), haber: 0 });
+        else if (net04 < -0.005) ln.push({ cta: '1.1.3.04 · Excedente de crédito fiscal IVA', debe: 0, haber: r2c(-net04) });
+        if (net05 > 0.005) ln.push({ cta: '1.1.3.05 · Retenciones de IVA por descontar', debe: r2c(net05), haber: 0 });
+        else if (net05 < -0.005) ln.push({ cta: '1.1.3.05 · Retenciones de IVA por descontar', debe: 0, haber: r2c(-net05) });
+        if (pago > 0.005) ln.push({ cta: '1.1.1.03 · Bancos', debe: 0, haber: r2c(pago) });
+        const difL = r2c(ln.reduce((s, l) => s + l.debe, 0) - ln.reduce((s, l) => s + l.haber, 0));
+        if (Math.abs(difL) > 0.005) { if (pago > 0.005) ln[ln.length - 1].haber = r2c(ln[ln.length - 1].haber + difL); else ln.push({ cta: '1.1.1.03 · Bancos', debe: 0, haber: difL }); }
         mkAsiento('Liquidación IVA declarado (Forma 30) · ' + _perLabel(), 'F30-' + mm + '/' + anio, ln);
       }
       if (nuevos.length) {
