@@ -6100,7 +6100,8 @@
 
     // Genera el Contrato de Trabajo rellenado con la ficha de empresa + trabajador
     const _MESES_C = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
-    async function generarContrato(emp) {
+    async function construirContrato(emp, tipo, extra) {
+      tipo = tipo || 'indet'; extra = extra || {};
       const t = (m, tp) => { if (window.toast) window.toast(m, tp); };
       if (!window.sb || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) { t('No hay una empresa activa.', 'error'); return; }
       const { data: e, error } = await window.sb.from('empresas').select('*').eq('id', window.__EMPRESA_ACTIVA.id).single();
@@ -6114,10 +6115,20 @@
       const paquete = Number(emp.contingenciaUSD) || 0;
       const frec = emp.frecHabitual || 'quincenal';
       const cl = (n, titulo, cuerpo) => '<div style="margin:0 0 11px;"><div style="font-weight:700;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:#003057;margin-bottom:3px;">Cláusula ' + n + ' — ' + titulo + '</div><div style="text-align:justify;">' + cuerpo + '</div></div>';
+      // Título y cláusula de duración según el tipo de contrato
+      const tituloDoc = tipo === 'det' ? 'CONTRATO INDIVIDUAL DE TRABAJO A TIEMPO DETERMINADO'
+        : tipo === 'obra' ? 'CONTRATO INDIVIDUAL DE TRABAJO PARA UNA OBRA DETERMINADA'
+        : 'CONTRATO INDIVIDUAL DE TRABAJO POR TIEMPO INDETERMINADO';
+      const fin = extra.fechaFin ? new Date(extra.fechaFin + 'T00:00:00') : null;
+      const clDuracion = tipo === 'det'
+        ? 'El presente contrato es <b>a tiempo determinado</b>, con inicio el ' + (emp.ingreso ? '<b>' + fechaLarga(emp.ingreso) + '</b>' : linea(150)) + ' y vencimiento el ' + (fin ? '<b>' + fechaLarga(fin) + '</b>' : linea(150)) + '. Se celebra conforme al artículo 64 de la LOTTT en atención a: ' + V(extra.causa, 200) + '. No excederá los límites de duración del artículo 62. Si a su vencimiento subsiste la causa que lo motivó y las partes continúan la relación, o si se celebran dos (2) o más prórrogas, el contrato se considerará por tiempo indeterminado (artículo 64).'
+        : tipo === 'obra'
+        ? 'El presente contrato es <b>para una obra determinada</b>, con inicio el ' + (emp.ingreso ? '<b>' + fechaLarga(emp.ingreso) + '</b>' : linea(150)) + ', y tiene por objeto la ejecución de la siguiente obra: ' + V(extra.obra, 220) + '. Durará por todo el tiempo requerido para la ejecución de la obra y terminará con la conclusión de la totalidad de los trabajos que correspondan a EL TRABAJADOR (artículo 63 de la LOTTT); la sola suspensión de los trabajos no extingue el contrato.'
+        : 'El presente contrato es por <b>tiempo indeterminado</b> y comienza a regir a partir del ' + (emp.ingreso ? '<b>' + fechaLarga(emp.ingreso) + '</b>' : linea(150)) + '. La relación se rige por el principio de estabilidad e inamovilidad laboral en los términos de la LOTTT y los decretos vigentes.';
 
       const html = '<div class="contrato-print" style="color:#14181d;font-family:Georgia,\'Times New Roman\',serif;font-size:12px;line-height:1.5;">'
         + '<div style="text-align:center;border-bottom:2px solid #003057;padding-bottom:8px;margin-bottom:14px;">'
-        + '<div style="font-weight:700;font-size:15px;">CONTRATO INDIVIDUAL DE TRABAJO POR TIEMPO INDETERMINADO</div>'
+        + '<div style="font-weight:700;font-size:15px;">' + tituloDoc + '</div>'
         + '<div style="font-size:10px;color:#555;margin-top:2px;">Conforme a la Ley Orgánica del Trabajo, los Trabajadores y las Trabajadoras (LOTTT) — República Bolivariana de Venezuela</div></div>'
         + '<p style="text-align:justify;margin:0 0 12px;">Entre, por una parte, ' + V(e.nombre, 150) + ', inscrita en el Registro Mercantil ' + V(e.registro_mercantil, 150) + ', con Registro de Información Fiscal (RIF) ' + V(e.rif, 90) + ' y domicilio en ' + V(e.direccion, 160) + ', representada en este acto por ' + V(e.representante, 150) + ', titular de la cédula de identidad Nº ' + V(e.representante_ci, 100) + ', en su carácter de ' + V(e.representante_cargo, 120) + ', quien en lo sucesivo se denominará <b>«LA ENTIDAD DE TRABAJO»</b>; y por la otra parte, ' + V(emp.nombre, 150) + ', de nacionalidad ' + V(emp.nacionalidad, 90) + ', mayor de edad, de estado civil ' + V(emp.estadoCivil, 90) + ', titular de la cédula de identidad Nº ' + V(emp.cedula, 100) + ' y domiciliado(a) en ' + V(emp.direccion, 160) + ', quien en lo sucesivo se denominará <b>«EL TRABAJADOR / LA TRABAJADORA»</b>; hemos convenido en celebrar el presente Contrato Individual de Trabajo, que se regirá por las cláusulas siguientes:</p>'
         + cl('Primera', 'Objeto y cargo', 'EL TRABAJADOR se obliga a prestar sus servicios personales, de manera subordinada y por cuenta de LA ENTIDAD DE TRABAJO, desempeñando el cargo de ' + V(emp.cargo, 120) + (emp.depto && emp.depto !== '—' ? ', adscrito(a) al departamento de ' + V(emp.depto, 120) : '') + ', ejecutando las funciones propias e inherentes a dicho cargo y las tareas conexas que le sean razonablemente asignadas, con la diligencia e idoneidad debidas.')
@@ -6129,7 +6140,7 @@
         + cl('Séptima', 'Prestaciones sociales', 'EL TRABAJADOR tendrá derecho a la garantía y pago de sus prestaciones sociales conforme al artículo 142 de la LOTTT, depositadas o acreditadas trimestralmente y liquidadas a la terminación de la relación laboral por la fórmula más favorable.')
         + cl('Octava', 'Vacaciones y bono vacacional', 'Vacaciones anuales remuneradas de quince (15) días hábiles al cumplir un año de servicio, más un (1) día adicional por año subsiguiente hasta el máximo de ley (artículo 190), y bono vacacional conforme al artículo 192 de la LOTTT.')
         + cl('Novena', 'Participación en los beneficios (utilidades)', 'EL TRABAJADOR participará en los beneficios anuales conforme a los artículos 131 y siguientes de la LOTTT, con el mínimo de treinta (30) días de salario según los resultados del ejercicio.')
-        + cl('Décima', 'Duración e inicio', 'El presente contrato es por <b>tiempo indeterminado</b> y comienza a regir a partir del ' + (emp.ingreso ? '<b>' + fechaLarga(emp.ingreso) + '</b>' : linea(150)) + '. La relación se rige por el principio de estabilidad e inamovilidad laboral en los términos de la LOTTT y los decretos vigentes.')
+        + cl('Décima', 'Duración e inicio', clDuracion)
         + cl('Décima Primera', 'Obligaciones del trabajador', 'EL TRABAJADOR se obliga a prestar el servicio con diligencia y probidad; cumplir las instrucciones y el reglamento interno; conservar y usar adecuadamente los bienes y herramientas; observar las normas de seguridad y salud laboral (LOPCYMAT); y guardar reserva sobre la información de la empresa.')
         + cl('Décima Segunda', 'Confidencialidad', 'EL TRABAJADOR mantendrá estricta confidencialidad sobre la información comercial, financiera, técnica y de clientes a la que tenga acceso, obligación que subsistirá aún después de terminada la relación de trabajo.')
         + cl('Décima Tercera', 'Seguridad y salud en el trabajo', 'LA ENTIDAD DE TRABAJO notificará los riesgos del puesto y proveerá las condiciones y dotación conforme a la LOPCYMAT y su Reglamento; EL TRABAJADOR cumplirá las políticas de prevención.')
@@ -6148,10 +6159,47 @@
       if (window.__setPageSize) window.__setPageSize('letter portrait', '16mm');
       document.body.classList.add('printing-comp');
       const tOrig = document.title;
-      document.title = ('Contrato de trabajo - ' + (emp.nombre || '')).replace(/[\\/:*?"<>|]/g, '-');
+      const sufTipo = tipo === 'det' ? ' (tiempo determinado)' : tipo === 'obra' ? ' (obra determinada)' : '';
+      document.title = ('Contrato de trabajo - ' + (emp.nombre || '') + sufTipo).replace(/[\\/:*?"<>|]/g, '-');
       const restore = () => { document.body.classList.remove('printing-comp'); const p = document.getElementById('printPortal'); if (p) p.innerHTML = ''; document.title = tOrig; window.removeEventListener('afterprint', restore); };
       window.addEventListener('afterprint', restore);
       window.print();
+    }
+
+    // Selector del tipo de contrato antes de generarlo
+    function generarContrato(emp) {
+      const hoyISO = new Date().toISOString().slice(0, 10);
+      window.openFormModal({
+        title: 'Generar contrato · ' + emp.nombre,
+        saveLabel: 'Generar contrato',
+        fields: [
+          { name: 'tipo', label: 'Tipo de contrato', col: 2, type: 'select', value: 'Tiempo indeterminado', options: ['Tiempo indeterminado', 'Tiempo determinado', 'Por obra determinada'] },
+          { name: 'fechaFin', label: 'Fecha de vencimiento (tiempo determinado)', type: 'date', value: '' },
+          { name: 'causa', label: 'Causa que justifica el término (art. 64)', placeholder: 'Ej. sustitución temporal, aumento circunstancial de labores', value: '' },
+          { name: 'obra', label: 'Descripción de la obra (obra determinada)', col: 2, placeholder: 'Ej. construcción del local ubicado en…', value: '' },
+        ],
+        afterRender: (body) => {
+          const tipoEl = body.querySelector('[data-name="tipo"]');
+          const wrap = (n) => { const el = body.querySelector('[data-name="' + n + '"]'); return el ? (el.closest('.fm-field') || el.parentNode) : null; };
+          const wFin = wrap('fechaFin'), wCausa = wrap('causa'), wObra = wrap('obra');
+          const toggle = () => {
+            const v = tipoEl ? tipoEl.value : '';
+            const det = /determinado$/i.test(v) && /Tiempo/i.test(v);
+            const obra = /obra/i.test(v);
+            if (wFin) wFin.style.display = det ? '' : 'none';
+            if (wCausa) wCausa.style.display = det ? '' : 'none';
+            if (wObra) wObra.style.display = obra ? '' : 'none';
+          };
+          if (tipoEl) tipoEl.addEventListener('change', toggle);
+          toggle();
+        },
+        onSave: (v) => {
+          const tipo = /^Tiempo determinado/i.test(v.tipo) ? 'det' : /obra/i.test(v.tipo) ? 'obra' : 'indet';
+          if (tipo === 'det' && !v.fechaFin) return 'Indica la fecha de vencimiento del contrato a tiempo determinado.';
+          if (tipo === 'obra' && !(v.obra || '').trim()) return 'Describe la obra objeto del contrato.';
+          construirContrato(emp, tipo, { fechaFin: v.fechaFin, causa: v.causa, obra: v.obra });
+        },
+      });
     }
 
     // Acciones del módulo: Nuevo trabajador / Procesar / Recalcular / Exportar
