@@ -3094,8 +3094,8 @@
             <div class="right">
               <span style="font-size:11px;color:var(--fg-muted);font-weight:600;">Frecuencia del recibo:</span>
               <div class="date-range" id="payFreq" title="Frecuencia de pago del recibo">
-                <button data-freq="semanal">Semanal</button>
-                <button data-freq="quincenal" data-active="true">Quincenal</button>
+                <button data-freq="semanal" data-active="true">Semanal</button>
+                <button data-freq="quincenal">Quincenal</button>
                 <button data-freq="mensual">Mensual</button>
               </div>
               <button class="btn btn-ghost" style="height:32px;font-size:12px;" id="exportNominaBtn"><i data-lucide="download"></i> Exportar</button>
@@ -3262,7 +3262,7 @@
         <div class="data-table-wrap">
           <div class="table-toolbar" style="flex-wrap:wrap;gap:10px;">
             <label style="font-size:12px;display:flex;align-items:center;gap:6px;">Frecuencia:
-              <select id="novFreq" style="height:32px;border:1px solid var(--border-strong);border-radius:8px;padding:0 8px;font:inherit;background:var(--bg-surface);color:inherit;"><option value="quincenal">Quincenal</option><option value="semanal">Semanal</option><option value="mensual">Mensual</option></select></label>
+              <select id="novFreq" style="height:32px;border:1px solid var(--border-strong);border-radius:8px;padding:0 8px;font:inherit;background:var(--bg-surface);color:inherit;"><option value="semanal">Semanal</option><option value="quincenal">Quincenal</option><option value="mensual">Mensual</option></select></label>
             <label style="font-size:12px;display:flex;align-items:center;gap:6px;">Período:
               <input id="novPeriodo" type="text" placeholder="Ej. 2026-Q11 (16–31 may)" style="height:32px;border:1px solid var(--border-strong);border-radius:8px;padding:0 10px;font:inherit;background:var(--bg-surface);color:inherit;min-width:200px;"></label>
             <button class="btn btn-ghost" id="novCargarBtn" style="height:32px;font-size:12px;"><i data-lucide="folder-open"></i> Cargar período</button>
@@ -3310,8 +3310,8 @@
             <div class="rrm-actions">
               <label style="font-size:12px;display:flex;align-items:center;gap:6px;">Frecuencia:
                 <select id="relnFreq" style="height:32px;border:1px solid var(--border-strong);border-radius:8px;padding:0 8px;font:inherit;background:var(--bg-surface);color:inherit;">
-                  <option value="semanal">Semanal</option>
-                  <option value="quincenal" selected>Quincenal</option>
+                  <option value="semanal" selected>Semanal</option>
+                  <option value="quincenal">Quincenal</option>
                   <option value="mensual">Mensual</option>
                 </select>
               </label>

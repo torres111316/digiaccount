@@ -5651,7 +5651,7 @@
     if (firmaEmpBtn) firmaEmpBtn.addEventListener('click', () => { if (window.__abrirFirma) window.__abrirFirma(guardarFirmaEmpresa); });
 
     // ---------- Recibo de pago (semanal / quincenal / mensual) ----------
-    let payFreq = 'quincenal';
+    let payFreq = 'semanal'; // la mayoría del personal operativo cobra semanal (default más común)
     let CESTATICKET_USD = 40; // cestaticket mensual: $ pagado en Bs a la tasa BCV (Ley de Alimentación) — no salarial · editable en Parámetros
     const freqInfo = {
       semanal:   { div: 52 / 12, periodo: '', etiqueta: 'Sueldo semanal',   doc: 'SEM' },
@@ -5993,7 +5993,7 @@
           { name: 'contingenciaUSD', label: 'Paquete del período en USD (ej. 70 semanales — el Bono de Contingencia completa: paquete − cesta − salario)', type: 'number', step: '0.01', moneda: 'USD', placeholder: '0', value: emp ? String(emp.contingenciaUSD || '') : '' },
           { name: 'transporteUSD', label: 'Bono de transporte en USD (se paga en Bs a tasa BCV)', type: 'number', step: '0.01', moneda: 'USD', placeholder: '0', value: emp ? String(emp.transporteUSD || '') : '' },
           { name: 'formaPago', label: 'Forma de pago', type: 'select', value: emp ? emp.formaPago : 'Transferencia', options: ['Transferencia', 'Efectivo', 'Pago móvil'] },
-          { name: 'frec', label: 'Frecuencia (automática según el tipo)', type: 'select', value: emp ? emp.frecHabitual : 'quincenal', options: [{ value: 'quincenal', label: 'Quincenal' }, { value: 'semanal', label: 'Semanal' }, { value: 'mensual', label: 'Mensual' }] },
+          { name: 'frec', label: 'Frecuencia (se ajusta sola al elegir el tipo)', type: 'select', value: emp ? emp.frecHabitual : 'semanal', options: [{ value: 'semanal', label: 'Semanal' }, { value: 'quincenal', label: 'Quincenal' }, { value: 'mensual', label: 'Mensual' }] },
           { name: 'dpp', label: '¿Sujeto a DPP? (Protección Pensiones 9%)', type: 'select', value: emp ? (emp.sujetoDpp ? 'Sí' : 'No') : 'No', options: ['No', 'Sí'] },
           { name: 'cajaAhorroPct', label: 'Caja de ahorro (% del sueldo, opcional)', type: 'number', step: '0.1', placeholder: '0', value: emp && emp.cajaAhorroPct ? String(emp.cajaAhorroPct * 100) : '' },
           { name: 'correo', label: 'Correo (opcional)', placeholder: 'trabajador@correo.com', value: emp ? (emp.correo || '') : '' },
@@ -6008,7 +6008,8 @@
           const frecEl = bodyEl.querySelector('[data-name="frec"]');
           const autoFrec = () => { if (!tipoEl || !frecEl) return; const tp = tipoEl.value; frecEl.value = tp === 'Gerencia' ? 'mensual' : (tp === 'Administrativo' ? 'quincenal' : 'semanal'); };
           if (tipoEl) tipoEl.addEventListener('change', autoFrec);
-          if (!esEdit) autoFrec();
+          // No forzamos la frecuencia al abrir: arranca en 'semanal' (lo más común) y solo
+          // se auto-ajusta si el usuario cambia el tipo de trabajador.
         },
         onSave: (v) => {
           const sal = parseFloat(v.salarioMes);
