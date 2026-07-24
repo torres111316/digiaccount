@@ -2584,6 +2584,63 @@
     const fmtSize = (n) => { n = Number(n) || 0; return n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(1) + ' KB' : (n / 1048576).toFixed(1) + ' MB'; };
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
     let _docs = [];
+    let _defPeriodoSet = false;
+    const selImp = document.getElementById('bovedaFiltroImpuesto');
+    const selPer = document.getElementById('bovedaFiltroPeriodo');
+    const selTip = document.getElementById('bovedaFiltroTipo');
+    const MESES_B = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+    // Convierte "Marzo 2026 · 2da Quincena" / "Ejercicio 2026" en una clave ordenable
+    function pPer(p) {
+      p = String(p || '');
+      const ej = /ejercicio/i.test(p);
+      const my = p.match(/\b(20\d\d)\b/);
+      const anio = my ? +my[1] : 0;
+      let mes = 0;
+      for (let i = 0; i < 12; i++) { if (p.toLowerCase().indexOf(MESES_B[i].toLowerCase()) >= 0) { mes = i + 1; break; } }
+      const q = /2da/i.test(p) ? 2 : /1ra/i.test(p) ? 1 : 0;
+      return { key: anio * 1000 + mes * 10 + q, mes, anio, ej };
+    }
+    function fillSel(sel, vals) {
+      if (!sel) return;
+      const cur = sel.value;
+      const first = sel.querySelector('option');
+      sel.innerHTML = ''; sel.appendChild(first);
+      vals.forEach((v) => { const o = document.createElement('option'); o.value = v; o.textContent = v; sel.appendChild(o); });
+      sel.value = vals.indexOf(cur) >= 0 ? cur : '';
+    }
+    function poblarFiltros() {
+      fillSel(selImp, [...new Set(_docs.map((d) => d.impuesto).filter(Boolean))].sort());
+      fillSel(selTip, [...new Set(_docs.map((d) => d.tipo).filter(Boolean))].sort());
+      const pers = [...new Set(_docs.map((d) => d.periodo).filter(Boolean))].sort((a, b) => pPer(b).key - pPer(a).key);
+      fillSel(selPer, pers);
+      // Por defecto solo se ve el último período (no todos de golpe)
+      if (!_defPeriodoSet && pers.length) { selPer.value = pers[0]; _defPeriodoSet = true; }
+    }
+    function recordatorios() {
+      const box = document.getElementById('bovedaRecordatorios');
+      if (!box) return;
+      const porImp = {};
+      _docs.forEach((d) => { const pp = pPer(d.periodo); if (pp.ej || !pp.anio || !pp.mes) return; (porImp[d.impuesto] = porImp[d.impuesto] || new Set()).add(pp.anio * 100 + pp.mes); });
+      const faltan = [];
+      Object.keys(porImp).forEach((imp) => {
+        const keys = [...porImp[imp]].sort((a, b) => a - b);
+        if (keys.length < 2) return;
+        const have = new Set(keys), max = keys[keys.length - 1];
+        let y = Math.floor(keys[0] / 100), m = keys[0] % 100;
+        while (y * 100 + m < max) {
+          if (!have.has(y * 100 + m)) faltan.push({ imp, txt: MESES_B[m - 1] + ' ' + y, key: y * 100 + m });
+          m++; if (m > 12) { m = 1; y++; }
+        }
+      });
+      if (!faltan.length) { box.innerHTML = ''; return; }
+      faltan.sort((a, b) => a.key - b.key);
+      box.innerHTML = '<div style="background:#fff7e6;border:1px solid #ffe0a3;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:#8a5a00;display:flex;gap:8px;align-items:flex-start;">'
+        + '<i data-lucide="bell-ring" style="width:15px;height:15px;flex-shrink:0;margin-top:1px;"></i>'
+        + '<div><b>Recordatorio — posibles documentos faltantes</b> (períodos sin ningún archivo, entre los que sí tienes cargados):<br>'
+        + faltan.map((f) => '<span class="tag amber" style="margin:4px 4px 0 0;cursor:pointer;" data-falta-imp="' + esc(f.imp) + '">' + esc(f.imp) + ' · ' + esc(f.txt) + '</span>').join('')
+        + '</div></div>';
+      if (window.lucide) window.lucide.createIcons();
+    }
 
     async function cargarBoveda() {
       if (!tbody) return;
@@ -2593,6 +2650,8 @@
       const { data, error } = await window.sb.from('documentos_fiscales').select('*').eq('empresa_id', window.__EMPRESA_ACTIVA.id).order('creado_en', { ascending: false });
       if (error) { tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--fg-muted);padding:16px;">No se pudo cargar (¿creaste la tabla documentos_fiscales y el bucket?).</td></tr>'; console.warn('[DigiAccount] Bóveda:', error.message); return; }
       _docs = data || [];
+      poblarFiltros();
+      recordatorios();
       render();
     }
     window.cargarBoveda = cargarBoveda;
@@ -2600,8 +2659,13 @@
     function render() {
       if (!tbody) return;
       const q = ((document.getElementById('bovedaSearch') || {}).value || '').toLowerCase().trim();
-      const arr = _docs.filter((d) => !q || (d.impuesto + ' ' + (d.periodo || '') + ' ' + d.tipo + ' ' + (d.nombre || '')).toLowerCase().includes(q));
-      if (!arr.length) { tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--fg-muted);padding:16px;">' + (_docs.length ? 'Sin resultados.' : 'Aún no hay documentos. Usa "Subir documento".') + '</td></tr>'; return; }
+      const fImp = selImp ? selImp.value : '', fPer = selPer ? selPer.value : '', fTip = selTip ? selTip.value : '';
+      const arr = _docs.filter((d) =>
+        (!fImp || d.impuesto === fImp) &&
+        (!fPer || (d.periodo || '') === fPer) &&
+        (!fTip || d.tipo === fTip) &&
+        (!q || (d.impuesto + ' ' + (d.periodo || '') + ' ' + d.tipo + ' ' + (d.nombre || '')).toLowerCase().includes(q)));
+      if (!arr.length) { tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--fg-muted);padding:16px;">' + (_docs.length ? 'Sin resultados con estos filtros.' : 'Aún no hay documentos. Usa "Subir documento".') + '</td></tr>'; return; }
       const tipoTag = (t) => { const c = /pago/i.test(t) ? 'amber' : /certif/i.test(t) ? 'success' : 'cyan'; return '<span class="tag ' + c + '">' + esc(t) + '</span>'; };
       tbody.innerHTML = arr.map((d) => {
         const fecha = d.creado_en ? new Date(d.creado_en).toLocaleDateString('es-VE') : '';
@@ -2633,6 +2697,16 @@
 
     const search = document.getElementById('bovedaSearch');
     if (search) search.addEventListener('input', render);
+    [selImp, selPer, selTip].forEach((s) => { if (s) s.addEventListener('change', render); });
+    // Clic en un recordatorio: filtra por ese impuesto para ubicar el hueco
+    const recBox = document.getElementById('bovedaRecordatorios');
+    if (recBox) recBox.addEventListener('click', (e) => {
+      const chip = e.target.closest('[data-falta-imp]');
+      if (!chip) return;
+      if (selImp) selImp.value = chip.dataset.faltaImp;
+      if (selPer) selPer.value = '';
+      render();
+    });
 
     function subir() {
       let fileEl = null;

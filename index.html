@@ -2045,15 +2045,19 @@
           <span>Tu respaldo fiscal en un solo lugar: <strong>planillas de declaración</strong>, <strong>compromisos de pago</strong> y <strong>certificados electrónicos</strong>, por empresa, impuesto y período. Como el SENIAT no los envía por correo, hay dos formas de archivarlos: <strong>(1)</strong> descarga la planilla del portal y súbela con «Subir documento»; <strong>(2)</strong> reenvíala a <strong>boveda@digiaccount.io</strong> y el Asistente IA la clasifica sola. Archivos privados (cada cuenta ve solo los suyos).</span>
         </div>
         <div class="data-table-wrap">
-          <div class="table-toolbar">
+          <div class="table-toolbar" style="flex-wrap:wrap;gap:8px;">
             <label class="quick-search">
               <i data-lucide="search"></i>
-              <input type="text" id="bovedaSearch" placeholder="Buscar por impuesto, período, tipo o nombre…">
+              <input type="text" id="bovedaSearch" placeholder="Buscar por nombre…">
             </label>
+            <select id="bovedaFiltroImpuesto" style="height:32px;font-size:12px;max-width:190px;border:1px solid var(--border-strong);border-radius:8px;padding:0 8px;font-family:inherit;background:var(--bg-surface);color:inherit;"><option value="">Todos los impuestos</option></select>
+            <select id="bovedaFiltroPeriodo" style="height:32px;font-size:12px;max-width:180px;border:1px solid var(--border-strong);border-radius:8px;padding:0 8px;font-family:inherit;background:var(--bg-surface);color:inherit;"><option value="">Todos los períodos</option></select>
+            <select id="bovedaFiltroTipo" style="height:32px;font-size:12px;max-width:170px;border:1px solid var(--border-strong);border-radius:8px;padding:0 8px;font-family:inherit;background:var(--bg-surface);color:inherit;"><option value="">Todos los tipos</option></select>
             <div class="right">
               <button class="btn btn-primary" style="height:32px;font-size:12px;" id="bovedaSubirBtn"><i data-lucide="upload"></i> Subir documento</button>
             </div>
           </div>
+          <div id="bovedaRecordatorios"></div>
           <div class="table-scroll">
             <table class="data-table" style="min-width:920px;">
               <thead>
