@@ -5421,8 +5421,9 @@
       });
       const btnReal = host.querySelector('#basePrestReal');
       if (btnReal) btnReal.addEventListener('click', () => {
-        // Sueldo real mensual = (salario base del período + bono de contingencia) × períodos por mes
-        const p = calcPago(emp);
+        // Sueldo real mensual = (salario base del período + bono de contingencia) × períodos por mes.
+        // OJO: usar la frecuencia PROPIA del trabajador, no el selector global (que puede estar en otra).
+        const p = calcPago(emp, emp.frecHabitual || payFreq);
         const div = (p.f && p.f.div) ? p.f.div : 1;
         const baseReal = (p.sueldo + p.bonoContingencia) * div;
         if (baseReal > 0) { aplicarBase(baseReal); if (window.toast) window.toast('Base = sueldo real (base + bono de contingencia): Bs ' + fmt(baseReal), 'success'); }
