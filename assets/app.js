@@ -5944,6 +5944,7 @@
 
     // Formulario de trabajador (crear y editar) reutilizable
     const PALETA = ['#003057', '#00aeef', '#1c8f5a', '#c97a14', '#c0392b', '#6f8aab', '#3a7bb8', '#9a5ba8', '#2e7d6b', '#b8568f'];
+    const _isoFecha = (d) => { try { return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); } catch (e) { return ''; } };
     function formEmpleado(emp) {
       const esEdit = !!emp;
       const t = (m, tp) => { if (window.toast) window.toast(m, tp); };
@@ -5963,9 +5964,10 @@
           { name: 'cargo', label: 'Cargo', placeholder: 'Ej. Asistente', value: emp ? emp.cargo : '' },
           { name: 'depto', label: 'Departamento', placeholder: 'Ej. Administración', value: emp && emp.depto !== '—' ? emp.depto : '' },
           { name: 'tipo', label: 'Tipo de trabajador', type: 'select', value: emp ? emp.tipo : 'Administrativo', options: ['Administrativo', 'Planta', 'Producción', 'Gerencia'] },
+          { name: 'ingreso', label: 'Fecha de ingreso', type: 'date', value: emp && emp.ingreso ? _isoFecha(emp.ingreso) : new Date().toISOString().slice(0, 10) },
           { name: 'salarioMes', label: 'Salario base mensual cotizable (Bs)', type: 'number', step: '0.01', placeholder: '0.00', value: emp ? String(emp.salarioMes) : '' },
-          { name: 'contingenciaUSD', label: 'Paquete del período en USD (ej. 70 semanales — el Bono de Contingencia completa: paquete − cesta − salario)', type: 'number', step: '0.01', placeholder: '0', value: emp ? String(emp.contingenciaUSD || '') : '' },
-          { name: 'transporteUSD', label: 'Bono de transporte (USD → Bs a BCV)', type: 'number', step: '0.01', placeholder: '0', value: emp ? String(emp.transporteUSD || '') : '' },
+          { name: 'contingenciaUSD', label: 'Paquete del período en USD (ej. 70 semanales — el Bono de Contingencia completa: paquete − cesta − salario)', type: 'number', step: '0.01', moneda: 'USD', placeholder: '0', value: emp ? String(emp.contingenciaUSD || '') : '' },
+          { name: 'transporteUSD', label: 'Bono de transporte en USD (se paga en Bs a tasa BCV)', type: 'number', step: '0.01', moneda: 'USD', placeholder: '0', value: emp ? String(emp.transporteUSD || '') : '' },
           { name: 'formaPago', label: 'Forma de pago', type: 'select', value: emp ? emp.formaPago : 'Transferencia', options: ['Transferencia', 'Efectivo', 'Pago móvil'] },
           { name: 'frec', label: 'Frecuencia (automática según el tipo)', type: 'select', value: emp ? emp.frecHabitual : 'quincenal', options: [{ value: 'quincenal', label: 'Quincenal' }, { value: 'semanal', label: 'Semanal' }, { value: 'mensual', label: 'Mensual' }] },
           { name: 'dpp', label: '¿Sujeto a DPP? (Protección Pensiones 9%)', type: 'select', value: emp ? (emp.sujetoDpp ? 'Sí' : 'No') : 'No', options: ['No', 'Sí'] },
@@ -5992,13 +5994,13 @@
           const ini = v.nombre.trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
           const datos = {
             nombre: v.nombre.trim(), cedula: v.cedula.trim(), cargo: v.cargo.trim(), depto: (v.depto || '').trim() || null,
-            tipo: v.tipo, salario_mes: sal, contingencia_usd: parseFloat(v.contingenciaUSD) || 0, transporte_usd: parseFloat(v.transporteUSD) || 0,
+            tipo: v.tipo, ingreso: v.ingreso || null, salario_mes: sal, contingencia_usd: parseFloat(v.contingenciaUSD) || 0, transporte_usd: parseFloat(v.transporteUSD) || 0,
             forma_pago: v.formaPago, frecuencia: v.frec, sujeto_dpp: (v.dpp === 'Sí'), caja_ahorro_pct: parseFloat(v.cajaAhorroPct) || 0, ini: ini,
             correo: (v.correo || '').trim() || null, whatsapp: (v.whatsapp || '').trim() || null,
           };
           const accion = esEdit
             ? window.sb.from('empleados').update(datos).eq('id', emp.id)
-            : window.sb.from('empleados').insert(Object.assign({}, datos, { cuenta_id: window.__CUENTA_ID, empresa_id: window.__EMPRESA_ACTIVA.id, ingreso: '2026-05-30', color: PALETA[Math.floor(Math.random() * PALETA.length)], activo: true }));
+            : window.sb.from('empleados').insert(Object.assign({}, datos, { cuenta_id: window.__CUENTA_ID, empresa_id: window.__EMPRESA_ACTIVA.id, color: PALETA[Math.floor(Math.random() * PALETA.length)], activo: true }));
           accion.then(({ error }) => {
             if (error) { t('No se pudo guardar: ' + error.message, 'error'); return; }
             if (window.cargarEmpleados) window.cargarEmpleados();
@@ -7196,7 +7198,7 @@
         control = '<input data-name="' + esc(f.name) + '" type="text" list="' + listId + '" value="' + esc(f.value != null ? f.value : '') + '" placeholder="' + esc(f.placeholder || '') + '" autocomplete="off"' + (f.upper ? ' data-upper="1"' : '') + '>'
           + '<datalist id="' + listId + '">' + (f.options || []).map((o) => '<option value="' + esc(o.value != null ? o.value : o) + '">' + (o.label ? esc(o.label) : '') + '</option>').join('') + '</datalist>';
       } else {
-        control = '<input data-name="' + esc(f.name) + '" type="' + (f.type || 'text') + '" value="' + esc(f.value != null ? f.value : '') + '" placeholder="' + esc(f.placeholder || '') + '"' + (f.step ? ' step="' + f.step + '"' : '') + (f.upper ? ' data-upper="1"' : '') + '>';
+        control = '<input data-name="' + esc(f.name) + '" type="' + (f.type || 'text') + '" value="' + esc(f.value != null ? f.value : '') + '" placeholder="' + esc(f.placeholder || '') + '"' + (f.step ? ' step="' + f.step + '"' : '') + (f.moneda ? ' data-moneda="' + esc(f.moneda) + '"' : '') + (f.upper ? ' data-upper="1"' : '') + '>';
       }
       return '<label class="fm-field"' + span + '><span class="fm-lbl">' + esc(f.label) + '</span>' + control + '</label>';
     }
@@ -7235,9 +7237,17 @@
         hint.style.cssText = 'font-size:11px;color:var(--da-cyan-700);margin-top:3px;font-family:var(--font-mono);min-height:13px;';
         const wrap = el.closest('.fm-field') || el.parentNode;
         if (wrap) wrap.appendChild(hint);
+        const bs2 = (x) => x.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         const upd = () => {
           const n = parseFloat(el.value);
-          hint.textContent = (!isNaN(n) && n !== 0) ? '= Bs ' + n.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '';
+          if (isNaN(n) || n === 0) { hint.textContent = ''; return; }
+          const mon = el.dataset.moneda || 'Bs';
+          if (mon === 'USD' || mon === '$') {
+            const bcv = window.__BCV || 0;
+            hint.textContent = '= $ ' + bs2(n) + (bcv ? ' · ≈ Bs ' + bs2(n * bcv) + ' (BCV ' + bs2(bcv) + ')' : '');
+          } else {
+            hint.textContent = '= Bs ' + bs2(n);
+          }
         };
         el.addEventListener('input', upd);
         upd();
