@@ -4995,7 +4995,7 @@
     const view = document.getElementById('view-nomina');
     if (!view) return;
 
-    const HOY = new Date(2026, 4, 30); // 30 may 2026
+    const HOY = new Date(); // fecha real del sistema (antigüedad, utilidades y liquidación al día)
 
     /* Parámetros legales — EDITABLES desde "Parámetros de Nómina" (tabla parametros_nomina,
        por cuenta). Aquí quedan los valores por defecto/vigentes; applyParams() los actualiza. */
