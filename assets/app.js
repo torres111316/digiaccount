@@ -1600,7 +1600,11 @@
       window.__diarioPrintData = () => {
         const sel = document.getElementById('diarioMesSel');
         const lbl = sel && sel.selectedOptions[0] ? sel.selectedOptions[0].textContent : 'Todos los meses';
-        return { html: (window.__diarioDelMes || []).map(asientoHTML).join(''), titulo: 'Libro Diario · ' + lbl };
+        const arr = window.__diarioDelMes || [];
+        // Ejercicio derivado de los asientos impresos (no fijo): un año, o rango si abarca varios
+        const anios = Array.from(new Set(arr.map((a) => { const m = _asiMes(a); return m ? m.slice(0, 4) : ''; }).filter(Boolean))).sort();
+        const ej = anios.length ? (anios.length === 1 ? anios[0] : anios[0] + '–' + anios[anios.length - 1]) : String(new Date().getFullYear());
+        return { html: arr.map(asientoHTML).join(''), titulo: 'Libro Diario · ' + lbl, sub: 'Ejercicio ' + ej + ' · Expresado en bolívares (Bs)' };
       };
       view.addEventListener('click', (e) => {
         const b = e.target.closest('button[data-dp-dir]');
@@ -2160,7 +2164,7 @@
       const tmp = document.createElement('div');
       tmp.className = 'journal';
       tmp.innerHTML = d && d.html ? d.html : '<div style="padding:20px;">Sin asientos en el período.</div>';
-      printContaDoc(tmp, { titulo: d ? d.titulo : 'Libro Diario', orient: 'portrait' });
+      printContaDoc(tmp, { titulo: d ? d.titulo : 'Libro Diario', sub: d ? d.sub : undefined, orient: 'portrait' });
     });
     window.addEventListener('afterprint', () => {
       document.body.classList.remove('printing-comp');
