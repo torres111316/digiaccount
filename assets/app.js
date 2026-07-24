@@ -6315,7 +6315,7 @@
       const t = calcFactura(f);
       const _modo = (window.__EMPRESA_ACTIVA && window.__EMPRESA_ACTIVA.modo) || 'recibos';
       if (window.__postAsiento && _modo !== 'libro') {
-        const ln = [{ cta: '4.1.1.01 · Ventas / Ingresos por servicios', debe: t.subtotal, haber: 0 }];
+        const ln = [{ cta: '4.1.1.01 · Venta de mercancía', debe: t.subtotal, haber: 0 }];
         if (t.iva > 0.005) ln.push({ cta: '2.1.3.01 · IVA débito fiscal', debe: t.iva, haber: 0 });
         if (t.igtf > 0.005) ln.push({ cta: '2.1.4.03 · IGTF por pagar', debe: t.igtf, haber: 0 });
         ln.push({ cta: '1.1.2.01 · Cuentas por cobrar comerciales', debe: 0, haber: t.total });
@@ -6580,7 +6580,7 @@
             const _modo = (window.__EMPRESA_ACTIVA && window.__EMPRESA_ACTIVA.modo) || 'recibos';
             if (window.__postAsiento && _modo !== 'libro') {
               const ln = [{ cta: '1.1.2.01 · Cuentas por cobrar comerciales', debe: t.total, haber: 0 },
-                { cta: '4.1.1.01 · Ventas / Ingresos por servicios', debe: 0, haber: t.subtotal }];
+                { cta: '4.1.1.01 · Venta de mercancía', debe: 0, haber: t.subtotal }];
               if (t.iva > 0.005) ln.push({ cta: '2.1.3.01 · IVA débito fiscal', debe: 0, haber: t.iva });
               if (t.igtf > 0.005) ln.push({ cta: '2.1.4.03 · IGTF por pagar', debe: 0, haber: t.igtf });
               window.__postAsiento('Venta s/' + (esRec ? 'recibo ' : 'factura ') + num + ' · ' + cli.n, num, ln, 'auto').then((r) => { if (r && r.error) console.warn('[DigiAccount] No se pudo contabilizar la venta:', r.error.message); });
@@ -7653,7 +7653,7 @@
             // En modo "recibos" la venta la contabiliza el recibo, no el libro (este es solo para declarar).
             if (!esCompra && window.__postAsiento && ((window.__EMPRESA_ACTIVA && window.__EMPRESA_ACTIVA.modo) === 'libro')) {
               const ln = [{ cta: '1.1.2.01 · Cuentas por cobrar comerciales', debe: total, haber: 0 },
-                { cta: '4.1.1.01 · Ventas / Ingresos por servicios', debe: 0, haber: base + exento }];
+                { cta: '4.1.1.01 · Venta de mercancía', debe: 0, haber: base + exento }];
               if (iva > 0.005) ln.push({ cta: '2.1.3.01 · IVA débito fiscal', debe: 0, haber: iva });
               window.__postAsiento('Venta s/libro · factura ' + v.numFactura + ' · ' + v.nombre, v.numFactura, ln, 'auto').then((r) => { if (r && r.error) console.warn('[DigiAccount] No se pudo contabilizar la venta del libro:', r.error.message); });
             }
@@ -7880,7 +7880,7 @@
                 if (base + ex > 0.005) lineas.push({ cta: '5.1.1.02 · Compra de Mercancía', debe: 0, haber: base + ex });
                 if (iva > 0.005) lineas.push({ cta: '1.1.3.01 · IVA crédito fiscal', debe: 0, haber: iva });
               } else {
-                lineas = [{ cta: '4.1.1.01 · Ventas / Ingresos por servicios', debe: base + ex, haber: 0 }];
+                lineas = [{ cta: '4.1.1.01 · Venta de mercancía', debe: base + ex, haber: 0 }];
                 if (iva > 0.005) lineas.push({ cta: '2.1.3.01 · IVA débito fiscal', debe: iva, haber: 0 });
                 if (igtf > 0.005) lineas.push({ cta: '2.1.4.03 · IGTF por pagar', debe: igtf, haber: 0 });
                 lineas.push({ cta: '1.1.2.01 · Cuentas por cobrar comerciales', debe: 0, haber: tot });
@@ -8041,7 +8041,7 @@
       if (!(yaLV && yaLV.length) && v.tot > 0.005) {
         const ln = [{ cta: '1.1.1.03 · Bancos', debe: r2c(v.tot - retMes), haber: 0 }];
         if (retMes > 0.005) ln.push({ cta: '1.1.3.03 · Retenciones IVA soportadas', debe: r2c(retMes), haber: 0 });
-        ln.push({ cta: '4.1.1.01 · Ventas / Ingresos por servicios', debe: 0, haber: r2c(v.be) });
+        ln.push({ cta: '4.1.1.01 · Venta de mercancía', debe: 0, haber: r2c(v.be) });
         if (v.iva > 0.005) ln.push({ cta: '2.1.3.01 · IVA débito fiscal', debe: 0, haber: r2c(v.iva) });
         mkAsiento('Ventas del mes (resumen Libro de Ventas) · ' + _perLabel(), 'LV-' + mm + '/' + anio, ln);
         retDisp = r2c(retDisp + retMes);
