@@ -5348,6 +5348,7 @@
         + '<input type="number" step="0.01" id="basePrestInput" value="' + baseMes.toFixed(2) + '" style="width:150px;height:32px;border:1px solid var(--border-strong);border-radius:8px;padding:0 10px;font:inherit;text-align:right;background:var(--bg-surface);color:inherit;"></div>'
         + '<button class="btn btn-ghost" id="basePrestMin" style="height:30px;font-size:11px;" title="Usar el salario mínimo cotizable">Mínimo legal</button>'
         + '<button class="btn btn-ghost" id="basePrestUsd" style="height:30px;font-size:11px;" title="Convertir un monto en USD a Bs a la tasa BCV">Desde $…</button>'
+        + '<button class="btn btn-ghost" id="basePrestReal" style="height:30px;font-size:11px;background:var(--da-cyan-50);border-color:var(--da-cyan-100);" title="Usar el sueldo REAL del trabajador: salario base + bono de contingencia (paquete a tasa BCV). Legalmente el bono no es cotizable, pero refleja lo que el trabajador realmente gana.">Sueldo real (base + bono)</button>'
         + '<span style="font-size:11px;color:' + (ajustada ? '#0a7a44' : 'var(--fg-muted)') + ';">' + (ajustada ? '✓ base ajustada' : 'base = mínimo legal') + '</span>'
         + '</div>';
 
@@ -5417,6 +5418,15 @@
         const usd = parseFloat(window.prompt('Salario mensual en USD (se convierte a Bs a la tasa BCV ' + (tasa ? 'Bs ' + fmt(tasa) : 'del día') + '):', '100'));
         if (usd > 0 && tasa > 0) aplicarBase(usd * tasa);
         else if (!tasa) { if (window.toast) window.toast('Aún no cargó la tasa BCV; escribe el monto en Bs directamente.', 'info'); }
+      });
+      const btnReal = host.querySelector('#basePrestReal');
+      if (btnReal) btnReal.addEventListener('click', () => {
+        // Sueldo real mensual = (salario base del período + bono de contingencia) × períodos por mes
+        const p = calcPago(emp);
+        const div = (p.f && p.f.div) ? p.f.div : 1;
+        const baseReal = (p.sueldo + p.bonoContingencia) * div;
+        if (baseReal > 0) { aplicarBase(baseReal); if (window.toast) window.toast('Base = sueldo real (base + bono de contingencia): Bs ' + fmt(baseReal), 'success'); }
+        else if (window.toast) window.toast('Este trabajador no tiene paquete/bono configurado.', 'info');
       });
       const btn = host.querySelector('[data-recibo]');
       if (btn) btn.addEventListener('click', () => openRecibo(tab, emp, c));
