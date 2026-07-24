@@ -5895,7 +5895,7 @@
           + '<td>' + emp.formaPago + '</td>'
           + '<td class="num">' + fmt(emp.salarioMes / divPer) + '</td>'
           + '<td>' + (FREC_TAG[emp.frecHabitual] || FREC_TAG.quincenal) + '</td>'
-          + '<td style="white-space:nowrap;"><button class="btn btn-ghost" data-emp-edit="' + i + '" title="Editar trabajador" style="height:28px;font-size:11px;padding:0 9px;"><i data-lucide="pencil"></i></button> <button class="btn btn-ghost" data-emp-idx="' + i + '" style="height:28px;font-size:11px;padding:0 10px;"><i data-lucide="file-text"></i> Recibo</button></td>'
+          + '<td style="white-space:nowrap;"><button class="btn btn-ghost" data-emp-edit="' + i + '" title="Editar trabajador" style="height:28px;font-size:11px;padding:0 9px;"><i data-lucide="pencil"></i></button> <button class="btn btn-ghost" data-emp-exp="' + i + '" title="Expediente (cédula, RIF, contrato)" style="height:28px;font-size:11px;padding:0 9px;"><i data-lucide="folder"></i></button> <button class="btn btn-ghost" data-emp-idx="' + i + '" style="height:28px;font-size:11px;padding:0 10px;"><i data-lucide="file-text"></i> Recibo</button></td>'
           + '</tr>';
       }).join('');
       tbody.querySelectorAll('button[data-emp-idx]').forEach((b) => {
@@ -5903,6 +5903,9 @@
       });
       tbody.querySelectorAll('button[data-emp-edit]').forEach((b) => {
         b.addEventListener('click', () => formEmpleado(empleados[parseInt(b.dataset.empEdit, 10)]));
+      });
+      tbody.querySelectorAll('button[data-emp-exp]').forEach((b) => {
+        b.addEventListener('click', () => expedienteEmpleado(empleados[parseInt(b.dataset.empExp, 10)]));
       });
       // Mantener el contador de empleados sincronizado
       const badge = view.querySelector('.contrib-badge');
@@ -6005,6 +6008,78 @@
             if (error) { t('No se pudo guardar: ' + error.message, 'error'); return; }
             if (window.cargarEmpleados) window.cargarEmpleados();
             t(esEdit ? 'Trabajador actualizado' : 'Trabajador "' + v.nombre.trim() + '" registrado');
+          });
+        },
+      });
+    }
+
+    // Expediente digital del trabajador (Bóveda de Nómina): cédula, RIF, contrato…
+    const _DOC_BUCKET = 'documentos-fiscales';
+    const _safeKey = (s) => (s || '').replace(/[^a-zA-Z0-9._-]/g, '_');
+    function expedienteEmpleado(emp) {
+      const t = (m, tp) => { if (window.toast) window.toast(m, tp); };
+      if (!window.sb || !window.__CUENTA_ID || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) { t('No hay una empresa activa.', 'error'); return; }
+      let fileEl = null;
+      const escH = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+      const fmtKb = (n) => { n = Number(n) || 0; return n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(1) + ' KB' : (n / 1048576).toFixed(1) + ' MB'; };
+      async function pintarLista(cont) {
+        const { data, error } = await window.sb.from('documentos_empleado').select('*').eq('empleado_id', emp.id).order('creado_en', { ascending: false });
+        if (error) { cont.innerHTML = '<div style="font-size:12px;color:var(--fg-muted);">No se pudo cargar (¿creaste la tabla documentos_empleado?).</div>'; return; }
+        if (!data || !data.length) { cont.innerHTML = '<div style="font-size:12px;color:var(--fg-muted);padding:6px 0;">Aún no hay documentos cargados para este trabajador.</div>'; return; }
+        const tag = (t) => { const c = /dula/i.test(t) ? 'cyan' : /rif/i.test(t) ? 'slate' : /contrato/i.test(t) ? 'success' : 'amber'; return '<span class="tag ' + c + '">' + escH(t) + '</span>'; };
+        cont.innerHTML = data.map((d) => {
+          const fecha = d.creado_en ? new Date(d.creado_en).toLocaleDateString('es-VE') : '';
+          return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px;">'
+            + '<div style="flex:0 0 150px;">' + tag(d.tipo) + '</div>'
+            + '<div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" class="mono" title="' + escH(d.nombre) + '">' + escH(d.nombre || '') + '</div>'
+            + '<div style="flex:0 0 auto;color:var(--fg-muted);">' + escH(fecha) + ' · ' + fmtKb(d.tamano) + '</div>'
+            + '<button class="btn btn-ghost" data-doc-ver="' + escH(d.storage_path) + '" title="Ver / descargar" style="height:26px;padding:0 8px;"><i data-lucide="eye"></i></button>'
+            + '<button class="btn btn-ghost" data-doc-del="' + escH(d.id) + '" data-doc-path="' + escH(d.storage_path) + '" title="Eliminar" style="height:26px;padding:0 8px;color:#c0392b;"><i data-lucide="trash-2"></i></button>'
+            + '</div>';
+        }).join('');
+        if (window.lucide) window.lucide.createIcons();
+        cont.querySelectorAll('[data-doc-ver]').forEach((b) => b.addEventListener('click', async (e) => {
+          e.preventDefault();
+          const { data: sig, error: er } = await window.sb.storage.from(_DOC_BUCKET).createSignedUrl(b.dataset.docVer, 120);
+          if (er || !sig) { t('No se pudo abrir: ' + (er && er.message), 'error'); return; }
+          window.open(sig.signedUrl, '_blank');
+        }));
+        cont.querySelectorAll('[data-doc-del]').forEach((b) => b.addEventListener('click', async (e) => {
+          e.preventDefault();
+          if (!window.confirm('¿Eliminar este documento del expediente? No se puede deshacer.')) return;
+          await window.sb.storage.from(_DOC_BUCKET).remove([b.dataset.docPath]);
+          const { error: er } = await window.sb.from('documentos_empleado').delete().eq('id', b.dataset.docDel);
+          if (er) { t('No se pudo eliminar: ' + er.message, 'error'); return; }
+          t('Documento eliminado', 'success'); pintarLista(cont);
+        }));
+      }
+      window.openFormModal({
+        title: 'Expediente de ' + emp.nombre,
+        saveLabel: 'Subir documento',
+        fields: [
+          { name: 'lista', label: 'Documentos cargados', col: 2, type: 'static', html: '<div id="expLista" style="max-height:220px;overflow:auto;">Cargando…</div>' },
+          { name: 'tipo', label: 'Tipo de documento', type: 'select', options: ['Cédula de identidad', 'RIF', 'Contrato de trabajo', 'Otro'] },
+          { name: 'archivo', label: 'Archivo (PDF, imagen…)', type: 'file' },
+        ],
+        afterRender: (body) => {
+          fileEl = body.querySelector('[data-name="archivo"]');
+          const cont = body.querySelector('#expLista');
+          if (cont) pintarLista(cont);
+        },
+        onSave: (v) => {
+          const file = fileEl && fileEl.files && fileEl.files[0];
+          if (!file) return 'Selecciona un archivo.';
+          const path = window.__CUENTA_ID + '/' + window.__EMPRESA_ACTIVA.id + '/empleado/' + emp.id + '/' + _safeKey(v.tipo) + '/' + Date.now() + '_' + _safeKey(file.name);
+          window.sb.storage.from(_DOC_BUCKET).upload(path, file, { upsert: false, contentType: file.type || undefined }).then(({ error }) => {
+            if (error) { t('No se pudo subir: ' + error.message, 'error'); return; }
+            window.sb.from('documentos_empleado').insert({
+              cuenta_id: window.__CUENTA_ID, empresa_id: window.__EMPRESA_ACTIVA.id, empleado_id: emp.id,
+              tipo: v.tipo, nombre: file.name, storage_path: path, mime: file.type, tamano: file.size,
+            }).then(({ error: e2 }) => {
+              if (e2) { t('Archivo subido pero no se registró: ' + e2.message, 'error'); return; }
+              t('Documento guardado en el expediente', 'success');
+              expedienteEmpleado(emp); // reabre para refrescar la lista
+            });
           });
         },
       });
