@@ -192,7 +192,7 @@
     if (!window.sb || !dd || !addBtn) return;
     // SOLO las empresas de MI cuenta: sin este filtro, el fundador (superadmin,
     // que por RLS ve todo) veía en su selector las empresas de TODOS los clientes.
-    let q = window.sb.from('empresas').select('id, nombre, rif, condicion_fiscal, fiscal_activo, firma_empresa, direccion, telefono');
+    let q = window.sb.from('empresas').select('id, nombre, rif, condicion_fiscal, fiscal_activo, firma_empresa, direccion, telefono, representante, representante_ci, representante_cargo, registro_mercantil, ciudad');
     if (window.__CUENTA_ID) q = q.eq('cuenta_id', window.__CUENTA_ID);
     const { data, error } = await q.order('nombre');
     if (error) { console.warn('[DigiAccount] No se pudieron cargar las empresas:', error.message); return; }
@@ -298,11 +298,17 @@
         { name: 'cond', label: 'Condición fiscal', type: 'select', options: ['ordinario', 'formal', 'especial'], value: emp.condicion_fiscal || 'ordinario' },
         { name: 'direccion', label: 'Dirección (aparece en los recibos)', col: 2, placeholder: 'Ej. Cambural - Edo. Yaracuy', value: emp.direccion || '' },
         { name: 'telefono', label: 'Teléfono', placeholder: '0414-1234567', value: emp.telefono || '' },
+        { name: 'ciudad', label: 'Ciudad / Estado (para contratos)', placeholder: 'Ej. San Felipe, Edo. Yaracuy', value: emp.ciudad || '' },
+        { name: 'registroMercantil', label: 'Registro Mercantil (Nº / Tomo / Folio)', col: 2, placeholder: 'Ej. Nº 45, Tomo 12-A, año 2020', value: emp.registro_mercantil || '' },
+        { name: 'representante', label: 'Representante legal', placeholder: 'Nombre y apellido', value: emp.representante || '' },
+        { name: 'representanteCi', label: 'C.I. del representante', placeholder: 'V-00.000.000', value: emp.representante_ci || '' },
+        { name: 'representanteCargo', label: 'Cargo del representante', placeholder: 'Ej. Gerente General', value: emp.representante_cargo || '' },
       ],
       onSave: (v) => {
         if (!v.nombre) return 'Indica el nombre de la empresa.';
         if (!v.rif) return 'Indica el RIF.';
-        window.sb.from('empresas').update({ nombre: v.nombre.trim(), rif: v.rif.trim(), condicion_fiscal: v.cond, direccion: (v.direccion || '').trim() || null, telefono: (v.telefono || '').trim() || null })
+        window.sb.from('empresas').update({ nombre: v.nombre.trim(), rif: v.rif.trim(), condicion_fiscal: v.cond, direccion: (v.direccion || '').trim() || null, telefono: (v.telefono || '').trim() || null,
+            ciudad: (v.ciudad || '').trim() || null, registro_mercantil: (v.registroMercantil || '').trim() || null, representante: (v.representante || '').trim() || null, representante_ci: (v.representanteCi || '').trim() || null, representante_cargo: (v.representanteCargo || '').trim() || null })
           .eq('id', emp.id).then(({ error }) => {
             if (error) { if (window.toast) window.toast('No se pudo guardar: ' + error.message, 'error'); return; }
             if (window.toast) window.toast('Empresa actualizada ✓', 'success');
@@ -5936,6 +5942,7 @@
         formaPago: r.forma_pago || 'Transferencia', frecHabitual: r.frecuencia || 'quincenal',
         prestamoCuota: Number(r.prestamo_cuota) || 0, cajaAhorroPct: (Number(r.caja_ahorro_pct) || 0) / 100,
         contingenciaUSD: Number(r.contingencia_usd) || 0,
+        nacionalidad: r.nacionalidad || '', estadoCivil: r.estado_civil || '', direccion: r.direccion || '',
         correo: r.correo || '', whatsapp: r.whatsapp || '',
         horasExtra: 0, horasNoct: 0, diasFeriado: 0, comisionBs: 0, bonoProdBs: 0, anticipoSueldo: 0,
         color: r.color || PAL[i % PAL.length], ini: r.ini || (r.nombre || '?').split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase(),
@@ -5964,6 +5971,9 @@
         fields: [
           { name: 'nombre', label: 'Nombre y apellido', col: 2, placeholder: 'Ej. Juan Pérez', value: emp ? emp.nombre : '' },
           { name: 'cedula', label: 'Cédula', placeholder: 'V-00.000.000', value: emp ? emp.cedula : '' },
+          { name: 'nacionalidad', label: 'Nacionalidad', type: 'select', value: emp && emp.nacionalidad ? emp.nacionalidad : 'Venezolana', options: ['Venezolana', 'Extranjera'] },
+          { name: 'estadoCivil', label: 'Estado civil', type: 'select', value: emp && emp.estadoCivil ? emp.estadoCivil : 'Soltero(a)', options: ['Soltero(a)', 'Casado(a)', 'Divorciado(a)', 'Viudo(a)', 'Unión estable de hecho'] },
+          { name: 'direccion', label: 'Dirección de habitación', col: 2, placeholder: 'Domicilio del trabajador (para el contrato)', value: emp && emp.direccion ? emp.direccion : '' },
           { name: 'cargo', label: 'Cargo', placeholder: 'Ej. Asistente', value: emp ? emp.cargo : '' },
           { name: 'depto', label: 'Departamento', placeholder: 'Ej. Administración', value: emp && emp.depto !== '—' ? emp.depto : '' },
           { name: 'tipo', label: 'Tipo de trabajador', type: 'select', value: emp ? emp.tipo : 'Administrativo', options: ['Administrativo', 'Planta', 'Producción', 'Gerencia'] },
@@ -5998,6 +6008,7 @@
           const datos = {
             nombre: v.nombre.trim(), cedula: v.cedula.trim(), cargo: v.cargo.trim(), depto: (v.depto || '').trim() || null,
             tipo: v.tipo, ingreso: v.ingreso || null, salario_mes: sal, contingencia_usd: parseFloat(v.contingenciaUSD) || 0, transporte_usd: parseFloat(v.transporteUSD) || 0,
+            nacionalidad: v.nacionalidad || null, estado_civil: v.estadoCivil || null, direccion: (v.direccion || '').trim() || null,
             forma_pago: v.formaPago, frecuencia: v.frec, sujeto_dpp: (v.dpp === 'Sí'), caja_ahorro_pct: parseFloat(v.cajaAhorroPct) || 0, ini: ini,
             correo: (v.correo || '').trim() || null, whatsapp: (v.whatsapp || '').trim() || null,
           };
@@ -6056,6 +6067,8 @@
       window.openFormModal({
         title: 'Expediente de ' + emp.nombre,
         saveLabel: 'Subir documento',
+        extraLabel: 'Generar contrato',
+        onExtra: () => generarContrato(emp),
         fields: [
           { name: 'lista', label: 'Documentos cargados', col: 2, type: 'static', html: '<div id="expLista" style="max-height:220px;overflow:auto;">Cargando…</div>' },
           { name: 'tipo', label: 'Tipo de documento', type: 'select', options: ['Cédula de identidad', 'RIF', 'Contrato de trabajo', 'Otro'] },
@@ -6083,6 +6096,62 @@
           });
         },
       });
+    }
+
+    // Genera el Contrato de Trabajo rellenado con la ficha de empresa + trabajador
+    const _MESES_C = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+    async function generarContrato(emp) {
+      const t = (m, tp) => { if (window.toast) window.toast(m, tp); };
+      if (!window.sb || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) { t('No hay una empresa activa.', 'error'); return; }
+      const { data: e, error } = await window.sb.from('empresas').select('*').eq('id', window.__EMPRESA_ACTIVA.id).single();
+      if (error || !e) { t('No se pudieron leer los datos de la empresa.', 'error'); return; }
+      const esc = (s) => String(s == null ? '' : s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+      const linea = (w) => '<span style="display:inline-block;min-width:' + (w || 130) + 'px;border-bottom:1px solid #888;">&nbsp;</span>';
+      const V = (x, w) => (x && String(x).trim()) ? '<b>' + esc(x) + '</b>' : linea(w);          // dato o línea en blanco
+      const fmtBs = (n) => 'Bs ' + (Number(n) || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const fechaLarga = (d) => { try { return d.getDate() + ' de ' + _MESES_C[d.getMonth()] + ' de ' + d.getFullYear(); } catch (x) { return linea(150); } };
+      const hoy = new Date();
+      const paquete = Number(emp.contingenciaUSD) || 0;
+      const frec = emp.frecHabitual || 'quincenal';
+      const cl = (n, titulo, cuerpo) => '<div style="margin:0 0 11px;"><div style="font-weight:700;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:#003057;margin-bottom:3px;">Cláusula ' + n + ' — ' + titulo + '</div><div style="text-align:justify;">' + cuerpo + '</div></div>';
+
+      const html = '<div class="contrato-print" style="color:#14181d;font-family:Georgia,\'Times New Roman\',serif;font-size:12px;line-height:1.5;">'
+        + '<div style="text-align:center;border-bottom:2px solid #003057;padding-bottom:8px;margin-bottom:14px;">'
+        + '<div style="font-weight:700;font-size:15px;">CONTRATO INDIVIDUAL DE TRABAJO POR TIEMPO INDETERMINADO</div>'
+        + '<div style="font-size:10px;color:#555;margin-top:2px;">Conforme a la Ley Orgánica del Trabajo, los Trabajadores y las Trabajadoras (LOTTT) — República Bolivariana de Venezuela</div></div>'
+        + '<p style="text-align:justify;margin:0 0 12px;">Entre, por una parte, ' + V(e.nombre, 150) + ', inscrita en el Registro Mercantil ' + V(e.registro_mercantil, 150) + ', con Registro de Información Fiscal (RIF) ' + V(e.rif, 90) + ' y domicilio en ' + V(e.direccion, 160) + ', representada en este acto por ' + V(e.representante, 150) + ', titular de la cédula de identidad Nº ' + V(e.representante_ci, 100) + ', en su carácter de ' + V(e.representante_cargo, 120) + ', quien en lo sucesivo se denominará <b>«LA ENTIDAD DE TRABAJO»</b>; y por la otra parte, ' + V(emp.nombre, 150) + ', de nacionalidad ' + V(emp.nacionalidad, 90) + ', mayor de edad, de estado civil ' + V(emp.estadoCivil, 90) + ', titular de la cédula de identidad Nº ' + V(emp.cedula, 100) + ' y domiciliado(a) en ' + V(emp.direccion, 160) + ', quien en lo sucesivo se denominará <b>«EL TRABAJADOR / LA TRABAJADORA»</b>; hemos convenido en celebrar el presente Contrato Individual de Trabajo, que se regirá por las cláusulas siguientes:</p>'
+        + cl('Primera', 'Objeto y cargo', 'EL TRABAJADOR se obliga a prestar sus servicios personales, de manera subordinada y por cuenta de LA ENTIDAD DE TRABAJO, desempeñando el cargo de ' + V(emp.cargo, 120) + (emp.depto && emp.depto !== '—' ? ', adscrito(a) al departamento de ' + V(emp.depto, 120) : '') + ', ejecutando las funciones propias e inherentes a dicho cargo y las tareas conexas que le sean razonablemente asignadas, con la diligencia e idoneidad debidas.')
+        + cl('Segunda', 'Lugar de la prestación del servicio', 'EL TRABAJADOR prestará sus servicios en la sede de LA ENTIDAD DE TRABAJO ubicada en ' + V(e.direccion, 160) + ', sin perjuicio de que, por necesidades del servicio, pueda ser trasladado(a) a otra sede dentro de la misma localidad, respetando sus condiciones de trabajo conforme a la LOTTT.')
+        + cl('Tercera', 'Jornada y horario', 'La jornada será de tipo ' + linea(70) + ' (diurna/nocturna/mixta), con el horario de ' + linea(60) + ' a ' + linea(60) + ', de ' + linea(110) + ', con día(s) de descanso semanal el ' + linea(90) + '. La jornada no excederá los límites del artículo 173 de la LOTTT. Las horas extraordinarias requerirán autorización previa y el recargo legal (artículo 118).')
+        + cl('Cuarta', 'Salario y forma de pago', 'Como contraprestación, EL TRABAJADOR percibirá: <b>(i)</b> un salario base mensual de ' + (Number(emp.salarioMes) > 0 ? '<b>' + fmtBs(emp.salarioMes) + '</b>' : linea(120)) + ', de carácter normal y cotizable, base de cálculo de las cotizaciones de seguridad social; y <b>(ii)</b> una asignación complementaria acordada de ' + (paquete > 0 ? '<b>US$ ' + paquete + '</b>' : linea(80)) + ' por período de pago, pagadera en bolívares a la tasa oficial del BCV vigente a la fecha de pago, con carácter de bono de contingencia no salarial en los términos convenidos. El pago se efectuará por período <b>' + esc(frec) + '</b>, mediante ' + V(emp.formaPago, 100) + ', previa deducción de los aportes de ley.')
+        + cl('Quinta', 'Beneficio de alimentación (Cestaticket)', 'LA ENTIDAD DE TRABAJO otorgará el beneficio de alimentación equivalente a <b>US$ ' + (CESTATICKET_USD || 40) + '</b> mensuales, pagadero en bolívares a la tasa BCV vigente conforme a la normativa aplicable. No tiene carácter salarial ni está sujeto a deducciones.')
+        + cl('Sexta', 'Deducciones legales', 'Del salario normal se descontarán los aportes del trabajador conforme a la ley: Seguro Social Obligatorio (IVSS), Régimen Prestacional de Empleo, Fondo de Ahorro Obligatorio para la Vivienda (FAOV) y cualquier otra deducción legal o autorizada por escrito por EL TRABAJADOR.')
+        + cl('Séptima', 'Prestaciones sociales', 'EL TRABAJADOR tendrá derecho a la garantía y pago de sus prestaciones sociales conforme al artículo 142 de la LOTTT, depositadas o acreditadas trimestralmente y liquidadas a la terminación de la relación laboral por la fórmula más favorable.')
+        + cl('Octava', 'Vacaciones y bono vacacional', 'Vacaciones anuales remuneradas de quince (15) días hábiles al cumplir un año de servicio, más un (1) día adicional por año subsiguiente hasta el máximo de ley (artículo 190), y bono vacacional conforme al artículo 192 de la LOTTT.')
+        + cl('Novena', 'Participación en los beneficios (utilidades)', 'EL TRABAJADOR participará en los beneficios anuales conforme a los artículos 131 y siguientes de la LOTTT, con el mínimo de treinta (30) días de salario según los resultados del ejercicio.')
+        + cl('Décima', 'Duración e inicio', 'El presente contrato es por <b>tiempo indeterminado</b> y comienza a regir a partir del ' + (emp.ingreso ? '<b>' + fechaLarga(emp.ingreso) + '</b>' : linea(150)) + '. La relación se rige por el principio de estabilidad e inamovilidad laboral en los términos de la LOTTT y los decretos vigentes.')
+        + cl('Décima Primera', 'Obligaciones del trabajador', 'EL TRABAJADOR se obliga a prestar el servicio con diligencia y probidad; cumplir las instrucciones y el reglamento interno; conservar y usar adecuadamente los bienes y herramientas; observar las normas de seguridad y salud laboral (LOPCYMAT); y guardar reserva sobre la información de la empresa.')
+        + cl('Décima Segunda', 'Confidencialidad', 'EL TRABAJADOR mantendrá estricta confidencialidad sobre la información comercial, financiera, técnica y de clientes a la que tenga acceso, obligación que subsistirá aún después de terminada la relación de trabajo.')
+        + cl('Décima Tercera', 'Seguridad y salud en el trabajo', 'LA ENTIDAD DE TRABAJO notificará los riesgos del puesto y proveerá las condiciones y dotación conforme a la LOPCYMAT y su Reglamento; EL TRABAJADOR cumplirá las políticas de prevención.')
+        + cl('Décima Cuarta', 'Terminación de la relación', 'La relación podrá terminar por las causas previstas en la LOTTT: despido justificado (artículo 79), retiro justificado (artículo 80), voluntad común o causas ajenas a la voluntad de las partes (artículos 76 y siguientes), con el pago de las indemnizaciones y prestaciones que correspondan.')
+        + cl('Décima Quinta', 'Régimen supletorio y jurisdicción', 'En lo no previsto se aplicará la LOTTT, su Reglamento y demás normativa vigente. Las partes se someten a la jurisdicción de los Tribunales del Trabajo de ' + V(e.ciudad, 130) + '.')
+        + cl('Décima Sexta', 'Aceptación', 'Leídas las cláusulas anteriores, las partes las aceptan en todas sus partes. Se firman dos (2) ejemplares de un mismo tenor y a un solo efecto, quedando uno en poder de cada parte.')
+        + '<p style="margin:14px 0 0;">En ' + V(e.ciudad, 120) + ', a los ' + hoy.getDate() + ' días del mes de ' + _MESES_C[hoy.getMonth()] + ' de ' + hoy.getFullYear() + '.</p>'
+        + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:30px;margin-top:44px;">'
+        + '<div style="text-align:center;"><div style="border-top:1.4px solid #14181d;margin-top:40px;padding-top:6px;font-weight:700;font-size:11px;">POR LA ENTIDAD DE TRABAJO</div><div style="font-size:10.5px;color:#555;margin-top:2px;">' + esc(e.representante || '') + (e.representante_ci ? ' · C.I. ' + esc(e.representante_ci) : '') + '</div></div>'
+        + '<div style="text-align:center;"><div style="border-top:1.4px solid #14181d;margin-top:40px;padding-top:6px;font-weight:700;font-size:11px;">EL TRABAJADOR / LA TRABAJADORA</div><div style="font-size:10.5px;color:#555;margin-top:2px;">' + esc(emp.nombre || '') + (emp.cedula ? ' · C.I. ' + esc(emp.cedula) : '') + '</div></div>'
+        + '</div></div>';
+
+      let portal = document.getElementById('printPortal');
+      if (!portal) { portal = document.createElement('div'); portal.id = 'printPortal'; document.body.appendChild(portal); }
+      portal.innerHTML = html;
+      if (window.__setPageSize) window.__setPageSize('letter portrait', '16mm');
+      document.body.classList.add('printing-comp');
+      const tOrig = document.title;
+      document.title = ('Contrato de trabajo - ' + (emp.nombre || '')).replace(/[\\/:*?"<>|]/g, '-');
+      const restore = () => { document.body.classList.remove('printing-comp'); const p = document.getElementById('printPortal'); if (p) p.innerHTML = ''; document.title = tOrig; window.removeEventListener('afterprint', restore); };
+      window.addEventListener('afterprint', restore);
+      window.print();
     }
 
     // Acciones del módulo: Nuevo trabajador / Procesar / Recalcular / Exportar
