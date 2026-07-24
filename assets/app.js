@@ -1378,7 +1378,7 @@
       if (!opts.noHead) {
         doc.innerHTML = '<div class="cp-head"><div class="cp-co">' + (((window.__EMPRESA_ACTIVA || {}).n) || '—') + ' · RIF ' + (((window.__EMPRESA_ACTIVA || {}).rif) || '—') + '</div>'
           + '<div class="cp-title">' + (opts.titulo || '') + '</div>'
-          + '<div class="cp-sub">' + (opts.sub || 'Ejercicio 2026 · Expresado en bolívares (Bs)') + '</div></div>';
+          + '<div class="cp-sub">' + (opts.sub || ((window.__ejercicioInfo ? window.__ejercicioInfo().label : 'Ejercicio') + ' · Expresado en bolívares (Bs)')) + '</div></div>';
       }
       const clone = sourceEl.cloneNode(true);
       clone.classList.remove('conta-tab');
@@ -1738,6 +1738,24 @@
       return map;
     }
 
+    // Ejercicio fiscal derivado de los asientos: año calendario (1 ene → 31 dic),
+    // salvo el PRIMER ejercicio, que va desde el inicio de actividades (primer
+    // asiento) hasta el 31 dic de ese año. El "corte" es la fecha del último asiento.
+    const _MESES_EJ = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+    function ejercicioInfo() {
+      const parse = (f) => { const p = String(f || '').split('/'); if (p.length < 3) return null; let y = p[2]; y = y.length === 2 ? '20' + y : y; const o = { y: +y, m: +p[1], d: +p[0] }; o.key = o.y * 10000 + o.m * 100 + o.d; return o; };
+      const ps = (asientosData || []).map((a) => parse(a.fecha)).filter(Boolean).sort((a, b) => a.key - b.key);
+      const fstr = (p) => p.d + ' de ' + _MESES_EJ[p.m - 1] + ' de ' + p.y;
+      if (!ps.length) { const y = new Date().getFullYear(); return { anio: y, corteStr: '', inicioStr: '', label: 'Ejercicio ' + y, periodo: 'Ejercicio ' + y }; }
+      const corte = ps[ps.length - 1], anio = corte.y;
+      // Los estados son acumulados: el período va desde el inicio de actividades
+      // (primer asiento) hasta el corte. Si algún día se filtra por ejercicio, aquí
+      // se aplicaría 1-ene→31-dic salvo el primer ejercicio (desde el inicio).
+      const ini = ps[0];
+      return { anio: anio, corteStr: fstr(corte), inicioStr: fstr(ini), label: 'Ejercicio ' + anio, periodo: 'Del ' + fstr(ini) + ' al ' + fstr(corte) };
+    }
+    window.__ejercicioInfo = ejercicioInfo;
+
     function renderBalance(map) {
       const tbody = view.querySelector('.conta-tab[data-tab="balance"] table.balance-table tbody');
       const tfoot = view.querySelector('.conta-tab[data-tab="balance"] table.balance-table tfoot');
@@ -1875,6 +1893,7 @@
       hd.forEach((d) => (d.innerHTML = ''));
       const co = tab.querySelector('.fin-statement-head .co');
       if (co && window.__EMPRESA_ACTIVA) co.textContent = window.__EMPRESA_ACTIVA.n + ' · ' + (window.__EMPRESA_ACTIVA.rif || '');
+      const perER = tab.querySelector('.fin-statement-head .period'); if (perER) perER.textContent = ejercicioInfo().periodo;
       return utilNeta;
     }
 
@@ -1907,6 +1926,9 @@
       if (hv[2]) hv[2].textContent = 'Bs ' + fmt2(tPat);
       if (hv[3]) hv[3].textContent = (tPC ? (tAC / tPC).toFixed(2) : '—') + '×';
       hd.forEach((d) => (d.innerHTML = ''));
+      const coBG = tab.querySelector('.fin-statement-head .co');
+      if (coBG && window.__EMPRESA_ACTIVA) coBG.textContent = window.__EMPRESA_ACTIVA.n + ' · ' + (window.__EMPRESA_ACTIVA.rif || '');
+      tab.querySelectorAll('.fin-statement-head .period').forEach((p) => { p.textContent = 'Al ' + ejercicioInfo().corteStr + ' · Bs'; });
       // Expone los totales para el módulo de Grandes Patrimonios (IGP)
       window.__BALANCE = { activo: tAct, pasivo: tPas, patrimonio: tPat };
       if (window.__renderIGP) window.__renderIGP();
@@ -1963,7 +1985,7 @@
       hd.forEach((d) => (d.innerHTML = ''));
       const co = tab.querySelector('.fin-statement-head .co');
       if (co && window.__EMPRESA_ACTIVA) co.textContent = window.__EMPRESA_ACTIVA.n + ' · ' + (window.__EMPRESA_ACTIVA.rif || '');
-      const per = tab.querySelector('.fin-statement-head .period'); if (per) per.textContent = 'Método directo';
+      const per = tab.querySelector('.fin-statement-head .period'); if (per) per.textContent = ejercicioInfo().periodo + ' · Método directo';
       const banner = tab.querySelector('.balance-check-banner');
       if (banner) banner.innerHTML = '<i data-lucide="check-circle-2"></i> Conciliado · Efectivo final Bs ' + fmt2(final) + ' coincide con el saldo de Caja y Bancos.';
     }
@@ -2000,6 +2022,10 @@
       renderFlujo();
       // Expone el enriquecimiento neto acumulado para el medidor de ISLR del ejercicio
       window.__UTILIDAD_NETA = utilNeta || 0;
+      // Cabecera de Contabilidad: overline y chip de período reflejan el ejercicio real
+      const ej = ejercicioInfo();
+      const ov = view.querySelector('.dash-header .overline'); if (ov) ov.textContent = 'Libros legales · ' + ej.label;
+      const dr = view.querySelector('.dash-header .date-range'); if (dr) dr.innerHTML = '<button data-active="true">' + ej.label + '</button>';
       if (window.__renderISLRanual) window.__renderISLRanual();
       if (window.lucide) window.lucide.createIcons();
     }
@@ -2138,7 +2164,7 @@
           rows.push([num, fecha, desc, ref, c[1] ? c[1].textContent : '', c[2] ? c[2].textContent : '', c[3] ? c[3].textContent : '']);
         });
       });
-      csvDownload(rows, 'Libro_Diario_2026-05.csv');
+      csvDownload(rows, 'Libro_Diario_Ejercicio_' + ejercicioInfo().anio + '.csv');
       toast('Libro Diario exportado a CSV');
     });
 
@@ -2152,7 +2178,7 @@
       table.querySelectorAll('tbody tr').forEach((tr) => {
         rows.push([...tr.querySelectorAll('td')].map((td) => td.textContent.replace(/\s+/g, ' ').trim()));
       });
-      csvDownload(rows, 'Activos_Fijos_2026-05.csv');
+      csvDownload(rows, 'Activos_Fijos_Ejercicio_' + ejercicioInfo().anio + '.csv');
       toast('Registro de activos exportado a CSV');
     });
 
@@ -2245,7 +2271,7 @@
       setT('mayorTitle', name);
       const tipoNat = deudora ? 'deudora' : 'acreedora';
       const grupo = { '1': 'Activo', '2': 'Pasivo', '3': 'Patrimonio', '4': 'Ingreso', '5': 'Costo', '6': 'Gasto' }[code.charAt(0)] || '';
-      setT('mayorSub', grupo + ' · Naturaleza ' + tipoNat + ' · Mayo 2026');
+      setT('mayorSub', grupo + ' · Naturaleza ' + tipoNat + ' · ' + ejercicioInfo().label);
       setT('mayorSaldoLbl', 'Saldo final ' + tipoNat);
       setT('mayorSaldoVal', 'Bs ' + fmt2(saldo));
       // Totales del pie
@@ -2273,7 +2299,7 @@
       view.querySelectorAll('#mayorBody tr').forEach((tr) => {
         rows.push([...tr.querySelectorAll('td')].map((td) => td.textContent.replace(/\s+/g, ' ').trim()));
       });
-      csvDownload(rows, 'Mayor_' + code + '_2026-05.csv');
+      csvDownload(rows, 'Mayor_' + code + '_Ejercicio_' + ejercicioInfo().anio + '.csv');
       toast('Mayor de ' + code + ' exportado a CSV');
     });
 
@@ -2281,9 +2307,9 @@
     // Cada estado clona solo su contenido esencial. Resultados/Flujo ya traen su propia
     // cabecera (noHead); Balance/General usan la cabecera generada.
     const finMeta = {
-      balance: { nombre: 'Balance de Comprobación', orient: 'landscape', sub: 'Al 28 de mayo de 2026 · Bs', sel: 'table.balance-table', head: true },
+      balance: { nombre: 'Balance de Comprobación', orient: 'landscape', subFn: () => 'Al ' + ejercicioInfo().corteStr + ' · Bs', sel: 'table.balance-table', head: true },
       resultados: { nombre: 'Estado de Resultados', orient: 'portrait', sel: '.fin-statement', head: false },
-      general: { nombre: 'Balance General', orient: 'portrait', sub: 'Al 31 de mayo de 2026 · Bs', sel: '.fin-two-col', head: true },
+      general: { nombre: 'Balance General', orient: 'portrait', subFn: () => 'Al ' + ejercicioInfo().corteStr + ' · Bs', sel: '.fin-two-col', head: true },
       flujo: { nombre: 'Flujo de Efectivo', orient: 'portrait', sel: '.fin-statement', head: false },
     };
     view.querySelectorAll('[data-fin-action]').forEach((btn) => {
@@ -2291,6 +2317,7 @@
         const pane = btn.closest('.conta-tab');
         if (!pane) return;
         const meta = finMeta[pane.dataset.tab] || { nombre: pane.dataset.tab, orient: 'portrait', sel: 'table', head: true };
+        const metaSub = meta.subFn ? meta.subFn() : meta.sub;
         if (btn.dataset.finAction === 'export') {
           const table = pane.querySelector('table');
           if (!table) { toast('No hay tabla para exportar', 'error'); return; }
@@ -2299,11 +2326,11 @@
             const cells = tr.querySelectorAll('th,td');
             if (cells.length) rows.push([...cells].map((c) => c.textContent.replace(/\s+/g, ' ').trim()));
           });
-          csvDownload(rows, meta.nombre.replace(/ /g, '_') + '_2026-05.csv');
+          csvDownload(rows, meta.nombre.replace(/ /g, '_') + '_Ejercicio_' + ejercicioInfo().anio + '.csv');
           toast(meta.nombre + ' exportado a CSV');
         } else {
           const src = pane.querySelector(meta.sel) || pane;
-          printContaDoc(src, { titulo: meta.nombre, orient: meta.orient, sub: meta.sub, noHead: !meta.head });
+          printContaDoc(src, { titulo: meta.nombre, orient: meta.orient, sub: metaSub, noHead: !meta.head });
         }
       });
     });
@@ -2314,21 +2341,21 @@
       const panel = view.querySelector('.conta-tab[data-tab="mayor"] .panel');
       const code = (document.getElementById('mayorBadge') || {}).textContent || '';
       const name = (document.getElementById('mayorTitle') || {}).textContent || '';
-      printContaDoc(panel, { titulo: 'Libro Mayor · ' + code, sub: name + ' · Mayo 2026', orient: 'portrait' });
+      printContaDoc(panel, { titulo: 'Libro Mayor · ' + code, sub: name + ' · ' + ejercicioInfo().label, orient: 'portrait' });
     });
 
     // ---- Imprimir Plan de Cuentas (vertical, solo la tabla) ----
     const planPrint = document.getElementById('planPrintBtn');
     if (planPrint) planPrint.addEventListener('click', () => {
       const table = view.querySelector('.conta-tab[data-tab="plan"] table.data-table');
-      printContaDoc(table, { titulo: 'Plan de Cuentas', sub: 'Catálogo de cuentas · VEN-NIF · 2026', orient: 'portrait' });
+      printContaDoc(table, { titulo: 'Plan de Cuentas', sub: 'Catálogo de cuentas · VEN-NIF · ' + ejercicioInfo().anio, orient: 'portrait' });
     });
 
     // ---- Imprimir Activos Fijos (horizontal, solo el registro) ----
     const activosPrint = document.getElementById('activosPrintBtn');
     if (activosPrint) activosPrint.addEventListener('click', () => {
       const table = view.querySelector('.conta-tab[data-tab="activos"] .data-table-wrap table.data-table');
-      printContaDoc(table, { titulo: 'Registro de Activos Fijos y Depreciación', sub: 'Mayo 2026 · Bs', orient: 'landscape' });
+      printContaDoc(table, { titulo: 'Registro de Activos Fijos y Depreciación', sub: ejercicioInfo().label + ' · Bs', orient: 'landscape' });
     });
   })();
 
