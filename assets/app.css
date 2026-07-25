@@ -4846,9 +4846,9 @@
     padding: 8px 12px; text-align: left;
   }
   table.recibo-table th.num { text-align: right; }
-  table.recibo-table td { padding: 9px 12px; border-bottom: 1px solid var(--da-slate-100); color: var(--fg-body); }
+  table.recibo-table td { padding: 9px 12px; border-bottom: 1px solid var(--da-slate-100); color: var(--fg-body); font-weight: var(--fw-semibold); }
   table.recibo-table td.num { text-align: right; font-family: var(--font-mono); color: var(--fg-primary); white-space: nowrap; }
-  table.recibo-table td .sub { display: block; font-size: 10px; color: var(--fg-muted); margin-top: 1px; }
+  table.recibo-table td .sub { display: block; font-size: 8.5px; font-weight: var(--fw-regular); color: var(--fg-muted); margin-top: 1px; }
   table.recibo-table tr.asig td { background: rgba(28,143,90,0.04); }
   table.recibo-table tr.ded td.num { color: var(--da-danger); }
   table.recibo-table tr.sec td { background: var(--da-navy-50); font-family: var(--font-display); font-weight: var(--fw-bold); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--da-navy-700); }
@@ -4885,7 +4885,11 @@
     #printPortal .recibo-doc .recibo-party .rp .l { font-size: 7.5px; }
     #printPortal .recibo-doc .recibo-party .rp .v { font-size: 9.5px; }
     #printPortal .recibo-doc .recibo-table th,
-    #printPortal .recibo-doc .recibo-table td { padding: 3px 8px; font-size: 9.5px; }
+    #printPortal .recibo-doc .recibo-table td { padding: 3px 8px; font-size: 10px; }
+    #printPortal .recibo-doc .recibo-table td { font-weight: 600; }
+    #printPortal .recibo-doc .recibo-table td.num { font-weight: 600; }
+    /* Base legal (Art. …): claramente más pequeña y tenue que el concepto */
+    #printPortal .recibo-doc .recibo-table td .sub { font-size: 7px; font-weight: 400; color: #8a98a8; }
     #printPortal .recibo-doc .recibo-table tr.sec td { padding: 3px 8px; font-size: 8.5px; }
     #printPortal .recibo-doc .recibo-words { font-size: 9px; margin: 6px 0; }
     #printPortal .recibo-doc .recibo-foot { margin-top: 10px; }
