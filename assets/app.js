@@ -5205,6 +5205,17 @@
       if (_basePrest[emp.id] != null) return _basePrest[emp.id];
       return SALARIO_MINIMO; // por defecto el mínimo cotizable; editable en cada cálculo
     }
+    // Fecha de inicio del disfrute de vacaciones por empleado (ISO 'aaaa-mm-dd'); default hoy.
+    const _vacInicio = {};
+    const _fmtFecha = (d) => ('0' + d.getDate()).slice(-2) + '/' + ('0' + (d.getMonth() + 1)).slice(-2) + '/' + d.getFullYear();
+    // Fecha de reingreso = primer día hábil (L-V) después de consumir 'dias' días hábiles desde 'inicio'.
+    function fechaReingreso(inicioISO, dias) {
+      const esHabil = (d) => d.getDay() !== 0 && d.getDay() !== 6;
+      let d = new Date(inicioISO + 'T00:00:00'); let cont = 0;
+      while (cont < dias) { if (esHabil(d)) cont++; if (cont < dias) d.setDate(d.getDate() + 1); }
+      do { d.setDate(d.getDate() + 1); } while (!esHabil(d));
+      return d;
+    }
     function calc(emp, baseOverrideMes) {
       // Base para prestaciones: el mínimo cotizable por defecto, o el monto que fije el
       // contador (salario real en Bs/$). El Bono de Contingencia sigue siendo no salarial.
@@ -5354,6 +5365,15 @@
 
       if (tab === 'vacaciones') {
         html += calcHead(emp, c, 'Período', String(HOY.getFullYear()));
+        const iniISO = _vacInicio[emp.id] || new Date().toISOString().slice(0, 10);
+        const reing = fechaReingreso(iniISO, c.diasVac);
+        html += '<div class="calc-basebar" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 12px;margin-bottom:10px;border:1px solid var(--border-strong);border-radius:10px;background:var(--bg-subtle);">'
+          + '<span style="font-size:12px;font-weight:600;">Inicio del disfrute:</span>'
+          + '<input type="date" id="vacInicioInput" value="' + iniISO + '" style="height:32px;border:1px solid var(--border-strong);border-radius:8px;padding:0 10px;font:inherit;background:var(--bg-surface);color:inherit;">'
+          + '<span style="font-size:12px;color:var(--fg-muted);">Reingreso:</span>'
+          + '<span style="font-size:13px;font-weight:700;color:#0a7a44;">' + _fmtFecha(reing) + '</span>'
+          + '<span style="font-size:11px;color:var(--fg-muted);">(' + c.diasVac + ' días hábiles de disfrute · L-V)</span>'
+          + '</div>';
         html += '<div class="calc-params">'
           + param('Antigüedad', c.y + ' <small>años</small>')
           + param('Salario diario', 'Bs ' + fmt(c.salDia))
@@ -5429,6 +5449,8 @@
         if (baseReal > 0) { aplicarBase(baseReal); if (window.toast) window.toast('Base = sueldo real (base + bono de contingencia): Bs ' + fmt(baseReal), 'success'); }
         else if (window.toast) window.toast('Este trabajador no tiene paquete/bono configurado.', 'info');
       });
+      const vacIni = host.querySelector('#vacInicioInput');
+      if (vacIni) vacIni.addEventListener('change', () => { if (vacIni.value) { _vacInicio[emp.id] = vacIni.value; renderCalc(tab); } });
       const btn = host.querySelector('[data-recibo]');
       if (btn) btn.addEventListener('click', () => openRecibo(tab, emp, c));
     }
@@ -5495,6 +5517,15 @@
         return '<tr class="' + r[0] + '"><td>' + r[1] + (r[2] ? '<span class="sub">' + r[2] + '</span>' : '') + '</td><td class="num">Bs</td><td class="num">' + fmt(r[3]) + '</td></tr>';
       }).join('');
 
+      // Datos de disfrute solo para el recibo de Vacaciones
+      let vacExtra = '';
+      if (tab === 'vacaciones') {
+        const iniISO = _vacInicio[emp.id] || new Date().toISOString().slice(0, 10);
+        const reing = fechaReingreso(iniISO, c.diasVac);
+        vacExtra = '<div class="rp"><div class="l">Inicio del disfrute</div><div class="v">' + _fmtFecha(new Date(iniISO + 'T00:00:00')) + '</div></div>'
+          + '<div class="rp"><div class="l">Fecha de reingreso</div><div class="v">' + _fmtFecha(reing) + '</div></div>';
+      }
+
       const EMPK = window.__EMPRESA_ACTIVA || {};
       doc.innerHTML =
         '<div class="recibo-head">'
@@ -5509,6 +5540,7 @@
         + '<div class="rp"><div class="l">Fecha de emisión</div><div class="v">' + fecha + '</div></div>'
         + '<div class="rp"><div class="l">Fecha de ingreso</div><div class="v">' + ('0' + emp.ingreso.getDate()).slice(-2) + '/' + ('0' + (emp.ingreso.getMonth() + 1)).slice(-2) + '/' + emp.ingreso.getFullYear() + '</div></div>'
         + '<div class="rp"><div class="l">Antigüedad</div><div class="v">' + c.y + ' años ' + c.fracMeses + ' meses</div></div>'
+        + vacExtra
         + '</div>'
         + '<table class="recibo-table"><thead><tr><th>Concepto</th><th class="num"></th><th class="num">Monto</th></tr></thead>'
         + '<tbody>' + rows + '</tbody>'
