@@ -5681,8 +5681,26 @@
       if (opt) opt.dataset.firma = url;
       if (window.toast) window.toast('Firma de la empresa guardada · se estampará en los recibos', 'success');
     }
+    // Borrar la firma autorizada de la empresa (los recibos vuelven a salir sin firma)
+    async function borrarFirmaEmpresa() {
+      if (!window.sb || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) { if (window.toast) window.toast('No hay empresa activa.', 'error'); return; }
+      const { error } = await window.sb.from('empresas').update({ firma_empresa: null }).eq('id', window.__EMPRESA_ACTIVA.id);
+      if (error) { if (window.toast) window.toast('No se pudo borrar: ' + error.message, 'error'); return; }
+      window.__EMPRESA_ACTIVA.firmaEmpresa = '';
+      const opt = document.querySelector('.entity-option[data-empresa-id="' + window.__EMPRESA_ACTIVA.id + '"]');
+      if (opt) opt.dataset.firma = '';
+      if (window.toast) window.toast('Firma de la empresa borrada · los recibos saldrán sin firma', 'success');
+    }
     const firmaEmpBtn = document.getElementById('reciboFirmaEmpresa');
-    if (firmaEmpBtn) firmaEmpBtn.addEventListener('click', () => { if (window.__abrirFirma) window.__abrirFirma(guardarFirmaEmpresa); });
+    if (firmaEmpBtn) firmaEmpBtn.addEventListener('click', () => {
+      // Si ya hay firma, ofrecer borrarla; si cancela (o no hay), abre el pad para firmar/reemplazar.
+      if (window.__EMPRESA_ACTIVA && window.__EMPRESA_ACTIVA.firmaEmpresa
+        && window.confirm('Esta empresa ya tiene una firma guardada que se estampa en los recibos.\n\n¿Quieres BORRARLA? (los recibos saldrán sin la firma de la empresa)\n\nAceptar = borrar · Cancelar = firmar de nuevo (reemplazar)')) {
+        borrarFirmaEmpresa();
+        return;
+      }
+      if (window.__abrirFirma) window.__abrirFirma(guardarFirmaEmpresa);
+    });
 
     // ---------- Recibo de pago (semanal / quincenal / mensual) ----------
     let payFreq = 'semanal'; // la mayoría del personal operativo cobra semanal (default más común)
