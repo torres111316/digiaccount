@@ -5456,25 +5456,25 @@
     function reciboRows(tab, c) {
       if (tab === 'vacaciones') {
         return [
-          ['asig', 'Salario por días de disfrute', c.diasVac + ' días', c.vacDisfrute],
-          ['asig', 'Bono vacacional', c.diasBonoVac + ' días', c.vacBono],
+          ['asig', 'Salario por días de disfrute', c.diasVac + ' días · Art. 190 LOTTT (15 días + 1 por año de servicio, tope 30)', c.vacDisfrute],
+          ['asig', 'Bono vacacional', c.diasBonoVac + ' días · Art. 192 LOTTT (15 días + 1 por año de servicio)', c.vacBono],
         ];
       }
       if (tab === 'utilidades') {
         return [
-          ['asig', 'Utilidades / aguinaldo', c.diasUtil + ' días', c.utilAnual],
-          ['ded', 'INCES · aporte del trabajador', '0,5% sobre utilidades (Ley INCES, Art. 14)', c.incesUtil],
+          ['asig', 'Utilidades / aguinaldo', c.diasUtil + ' días · Art. 131 y 132 LOTTT (mínimo 30 días de salario)', c.utilAnual],
+          ['ded', 'INCES · aporte del trabajador', '0,5% sobre las utilidades · Ley del INCES, Art. 14', c.incesUtil],
         ];
       }
       // liquidación
       return [
         ['sec', 'Prestaciones sociales (Art. 142 LOTTT)', '', null],
-        ['asig', 'Prestación a pagar', (c.usoRetro ? 'Retroactivo' : 'Garantía') + ' · ' + c.y + ' años', c.prestacion],
-        ['asig', 'Intereses sobre prestaciones', (TASA_INTERES * 100).toFixed(0) + '% ref.', c.intereses],
+        ['asig', 'Prestación a pagar', (c.usoRetro ? 'Cálculo retroactivo · 30 días por año' : 'Garantía · 15 días por trimestre') + ' · ' + c.y + ' años · Art. 142 LOTTT (se paga el monto mayor, literal d)', c.prestacion],
+        ['asig', 'Intereses sobre prestaciones', (TASA_INTERES * 100).toFixed(0) + '% anual referencial · Art. 143 LOTTT', c.intereses],
         ['sec', 'Conceptos fraccionados', '', null],
-        ['asig', 'Vacaciones fraccionadas', c.fracMeses + '/12', c.vacFrac],
-        ['asig', 'Bono vacacional fraccionado', c.fracMeses + '/12', c.bonoVacFrac],
-        ['asig', 'Utilidades fraccionadas', c.mesesAnio + '/12', c.utilFrac],
+        ['asig', 'Vacaciones fraccionadas', c.fracMeses + '/12 · Art. 190 y 196 LOTTT', c.vacFrac],
+        ['asig', 'Bono vacacional fraccionado', c.fracMeses + '/12 · Art. 192 LOTTT', c.bonoVacFrac],
+        ['asig', 'Utilidades fraccionadas', c.mesesAnio + '/12 · Art. 131 LOTTT', c.utilFrac],
       ];
     }
 
