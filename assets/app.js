@@ -5522,7 +5522,9 @@
       if (tab === 'vacaciones') {
         const iniISO = _vacInicio[emp.id] || new Date().toISOString().slice(0, 10);
         const reing = fechaReingreso(iniISO, c.diasVac);
-        vacExtra = '<div class="rp"><div class="l">Inicio del disfrute</div><div class="v">' + _fmtFecha(new Date(iniISO + 'T00:00:00')) + '</div></div>'
+        vacExtra = '<div class="rp"><div class="l">Salario mensual (base del cálculo)</div><div class="v">Bs ' + fmt(c.salDia * 30) + '</div></div>'
+          + '<div class="rp"><div class="l">Salario diario</div><div class="v">Bs ' + fmt(c.salDia) + '</div></div>'
+          + '<div class="rp"><div class="l">Inicio del disfrute</div><div class="v">' + _fmtFecha(new Date(iniISO + 'T00:00:00')) + '</div></div>'
           + '<div class="rp"><div class="l">Fecha de reingreso</div><div class="v">' + _fmtFecha(reing) + '</div></div>';
       }
 
