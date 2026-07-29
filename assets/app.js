@@ -7278,6 +7278,9 @@
      LIBROS DE COMPRAS / VENTAS — exportar (CSV) e imprimir
      ========================================================= */
   (function libros() {
+    // fmtF vive en otro IIFE (Libros fiscales, mas abajo) — se define aqui tambien
+    // porque printLibro/exportLibro corren en ESTE cierre y no pueden verla.
+    const fmtF = (n) => Number(n || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     function celda(td) { return td.textContent.replace(/\s+/g, ' ').trim(); }
 
     function exportLibro(scope) {
