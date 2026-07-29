@@ -7292,9 +7292,10 @@
       rows.push(['N°', 'Fecha', 'RIF', esCompra ? 'Proveedor' : 'Cliente', 'Factura', 'Control', 'Doc', 'Total', 'Exento', 'Base', 'Alíc.', 'IVA'].concat(esCompra ? [] : ['IGTF']));
       let tTot = 0, tEx = 0, tBase = 0, tIva = 0, tIgtf = 0;
       arr.forEach((r, i) => {
+        const anulada = /anulada/i.test(r.tercero_nombre || '');
         const tot = Number(r.total) || 0, ex = Number(r.exento) || 0, base = Number(r.base) || 0, iva = Number(r.iva) || 0, igtf = Number(r.igtf) || 0, alic = Number(r.alicuota) || 0;
-        tTot += tot; tEx += ex; tBase += base; tIva += iva; tIgtf += igtf;
-        const fila = [i + 1, r.fecha || '', r.tercero_rif || '', r.tercero_nombre || '', r.numero_factura || '', r.numero_control || '', r.tipo_doc || (esCompra ? 'FC' : 'FV'), fmtF(tot), fmtF(ex), fmtF(base), (alic > 0 ? Math.round(alic * 100) + '%' : 'Ex.'), fmtF(iva)];
+        if (!anulada) { tTot += tot; tEx += ex; tBase += base; tIva += iva; tIgtf += igtf; }
+        const fila = [i + 1, r.fecha || '', r.tercero_rif || '', anulada ? 'ANULADA' : (r.tercero_nombre || ''), r.numero_factura || '', r.numero_control || '', r.tipo_doc || (esCompra ? 'FC' : 'FV'), fmtF(tot), fmtF(ex), fmtF(base), (alic > 0 ? Math.round(alic * 100) + '%' : 'Ex.'), fmtF(iva)];
         if (!esCompra) fila.push(fmtF(igtf));
         rows.push(fila);
       });
@@ -7328,10 +7329,11 @@
       const arr = (window.__libroData && window.__libroData[tipo]) || [];
       let tTot = 0, tEx = 0, tBase = 0, tIva = 0, tIgtf = 0;
       const filas = arr.map((r, i) => {
+        const anulada = /anulada/i.test(r.tercero_nombre || '');
         const tot = Number(r.total) || 0, ex = Number(r.exento) || 0, base = Number(r.base) || 0, iva = Number(r.iva) || 0, igtf = Number(r.igtf) || 0, alic = Number(r.alicuota) || 0;
-        tTot += tot; tEx += ex; tBase += base; tIva += iva; tIgtf += igtf;
+        if (!anulada) { tTot += tot; tEx += ex; tBase += base; tIva += iva; tIgtf += igtf; }
         const alicTxt = alic > 0 ? (Math.round(alic * 100) + '%') : 'Ex.';
-        return '<tr><td>' + (i + 1) + '</td><td>' + (r.fecha || '') + '</td><td>' + (r.tercero_rif || '') + '</td><td>' + (r.tercero_nombre || '') + '</td>'
+        return '<tr' + (anulada ? ' style="opacity:.6;"' : '') + '><td>' + (i + 1) + '</td><td>' + (r.fecha || '') + '</td><td>' + (r.tercero_rif || '') + '</td><td>' + (anulada ? 'ANULADA' : (r.tercero_nombre || '')) + '</td>'
           + '<td>' + (r.numero_factura || '') + '</td><td>' + (r.numero_control || '') + '</td><td>' + (r.tipo_doc || (esCompra ? 'FC' : 'FV')) + '</td>'
           + '<td class="num">' + fmtF(tot) + '</td><td class="num">' + fmtF(ex) + '</td><td class="num">' + fmtF(base) + '</td><td>' + alicTxt + '</td><td class="num">' + fmtF(iva) + '</td>'
           + (esCompra ? '' : '<td class="num">' + fmtF(igtf) + '</td>') + '</tr>';
@@ -7529,6 +7531,17 @@
     cancelBtn.addEventListener('click', close);
     closeBtn.addEventListener('click', close);
     // Clic fuera NO cierra (evita perder datos del formulario). Usa Cancelar o la X.
+    // Atajos de teclado (aplican a TODOS los formularios de la app): Escape cancela,
+    // Ctrl/Cmd+Enter guarda (sin necesidad de soltar el teclado para hacer clic).
+    document.addEventListener('keydown', (e) => {
+      if (overlay.hidden) return;
+      // Si hay un sub-modal abierto ENCIMA (p. ej. "Nuevo tercero" desde F2), que sus propios
+      // botones manden — no interceptar Escape/Guardar del formulario de fondo.
+      const terOverlay = document.getElementById('terModal');
+      if (terOverlay && !terOverlay.hidden) return;
+      if (e.key === 'Escape') { e.preventDefault(); close(); }
+      else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveBtn.click(); }
+    });
   })();
 
   /* =========================================================
@@ -7745,13 +7758,14 @@
       const r2 = (x) => Math.round((x + 1e-9) * 100) / 100;
       const perDe = (row) => row.periodo || (String(row.fecha || '').split('/').length === 3 ? ('20' + row.fecha.split('/')[2] + '-' + String(row.fecha.split('/')[1]).padStart(2, '0')) : '');
       const [libRes, retRes] = await Promise.all([
-        window.__sbAll((q) => q.eq('empresa_id', emp.id), 'libro_fiscal', 'tipo,periodo,fecha,base,exento,alicuota'),
+        window.__sbAll((q) => q.eq('empresa_id', emp.id), 'libro_fiscal', 'tipo,periodo,fecha,base,exento,alicuota,tercero_nombre'),
         window.__sbAll((q) => q.eq('empresa_id', emp.id).eq('direccion', 'sufrida').eq('tipo', 'iva'), 'retenciones', 'periodo,fecha,monto'),
       ]);
       const M = {}; // período → {vb16,vb8,cb16,cb8,ret}
       const g = (k) => { if (!M[k]) M[k] = { vb16: 0, vb8: 0, cb16: 0, cb8: 0, ret: 0 }; return M[k]; };
       (libRes.data || []).forEach((row) => {
         const k = perDe(row); if (!k || k >= perActual) return; // solo períodos ANTERIORES
+        if (/anulada/i.test(row.tercero_nombre || '')) return; // una factura ANULADA no afecta el débito/crédito
         const m = g(k), base = Number(row.base) || 0, al = Number(row.alicuota) || 0;
         if (row.tipo === 'venta') { if (al >= 0.15) m.vb16 += base; else if (al > 0) m.vb8 += base; }
         else { if (al >= 0.15) m.cb16 += base; else if (al > 0) m.cb8 += base; }
@@ -7848,11 +7862,43 @@
         ]).concat([
           { name: 'retPct', label: (esCompra ? 'IVA que le retienes al proveedor' : 'IVA que te retuvo el cliente') + ' (opcional)', type: 'select', options: ['Sin retención', '75%', '100%'] },
           { name: 'retComp', label: 'N° comprobante de retención' + (esCompra ? ' (vacío = se genera)' : ' (el que te dio el cliente)'), placeholder: esCompra ? 'Se genera solo' : 'Ej. 20260600000123' },
+        ]).concat(esCompra ? [] : [
+          { name: 'anularVenta', label: '¿Este número es una factura ANULADA? (solo reserva el correlativo, sin monto)', col: 2, type: 'select', options: ['No', 'Sí — Anulada'] },
         ])),
         afterRender: (body) => {
           const prov = body.querySelector('[data-name="nombre"]');
           const rif = body.querySelector('[data-name="rif"]');
           if (!prov) return;
+          // VENTAS: el N° de factura y de control son correlativos (uno detrás del otro) →
+          // se sugiere el siguiente automáticamente, pero queda editable por si hace falta ajustarlo.
+          if (!esCompra && window.__sbAll && window.__EMPRESA_ACTIVA && window.__EMPRESA_ACTIVA.id) {
+            const nfEl = body.querySelector('[data-name="numFactura"]');
+            const ncEl = body.querySelector('[data-name="numControl"]');
+            window.__sbAll((q) => q.eq('empresa_id', window.__EMPRESA_ACTIVA.id).eq('tipo', 'venta'), 'libro_fiscal', 'numero_factura').then(({ data }) => {
+              let maxN = 0;
+              (data || []).forEach((r) => { const n = parseInt(String(r.numero_factura || '').replace(/\D/g, ''), 10); if (!isNaN(n) && n > maxN) maxN = n; });
+              if (!maxN) return;
+              const pad = String(maxN + 1).padStart(6, '0');
+              if (nfEl && !nfEl.value) nfEl.value = pad;
+              if (ncEl && !ncEl.value) ncEl.value = '00-' + pad;
+            });
+          }
+          // VENTAS: toggle "Anulada" — reserva el número sin monto (reemplaza el truco manual
+          // de poner "ANULADA" como cliente y dejar los montos a mano, propenso a error).
+          const anularSel = body.querySelector('[data-name="anularVenta"]');
+          if (anularSel) {
+            const camposReales = ['nombre', 'rif', 'base', 'alic', 'exento', 'igtfAplica', 'retPct', 'retComp'];
+            const aplicarAnular = () => {
+              const on = /^s[ií]/i.test(anularSel.value || '');
+              camposReales.forEach((n) => {
+                const el = body.querySelector('[data-name="' + n + '"]');
+                const wrap = el && el.closest('.fm-field');
+                if (wrap) wrap.style.display = on ? 'none' : '';
+              });
+            };
+            anularSel.addEventListener('change', aplicarAnular);
+            aplicarAnular();
+          }
           // 🤖 OCR de la factura (Agente IA · add-on): al adjuntarla, llena el formulario.
           // El usuario revisa y corrige antes de registrar — la IA propone, él decide.
           const factEl = body.querySelector('[data-name="facturaFile"]');
@@ -7902,6 +7948,35 @@
           };
           prov.addEventListener('change', autollenar);
           prov.addEventListener('input', autollenar);
+          // Atajo F2: si el nombre escrito no está registrado, abre "Nuevo tercero" sin salir
+          // de este formulario (con el nombre y el rol —cliente/proveedor— ya listos) y, al
+          // guardarlo, vuelve aquí con el RIF autocompletado y el foco en N° de Factura.
+          const provWrap = prov.closest('.fm-field');
+          if (provWrap) {
+            const hint = document.createElement('div');
+            hint.style.cssText = 'font-size:10.5px;color:var(--fg-muted);margin-top:3px;';
+            hint.textContent = '¿No está en la lista? Presiona F2 para crear el ' + (esCompra ? 'proveedor' : 'cliente') + ' sin salir de aquí.';
+            provWrap.appendChild(hint);
+          }
+          prov.addEventListener('keydown', (e) => {
+            if (e.key !== 'F2') return;
+            e.preventDefault();
+            const val = prov.value.trim();
+            if (!val) { toast('Escribe el nombre antes de crearlo con F2', 'error'); return; }
+            const existe = terceros.some((t) => t.nombre.toLowerCase() === val.toLowerCase());
+            if (existe) { toast('Ese ' + (esCompra ? 'proveedor' : 'cliente') + ' ya existe — selecciónalo de la lista', 'info'); return; }
+            if (!window.openNuevoTercero) return;
+            window.openNuevoTercero({
+              nombre: val, cliente: !esCompra, proveedor: esCompra,
+              onSaved: (t) => {
+                prov.value = t.nombre;
+                if (rif) rif.value = normRif(t.rif);
+                const nf = body.querySelector('[data-name="numFactura"]');
+                if (nf) nf.focus();
+                toast((esCompra ? 'Proveedor' : 'Cliente') + ' "' + t.nombre + '" creado y seleccionado', 'success');
+              },
+            });
+          });
           // IGTF (solo ventas): si aplica, calcula el 3% del TOTAL de la factura (base + IVA + exento) en vivo
           const baseEl = body.querySelector('[data-name="base"]');
           const alicEl = body.querySelector('[data-name="alic"]');
@@ -7955,6 +8030,8 @@
           const fP = (v.fecha || '').split('-');
           const periodo = esCompra ? (v.periodo || _periodoActualKey()) : (fP.length === 3 ? fP[0] + '-' + fP[1] : _periodoActualKey());
           if (window.__periodoCerrado && window.__periodoCerrado(periodo)) return '🔒 El período de declaración elegido está CERRADO. Reábrelo con el botón del período en Fiscal si necesitas registrar.';
+          const esAnulada = !esCompra && /^s[ií]/i.test(v.anularVenta || '');
+          if (esAnulada) { v = Object.assign({}, v, { nombre: 'ANULADA', rif: '', base: '0', exento: '0', igtfAplica: 'No' }); }
           if (!v.nombre) return 'Indica el ' + (esCompra ? 'proveedor' : 'cliente') + '.';
           const base = parseFloat(v.base) || 0, exento = parseFloat(v.exento) || 0;
           const alic = v.alic === '8%' ? 0.08 : v.alic === 'Exento' ? 0 : 0.16;
@@ -7972,7 +8049,7 @@
             if (window.cargarLibroFiscal) window.cargarLibroFiscal(tipo);
             if (window.cargarTesoreria) window.cargarTesoreria();   // refresca CxP/CxC (panel de Compras/Ventas)
             if (window.cargarDashboard) window.cargarDashboard();   // y los KPIs del Dashboard
-            toast((esCompra ? 'Compra' : 'Venta') + ' registrada en el libro · Bs ' + fmtF(total), 'success');
+            toast(esAnulada ? ('N° ' + v.numFactura + ' reservado como ANULADO') : ((esCompra ? 'Compra' : 'Venta') + ' registrada en el libro · Bs ' + fmtF(total)), 'success');
             // Asiento contable de la COMPRA: Debe Inventario + IVA crédito / Haber CxP.
             // (Las ventas NO se contabilizan desde el libro: eso lo hace el RECIBO. El libro es solo para declarar.)
             if (esCompra && window.__postAsiento) {
@@ -8081,6 +8158,7 @@
         if (esCompra) { _credF = 0; resetF30c(); } else { _debF = 0; resetF30v(); }
         _libroData[tipo] = [];
         actualizarAutoliquidacion();
+        calcularArrastres(); // el período puede no tener operaciones propias pero SÍ arrastre del mes anterior
       };
       if (!window.sb || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) { vacio(); return; }
       // Se consulta por el PERÍODO DE DECLARACIÓN seleccionado (no por la fecha de la factura):
@@ -8101,6 +8179,7 @@
       let tTot = 0, tEx = 0, tBase = 0, tIva = 0, tIgtf = 0;
       let base16 = 0, iva16 = 0, base8 = 0, iva8 = 0;
       arr.forEach((r) => {
+        if (/anulada/i.test(r.tercero_nombre || '')) return; // una factura ANULADA no suma al período
         const tot = Number(r.total) || 0, ex = Number(r.exento) || 0, base = Number(r.base) || 0, iva = Number(r.iva) || 0, igtf = Number(r.igtf) || 0, alic = Number(r.alicuota) || 0;
         tTot += tot; tEx += ex; tBase += base; tIva += iva; tIgtf += igtf;
         if (alic >= 0.15) { base16 += base; iva16 += iva; } else if (alic > 0) { base8 += base; iva8 += iva; }
@@ -8114,7 +8193,9 @@
       tbody.innerHTML = arr.slice(inicio, inicio + PAG_FILAS).map((r, i) => {
         const tot = Number(r.total) || 0, ex = Number(r.exento) || 0, base = Number(r.base) || 0, iva = Number(r.iva) || 0, igtf = Number(r.igtf) || 0, alic = Number(r.alicuota) || 0;
         const alicTxt = alic > 0 ? (Math.round(alic * 100) + '%') : 'Ex.';
-        return '<tr data-id="' + (r.id || '') + '" data-libro="' + tipo + '" style="cursor:pointer;" title="Clic para editar o eliminar"><td class="ctr">' + (inicio + i + 1) + '</td><td>' + (r.fecha || '') + '</td><td class="mono">' + (r.tercero_rif || '') + '</td><td class="primary">' + (r.tercero_nombre || '') + '</td>'
+        const anulada = /anulada/i.test(r.tercero_nombre || '');
+        const nombreCel = anulada ? '<span class="tag danger">ANULADA</span>' : (r.tercero_nombre || '');
+        return '<tr data-id="' + (r.id || '') + '" data-libro="' + tipo + '" style="cursor:pointer;' + (anulada ? 'opacity:.6;' : '') + '" title="Clic para editar o eliminar"><td class="ctr">' + (inicio + i + 1) + '</td><td>' + (r.fecha || '') + '</td><td class="mono">' + (r.tercero_rif || '') + '</td><td class="primary">' + nombreCel + '</td>'
           + '<td class="mono">' + (r.numero_factura || '') + '</td><td class="mono">' + (r.numero_control || '') + '</td><td class="ctr">' + (r.tipo_doc || (esCompra ? 'FC' : 'FV')) + '</td>'
           + '<td class="num">' + fmtF(tot) + '</td><td class="num">' + fmtF(ex) + '</td><td class="num">' + fmtF(base) + '</td><td class="ctr">' + alicTxt + '</td><td class="num">' + fmtF(iva) + '</td>'
           + (esCompra ? '' : '<td class="num">' + fmtF(igtf) + '</td>') + '</tr>';
@@ -8225,6 +8306,46 @@
             if (window.__invalidarArrastres) window.__invalidarArrastres();
             cargarLibroFiscal(tipo);
             toast((esCompra ? 'Compra' : 'Venta') + ' actualizada · Bs ' + fmtF(total), 'success');
+          });
+        },
+        extraLabel: 'Anular',
+        onExtra: /anulada/i.test(r.tercero_nombre || '') ? null : async () => {
+          if (window.__periodoCerrado && window.__periodoCerrado(r.periodo)) {
+            toast('🔒 Este registro pertenece a un período CERRADO (declarado). Reábrelo en Fiscal para reabrirlo.', 'error');
+            return;
+          }
+          const { data: pgs } = await window.sb.from('movimientos_tesoreria')
+            .select('id').eq('factura_ref', r.numero_factura || '').eq('tipo', esCompra ? 'egreso' : 'ingreso').limit(1);
+          if (pgs && pgs.length) {
+            toast('Este documento tiene ' + (esCompra ? 'pagos' : 'cobros') + ' registrados. Elimínalos primero en Tesorería (X del movimiento).', 'error');
+            return;
+          }
+          if (!window.confirm('¿ANULAR el N° ' + (r.numero_factura || '') + '?\n\nEl número queda RESERVADO en el correlativo (no se borra ni se reutiliza), pero deja de sumar en el libro y en la Forma 30. Se generará el asiento de reverso correspondiente.')) return;
+          window.sb.from('libro_fiscal').update({ tercero_nombre: 'ANULADA', tercero_rif: '', exento: 0, base: 0, iva: 0, igtf: 0, total: 0 }).eq('id', id).then(({ error }) => {
+            if (error) { toast('No se pudo anular: ' + error.message, 'error'); return; }
+            const tot = Number(r.total) || 0, ex = Number(r.exento) || 0, base = Number(r.base) || 0, iva = Number(r.iva) || 0, igtf = Number(r.igtf) || 0;
+            if (window.__postAsiento && tot > 0.005) {
+              let lineas;
+              if (esCompra) {
+                lineas = [{ cta: '2.1.1.01 · Cuentas por pagar comerciales', debe: tot, haber: 0 }];
+                if (base + ex > 0.005) lineas.push({ cta: '5.1.1.02 · Compra de Mercancía', debe: 0, haber: base + ex });
+                if (iva > 0.005) lineas.push({ cta: '1.1.3.01 · IVA crédito fiscal', debe: 0, haber: iva });
+              } else {
+                lineas = [{ cta: '4.1.1.01 · Venta de mercancía', debe: base + ex, haber: 0 }];
+                if (iva > 0.005) lineas.push({ cta: '2.1.3.01 · IVA débito fiscal', debe: iva, haber: 0 });
+                if (igtf > 0.005) lineas.push({ cta: '2.1.4.03 · IGTF por pagar', debe: igtf, haber: 0 });
+                lineas.push({ cta: '1.1.2.01 · Cuentas por cobrar comerciales', debe: 0, haber: tot });
+              }
+              window.__postAsiento('Anulación ' + (esCompra ? 'compra' : 'venta') + ' N° ' + (r.numero_factura || ''), r.numero_factura || '', lineas, 'auto')
+                .then((rr) => { if (rr && rr.error) console.warn('[DigiAccount] Reverso por anulación:', rr.error.message); });
+            }
+            if (window.__invalidarArrastres) window.__invalidarArrastres();
+            cargarLibroFiscal(tipo);
+            if (window.cargarTesoreria) window.cargarTesoreria();
+            if (window.cargarDashboard) window.cargarDashboard();
+            toast('N° ' + (r.numero_factura || '') + ' anulado', 'success');
+            const cancelBtn = document.getElementById('fmCancel');
+            if (cancelBtn) cancelBtn.click();
           });
         },
         onDelete: async (closeModal) => {
@@ -9654,7 +9775,7 @@
       overlay.hidden = false;
       if (window.lucide) window.lucide.createIcons();
     }
-    function close() { overlay.hidden = true; }
+    function close() { overlay.hidden = true; window.__terOnSavedOnce = null; }
     document.getElementById('nuevoTerceroBtn').addEventListener('click', () => openFicha(null));
     document.getElementById('terClose').addEventListener('click', close);
     document.getElementById('terCancel').addEventListener('click', close);
@@ -9696,7 +9817,9 @@
         if (error) { setMsg('No se pudo guardar: ' + error.message); return; }
         toast('Tercero "' + nombre + '" ' + (editIdx != null ? 'actualizado' : 'registrado'));
         if (window.cargarTerceros) window.cargarTerceros();
+        const cb = window.__terOnSavedOnce;
         close();
+        if (cb) cb({ nombre: nombre, rif: rif });
       });
     });
 
@@ -9714,11 +9837,18 @@
 
     // Clientes disponibles para emitir facturas (lo usa el módulo de Ventas)
     window.__clientes = () => DB.filter((t) => t.cli).map((t) => ({ n: t.nombre, rif: t.rif, id: idSistema(t.rif), dom: t.dom }));
-    // Abrir la ficha de un nuevo tercero (opcionalmente premarcado como cliente)
+    // Abrir la ficha de un nuevo tercero (opcionalmente premarcado como cliente/proveedor,
+    // con el nombre ya escrito, y un aviso onSaved(t) para cuando quien lo abrió necesita
+    // enterarse — p. ej. un formulario de venta/compra que se autocompleta al crearlo).
     window.openNuevoTercero = function (preset) {
       openFicha(null);
-      if (preset && preset.cliente) { get('esCliente').checked = true; syncRolesTabs(); }
+      if (preset && preset.nombre) { const el = get('nombre'); if (el) el.value = preset.nombre; }
+      if (preset && preset.cliente) get('esCliente').checked = true;
+      if (preset && preset.proveedor) get('esProveedor').checked = true;
+      if (preset && (preset.cliente || preset.proveedor)) syncRolesTabs();
       setTab('general');
+      window.__terOnSavedOnce = (preset && preset.onSaved) || null;
+      const rifEl = get('rif'); if (rifEl) rifEl.focus();
     };
 
     render(); updateKPIs();
