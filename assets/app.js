@@ -12309,5 +12309,30 @@
       if (btn) { e.preventDefault(); btn.click(); }
     }
   });
+
+  function clic(id) { const b = document.getElementById(id); if (b) b.click(); }
+
+  // Fase 1: solo Ventas, Compras (dentro de Fiscal) y Terceros. Vistas nuevas
+  // se agregan aquí después, una línea cada una (ver spec, "Fuera de alcance").
+  function nuevoRegistroContextual() {
+    if (algunModalVisible()) return; // no abrir uno encima de otro ya abierto
+    const view = document.querySelector('.view[data-active="true"]');
+    const viewId = view && view.id;
+    if (viewId === 'view-fiscal') {
+      const tab = document.querySelector('.fiscal-tab[data-active="true"]');
+      const nombre = tab && tab.dataset.tab;
+      if (nombre === 'ventas') clic('regVentaBtn');
+      else if (nombre === 'compras') clic('regCompraBtn');
+    } else if (viewId === 'view-terceros') {
+      clic('nuevoTerceroBtn');
+    }
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.defaultPrevented) return;
+    if (e.key !== 'Insert') return;
+    e.preventDefault(); // Insert no inserta texto en ningun campo; seguro interceptarlo siempre
+    nuevoRegistroContextual();
+  });
 })();
 
