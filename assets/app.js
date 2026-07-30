@@ -7851,7 +7851,7 @@
         ] : []).concat([
           { name: 'tipoDoc', label: 'Tipo de documento', type: 'select', options: esCompra ? ['FC (Factura)', 'NC (Nota de crédito)', 'ND (Nota de débito)'] : ['FV (Factura de venta)', 'NC (Nota de crédito)', 'ND (Nota de débito)'] },
           { name: 'nombre', label: (esCompra ? 'Proveedor' : 'Cliente') + ' (escribe las iniciales y elige)', col: 2, type: 'datalist', options: terceros.map((t) => t.nombre), placeholder: 'Ej. Sum… → Suministros Lara, C.A.' },
-          { name: 'rif', label: 'RIF / C.I. (mayúscula, sin guiones)', upper: true, placeholder: 'J123456789' },
+          { name: 'rif', label: 'RIF / C.I. (mayúscula, sin guiones — también busca por RIF)', upper: true, placeholder: 'J123456789', type: 'datalist', options: terceros.filter((t) => t.rif).map((t) => ({ value: normRif(t.rif), label: t.nombre })) },
           { name: 'numFactura', label: 'N° de Factura', placeholder: 'F-00000000' },
           { name: 'numControl', label: 'N° de Control', placeholder: '00-00000000' },
           { name: 'base', label: 'Base imponible (Bs)', type: 'number', step: '0.01', placeholder: '0.00' },
@@ -7951,6 +7951,20 @@
           };
           prov.addEventListener('change', autollenar);
           prov.addEventListener('input', autollenar);
+          // Búsqueda por RIF (al revés de lo anterior): si en la factura no se lee bien el
+          // nombre pero el RIF sí, al escribirlo/elegirlo de la lista se completa el nombre.
+          if (rif) {
+            const autollenarPorRif = () => {
+              const t = terceros.find((x) => normRif(x.rif) === normRif(rif.value));
+              if (t && (!prov.value || prov.value.trim().toLowerCase() !== t.nombre.toLowerCase())) {
+                prov.value = t.nombre;
+                const nf = body.querySelector('[data-name="numFactura"]');
+                if (nf) nf.focus();
+              }
+            };
+            rif.addEventListener('change', autollenarPorRif);
+            rif.addEventListener('input', autollenarPorRif);
+          }
           // Atajo F2: si el nombre escrito no está registrado, abre "Nuevo tercero" sin salir
           // de este formulario (con el nombre y el rol —cliente/proveedor— ya listos) y, al
           // guardarlo, vuelve aquí con el RIF autocompletado y el foco en N° de Factura.
