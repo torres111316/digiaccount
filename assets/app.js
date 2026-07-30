@@ -12350,19 +12350,43 @@
 
   function clic(id) { const b = document.getElementById(id); if (b) b.click(); }
 
-  // Fase 1: solo Ventas, Compras (dentro de Fiscal) y Terceros. Vistas nuevas
-  // se agregan aquí después, una línea cada una (ver spec, "Fuera de alcance").
+  // Extendido a todos los módulos con botón de "nuevo registro" (ver
+  // docs/superpowers/plans/2026-07-30-atajos-teclado.md, actualización
+  // posterior). Cada rama es independiente: si la pestaña activa no tiene
+  // un botón mapeado, simplemente no hace nada (no es un error).
+  function tabActivo(sel) { const t = document.querySelector(sel); return t && t.dataset.tab; }
   function nuevoRegistroContextual() {
     if (algunModalVisible()) return; // no abrir uno encima de otro ya abierto
     const view = document.querySelector('.view[data-active="true"]');
     const viewId = view && view.id;
     if (viewId === 'view-fiscal') {
-      const tab = document.querySelector('.fiscal-tab[data-active="true"]');
-      const nombre = tab && tab.dataset.tab;
-      if (nombre === 'ventas') clic('regVentaBtn');
-      else if (nombre === 'compras') clic('regCompraBtn');
+      const map = { ventas: 'regVentaBtn', compras: 'regCompraBtn', retenciones: 'retAddBtn', comprobantes: 'compEmitirBtn', pensiones: 'pensionRegistrarBtn', patrimonios: 'igpRegistrarBtn', igtf: 'igtfRegistrarBtn' };
+      const btn = map[tabActivo('.fiscal-tab[data-active="true"]')];
+      if (btn) clic(btn);
+    } else if (viewId === 'view-ventas') {
+      const map = { facturas: 'nuevaFacturaBtn', notas: 'nuevaNotaBtn', despachos: 'nuevoDespachoBtn' };
+      const btn = map[tabActivo('.ventas-tab[data-active="true"]') || 'facturas'];
+      if (btn) clic(btn);
+    } else if (viewId === 'view-compras') {
+      clic('comprasRegBtn');
+    } else if (viewId === 'view-tesoreria') {
+      if ((tabActivo('.teso-tab[data-active="true"]') || 'resumen') === 'resumen') clic('tesoMovBtn');
+    } else if (viewId === 'view-inventario') {
+      clic('invPrimaryBtn');
+    } else if (viewId === 'view-contabilidad') {
+      const map = { diario: 'nuevoAsientoBtn', plan: 'nuevaCuentaBtn', activos: 'registrarActivoBtn', cripto: 'criptoNuevo' };
+      const btn = map[tabActivo('.conta-tab[data-active="true"]') || 'diario'];
+      if (btn) clic(btn);
     } else if (viewId === 'view-terceros') {
       clic('nuevoTerceroBtn');
+    } else if (viewId === 'view-nomina') {
+      if ((tabActivo('.nomina-tab[data-active="true"]') || 'empleados') === 'empleados') clic('nuevoTrabajadorBtn');
+    } else if (viewId === 'view-usuarios') {
+      const map = { usuarios: 'invitarUsuarioBtn', roles: 'nuevoRolBtn' };
+      const btn = map[tabActivo('.usuarios-pane[data-active="true"]') || 'usuarios'];
+      if (btn) clic(btn);
+    } else if (viewId === 'view-fundador') {
+      clic('nuevaCuentaSaasBtn');
     }
   }
 

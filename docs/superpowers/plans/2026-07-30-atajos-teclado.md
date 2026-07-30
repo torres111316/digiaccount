@@ -414,3 +414,32 @@ correctamente — nunca se disparan los dos a la vez.
 
 Cambio real en el código: en el listener de la Task 3, `if (e.key !== 'Insert')`
 pasó a `if (e.key !== 'F2')` (assets/app.js, dentro del IIFE `atajosTeclado`).
+
+## Actualización posterior 2: F2 extendido a todos los módulos
+
+Luis pidió que "nuevo registro" (F2) funcione "para cualquier otro registro
+nuevo en cualquier módulo", no solo Ventas/Compras/Terceros. Se inventariaron
+todos los botones "+ Nuevo/Registrar/Agregar/Invitar" de la app (grep sobre
+`index.html`) y su vista + sub-pestaña contenedora, confirmando que cada
+módulo con sub-pestañas actualiza `data-active` en sus paneles igual que
+Fiscal (`.ventas-tab`, `.conta-tab`, `.nomina-tab`, `.usuarios-pane` — cada
+uno con su propio manejador de tabs en `assets/app.js`).
+
+`nuevoRegistroContextual()` quedó extendida con una rama por vista:
+
+| Vista | Sub-pestaña → botón |
+|---|---|
+| `view-fiscal` | ventas→`regVentaBtn`, compras→`regCompraBtn`, retenciones→`retAddBtn`, comprobantes→`compEmitirBtn`, pensiones→`pensionRegistrarBtn`, patrimonios→`igpRegistrarBtn`, igtf→`igtfRegistrarBtn` |
+| `view-ventas` | facturas→`nuevaFacturaBtn`, notas→`nuevaNotaBtn`, despachos→`nuevoDespachoBtn` |
+| `view-compras` | (sin sub-tabs) → `comprasRegBtn` |
+| `view-tesoreria` | resumen→`tesoMovBtn` (conciliación no tiene "nuevo") |
+| `view-inventario` | (sin sub-tabs) → `invPrimaryBtn` |
+| `view-contabilidad` | diario→`nuevoAsientoBtn`, plan→`nuevaCuentaBtn`, activos→`registrarActivoBtn`, cripto→`criptoNuevo` (mayor/balance/resultados/general/flujo/diferido no tienen "nuevo") |
+| `view-terceros` | (sin sub-tabs) → `nuevoTerceroBtn` |
+| `view-nomina` | empleados→`nuevoTrabajadorBtn` (novedades/vacaciones/utilidades/liquidación no tienen "nuevo" propio) |
+| `view-usuarios` | usuarios→`invitarUsuarioBtn`, roles→`nuevoRolBtn` |
+| `view-fundador` | (sin sub-tabs) → `nuevaCuentaSaasBtn` |
+
+Todos los ids se verificaron existentes en `index.html` (una sola coincidencia
+cada uno) antes de comitear. Vistas/sub-pestañas sin botón mapeado simplemente
+no hacen nada al presionar F2 (no es un error).
