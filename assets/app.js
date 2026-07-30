@@ -12268,12 +12268,38 @@
   }
   window.__algunModalVisible = algunModalVisible;
 
+  // Botón [data-libro-action="print"] REALMENTE visible en pantalla (hay 3 en
+  // el DOM — Compras, Ventas/facturas, Ventas/máquina fiscal — solo uno está
+  // visible a la vez). offsetParent (no getComputedStyle) es lo correcto acá
+  // porque estos botones NO son position:fixed: su visibilidad depende de que
+  // un ANCESTRO (la pestaña/tab) esté oculto, y offsetParent sí lo detecta.
+  function botonImprimirVisible() {
+    const btns = document.querySelectorAll('[data-libro-action="print"]');
+    for (let i = 0; i < btns.length; i++) {
+      if (btns[i].offsetParent !== null) return btns[i];
+    }
+    return null;
+  }
+
   document.addEventListener('keydown', (e) => {
     if (e.defaultPrevented) return; // otro handler (p. ej. formModal) ya actuó
     const ctrlEnter = e.key === 'Enter' && (e.ctrlKey || e.metaKey);
     const escape = e.key === 'Escape';
-    if (!ctrlEnter && !escape) return;
+    const ctrlP = e.key.toLowerCase() === 'p' && (e.ctrlKey || e.metaKey);
+    if (!ctrlEnter && !escape && !ctrlP) return;
     const m = modalVisibleTope();
+    if (ctrlP) {
+      if (m && m.imprimir) {
+        const btn = document.getElementById(m.imprimir);
+        if (btn) { e.preventDefault(); btn.click(); }
+        return;
+      }
+      if (!m) {
+        const printBtn = botonImprimirVisible();
+        if (printBtn) { e.preventDefault(); printBtn.click(); }
+      }
+      return;
+    }
     if (!m) return; // ninguno de los 12 está abierto (formModal maneja lo suyo aparte)
     if (ctrlEnter && m.guardar) {
       const btn = document.getElementById(m.guardar);
