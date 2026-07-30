@@ -130,7 +130,7 @@ hoy, con la misma lógica.)
 
 En cada `keydown` de `Ctrl+Enter`, `Escape` o `Ctrl+P`:
 1. Buscar todos los overlays de `MODALES` que estén realmente visibles
-   (`el.offsetParent !== null`).
+   (`getComputedStyle(el).display !== 'none'`).
 2. Si hay más de uno visible a la vez (caso ya conocido: F2 abre "Nuevo
    tercero" encima de "Registrar venta"), usar el de **mayor z-index
    calculado** (`getComputedStyle(el).zIndex`) — el mismo criterio que ya
