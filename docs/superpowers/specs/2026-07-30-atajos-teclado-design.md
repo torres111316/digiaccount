@@ -87,7 +87,7 @@ pueden interceptar de forma confiable. Por eso quedan fuera de las opciones.
 |---|---|---|
 | `Ctrl+Enter` | Guardar / acción principal | Los 6 modales de tipo A (formulario) |
 | `Escape` | Cancelar / cerrar | Los 13 modales (A, B, C y D) |
-| `Insert` | Nuevo registro, según la vista/pestaña activa | Ventas, Compras (Fiscal), Terceros |
+| `F2` | Nuevo registro, según la vista/pestaña activa | Ventas, Compras (Fiscal), Terceros |
 | `Ctrl+P` | Imprimir | El modal visible que tenga un botón de imprimir (grupos B y C), o si no hay ninguno abierto, el botón `[data-libro-action="print"]` de la vista activa (Libro de Ventas/Compras) |
 
 ## Arquitectura
@@ -140,7 +140,7 @@ En cada `keydown` de `Ctrl+Enter`, `Escape` o `Ctrl+P`:
    ese botón para ese modal (p. ej. `payModal` no tiene `guardar`), no hacer
    nada — se deja el comportamiento por defecto del navegador.
 
-### 2. Nuevo registro contextual (`Insert`)
+### 2. Nuevo registro contextual (`F2`)
 
 ```js
 function nuevoRegistroContextual() {
@@ -174,7 +174,7 @@ Al presionar `Ctrl+P`:
 
 ### 4. Cuidados / casos borde
 
-- Ninguna de estas teclas (`Ctrl+Enter`, `Escape`, `Insert`) inserta texto en
+- Ninguna de estas teclas (`Ctrl+Enter`, `Escape`, `F2`) inserta texto en
   un campo — es seguro capturarlas globalmente sin importar dónde esté el
   foco, no rompen lo que el usuario esté escribiendo.
 - `Escape` ya podría tener otro uso en algún modal específico (p. ej. cerrar
@@ -188,7 +188,7 @@ Al presionar `Ctrl+P`:
 ## Fuera de alcance (Fase 1)
 
 - Panel de Configuración para personalizar teclas (Fase 2).
-- `Insert` en las vistas de Nómina, Contabilidad, Inventario, Roles, Guías de
+- `F2` en las vistas de Nómina, Contabilidad, Inventario, Roles, Guías de
   despacho — se agregan como líneas sueltas en `nuevoRegistroContextual()`
   cuando se necesiten, reutilizando el patrón ya construido.
 - Remapeo de teclas reservadas por el navegador (`Ctrl+N`, `Ctrl++`) — no es
@@ -204,10 +204,10 @@ Manual, en el navegador (no hay suite automatizada para esto en el proyecto):
 3. Con "Registrar venta" abierto, F2 en el nombre → abre "Nuevo tercero"
    encima → Ctrl+Enter/Escape deben actuar sobre el modal de tercero (el de
    más al frente), no sobre el de venta.
-4. Parado en Fiscal → Ventas (sin modal abierto) → Insert abre "Registrar
-   venta". Cambiar a la pestaña Compras → Insert abre "Registrar compra".
-   Ir a Terceros → Insert abre "Nuevo tercero".
-5. Con un modal ya abierto, Insert no debe abrir uno encima.
+4. Parado en Fiscal → Ventas (sin modal abierto) → F2 abre "Registrar
+   venta". Cambiar a la pestaña Compras → F2 abre "Registrar compra".
+   Ir a Terceros → F2 abre "Nuevo tercero".
+5. Con un modal ya abierto, F2 no debe abrir uno encima.
 6. En Libro de Ventas, Ctrl+P imprime el libro (no la pantalla completa).
 7. Abrir "Activar suscripción" (`payModal`) → confirmar que Ctrl+Enter NO
    dispara "Ya realicé el pago" (a propósito, por seguridad); Escape sí cierra.

@@ -12368,8 +12368,12 @@
 
   document.addEventListener('keydown', (e) => {
     if (e.defaultPrevented) return;
-    if (e.key !== 'Insert') return;
-    e.preventDefault(); // Insert no inserta texto en ningun campo; seguro interceptarlo siempre
+    // F2 (no Insert): en laptop es mas facil de alcanzar, y ya es la misma tecla que
+    // usa "Registrar venta/compra" para crear un tercero al vuelo (mismo concepto:
+    // "crear lo nuevo que corresponda aqui"). Si el F2 de ese campo ya actuo, esta
+    // funcion no se duplica gracias al chequeo de e.defaultPrevented de arriba.
+    if (e.key !== 'F2') return;
+    e.preventDefault(); // F2 no inserta texto en ningun campo; seguro interceptarlo siempre
     nuevoRegistroContextual();
   });
 })();

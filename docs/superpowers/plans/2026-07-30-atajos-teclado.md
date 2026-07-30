@@ -3,14 +3,14 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Hacer que `Ctrl+Enter` (guardar), `Escape` (cancelar/cerrar), `Ctrl+P`
-(imprimir) e `Insert` (nuevo registro contextual) funcionen en toda la app
+(imprimir) e `F2` (nuevo registro contextual) funcionen en toda la app
 DigiAccount, sin tocar el código interno de los 13 modales existentes.
 
 **Architecture:** Un único IIFE nuevo (`atajosTeclado`) al final de
 `assets/app.js`. Mantiene una tabla `MODALES` con los ids reales de cada
 overlay y sus botones de guardar/cancelar/imprimir, detecta cuál está visible
 (y cuál está "al frente" si hay más de uno abierto a la vez) usando el estilo
-calculado, y le hace clic al botón correspondiente. `Insert` usa un dispatcher
+calculado, y le hace clic al botón correspondiente. `F2` usa un dispatcher
 separado que mira la vista/pestaña activa.
 
 **Tech Stack:** JavaScript vanilla (sin framework, sin bundler). No hay suite
@@ -28,7 +28,7 @@ el navegador (Chrome/Edge), más `node --check` para sintaxis.
   existente, no tocar) — el motor nuevo NO debe duplicarlo ni interferir.
 - `payModal` NUNCA recibe `Ctrl+Enter` (su acción es confirmar un pago —
   riesgo de disparo accidental).
-- Ninguna tecla de esta fase (`Ctrl+Enter`, `Escape`, `Insert`, `Ctrl+P`)
+- Ninguna tecla de esta fase (`Ctrl+Enter`, `Escape`, `F2`, `Ctrl+P`)
   debe insertar texto ni romper lo que el usuario esté escribiendo en un
   campo — todas son seguras de interceptar globalmente.
 - `Ctrl+N` y `Ctrl++`/`Ctrl+-` quedan fuera de alcance (reservados por el
@@ -48,7 +48,7 @@ el navegador (Chrome/Edge), más `node --check` para sintaxis.
 **Interfaces:**
 - Produce: `window.__algunModalVisible()` → `boolean`. Devuelve `true` si
   cualquiera de los 13 modales (los 12 de `MODALES` + `formModal`) está
-  visible ahora mismo. La usará la Task 3 (`Insert`) para no abrir un
+  visible ahora mismo. La usará la Task 3 (`F2`) para no abrir un
   "nuevo registro" encima de un modal ya abierto.
 
 - [ ] **Paso 1: Confirmar los ids reales de guardar/cancelar de los 12 modales**
@@ -74,7 +74,7 @@ agregar:
 
 /* =========================================================
    ATAJOS DE TECLADO (Fase 1) — Ctrl+Enter/Escape universal,
-   Ctrl+P para imprimir, Insert para "nuevo registro" contextual.
+   Ctrl+P para imprimir, F2 para "nuevo registro" contextual.
    No toca el código interno de los modales: solo les hace clic
    a sus botones ya existentes, desde afuera. Ver spec:
    docs/superpowers/specs/2026-07-30-atajos-teclado-design.md
@@ -292,7 +292,7 @@ Si ninguno aplica, se deja el Ctrl+P nativo del navegador sin interferir."
 
 ---
 
-### Task 3: Nuevo registro contextual con `Insert`
+### Task 3: Nuevo registro contextual con `F2`
 
 **Files:**
 - Modify: `assets/app.js` (el mismo IIFE `atajosTeclado`)
@@ -330,7 +330,7 @@ Justo antes del `})();` que cierra el IIFE `atajosTeclado`, agregar:
   document.addEventListener('keydown', (e) => {
     if (e.defaultPrevented) return;
     if (e.key !== 'Insert') return;
-    e.preventDefault(); // Insert no inserta texto en ningun campo; seguro interceptarlo siempre
+    e.preventDefault(); // F2 no inserta texto en ningun campo; seguro interceptarlo siempre
     nuevoRegistroContextual();
   });
 ```
@@ -340,7 +340,7 @@ Justo antes del `})();` que cierra el IIFE `atajosTeclado`, agregar:
 Run: `node --check assets/app.js`
 Expected: sin salida.
 
-- [ ] **Paso 3: Verificación manual — Insert en las 3 vistas de la Fase 1**
+- [ ] **Paso 3: Verificación manual — F2 en las 3 vistas de la Fase 1**
 
 1. Ir a **Fiscal → Libro de Ventas** (pestaña Ventas activa, sin modal
    abierto). Presionar **Insert**.
@@ -356,10 +356,10 @@ Expected: sin salida.
    Expected: no pasa nada (comportamiento correcto — esas vistas se agregan
    después).
 
-- [ ] **Paso 4: Verificación manual — Insert no abre uno encima de otro**
+- [ ] **Paso 4: Verificación manual — F2 no abre uno encima de otro**
 
 1. Abrir "Registrar venta" (Fiscal → Ventas).
-2. Con ese modal abierto, presionar **Insert** de nuevo.
+2. Con ese modal abierto, presionar **F2** de nuevo.
    Expected: no pasa nada (no se abre un segundo modal encima) — confirma
    que `algunModalVisible()` bloquea correctamente.
 
@@ -367,7 +367,7 @@ Expected: sin salida.
 
 ```bash
 git add assets/app.js
-git commit -m "Atajos de teclado: Insert abre 'nuevo registro' segun la vista activa
+git commit -m "Atajos de teclado: F2 abre 'nuevo registro' segun la vista activa
 
 Fase 1: cubre Ventas y Compras (Libro Fiscal) y Terceros. No abre un modal
 si ya hay uno visible. El resto de las vistas (Nomina, Contabilidad,
@@ -392,3 +392,25 @@ El código queda en GitHub pero NO se refleja en `app.digiaccount.io` hasta
 que se le dé "Deploy" al servicio `app` en EasyPanel (patrón ya conocido de
 hoy). Confirmar con Luis cuando lo haga, y repetir la verificación manual de
 las Tasks 1-3 ya en producción (con Ctrl+Shift+R para descartar caché vieja).
+
+---
+
+## Actualización posterior (mismo día): Insert → F2
+
+Las Tasks 1-4 se ejecutaron y desplegaron tal cual están arriba, con `Insert`
+como tecla de "nuevo registro contextual". Luis probó desde su laptop y pidió
+cambiarla porque la tecla `Insert` le resulta incómoda de alcanzar ahí.
+
+`Ctrl++` (su primera opción) se descartó — es zoom reservado del navegador,
+igual que se documentó desde el spec original.
+
+Se cambió a **`F2`** en su lugar: es la misma tecla que ya usa (y confirmó que
+le funciona bien en su laptop) para crear un tercero al vuelo dentro del
+campo de cliente/proveedor de "Registrar venta/compra". No hay conflicto
+entre ambos usos: ese F2 específico llama a `e.preventDefault()` sin
+`stopPropagation()`, así que cuando el evento burbujea hasta `document`, el
+chequeo `if (e.defaultPrevented) return;` del listener global lo detiene
+correctamente — nunca se disparan los dos a la vez.
+
+Cambio real en el código: en el listener de la Task 3, `if (e.key !== 'Insert')`
+pasó a `if (e.key !== 'F2')` (assets/app.js, dentro del IIFE `atajosTeclado`).
