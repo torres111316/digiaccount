@@ -6980,6 +6980,16 @@
     padding: 0 11px; font-size: 13px; font-family: var(--font-body); color: var(--fg-primary);
     background: var(--bg-surface); outline: none; transition: border-color .15s;
   }
+  /* Caja de Base/Alícuota/Exento con IVA y Total calculados en vivo (Registrar venta/compra) */
+  .fm-numbox { grid-column: 1 / -1; border: 1px solid var(--border-strong); border-radius: var(--radius-md); overflow: hidden; }
+  .fm-numbox-row { display: grid; grid-template-columns: 1.3fr .8fr 1.3fr; gap: 12px; padding: 14px; background: var(--bg-surface); }
+  .fm-numbox-sum { background: var(--da-cyan-50); border-top: 1px solid var(--border-strong); padding: 10px 14px; display: flex; flex-direction: column; gap: 5px; }
+  .fm-numbox-sum-row { display: flex; justify-content: space-between; align-items: baseline; font-size: 12.5px; color: var(--fg-muted); }
+  .fm-numbox-sum-row strong { color: var(--fg-primary); font-size: 13px; font-family: var(--font-mono); }
+  .fm-numbox-sum-row.total { padding-top: 6px; border-top: 1px dashed var(--border-strong); }
+  .fm-numbox-sum-row.total span { color: var(--fg-primary); font-weight: var(--fw-semibold); }
+  .fm-numbox-sum-row.total strong { font-size: 16px; color: var(--da-cyan-700); }
+  @media (max-width: 560px) { .fm-numbox-row { grid-template-columns: 1fr; } }
   .fm-field input:focus, .fm-field select:focus { border-color: var(--da-cyan-500); }
   /* Input de archivo: botón acorde al diseño de los botones del sistema */
   .fm-field input[type="file"] {

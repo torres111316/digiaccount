@@ -7854,9 +7854,19 @@
           { name: 'rif', label: 'RIF / C.I. (mayúscula, sin guiones — también busca por RIF)', upper: true, placeholder: 'J123456789', type: 'datalist', options: terceros.filter((t) => t.rif).map((t) => ({ value: normRif(t.rif), label: t.nombre })) },
           { name: 'numFactura', label: 'N° de Factura', placeholder: 'F-00000000' },
           { name: 'numControl', label: 'N° de Control', placeholder: '00-00000000' },
-          { name: 'base', label: 'Base imponible (Bs)', type: 'number', step: '0.01', placeholder: '0.00' },
-          { name: 'alic', label: 'Alícuota IVA', type: 'select', options: ['16%', '8%', 'Exento'] },
-          { name: 'exento', label: 'Monto exento / sin ' + (esCompra ? 'crédito' : 'débito') + ' (Bs)', type: 'number', step: '0.01', placeholder: '0.00' },
+          {
+            name: 'numResumen', col: 2, type: 'static', label: '', html:
+              '<div class="fm-numbox">'
+              + '<div class="fm-numbox-row">'
+              + '<label class="fm-field"><span class="fm-lbl">Base imponible (Bs)</span><input data-name="base" type="number" step="0.01" placeholder="0.00"></label>'
+              + '<label class="fm-field"><span class="fm-lbl">Alícuota IVA</span><select data-name="alic"><option>16%</option><option>8%</option><option>Exento</option></select></label>'
+              + '<label class="fm-field"><span class="fm-lbl">Monto exento / sin ' + (esCompra ? 'crédito' : 'débito') + ' (Bs)</span><input data-name="exento" type="number" step="0.01" placeholder="0.00"></label>'
+              + '</div>'
+              + '<div class="fm-numbox-sum">'
+              + '<div class="fm-numbox-sum-row"><span>IVA</span><strong class="mono" id="numResIva">Bs 0,00</strong></div>'
+              + '<div class="fm-numbox-sum-row total"><span>Total de la factura</span><strong class="mono" id="numResTotal">Bs 0,00</strong></div>'
+              + '</div></div>',
+          },
         ].concat(esCompra ? [
           { name: 'cond', label: 'Condición de pago', type: 'select', options: ['Contado', 'Crédito 15 días', 'Crédito 30 días', 'Crédito 60 días'] },
         ] : [
@@ -7994,19 +8004,24 @@
               },
             });
           });
-          // IGTF (solo ventas): si aplica, calcula el 3% del TOTAL de la factura (base + IVA + exento) en vivo
+          // Base/Alícuota/Exento → IVA y Total de la factura en vivo (los 3 campos viven
+          // dentro de la caja "numResumen"). En ventas, además calcula el IGTF (3%) si aplica.
           const baseEl = body.querySelector('[data-name="base"]');
           const alicEl = body.querySelector('[data-name="alic"]');
           const exEl = body.querySelector('[data-name="exento"]');
           const igtfSel = body.querySelector('[data-name="igtfAplica"]');
           const igtfShow = document.getElementById('igtfShowVal');
+          const numResIva = document.getElementById('numResIva');
+          const numResTotal = document.getElementById('numResTotal');
           const calcIgtf = () => {
-            if (!igtfSel || !igtfShow) return;
             const b = parseFloat(baseEl && baseEl.value) || 0;
             const al = alicEl && alicEl.value === '8%' ? 0.08 : alicEl && alicEl.value === 'Exento' ? 0 : 0.16;
             const ex = parseFloat(exEl && exEl.value) || 0;
-            const total = b + b * al + ex;
-            igtfShow.textContent = 'Bs ' + fmtF(/s[ií]/i.test(igtfSel.value) ? total * 0.03 : 0);
+            const iva = b * al;
+            const total = b + iva + ex;
+            if (numResIva) numResIva.textContent = 'Bs ' + fmtF(iva);
+            if (numResTotal) numResTotal.textContent = 'Bs ' + fmtF(total);
+            if (igtfSel && igtfShow) igtfShow.textContent = 'Bs ' + fmtF(/s[ií]/i.test(igtfSel.value) ? total * 0.03 : 0);
           };
           if (baseEl) baseEl.addEventListener('input', calcIgtf);
           if (alicEl) alicEl.addEventListener('change', calcIgtf);
