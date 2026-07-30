@@ -12320,7 +12320,7 @@
   }
 
   document.addEventListener('keydown', (e) => {
-    if (e.defaultPrevented) return; // otro handler (p. ej. formModal) ya actuó
+    if (e.defaultPrevented || !e.key) return; // otro handler ya actuó, o tecla sin 'key' (raro, pero pasa)
     const ctrlEnter = e.key === 'Enter' && (e.ctrlKey || e.metaKey);
     const escape = e.key === 'Escape';
     const ctrlP = e.key.toLowerCase() === 'p' && (e.ctrlKey || e.metaKey);
