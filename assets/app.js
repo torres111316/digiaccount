@@ -2801,6 +2801,7 @@
     const fechaKey = (f) => { const p = (f || '').split('/'); if (p.length < 3) return 0; const yy = p[2].length === 2 ? '20' + p[2] : p[2]; return parseInt(yy + (p[1] || '').padStart(2, '0') + (p[0] || '').padStart(2, '0'), 10) || 0; };
     const PALETA = ['#003057', '#00aeef', '#1c8f5a', '#c0392b', '#c97a14', '#6f4cb8', '#0f766e', '#545e67'];
     let _cuentas = [], _movs = [], _facturas = [];
+    const _cxPage = { venta: 1, compra: 1 }; // página actual de CxC/CxP (20 por página, como el Libro Fiscal)
 
     function saldoDe(cid) {
       const c = _cuentas.find((x) => x.id === cid);
@@ -2811,6 +2812,7 @@
 
     async function cargarTesoreria() {
       const emp = window.__EMPRESA_ACTIVA;
+      _cxPage.venta = 1; _cxPage.compra = 1; // vuelve a la página 1 al (re)cargar la vista
       const rifEl = document.getElementById('tesoRif'); if (rifEl) rifEl.textContent = (emp && emp.rif) || '—';
       if (!window.sb || !emp || !emp.id) { _cuentas = []; _movs = []; _facturas = []; render(); return; }
       const [r1, r2, r3, r4] = await Promise.all([
@@ -2898,10 +2900,18 @@
         const pend = Math.max(0, total - pag);
         return { f: f, total: total, pag: pag, pend: pend, presunto: f.presuntoPagado && pagReal <= 0.01 };
       }).sort((a, b) => b.pend - a.pend);
-      let totalPend = 0, pendientes = 0;
       const esVenta = tipo === 'venta';
-      const html = rows.map((r) => {
-        if (r.pend > 0.01) { pendientes++; totalPend += r.pend; }
+      // Totales SIEMPRE sobre TODAS las facturas (la paginación es solo visual, igual que en el Libro Fiscal)
+      let totalPend = 0, pendientes = 0;
+      rows.forEach((r) => { if (r.pend > 0.01) { pendientes++; totalPend += r.pend; } });
+      // Paginación: 20 facturas por página (igual que el Libro de Ventas/Compras en Fiscal)
+      const PAG_FILAS = 20;
+      const totalPag = Math.max(1, Math.ceil(rows.length / PAG_FILAS));
+      const pag = Math.min(Math.max(1, _cxPage[tipo] || 1), totalPag);
+      _cxPage[tipo] = pag;
+      const inicio = (pag - 1) * PAG_FILAS;
+      const rowsPag = rows.slice(inicio, inicio + PAG_FILAS);
+      const html = rowsPag.map((r) => {
         const estado = r.presunto ? badge('Pagada', '#0a7a44', '#d5f0e0') : (r.pend <= 0.01 ? badge('Pagada', '#0a7a44', '#d5f0e0') : (r.pag > 0.01 ? badge('Parcial', '#9a6700', '#fdf0d0') : badge('Pendiente', '#b42318', '#fde0dd')));
         let accion = '';
         if (r.pend > 0.01) {
@@ -2917,7 +2927,17 @@
       });
       body.innerHTML = html.length ? html.join('') : '<tr><td colspan="8" style="text-align:center;color:var(--fg-muted);padding:24px;">' + (esVenta ? 'Sin recibos de venta emitidos.' : 'Sin facturas de compra registradas.') + '</td></tr>';
       const tEl = document.getElementById(totalId); if (tEl) tEl.textContent = 'Bs ' + fmt(totalPend);
-      const cEl = document.getElementById(countId); if (cEl) cEl.innerHTML = '<strong>' + pendientes + '</strong> con saldo pendiente · ' + rows.length + ' factura' + (rows.length === 1 ? '' : 's') + ' en total';
+      const cEl = document.getElementById(countId);
+      if (cEl) {
+        const pagerHtml = totalPag > 1
+          ? '<div style="display:flex;align-items:center;gap:10px;margin-top:6px;font-size:11px;color:var(--fg-muted);">'
+            + '<button class="btn btn-ghost" data-cxp-lp="' + tipo + '" data-cxp-lp-dir="-1"' + (pag <= 1 ? ' disabled' : '') + ' style="height:24px;font-size:10px;">« Anterior</button>'
+            + '<span>Página ' + pag + ' de ' + totalPag + '</span>'
+            + '<button class="btn btn-ghost" data-cxp-lp="' + tipo + '" data-cxp-lp-dir="1"' + (pag >= totalPag ? ' disabled' : '') + ' style="height:24px;font-size:10px;">Siguiente »</button>'
+            + '</div>'
+          : '';
+        cEl.innerHTML = '<strong>' + pendientes + '</strong> con saldo pendiente · ' + rows.length + ' factura' + (rows.length === 1 ? '' : 's') + ' en total' + pagerHtml;
+      }
       const tc = document.getElementById(tabCountId); if (tc) { tc.textContent = String(pendientes); tc.style.display = pendientes > 0 ? '' : 'none'; }
       // KPI de la vista Compras y CxP
       if (!esVenta) {
@@ -2931,6 +2951,13 @@
     }
 
     view.addEventListener('click', async (e) => {
+      const pb = e.target.closest('button[data-cxp-lp]');
+      if (pb && !pb.disabled) {
+        const tipo = pb.dataset.cxpLp;
+        _cxPage[tipo] = (_cxPage[tipo] || 1) + parseInt(pb.dataset.cxpLpDir, 10);
+        renderCxCxP();
+        return;
+      }
       const dc = e.target.closest('[data-teso-delcuenta]');
       const dm = e.target.closest('[data-teso-delmov]');
       const vc = e.target.closest('[data-teso-vercomp]');
