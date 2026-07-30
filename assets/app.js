@@ -12216,3 +12216,72 @@
   reset();
 })();
 
+/* =========================================================
+   ATAJOS DE TECLADO (Fase 1) — Ctrl+Enter/Escape universal,
+   Ctrl+P para imprimir, Insert para "nuevo registro" contextual.
+   No toca el código interno de los modales: solo les hace clic
+   a sus botones ya existentes, desde afuera. Ver spec:
+   docs/superpowers/specs/2026-07-30-atajos-teclado-design.md
+   ========================================================= */
+(function atajosTeclado() {
+  // formModal ya tiene su propio Ctrl+Enter/Escape (ver openFormModal,
+  // función window.openFormModal) — no se duplica aquí.
+  const MODALES = [
+    // Grupo A — formulario con acción principal clara
+    { overlay: 'terModal', guardar: 'terSave', cancelar: 'terCancel' },
+    { overlay: 'asientoModal', guardar: 'amSave', cancelar: 'amCancel' },
+    { overlay: 'agAutoModal', guardar: 'agAutoSave', cancelar: 'agAutoCancel' },
+    { overlay: 'facturaNuevaModal', guardar: 'fvEmitir', cancelar: 'fvCancel' },
+    { overlay: 'firmaOverlay', guardar: 'firmaAplicar', cancelar: 'firmaClose' },
+    // Grupo B/C — visor de documento (sin acción de Guardar)
+    { overlay: 'retReciboOverlay', cancelar: 'retReciboClose', imprimir: 'retReciboPrint' },
+    { overlay: 'despachoOverlay', cancelar: 'despachoClose', imprimir: 'despachoPrint' },
+    { overlay: 'relnOverlay', cancelar: 'relnClose', imprimir: 'relnPrint' },
+    { overlay: 'subReciboModal', cancelar: 'subReciboClose', imprimir: 'subReciboPrint' },
+    { overlay: 'facturaOverlay', cancelar: 'facturaClose', imprimir: 'facturaPrint' },
+    { overlay: 'reciboOverlay', cancelar: 'reciboClose', imprimir: 'reciboPrint' },
+    // Grupo D — sensible (dinero): SOLO Escape, nunca Ctrl+Enter
+    { overlay: 'payModal', cancelar: 'payCancel' },
+  ];
+
+  function esVisible(el) {
+    return !!el && window.getComputedStyle(el).display !== 'none';
+  }
+
+  // El modal MAS AL FRENTE entre los que estén visibles ahora (por z-index
+  // calculado) — necesario porque F2 puede abrir "Nuevo tercero" encima de
+  // "Registrar venta", y ambos podrían estar visibles a la vez.
+  function modalVisibleTope() {
+    let top = null, topZ = -1;
+    MODALES.forEach((m) => {
+      const el = document.getElementById(m.overlay);
+      if (!esVisible(el)) return;
+      const z = parseInt(window.getComputedStyle(el).zIndex, 10) || 0;
+      if (z >= topZ) { topZ = z; top = m; }
+    });
+    return top;
+  }
+
+  function algunModalVisible() {
+    return MODALES.some((m) => esVisible(document.getElementById(m.overlay)))
+      || esVisible(document.getElementById('formModal'));
+  }
+  window.__algunModalVisible = algunModalVisible;
+
+  document.addEventListener('keydown', (e) => {
+    if (e.defaultPrevented) return; // otro handler (p. ej. formModal) ya actuó
+    const ctrlEnter = e.key === 'Enter' && (e.ctrlKey || e.metaKey);
+    const escape = e.key === 'Escape';
+    if (!ctrlEnter && !escape) return;
+    const m = modalVisibleTope();
+    if (!m) return; // ninguno de los 12 está abierto (formModal maneja lo suyo aparte)
+    if (ctrlEnter && m.guardar) {
+      const btn = document.getElementById(m.guardar);
+      if (btn) { e.preventDefault(); btn.click(); }
+    } else if (escape && m.cancelar) {
+      const btn = document.getElementById(m.cancelar);
+      if (btn) { e.preventDefault(); btn.click(); }
+    }
+  });
+})();
+
