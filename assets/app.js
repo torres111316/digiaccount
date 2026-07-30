@@ -2815,24 +2815,20 @@
       _cxPage.venta = 1; _cxPage.compra = 1; // vuelve a la página 1 al (re)cargar la vista
       const rifEl = document.getElementById('tesoRif'); if (rifEl) rifEl.textContent = (emp && emp.rif) || '—';
       if (!window.sb || !emp || !emp.id) { _cuentas = []; _movs = []; _facturas = []; render(); return; }
-      const [r1, r2, r3, r4] = await Promise.all([
+      const [r1, r2, r3] = await Promise.all([
         window.sb.from('cuentas_tesoreria').select('*').eq('empresa_id', emp.id).order('creado_en'),
-        // Movimientos y compras pueden superar 1000 filas → paginado (evita el tope de PostgREST)
+        // Movimientos pueden superar 1000 filas → paginado (evita el tope de PostgREST)
         window.__sbAll((q) => q.eq('empresa_id', emp.id), 'movimientos_tesoreria', '*'),
         // Ventas = RECIBOS emitidos (control de cobros), por empresa. NO el libro de ventas (ese es solo para declarar).
         window.__sbAll((q) => q.eq('tipo', 'venta').eq('empresa_id', emp.id), 'facturas', 'numero, cliente_nombre, cliente_rif, total, fecha, estado, condicion'),
-        // Compras = facturas registradas en el Libro de Compras (lo que le debes al proveedor).
-        window.__sbAll((q) => q.eq('empresa_id', emp.id).eq('tipo', 'compra'), 'libro_fiscal', 'id, numero_factura, tercero_nombre, tercero_rif, total, fecha'),
       ]);
       if (r1.error) { console.warn('[DigiAccount] Tesorería:', r1.error.message); }
       _cuentas = r1.data || []; _movs = r2.data || [];
       const ventas = (r3.data || []).filter((f) => !/anulada/i.test(f.estado || '')).map((f) => ({ ref: f.numero, tercero_nombre: f.cliente_nombre, tercero_rif: f.cliente_rif, total: f.total, fecha: f.fecha, tipo: 'venta', condicion: f.condicion, estado: f.estado }));
-      // Modelo del contador externo: en modo LIBRO (fiscal) las compras se presumen PAGADAS
-      // al momento (por banco) — el asiento ya acreditó Bancos. Si el cliente da el detalle
-      // real de cobranza, se registran pagos y el saldo se ajusta.
-      const presunto = (emp.modo === 'libro');
-      const compras = (r4.data || []).map((f) => ({ _id: f.id, ref: f.numero_factura, tercero_nombre: f.tercero_nombre, tercero_rif: f.tercero_rif, total: f.total, fecha: f.fecha, tipo: 'compra', presuntoPagado: presunto }));
-      _facturas = ventas.concat(compras);
+      // Modelo de firma contable (cuenta de Luis): el Libro de Compras es SOLO para declarar
+      // los impuestos de cada cliente — NO representa cuentas por pagar que la firma gestione.
+      // Por eso "Compras" (Tesorería/CxP) queda separado del Libro de Compras, igual que Ventas.
+      _facturas = ventas;
       render();
     }
     window.cargarTesoreria = cargarTesoreria;
