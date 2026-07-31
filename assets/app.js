@@ -8224,7 +8224,7 @@
       const { data, error } = await window.__sbAll((q) => q
         .eq('empresa_id', window.__EMPRESA_ACTIVA.id).eq('tipo', tipo)
         .or('periodo.eq.' + perDecl + ',and(periodo.is.null,fecha.like.*' + sufPer + ')')
-        .order('fecha'), 'libro_fiscal', '*');
+        .order('fecha').order('numero_factura'), 'libro_fiscal', '*');
       if (error) { console.warn('[DigiAccount] No se pudo cargar el libro fiscal:', error.message); vacio('No se pudieron cargar (¿creaste la tabla libro_fiscal?).'); return; }
       const arr = data || [];
       _libroData[tipo] = arr;
