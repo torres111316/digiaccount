@@ -12283,7 +12283,12 @@
   ];
 
   function esVisible(el) {
-    return !!el && window.getComputedStyle(el).display !== 'none';
+    if (!el) return false;
+    const cs = window.getComputedStyle(el);
+    // Algunos overlays (.recibo-overlay: factura, recibo, firma, despacho) NUNCA
+    // cambian su 'display' (siempre 'grid') — se muestran/ocultan con opacity +
+    // pointer-events al alternar data-open. Por eso se revisan las tres señales.
+    return cs.display !== 'none' && cs.visibility !== 'hidden' && parseFloat(cs.opacity) > 0;
   }
 
   // El modal MAS AL FRENTE entre los que estén visibles ahora (por z-index
