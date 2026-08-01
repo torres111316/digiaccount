@@ -5765,7 +5765,6 @@
       // Salario base COTIZABLE = el que se declara para el trabajador.
       // El Bono de Contingencia es un complemento NO salarial (no cotizable), explícito.
       const sueldo = (emp.salarioMes || 0) / f.div;
-      const transporteBs = (emp.transporteUSD || 0) * tasa / f.div; // bono de transporte mensual en divisa, pagado en Bs a tasa BCV (no salarial)
 
       const salDia = SALARIO_MINIMO / 30;            // recargos legales sobre el salario base
       const valHora = salDia / 8;                    // jornada de 8 h
@@ -5795,13 +5794,22 @@
       const cestaticket = cestaUsdPeriodo * tasa;
 
       // Bono de Contingencia (modelo de la firma): emp.contingenciaUSD es el PAQUETE TOTAL
-      // en USD del PERÍODO DE PAGO del trabajador (ej. 70 $ semanales). El bono completa el
-      // paquete después del salario neto de ley y el cestaticket, de modo que el trabajador
-      // reciba EXACTAMENTE su paquete en Bs a la tasa BCV, muevan lo que muevan las deducciones.
+      // en USD del PERÍODO DE PAGO del trabajador (ej. 70 $ semanales). El complemento no
+      // salarial (contingencia + transporte) completa el paquete después del salario neto de
+      // ley y el cestaticket, de modo que el trabajador reciba EXACTAMENTE su paquete en Bs a
+      // la tasa BCV, muevan lo que muevan las deducciones o cómo se reparta el complemento.
       const dedSueldo = Math.min(sueldo, TOPE_IVSS / f.div) * R_IVSS_T
         + Math.min(sueldo, TOPE_RPE / f.div) * R_RPE_T + sueldo * R_FAOV_T;
       const paqueteBs = (emp.contingenciaUSD || 0) * tasa;
-      const bonoContingencia = Math.max(0, paqueteBs - cestaticket - (sueldo - dedSueldo));
+      const complementoNoSalarial = Math.max(0, paqueteBs - cestaticket - (sueldo - dedSueldo));
+      // Bono de transporte: % del complemento (se mantiene proporcional aunque cambie la tasa
+      // o el paquete) si el trabajador tiene un % configurado; si no, monto fijo en USD (como
+      // antes). En ambos casos se DESCUENTA de la contingencia, nunca se suma aparte — así el
+      // trabajador sigue recibiendo el mismo paquete total, solo repartido en dos conceptos.
+      const transporteBs = (emp.transportePct || 0) > 0
+        ? complementoNoSalarial * emp.transportePct
+        : (emp.transporteUSD || 0) * tasa / f.div;
+      const bonoContingencia = Math.max(0, complementoNoSalarial - transporteBs);
 
       // Base salarial total (asignaciones salariales que devenga el trabajador)
       const baseSalarial = sueldo + montoExtra + montoNoct + montoFeriado + comision + bonoProd;
@@ -5868,7 +5876,7 @@
       rows.push(['sec', 'Beneficios no salariales (no cotizables)', '', null]);
       if (p.bonoContingencia > 0) rows.push(['asig', 'Bono de contingencia', 'completa el paquete de $' + (emp.contingenciaUSD || 0) + ' del período (Bs ' + fmt(p.tasa) + '/$) · no salarial', p.bonoContingencia]);
       rows.push(['asig', 'Cestaticket · Bono de alimentación', '$' + (p.cestaUsdPeriodo || 0) + ' del período ($40/mes) a tasa BCV (Bs ' + fmt(p.tasa) + '/$) · exento de deducciones', p.cestaticket]);
-      if (p.transporteBs > 0) rows.push(['asig', 'Bono de transporte', '$' + (emp.transporteUSD || 0) + ' a tasa BCV (Bs ' + fmt(p.tasa) + '/$) · pagado en Bs', p.transporteBs]);
+      if (p.transporteBs > 0) rows.push(['asig', 'Bono de transporte', (emp.transportePct > 0 ? (emp.transportePct * 100).toFixed(0) + '% del complemento no salarial' : '$' + (emp.transporteUSD || 0) + ' a tasa BCV (Bs ' + fmt(p.tasa) + '/$)') + ' · no salarial', p.transporteBs]);
       rows.push(['sec', 'Deducciones de ley', '', null]);
       rows.push(['ded', 'IVSS · Seguro Social', fmt(R_IVSS_T * 100) + '% · base tope 5 sal. mín.', p.ivss]);
       rows.push(['ded', 'SPF · Paro Forzoso', fmt(R_RPE_T * 100) + '% · base tope 10 sal. mín.', p.spf]);
@@ -6022,8 +6030,8 @@
       empleados = (data || []).map((r, i) => ({
         id: r.id, nombre: r.nombre, cedula: r.cedula || '', cargo: r.cargo || '', depto: r.depto || '—', tipo: r.tipo || 'Administrativo',
         ingreso: r.ingreso ? new Date(r.ingreso + 'T00:00:00') : new Date(2026, 0, 1), salarioMes: Number(r.salario_mes) || 0,
-        transporteUSD: Number(r.transporte_usd) || 0,
-        bonoLabel: Number(r.transporte_usd) > 0 ? '$' + Number(r.transporte_usd) + ' transp.' : '—',
+        transporteUSD: Number(r.transporte_usd) || 0, transportePct: (Number(r.transporte_pct) || 0) / 100,
+        bonoLabel: Number(r.transporte_pct) > 0 ? Number(r.transporte_pct) + '% transp.' : (Number(r.transporte_usd) > 0 ? '$' + Number(r.transporte_usd) + ' transp.' : '—'),
         sujetoDpp: !!r.sujeto_dpp,
         formaPago: r.forma_pago || 'Transferencia', frecHabitual: r.frecuencia || 'quincenal',
         prestamoCuota: Number(r.prestamo_cuota) || 0, cajaAhorroPct: (Number(r.caja_ahorro_pct) || 0) / 100,
@@ -6066,7 +6074,8 @@
           { name: 'ingreso', label: 'Fecha de ingreso', type: 'date', value: emp && emp.ingreso ? _isoFecha(emp.ingreso) : new Date().toISOString().slice(0, 10) },
           { name: 'salarioMes', label: 'Salario base mensual cotizable (Bs)', type: 'number', step: '0.01', placeholder: '0.00', value: emp ? String(emp.salarioMes) : '' },
           { name: 'contingenciaUSD', label: 'Paquete del período en USD (ej. 70 semanales — el Bono de Contingencia completa: paquete − cesta − salario)', type: 'number', step: '0.01', moneda: 'USD', placeholder: '0', value: emp ? String(emp.contingenciaUSD || '') : '' },
-          { name: 'transporteUSD', label: 'Bono de transporte en USD (se paga en Bs a tasa BCV)', type: 'number', step: '0.01', moneda: 'USD', placeholder: '0', value: emp ? String(emp.transporteUSD || '') : '' },
+          { name: 'transportePct', label: 'Bono de transporte (% de la contingencia, opcional — si lo llenas, manda sobre el monto fijo)', type: 'number', step: '1', placeholder: '0', value: emp && emp.transportePct ? String(emp.transportePct * 100) : '' },
+          { name: 'transporteUSD', label: 'Bono de transporte en USD fijo (alternativa al %, se paga en Bs a tasa BCV)', type: 'number', step: '0.01', moneda: 'USD', placeholder: '0', value: emp ? String(emp.transporteUSD || '') : '' },
           { name: 'formaPago', label: 'Forma de pago', type: 'select', value: emp ? emp.formaPago : 'Transferencia', options: ['Transferencia', 'Efectivo', 'Pago móvil'] },
           { name: 'frec', label: 'Frecuencia (se ajusta sola al elegir el tipo)', type: 'select', value: emp ? emp.frecHabitual : 'semanal', options: [{ value: 'semanal', label: 'Semanal' }, { value: 'quincenal', label: 'Quincenal' }, { value: 'mensual', label: 'Mensual' }] },
           { name: 'dpp', label: '¿Sujeto a DPP? (Protección Pensiones 9%)', type: 'select', value: emp ? (emp.sujetoDpp ? 'Sí' : 'No') : 'No', options: ['No', 'Sí'] },
@@ -6094,7 +6103,7 @@
           const ini = v.nombre.trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
           const datos = {
             nombre: v.nombre.trim(), cedula: v.cedula.trim(), cargo: v.cargo.trim(), depto: (v.depto || '').trim() || null,
-            tipo: v.tipo, ingreso: v.ingreso || null, salario_mes: sal, contingencia_usd: parseFloat(v.contingenciaUSD) || 0, transporte_usd: parseFloat(v.transporteUSD) || 0,
+            tipo: v.tipo, ingreso: v.ingreso || null, salario_mes: sal, contingencia_usd: parseFloat(v.contingenciaUSD) || 0, transporte_usd: parseFloat(v.transporteUSD) || 0, transporte_pct: parseFloat(v.transportePct) || 0,
             nacionalidad: v.nacionalidad || null, estado_civil: v.estadoCivil || null, direccion: (v.direccion || '').trim() || null,
             forma_pago: v.formaPago, frecuencia: v.frec, sujeto_dpp: (v.dpp === 'Sí'), caja_ahorro_pct: parseFloat(v.cajaAhorroPct) || 0, ini: ini,
             correo: (v.correo || '').trim() || null, whatsapp: (v.whatsapp || '').trim() || null,
