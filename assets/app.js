@@ -7458,8 +7458,9 @@
     const cancelBtn = document.getElementById('fmCancel');
     const closeBtn = document.getElementById('fmClose');
     let onSaveCb = null;
+    let currentCfg = null;
 
-    function close() { overlay.hidden = true; bodyEl.innerHTML = ''; msgEl.textContent = ''; onSaveCb = null; }
+    function close() { overlay.hidden = true; bodyEl.innerHTML = ''; msgEl.textContent = ''; onSaveCb = null; currentCfg = null; }
 
     function fieldHtml(f) {
       const span = f.col === 2 ? ' style="grid-column:1/-1;"' : '';
@@ -7492,6 +7493,7 @@
       bodyEl.innerHTML = '<div class="fm-grid">' + (cfg.fields || []).map(fieldHtml).join('') + '</div>';
       saveBtn.innerHTML = '<i data-lucide="check"></i> ' + (cfg.saveLabel || 'Guardar');
       onSaveCb = cfg.onSave;
+      currentCfg = cfg;
       // Botón Eliminar (opcional): se muestra solo si el llamador pasa cfg.onDelete
       const delBtn = document.getElementById('fmDelete');
       if (delBtn) {
@@ -7550,9 +7552,11 @@
 
     saveBtn.addEventListener('click', () => {
       if (!onSaveCb) return close();
+      const stayOpen = currentCfg && currentCfg.autoClose === false;
       const res = onSaveCb(collect());
       if (typeof res === 'string') { msgEl.textContent = res; msgEl.classList.add('error'); return; }
-      close();
+      msgEl.textContent = ''; msgEl.classList.remove('error');
+      if (!stayOpen) close();
     });
     cancelBtn.addEventListener('click', close);
     closeBtn.addEventListener('click', close);
@@ -7857,13 +7861,51 @@
     function registrarMov(tipo) {
       const esCompra = tipo === 'compra';
       let invBox = null; // contenedor de líneas para reponer inventario (solo compras)
+      let bodyRef = null; // referencia al cuerpo del formulario, para poder limpiarlo tras guardar sin cerrar
       const prodsCompra = esCompra && window.__getProductos ? window.__getProductos() : [];
       // Terceros del rol correspondiente (proveedores para compras, clientes para ventas) → autocompletado
       const terceros = (window.__getTerceros ? window.__getTerceros() : []).filter((t) => (esCompra ? t.prov : t.cli) && t.nombre);
       const normRif = (s) => (s || '').toUpperCase().replace(/[\s.\-]/g, '');
+      // VENTAS: sugiere el siguiente N° de factura/control consultando el máximo real en la BD.
+      // forzar=true (tras guardar, para la siguiente factura) sobreescribe aunque el campo tenga valor;
+      // si no, solo rellena si está vacío (apertura inicial del formulario).
+      function autonumerar(forzar) {
+        if (esCompra || !window.__sbAll || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id || !bodyRef) return;
+        const nfEl = bodyRef.querySelector('[data-name="numFactura"]');
+        const ncEl = bodyRef.querySelector('[data-name="numControl"]');
+        window.__sbAll((q) => q.eq('empresa_id', window.__EMPRESA_ACTIVA.id).eq('tipo', 'venta'), 'libro_fiscal', 'numero_factura').then(({ data }) => {
+          let maxN = 0;
+          (data || []).forEach((r) => { const n = parseInt(String(r.numero_factura || '').replace(/\D/g, ''), 10); if (!isNaN(n) && n > maxN) maxN = n; });
+          if (!maxN) return;
+          const pad = String(maxN + 1).padStart(6, '0');
+          if (nfEl && (forzar || !nfEl.value)) nfEl.value = pad;
+          if (ncEl && (forzar || !ncEl.value)) ncEl.value = '00-' + pad;
+        });
+      }
+      // Tras registrar, limpia solo lo que cambia de una factura a otra (cliente, RIF, números,
+      // montos) y deja lo que se repite en una sesión de carga (fecha, tipo, condición, IGTF…)
+      // para poder seguir registrando facturas seguidas sin cerrar ni volver a llenar todo.
+      function limpiarParaSiguiente() {
+        if (!bodyRef) return;
+        const setV = (n, val) => { const el = bodyRef.querySelector('[data-name="' + n + '"]'); if (el) el.value = val; };
+        setV('nombre', ''); setV('rif', ''); setV('base', ''); setV('exento', '');
+        setV('retComp', '');
+        const retSel = bodyRef.querySelector('[data-name="retPct"]'); if (retSel) retSel.value = 'Sin retención';
+        const anularSel = bodyRef.querySelector('[data-name="anularVenta"]');
+        if (anularSel) { anularSel.value = 'No'; anularSel.dispatchEvent(new Event('change')); }
+        const baseEl = bodyRef.querySelector('[data-name="base"]');
+        if (baseEl) baseEl.dispatchEvent(new Event('input')); // refresca IVA/Total mostrados a 0
+        const exEl = bodyRef.querySelector('[data-name="exento"]');
+        if (exEl) exEl.dispatchEvent(new Event('input')); // limpia el hint "= Bs ..." bajo el campo
+        if (invBox) { const rows = invBox.querySelector('#invCompraRows'); if (rows) rows.innerHTML = '<div class="ic-empty">Agrega los productos que llegaron con esta compra.</div>'; }
+        const factEl = bodyRef.querySelector('[data-name="facturaFile"]'); if (factEl) factEl.value = '';
+        autonumerar(true);
+        const prov = bodyRef.querySelector('[data-name="nombre"]'); if (prov) prov.focus();
+      }
       window.openFormModal && window.openFormModal({
         title: esCompra ? 'Registrar compra (Libro de Compras)' : 'Registrar venta (Libro de Ventas)',
-        saveLabel: 'Registrar en el libro',
+        saveLabel: 'Registrar y seguir con la siguiente',
+        autoClose: false,
         fields: (esCompra && (window.__ES_FUNDADOR || window.__ADDON_AGENTES) && window.__ocrFactura ? [
           { name: 'facturaFile', label: '🤖 Factura del proveedor (PDF o foto) — el Agente IA la lee y llena el formulario', col: 2, type: 'file' },
         ] : []).concat([
@@ -7902,23 +7944,13 @@
           { name: 'anularVenta', label: '¿Este número es una factura ANULADA? (solo reserva el correlativo, sin monto)', col: 2, type: 'select', options: ['No', 'Sí — Anulada'] },
         ])),
         afterRender: (body) => {
+          bodyRef = body;
           const prov = body.querySelector('[data-name="nombre"]');
           const rif = body.querySelector('[data-name="rif"]');
           if (!prov) return;
           // VENTAS: el N° de factura y de control son correlativos (uno detrás del otro) →
           // se sugiere el siguiente automáticamente, pero queda editable por si hace falta ajustarlo.
-          if (!esCompra && window.__sbAll && window.__EMPRESA_ACTIVA && window.__EMPRESA_ACTIVA.id) {
-            const nfEl = body.querySelector('[data-name="numFactura"]');
-            const ncEl = body.querySelector('[data-name="numControl"]');
-            window.__sbAll((q) => q.eq('empresa_id', window.__EMPRESA_ACTIVA.id).eq('tipo', 'venta'), 'libro_fiscal', 'numero_factura').then(({ data }) => {
-              let maxN = 0;
-              (data || []).forEach((r) => { const n = parseInt(String(r.numero_factura || '').replace(/\D/g, ''), 10); if (!isNaN(n) && n > maxN) maxN = n; });
-              if (!maxN) return;
-              const pad = String(maxN + 1).padStart(6, '0');
-              if (nfEl && !nfEl.value) nfEl.value = pad;
-              if (ncEl && !ncEl.value) ncEl.value = '00-' + pad;
-            });
-          }
+          autonumerar();
           // VENTAS: toggle "Anulada" — reserva el número sin monto (reemplaza el truco manual
           // de poner "ANULADA" como cliente y dejar los montos a mano, propenso a error).
           const anularSel = body.querySelector('[data-name="anularVenta"]');
@@ -8094,11 +8126,14 @@
           const igtf = /s[ií]/i.test(v.igtfAplica || '') ? total * 0.03 : 0; // IGTF sobre el total de la factura
           const p = (v.fecha || '').split('-');
           const fecha = p.length === 3 ? (p[2] + '/' + p[1] + '/' + p[0].slice(2)) : '';
+          const saveBtnEl = document.getElementById('fmSave');
+          if (saveBtnEl) saveBtnEl.disabled = true; // evita doble registro mientras el modal sigue abierto
           window.sb.from('libro_fiscal').insert({
             cuenta_id: window.__CUENTA_ID, empresa_id: window.__EMPRESA_ACTIVA.id, tipo: tipo, fecha: fecha, periodo: periodo,
             tercero_nombre: v.nombre, tercero_rif: normRif(v.rif), numero_factura: v.numFactura, numero_control: v.numControl,
             tipo_doc: (v.tipoDoc || (esCompra ? 'FC' : 'FV')).slice(0, 2), exento: exento, base: base, alicuota: alic, iva: iva, igtf: igtf, total: total,
           }).then(({ error }) => {
+            if (saveBtnEl) saveBtnEl.disabled = false;
             if (error) { toast('No se pudo guardar: ' + error.message, 'error'); return; }
             if (window.__invalidarArrastres) window.__invalidarArrastres(); // el nuevo registro puede cambiar los arrastres
             if (window.cargarLibroFiscal) window.cargarLibroFiscal(tipo);
@@ -8183,6 +8218,8 @@
                 toast('Retención de IVA ' + (esCompra ? 'practicada' : 'sufrida') + ' registrada · Bs ' + fmtF(retMonto), 'success');
               });
             }
+            // Deja el formulario listo para la SIGUIENTE factura (el modal no se cierra)
+            limpiarParaSiguiente();
           });
         },
       });
