@@ -5752,6 +5752,14 @@
       }
       return 'Mes de ' + MESES_NOM[hoy.getMonth()] + ' ' + hoy.getFullYear();
     }
+    const fmtFechaISO = (iso) => { if (!iso) return ''; const [y, m, d] = iso.split('-'); return d + '/' + m + '/' + y; };
+    // Vacaciones: mientras hoy caiga en [desde, hasta], el trabajador NO devenga salario ni
+    // contingencia/transporte en la nómina regular — solo se le sigue pagando el Cestaticket.
+    function enVacaciones(emp) {
+      if (!emp.vacacionesDesde || !emp.vacacionesHasta) return false;
+      const hoyISO = window.__hoyISO ? window.__hoyISO() : new Date().toISOString().slice(0, 10);
+      return hoyISO >= emp.vacacionesDesde && hoyISO <= emp.vacacionesHasta;
+    }
 
     function calcPago(emp, freqOver) {
       const fq = freqOver || payFreq;
@@ -5762,30 +5770,34 @@
       // el sábado de pago usa la del lunes siguiente (publicada el viernes en la tarde).
       const tasa = window.__bcvRateNomina || window.__bcvRate || 145.82;
 
+      // Vacaciones: mientras esté en su rango de vacaciones, NO devenga salario ni novedades
+      // ni contingencia/transporte — solo se le sigue pagando el Cestaticket (más abajo).
+      const deVacaciones = enVacaciones(emp);
+
       // Salario base COTIZABLE = el que se declara para el trabajador.
       // El Bono de Contingencia es un complemento NO salarial (no cotizable), explícito.
-      const sueldo = (emp.salarioMes || 0) / f.div;
+      const sueldo = deVacaciones ? 0 : (emp.salarioMes || 0) / f.div;
 
       const salDia = SALARIO_MINIMO / 30;            // recargos legales sobre el salario base
       const valHora = salDia / 8;                    // jornada de 8 h
 
       // Horas extras (Art. 118 LOTTT: recargo 50% sobre la hora normal)
       const valHoraExtra = valHora * 1.5;
-      const horas = Math.round(emp.horasExtra || 0);       // novedad: horas reales del período
+      const horas = deVacaciones ? 0 : Math.round(emp.horasExtra || 0);       // novedad: horas reales del período
       const montoExtra = horas * valHoraExtra;
 
       // Bono nocturno (Art. 117 LOTTT: recargo 30% sobre la hora normal)
       const valBonoNoct = valHora * 0.30;
-      const horasNoct = Math.round(emp.horasNoct || 0);    // novedad del período
+      const horasNoct = deVacaciones ? 0 : Math.round(emp.horasNoct || 0);    // novedad del período
       const montoNoct = horasNoct * valBonoNoct;
 
       // Días feriados / domingos trabajados (Art. 120 LOTTT: recargo 50%)
-      const diasFeriado = Math.round(emp.diasFeriado || 0); // novedad del período
+      const diasFeriado = deVacaciones ? 0 : Math.round(emp.diasFeriado || 0); // novedad del período
       const montoFeriado = diasFeriado * salDia * 1.5;
 
       // Comisiones y bono de producción (novedades del período, salariales)
-      const comision = (emp.comisionBs || 0);
-      const bonoProd = (emp.bonoProdBs || 0);
+      const comision = deVacaciones ? 0 : (emp.comisionBs || 0);
+      const bonoProd = deVacaciones ? 0 : (emp.bonoProdBs || 0);
 
       // Cestaticket / bono de alimentación: $40/mes pagado en Bs a tasa BCV (no salarial, sin deducciones).
       // Semanal se calcula (40/30)×7 = 9,33 $/semana (convención de la firma, redondeado a 2
@@ -5798,18 +5810,21 @@
       // salarial (contingencia + transporte) completa el paquete después del salario neto de
       // ley y el cestaticket, de modo que el trabajador reciba EXACTAMENTE su paquete en Bs a
       // la tasa BCV, muevan lo que muevan las deducciones o cómo se reparta el complemento.
-      const dedSueldo = Math.min(sueldo, TOPE_IVSS / f.div) * R_IVSS_T
-        + Math.min(sueldo, TOPE_RPE / f.div) * R_RPE_T + sueldo * R_FAOV_T;
-      const paqueteBs = (emp.contingenciaUSD || 0) * tasa;
-      const complementoNoSalarial = Math.max(0, paqueteBs - cestaticket - (sueldo - dedSueldo));
-      // Bono de transporte: % del complemento (se mantiene proporcional aunque cambie la tasa
-      // o el paquete) si el trabajador tiene un % configurado; si no, monto fijo en USD (como
-      // antes). En ambos casos se DESCUENTA de la contingencia, nunca se suma aparte — así el
-      // trabajador sigue recibiendo el mismo paquete total, solo repartido en dos conceptos.
-      const transporteBs = (emp.transportePct || 0) > 0
-        ? complementoNoSalarial * emp.transportePct
-        : (emp.transporteUSD || 0) * tasa / f.div;
-      const bonoContingencia = Math.max(0, complementoNoSalarial - transporteBs);
+      let transporteBs = 0, bonoContingencia = 0;
+      if (!deVacaciones) {
+        const dedSueldo = Math.min(sueldo, TOPE_IVSS / f.div) * R_IVSS_T
+          + Math.min(sueldo, TOPE_RPE / f.div) * R_RPE_T + sueldo * R_FAOV_T;
+        const paqueteBs = (emp.contingenciaUSD || 0) * tasa;
+        const complementoNoSalarial = Math.max(0, paqueteBs - cestaticket - (sueldo - dedSueldo));
+        // Bono de transporte: % del complemento (se mantiene proporcional aunque cambie la tasa
+        // o el paquete) si el trabajador tiene un % configurado; si no, monto fijo en USD (como
+        // antes). En ambos casos se DESCUENTA de la contingencia, nunca se suma aparte — así el
+        // trabajador sigue recibiendo el mismo paquete total, solo repartido en dos conceptos.
+        transporteBs = (emp.transportePct || 0) > 0
+          ? complementoNoSalarial * emp.transportePct
+          : (emp.transporteUSD || 0) * tasa / f.div;
+        bonoContingencia = Math.max(0, complementoNoSalarial - transporteBs);
+      }
 
       // Base salarial total (asignaciones salariales que devenga el trabajador)
       const baseSalarial = sueldo + montoExtra + montoNoct + montoFeriado + comision + bonoProd;
@@ -5827,10 +5842,10 @@
       const faov = salarioNormal * R_FAOV_T; // FAOV sin tope legal
       const dedLey = ivss + spf + faov;
 
-      // Otras deducciones
-      const cajaAhorro = salarioNormal * (emp.cajaAhorroPct || 0);
-      const prestamo = (emp.prestamoCuota || 0) / f.div;     // recurrente mensual, prorrateado
-      const anticipo = (emp.anticipoSueldo || 0);            // novedad del período
+      // Otras deducciones (no aplican durante vacaciones: solo se paga el Cestaticket)
+      const cajaAhorro = deVacaciones ? 0 : salarioNormal * (emp.cajaAhorroPct || 0);
+      const prestamo = deVacaciones ? 0 : (emp.prestamoCuota || 0) / f.div;     // recurrente mensual, prorrateado
+      const anticipo = deVacaciones ? 0 : (emp.anticipoSueldo || 0);            // novedad del período
       const dedOtras = cajaAhorro + prestamo + anticipo;
 
       const ded = dedLey + dedOtras;
@@ -5839,7 +5854,7 @@
       const asig = asigSalarial + bonoContingencia + cestaticket + transporteBs;
       const neto = asig - ded;
       return {
-        f, tasa, salDia, sueldo, bonoContingencia, transporteBs, valHora, baseIvss, baseRpe,
+        f, tasa, salDia, sueldo, deVacaciones, bonoContingencia, transporteBs, valHora, baseIvss, baseRpe,
         valHoraExtra, horas, montoExtra,
         valBonoNoct, horasNoct, montoNoct,
         diasFeriado, montoFeriado, comision, bonoProd,
@@ -5866,26 +5881,33 @@
       const fecha = ('0' + hoyR.getDate()).slice(-2) + '/' + ('0' + (hoyR.getMonth() + 1)).slice(-2) + '/' + hoyR.getFullYear();
       const numDoc = p.f.doc + '-' + hoyR.getFullYear() + '-10-' + emp.id.toUpperCase();
 
-      const rows = [['sec', 'Asignaciones salariales', '', null]];
-      rows.push(['asig', p.f.etiqueta + ' (salario base)', 'Salario base cotizable · Bs ' + fmt(emp.salarioMes) + '/mes', p.sueldo]);
-      if (p.horas > 0) rows.push(['asig', 'Horas extras (' + p.horas + ' h)', 'Bs ' + fmt(p.valHoraExtra) + '/h · recargo 50% (Art. 118)', p.montoExtra]);
-      if (p.horasNoct > 0) rows.push(['asig', 'Bono nocturno (' + p.horasNoct + ' h)', 'Bs ' + fmt(p.valBonoNoct) + '/h · recargo 30% (Art. 117)', p.montoNoct]);
-      if (p.diasFeriado > 0) rows.push(['asig', 'Días feriados / domingos (' + p.diasFeriado + ')', 'Recargo 50% sobre el día (Art. 120)', p.montoFeriado]);
-      if (p.comision > 0) rows.push(['asig', 'Comisiones por ventas', '2% sobre ventas del período', p.comision]);
-      if (p.bonoProd > 0) rows.push(['asig', 'Bono de producción', 'Meta de planta alcanzada', p.bonoProd]);
-      rows.push(['sec', 'Beneficios no salariales (no cotizables)', '', null]);
-      if (p.bonoContingencia > 0) rows.push(['asig', 'Bono de contingencia', 'completa el paquete de $' + (emp.contingenciaUSD || 0) + ' del período (Bs ' + fmt(p.tasa) + '/$) · no salarial', p.bonoContingencia]);
-      rows.push(['asig', 'Cestaticket · Bono de alimentación', '$' + (p.cestaUsdPeriodo || 0) + ' del período ($40/mes) a tasa BCV (Bs ' + fmt(p.tasa) + '/$) · exento de deducciones', p.cestaticket]);
-      if (p.transporteBs > 0) rows.push(['asig', 'Bono de transporte', (emp.transportePct > 0 ? (emp.transportePct * 100).toFixed(0) + '% del complemento no salarial' : '$' + (emp.transporteUSD || 0) + ' a tasa BCV (Bs ' + fmt(p.tasa) + '/$)') + ' · no salarial', p.transporteBs]);
-      rows.push(['sec', 'Deducciones de ley', '', null]);
-      rows.push(['ded', 'IVSS · Seguro Social', fmt(R_IVSS_T * 100) + '% · base tope 5 sal. mín.', p.ivss]);
-      rows.push(['ded', 'SPF · Paro Forzoso', fmt(R_RPE_T * 100) + '% · base tope 10 sal. mín.', p.spf]);
-      rows.push(['ded', 'FAOV · Política Habitacional', fmt(R_FAOV_T * 100) + '% s/ salario normal', p.faov]);
-      if (p.dedOtras > 0) {
-        rows.push(['sec', 'Otras deducciones', '', null]);
-        if (p.cajaAhorro > 0) rows.push(['ded', 'Caja de ahorro', (emp.cajaAhorroPct * 100).toFixed(0) + '% del sueldo', p.cajaAhorro]);
-        if (p.prestamo > 0) rows.push(['ded', 'Cuota de préstamo', 'Anticipo de prestaciones', p.prestamo]);
-        if (p.anticipo > 0) rows.push(['ded', 'Anticipo de sueldo', 'Descuento acordado', p.anticipo]);
+      const rows = [];
+      if (p.deVacaciones) {
+        rows.push(['sec', 'De vacaciones desde ' + fmtFechaISO(emp.vacacionesDesde) + ' hasta ' + fmtFechaISO(emp.vacacionesHasta) + ' · no devenga salario ni contingencia en este período', '', null]);
+        rows.push(['sec', 'Beneficios no salariales (no cotizables)', '', null]);
+        rows.push(['asig', 'Cestaticket · Bono de alimentación', '$' + (p.cestaUsdPeriodo || 0) + ' del período ($40/mes) a tasa BCV (Bs ' + fmt(p.tasa) + '/$) · exento de deducciones', p.cestaticket]);
+      } else {
+        rows.push(['sec', 'Asignaciones salariales', '', null]);
+        rows.push(['asig', p.f.etiqueta + ' (salario base)', 'Salario base cotizable · Bs ' + fmt(emp.salarioMes) + '/mes', p.sueldo]);
+        if (p.horas > 0) rows.push(['asig', 'Horas extras (' + p.horas + ' h)', 'Bs ' + fmt(p.valHoraExtra) + '/h · recargo 50% (Art. 118)', p.montoExtra]);
+        if (p.horasNoct > 0) rows.push(['asig', 'Bono nocturno (' + p.horasNoct + ' h)', 'Bs ' + fmt(p.valBonoNoct) + '/h · recargo 30% (Art. 117)', p.montoNoct]);
+        if (p.diasFeriado > 0) rows.push(['asig', 'Días feriados / domingos (' + p.diasFeriado + ')', 'Recargo 50% sobre el día (Art. 120)', p.montoFeriado]);
+        if (p.comision > 0) rows.push(['asig', 'Comisiones por ventas', '2% sobre ventas del período', p.comision]);
+        if (p.bonoProd > 0) rows.push(['asig', 'Bono de producción', 'Meta de planta alcanzada', p.bonoProd]);
+        rows.push(['sec', 'Beneficios no salariales (no cotizables)', '', null]);
+        if (p.bonoContingencia > 0) rows.push(['asig', 'Bono de contingencia', 'completa el paquete de $' + (emp.contingenciaUSD || 0) + ' del período (Bs ' + fmt(p.tasa) + '/$) · no salarial', p.bonoContingencia]);
+        rows.push(['asig', 'Cestaticket · Bono de alimentación', '$' + (p.cestaUsdPeriodo || 0) + ' del período ($40/mes) a tasa BCV (Bs ' + fmt(p.tasa) + '/$) · exento de deducciones', p.cestaticket]);
+        if (p.transporteBs > 0) rows.push(['asig', 'Bono de transporte', (emp.transportePct > 0 ? (emp.transportePct * 100).toFixed(0) + '% del complemento no salarial' : '$' + (emp.transporteUSD || 0) + ' a tasa BCV (Bs ' + fmt(p.tasa) + '/$)') + ' · no salarial', p.transporteBs]);
+        rows.push(['sec', 'Deducciones de ley', '', null]);
+        rows.push(['ded', 'IVSS · Seguro Social', fmt(R_IVSS_T * 100) + '% · base tope 5 sal. mín.', p.ivss]);
+        rows.push(['ded', 'SPF · Paro Forzoso', fmt(R_RPE_T * 100) + '% · base tope 10 sal. mín.', p.spf]);
+        rows.push(['ded', 'FAOV · Política Habitacional', fmt(R_FAOV_T * 100) + '% s/ salario normal', p.faov]);
+        if (p.dedOtras > 0) {
+          rows.push(['sec', 'Otras deducciones', '', null]);
+          if (p.cajaAhorro > 0) rows.push(['ded', 'Caja de ahorro', (emp.cajaAhorroPct * 100).toFixed(0) + '% del sueldo', p.cajaAhorro]);
+          if (p.prestamo > 0) rows.push(['ded', 'Cuota de préstamo', 'Anticipo de prestaciones', p.prestamo]);
+          if (p.anticipo > 0) rows.push(['ded', 'Anticipo de sueldo', 'Descuento acordado', p.anticipo]);
+        }
       }
 
       const rowsHtml = rows.map((r) => {
@@ -5985,9 +6007,11 @@
       const divPer = payFreq === 'semanal' ? (52 / 12) : payFreq === 'mensual' ? 1 : 2;
       const FREC_TAG = { semanal: '<span class="tag success">Semanal</span>', quincenal: '<span class="tag">Quincenal</span>', mensual: '<span class="tag warn">Mensual</span>' };
       tbody.innerHTML = empleados.map((emp, i) => {
+        const vac = enVacaciones(emp);
+        const vacBadge = vac ? '<span class="tag warn" title="No devenga salario ni contingencia hasta reincorporarse">🌴 De vacaciones hasta ' + fmtFechaISO(emp.vacacionesHasta) + '</span>' : (emp.depto !== '—' ? emp.depto : ('$' + (emp.contingenciaUSD || 0) + ' / período'));
         return '<tr>'
           + '<td><div class="emp-cell"><div class="emp-avatar" style="background:' + emp.color + ';">' + emp.ini + '</div>'
-          + '<div class="info"><div class="n">' + emp.nombre + '</div><div class="r">' + (emp.depto !== '—' ? emp.depto : ('$' + (emp.contingenciaUSD || 0) + ' / período')) + '</div></div></div></td>'
+          + '<div class="info"><div class="n">' + emp.nombre + '</div><div class="r">' + vacBadge + '</div></div></div></td>'
           + '<td class="mono">' + emp.cedula + '</td>'
           + '<td>' + (emp.cargo || '—') + '</td>'
           + '<td class="num">' + fmt(emp.salarioMes) + '</td>'
@@ -5995,7 +6019,7 @@
           + '<td>' + emp.formaPago + '</td>'
           + '<td class="num">' + fmt(emp.salarioMes / divPer) + '</td>'
           + '<td>' + (FREC_TAG[emp.frecHabitual] || FREC_TAG.quincenal) + '</td>'
-          + '<td style="white-space:nowrap;"><button class="btn btn-ghost" data-emp-edit="' + i + '" title="Editar trabajador" style="height:28px;font-size:11px;padding:0 9px;"><i data-lucide="pencil"></i></button> <button class="btn btn-ghost" data-emp-exp="' + i + '" title="Expediente (cédula, RIF, contrato)" style="height:28px;font-size:11px;padding:0 9px;"><i data-lucide="folder"></i></button> <button class="btn btn-ghost" data-emp-idx="' + i + '" style="height:28px;font-size:11px;padding:0 10px;"><i data-lucide="file-text"></i> Recibo</button></td>'
+          + '<td style="white-space:nowrap;"><button class="btn btn-ghost" data-emp-edit="' + i + '" title="Editar trabajador" style="height:28px;font-size:11px;padding:0 9px;"><i data-lucide="pencil"></i></button> <button class="btn btn-ghost" data-emp-vac="' + i + '" title="Marcar/quitar vacaciones" style="height:28px;font-size:11px;padding:0 9px;' + (vac ? 'color:var(--da-cyan-700);' : '') + '"><i data-lucide="palmtree"></i></button> <button class="btn btn-ghost" data-emp-exp="' + i + '" title="Expediente (cédula, RIF, contrato)" style="height:28px;font-size:11px;padding:0 9px;"><i data-lucide="folder"></i></button> <button class="btn btn-ghost" data-emp-idx="' + i + '" style="height:28px;font-size:11px;padding:0 10px;"><i data-lucide="file-text"></i> Recibo</button></td>'
           + '</tr>';
       }).join('');
       tbody.querySelectorAll('button[data-emp-idx]').forEach((b) => {
@@ -6003,6 +6027,9 @@
       });
       tbody.querySelectorAll('button[data-emp-edit]').forEach((b) => {
         b.addEventListener('click', () => formEmpleado(empleados[parseInt(b.dataset.empEdit, 10)]));
+      });
+      tbody.querySelectorAll('button[data-emp-vac]').forEach((b) => {
+        b.addEventListener('click', () => formVacaciones(empleados[parseInt(b.dataset.empVac, 10)]));
       });
       tbody.querySelectorAll('button[data-emp-exp]').forEach((b) => {
         b.addEventListener('click', () => expedienteEmpleado(empleados[parseInt(b.dataset.empExp, 10)]));
@@ -6031,6 +6058,7 @@
         id: r.id, nombre: r.nombre, cedula: r.cedula || '', cargo: r.cargo || '', depto: r.depto || '—', tipo: r.tipo || 'Administrativo',
         ingreso: r.ingreso ? new Date(r.ingreso + 'T00:00:00') : new Date(2026, 0, 1), salarioMes: Number(r.salario_mes) || 0,
         transporteUSD: Number(r.transporte_usd) || 0, transportePct: (Number(r.transporte_pct) || 0) / 100,
+        vacacionesDesde: r.vacaciones_desde || '', vacacionesHasta: r.vacaciones_hasta || '',
         bonoLabel: Number(r.transporte_pct) > 0 ? Number(r.transporte_pct) + '% transp.' : (Number(r.transporte_usd) > 0 ? '$' + Number(r.transporte_usd) + ' transp.' : '—'),
         sujetoDpp: !!r.sujeto_dpp,
         formaPago: r.forma_pago || 'Transferencia', frecHabitual: r.frecuencia || 'quincenal',
@@ -6115,6 +6143,30 @@
             if (error) { t('No se pudo guardar: ' + error.message, 'error'); return; }
             if (window.cargarEmpleados) window.cargarEmpleados();
             t(esEdit ? 'Trabajador actualizado' : 'Trabajador "' + v.nombre.trim() + '" registrado');
+          });
+        },
+      });
+    }
+
+    // Marcar/quitar vacaciones: mientras hoy caiga en el rango, la nómina regular solo le
+    // paga el Cestaticket (ver calcPago). Dejar las fechas vacías = no está de vacaciones.
+    function formVacaciones(emp) {
+      const t = (m, tp) => { if (window.toast) window.toast(m, tp); };
+      window.openFormModal({
+        title: 'Vacaciones — ' + emp.nombre,
+        saveLabel: 'Guardar',
+        fields: [
+          { name: 'desde', label: 'Fecha de inicio', type: 'date', value: emp.vacacionesDesde || '' },
+          { name: 'hasta', label: 'Fecha de reincorporación', type: 'date', value: emp.vacacionesHasta || '' },
+        ],
+        onSave: (v) => {
+          if ((v.desde && !v.hasta) || (!v.desde && v.hasta)) return 'Completa ambas fechas, o deja las dos vacías para quitarle las vacaciones.';
+          if (v.desde && v.hasta && v.hasta < v.desde) return 'La fecha de reincorporación no puede ser anterior a la de inicio.';
+          if (!window.sb) return 'No hay sesión activa.';
+          window.sb.from('empleados').update({ vacaciones_desde: v.desde || null, vacaciones_hasta: v.hasta || null }).eq('id', emp.id).then(({ error }) => {
+            if (error) { t('No se pudo guardar: ' + error.message, 'error'); return; }
+            if (window.cargarEmpleados) window.cargarEmpleados();
+            t(v.desde ? ('Vacaciones registradas: ' + fmtFechaISO(v.desde) + ' → ' + fmtFechaISO(v.hasta)) : 'Vacaciones quitadas — vuelve a la nómina regular');
           });
         },
       });
