@@ -124,6 +124,14 @@
     z-index: 50;
     padding: 6px;
     display: none;
+    /* La barra lateral tiene overflow:hidden, así que todo lo que sobresalga
+       de ella queda RECORTADO, no simplemente fuera de vista. Sin este tope,
+       al pasar de unas pocas empresas la lista crecía más allá del recorte y
+       el botón "Agregar empresa" —que va de último— quedaba cortado y sin
+       forma de alcanzarlo. */
+    max-height: min(60vh, 380px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
   }
   .entity-dropdown[data-open="true"] { display: block; }
   .entity-dropdown .group-label {
@@ -5986,7 +5994,11 @@
   .plan-card .pc-stats strong { color: var(--fg-primary); font-family: var(--font-mono); }
 
   /* Botón "Agregar empresa" en el selector de entidad */
-  .entity-add { display: flex; align-items: center; gap: 9px; width: 100%; padding: 11px 14px; border: 0; border-top: 1px solid var(--border-default); background: none; color: var(--da-cyan-700); font-size: 13px; font-weight: var(--fw-semibold); cursor: pointer; font-family: inherit; }
+  /* Queda pegado abajo mientras la lista se desplaza detrás. Con veinte
+     empresas registradas, "Agregar empresa" tiene que seguir a la vista sin
+     que nadie tenga que bajar buscándolo. Los márgenes negativos compensan
+     el padding de 6px del desplegable para que tape de borde a borde. */
+  .entity-add { display: flex; align-items: center; gap: 9px; width: calc(100% + 12px); margin: 0 -6px -6px; padding: 11px 14px; border: 0; border-top: 1px solid var(--border-default); background: var(--da-white); color: var(--da-cyan-700); font-size: 13px; font-weight: var(--fw-semibold); cursor: pointer; font-family: inherit; position: sticky; bottom: -6px; z-index: 1; }
   .entity-add:hover { background: var(--da-cyan-50); }
   .entity-add i { width: 16px; height: 16px; }
 
