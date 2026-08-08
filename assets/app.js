@@ -7419,7 +7419,10 @@
         const anulada = /anulada/i.test(r.tercero_nombre || '');
         const tot = Number(r.total) || 0, ex = Number(r.exento) || 0, base = Number(r.base) || 0, iva = Number(r.iva) || 0, igtf = Number(r.igtf) || 0, alic = Number(r.alicuota) || 0;
         if (!anulada) { tTot += tot; tEx += ex; tBase += base; tIva += iva; tIgtf += igtf; }
-        const alicTxt = alic > 0 ? (Math.round(alic * 100) + '%') : 'Ex.';
+        /* Con varias alícuotas en la misma factura un solo porcentaje mentiría:
+           se dice "Varias" y el desglose vive en las columnas del registro. */
+        const cuantas = [Number(r.base_gen) || 0, Number(r.base_red) || 0, Number(r.base_adic) || 0].filter((x) => x > 0).length;
+        const alicTxt = cuantas > 1 ? 'Varias' : (alic > 0 ? (Math.round(alic * 100) + '%') : 'Ex.');
         return '<tr' + (anulada ? ' style="opacity:.6;"' : '') + '><td>' + (i + 1) + '</td><td>' + (r.fecha || '') + '</td><td>' + (r.tercero_rif || '') + '</td><td>' + (anulada ? 'ANULADA' : (r.tercero_nombre || '')) + '</td>'
           + '<td>' + (r.numero_factura || '') + '</td><td>' + (r.numero_control || '') + '</td><td>' + (r.tipo_doc || (esCompra ? 'FC' : 'FV')) + '</td>'
           + '<td class="num">' + fmtF(tot) + '</td><td class="num">' + fmtF(ex) + '</td><td class="num">' + fmtF(base) + '</td><td>' + alicTxt + '</td><td class="num">' + fmtF(iva) + '</td>'
@@ -7919,6 +7922,173 @@
       }
       return out;
     }
+    /* Las alícuotas del IVA, en un solo sitio.
+
+       · General 16% y reducida 8%: Ley de IVA, alícuotas ordinarias.
+       · Adicional por consumo suntuario (joyas, vehículos, obras de arte,
+         armas…): la ley la fija ENTRE 15% y 20%, y mientras el Ejecutivo no
+         diga otra cosa rige el 15%. Se aplica SUMADA a la general, así que
+         la tasa efectiva de ese renglón es 16% + 15% = 31%, y va a su propio
+         renglón de la Forma 30 (cód. 332/342 compras · 442/452 ventas).
+
+       Falta la adicional por pagos en divisas o criptoactivos no respaldados
+       por la República (rango legal 5%–25%). NO se incluye a propósito: aún
+       no está vigente —entra 30 días continuos después del Decreto que fije
+       la tasa— y la Forma 30 todavía no trae renglón para ella. Cuando salga
+       el Decreto, se agrega aquí y en el formulario.
+
+       Si el Ejecutivo cambia un porcentaje, se cambia AQUÍ y queda cambiado
+       en el formulario, en el libro y en la Forma 30. */
+    const IVA_ADICIONAL_SUNTUARIO = 0.15; // rango legal 15%–20%
+    const ALICUOTAS = {
+      exento: { txt: 'Exento / no gravado', pct: 0 },
+      red: { txt: 'Reducida 8%', pct: 0.08 },
+      gen: { txt: 'General 16%', pct: 0.16 },
+      adic: { txt: 'General + adicional ' + Math.round((0.16 + IVA_ADICIONAL_SUNTUARIO) * 100) + '% (suntuario)', pct: 0.16 + IVA_ADICIONAL_SUNTUARIO },
+    };
+    window.__ALICUOTAS = ALICUOTAS;
+
+    /* La caja de montos por renglón. Vive AQUÍ y no dentro de cada modal
+       porque la usan dos —registrar y editar— y dos copias de la misma
+       aritmética de impuestos se separan tarde o temprano. Si editar
+       aplastara una factura de varias alícuotas a una sola, el desglose se
+       perdería sin que nadie lo note hasta la declaración. */
+    function montosHTML() {
+      return '<div class="fm-numbox" id="lfMontos">'
+        + '<div class="lf-reng">'
+        + '<div class="ic-head"><span>Monto (Bs)</span><span>Alícuota</span><span>IVA</span><span></span></div>'
+        + '<div id="lfRengRows"></div>'
+        + '<button type="button" class="btn btn-ghost" id="lfRengAdd" style="height:30px;font-size:12px;margin-top:2px;">'
+        + '<i data-lucide="plus" style="width:14px;height:14px;"></i> Agregar renglón</button>'
+        + '<div class="lf-reng-hint">Una misma factura puede traer renglones exentos, al 8% y al 16%. '
+        + 'Agrega un renglón por cada alícuota; si repites una, se suman.</div>'
+        + '</div>'
+        + '<div class="fm-numbox-sum">'
+        + '<div class="fm-numbox-sum-row"><span>Base gravada</span><strong class="mono" id="numResBase">Bs 0,00</strong></div>'
+        + '<div class="fm-numbox-sum-row"><span>Exento / no gravado</span><strong class="mono" id="numResEx">Bs 0,00</strong></div>'
+        + '<div class="fm-numbox-sum-row"><span>IVA</span><strong class="mono" id="numResIva">Bs 0,00</strong></div>'
+        + '<div class="fm-numbox-sum-row total"><span>Total de la factura</span><strong class="mono" id="numResTotal">Bs 0,00</strong></div>'
+        + '<div class="fm-numbox-sum-row lf-check"><span>Total impreso en la factura <small>(opcional, para comprobar)</small></span>'
+        + '<input id="numResCheck" type="number" step="0.01" placeholder="0,00"></div>'
+        + '<div class="lf-dif" id="numResDif"></div>'
+        + '</div></div>';
+    }
+
+    /* Monta la caja y devuelve su API. `inicial` es una fila de libro_fiscal
+       (al editar) o nada (al registrar). */
+    function montarMontos(body, inicial) {
+      const rengRows = body.querySelector('#lfRengRows');
+      const igtfSel = body.querySelector('[data-name="igtfAplica"]');
+      const igtfShow = document.getElementById('igtfShowVal');
+      const elBase = document.getElementById('numResBase');
+      const elEx = document.getElementById('numResEx');
+      const elIva = document.getElementById('numResIva');
+      const elTotal = document.getElementById('numResTotal');
+      const elCheck = document.getElementById('numResCheck');
+      const elDif = document.getElementById('numResDif');
+
+      // Suma los renglones y los reparte en los cuatro cubos de la Forma 30.
+      function leer() {
+        const acum = { exento: 0, gen: 0, red: 0, adic: 0 };
+        (rengRows ? [...rengRows.querySelectorAll('.ic-row')] : []).forEach((r) => {
+          const monto = parseFloat(r.querySelector('.lf-monto').value) || 0;
+          const clave = r.querySelector('.lf-alic').value;
+          if (acum[clave] != null) acum[clave] += monto;
+        });
+        const ivaGen = acum.gen * ALICUOTAS.gen.pct;
+        const ivaRed = acum.red * ALICUOTAS.red.pct;
+        const ivaAdic = acum.adic * ALICUOTAS.adic.pct;
+        const baseGravada = acum.gen + acum.red + acum.adic;
+        const iva = ivaGen + ivaRed + ivaAdic;
+        return {
+          exento: acum.exento,
+          base_gen: acum.gen, iva_gen: ivaGen,
+          base_red: acum.red, iva_red: ivaRed,
+          base_adic: acum.adic, iva_adic: ivaAdic,
+          base: baseGravada, iva: iva,
+          total: baseGravada + iva + acum.exento,
+        };
+      }
+
+      function recalcular() {
+        const t = leer();
+        if (elBase) elBase.textContent = 'Bs ' + fmtF(t.base);
+        if (elEx) elEx.textContent = 'Bs ' + fmtF(t.exento);
+        if (elIva) elIva.textContent = 'Bs ' + fmtF(t.iva);
+        if (elTotal) elTotal.textContent = 'Bs ' + fmtF(t.total);
+        if (igtfSel && igtfShow) igtfShow.textContent = 'Bs ' + fmtF(/s[ií]/i.test(igtfSel.value) ? t.total * 0.03 : 0);
+        // El IVA de cada renglón, para cotejarlo contra el papel línea por línea
+        (rengRows ? [...rengRows.querySelectorAll('.ic-row')] : []).forEach((r) => {
+          const monto = parseFloat(r.querySelector('.lf-monto').value) || 0;
+          const pct = (ALICUOTAS[r.querySelector('.lf-alic').value] || { pct: 0 }).pct;
+          r.querySelector('.lf-iva').textContent = pct ? fmtF(monto * pct) : '—';
+        });
+        /* Comprobación contra el total impreso: atrapa el dígito transpuesto
+           AQUÍ, no al cerrar el mes. Es opcional a propósito — quien carga
+           cincuenta facturas seguidas decide si lo usa. */
+        if (elCheck && elDif) {
+          const decl = parseFloat(elCheck.value);
+          if (!elCheck.value || isNaN(decl)) { elDif.textContent = ''; elDif.className = 'lf-dif'; }
+          else if (Math.abs(decl - t.total) <= 0.02) { elDif.textContent = '✓ Cuadra con la factura'; elDif.className = 'lf-dif ok'; }
+          else { elDif.textContent = '✗ Diferencia de Bs ' + fmtF(Math.abs(decl - t.total)) + ' — revisa los montos'; elDif.className = 'lf-dif mal'; }
+        }
+      }
+
+      function agregar(monto, clave) {
+        if (!rengRows) return null;
+        const r = document.createElement('div');
+        r.className = 'ic-row';
+        r.innerHTML = '<input class="lf-monto" type="number" step="0.01" placeholder="0,00" value="' + (monto != null && monto !== '' ? esc(String(monto)) : '') + '">'
+          + '<select class="lf-alic">'
+          + Object.keys(ALICUOTAS).map((k) => '<option value="' + k + '"' + (k === (clave || 'gen') ? ' selected' : '') + '>' + esc(ALICUOTAS[k].txt) + '</option>').join('')
+          + '</select>'
+          + '<span class="lf-iva mono">—</span>'
+          + '<button type="button" class="btn btn-ghost lf-del" title="Quitar renglón"><i data-lucide="x" style="width:14px;height:14px;"></i></button>';
+        rengRows.appendChild(r);
+        r.querySelector('.lf-monto').addEventListener('input', recalcular);
+        r.querySelector('.lf-alic').addEventListener('change', recalcular);
+        r.querySelector('.lf-del').addEventListener('click', () => {
+          // Nunca se queda sin renglones: el último se vacía en vez de borrarse,
+          // o el formulario quedaría sin dónde escribir el monto.
+          if (rengRows.querySelectorAll('.ic-row').length <= 1) {
+            r.querySelector('.lf-monto').value = '';
+            r.querySelector('.lf-alic').value = 'gen';
+          } else { r.remove(); }
+          recalcular();
+        });
+        if (window.lucide) window.lucide.createIcons();
+        return r;
+      }
+
+      function reiniciar(fila) {
+        if (rengRows) rengRows.innerHTML = '';
+        const f = fila || {};
+        const ex = Number(f.exento) || 0;
+        let bg = Number(f.base_gen) || 0, br = Number(f.base_red) || 0, ba = Number(f.base_adic) || 0;
+        /* Filas anteriores al desglose (o sin migrar): toda su base está en
+           'base' y su alícuota en 'alicuota'. Se reparte al renglón que le
+           toca para que editarlas no las deje en cero. */
+        if (!bg && !br && !ba && Number(f.base) > 0) {
+          const al = Number(f.alicuota) || 0;
+          if (al >= 0.25) ba = Number(f.base); else if (al < 0.12 && al > 0) br = Number(f.base); else bg = Number(f.base);
+        }
+        if (ex > 0) agregar(ex.toFixed(2), 'exento');
+        if (br > 0) agregar(br.toFixed(2), 'red');
+        if (ba > 0) agregar(ba.toFixed(2), 'adic');
+        if (bg > 0) agregar(bg.toFixed(2), 'gen');
+        if (!rengRows || !rengRows.querySelector('.ic-row')) agregar('', 'gen');
+        if (elCheck) elCheck.value = '';
+        recalcular();
+      }
+
+      const addBtn = body.querySelector('#lfRengAdd');
+      if (addBtn) addBtn.addEventListener('click', () => { const r = agregar('', 'gen'); if (r) r.querySelector('.lf-monto').focus(); });
+      if (elCheck) elCheck.addEventListener('input', recalcular);
+      if (igtfSel) igtfSel.addEventListener('change', recalcular);
+      reiniciar(inicial);
+      return { leer: leer, agregar: agregar, reiniciar: reiniciar, recalcular: recalcular };
+    }
+
     function registrarMov(tipo) {
       const esCompra = tipo === 'compra';
       let invBox = null; // contenedor de líneas para reponer inventario (solo compras)
@@ -7961,8 +8131,8 @@
       function limpiarParaSiguiente() {
         if (!bodyRef) return;
         const setV = (n, val) => { const el = bodyRef.querySelector('[data-name="' + n + '"]'); if (el) el.value = val; };
-        setV('nombre', ''); setV('rif', ''); setV('base', ''); setV('exento', '');
-        setV('retComp', '');
+        setV('nombre', ''); setV('rif', ''); setV('retComp', '');
+        if (bodyRef.__montos) bodyRef.__montos.reiniciar();
         /* COMPRAS: los números venían quedándose de la factura anterior porque
            autonumerar() se sale de una en compras (no hay correlativo propio:
            los números son los del PROVEEDOR). Se limpian aquí. */
@@ -8003,17 +8173,7 @@
           { name: 'numFactura', label: 'N° de Factura', placeholder: 'F-00000000' },
           { name: 'numControl', label: 'N° de Control', placeholder: '00-00000000' },
           {
-            name: 'numResumen', col: 2, type: 'static', label: '', html:
-              '<div class="fm-numbox">'
-              + '<div class="fm-numbox-row">'
-              + '<label class="fm-field"><span class="fm-lbl">Base imponible (Bs)</span><input data-name="base" type="number" step="0.01" placeholder="0.00"></label>'
-              + '<label class="fm-field"><span class="fm-lbl">Alícuota IVA</span><select data-name="alic"><option>16%</option><option>8%</option><option>Exento</option></select></label>'
-              + '<label class="fm-field"><span class="fm-lbl">Monto exento / sin ' + (esCompra ? 'crédito' : 'débito') + ' (Bs)</span><input data-name="exento" type="number" step="0.01" placeholder="0.00"></label>'
-              + '</div>'
-              + '<div class="fm-numbox-sum">'
-              + '<div class="fm-numbox-sum-row"><span>IVA</span><strong class="mono" id="numResIva">Bs 0,00</strong></div>'
-              + '<div class="fm-numbox-sum-row total"><span>Total de la factura</span><strong class="mono" id="numResTotal">Bs 0,00</strong></div>'
-              + '</div></div>',
+            name: 'numResumen', col: 2, type: 'static', label: '', html: montosHTML(),
           },
         ].concat(esCompra ? [
           { name: 'cond', label: 'Condición de pago', type: 'select', options: ['Contado', 'Crédito 15 días', 'Crédito 30 días', 'Crédito 60 días'] },
@@ -8050,7 +8210,7 @@
           // de poner "ANULADA" como cliente y dejar los montos a mano, propenso a error).
           const anularSel = body.querySelector('[data-name="anularVenta"]');
           if (anularSel) {
-            const camposReales = ['nombre', 'rif', 'base', 'alic', 'exento', 'igtfAplica', 'retPct', 'retComp'];
+            const camposReales = ['nombre', 'rif', 'igtfAplica', 'retPct', 'retComp'];
             const aplicarAnular = () => {
               const on = /^s[ií]/i.test(anularSel.value || '');
               camposReales.forEach((n) => {
@@ -8058,6 +8218,12 @@
                 const wrap = el && el.closest('.fm-field');
                 if (wrap) wrap.style.display = on ? 'none' : '';
               });
+              // La caja de montos se oculta entera: una factura anulada solo
+              // reserva el correlativo, no lleva ni base ni exento.
+              const caja = body.querySelector('#lfMontos');
+              const cajaWrap = caja && caja.closest('.fm-field');
+              if (cajaWrap) cajaWrap.style.display = on ? 'none' : '';
+              if (on && bodyRef.__montos) bodyRef.__montos.reiniciar();
             };
             anularSel.addEventListener('change', aplicarAnular);
             aplicarAnular();
@@ -8080,13 +8246,12 @@
             const tipoMap = { factura: 'FC (Factura)', nota_credito: 'NC (Nota de crédito)', nota_debito: 'ND (Nota de débito)' };
             setV('tipoDoc', tipoMap[d.tipo_documento] || 'FC (Factura)');
             // Alícuota y base: general (16%) manda; si solo hay reducida (8%), se usa esa
+            /* Un renglón por cada base que traiga la factura. Antes solo cabía
+               una y había que avisar "regístrala en una línea aparte"; ahora
+               entran las tres juntas, que es como vienen en el papel. */
             const bg = Number(d.base_general) || 0, br = Number(d.base_reducida) || 0, ex = Number(d.exento) || 0;
-            if (bg > 0) { setV('base', bg.toFixed(2)); setV('alic', '16%'); }
-            else if (br > 0) { setV('base', br.toFixed(2)); setV('alic', '8%'); }
-            else if (ex > 0) { setV('alic', 'Exento'); }
-            if (ex > 0) setV('exento', ex.toFixed(2));
+            if (bodyRef.__montos) bodyRef.__montos.reiniciar({ exento: ex, base_red: br, base_gen: bg });
             const avisos = [];
-            if (bg > 0 && br > 0) avisos.push('trae TAMBIÉN base reducida 8% (Bs ' + fmtF(br) + ' + IVA ' + fmtF(Number(d.iva_reducida) || 0) + ') — regístrala en una línea aparte');
             if (d.cuadra === false) avisos.push('los montos NO cuadran con el total leído (Bs ' + fmtF(Number(d.total) || 0) + ') — verifica contra el papel');
             if (d.iva_ok === false) avisos.push('el IVA leído no es 16% exacto de la base — revísalo');
             if (d.moneda === 'USD') avisos.push('la factura está en DÓLARES — el libro va en Bs: convierte a la tasa de la fecha');
@@ -8154,30 +8319,14 @@
               },
             });
           });
-          // Base/Alícuota/Exento → IVA y Total de la factura en vivo (los 3 campos viven
-          // dentro de la caja "numResumen"). En ventas, además calcula el IGTF (3%) si aplica.
-          const baseEl = body.querySelector('[data-name="base"]');
-          const alicEl = body.querySelector('[data-name="alic"]');
-          const exEl = body.querySelector('[data-name="exento"]');
-          const igtfSel = body.querySelector('[data-name="igtfAplica"]');
-          const igtfShow = document.getElementById('igtfShowVal');
-          const numResIva = document.getElementById('numResIva');
-          const numResTotal = document.getElementById('numResTotal');
-          const calcIgtf = () => {
-            const b = parseFloat(baseEl && baseEl.value) || 0;
-            const al = alicEl && alicEl.value === '8%' ? 0.08 : alicEl && alicEl.value === 'Exento' ? 0 : 0.16;
-            const ex = parseFloat(exEl && exEl.value) || 0;
-            const iva = b * al;
-            const total = b + iva + ex;
-            if (numResIva) numResIva.textContent = 'Bs ' + fmtF(iva);
-            if (numResTotal) numResTotal.textContent = 'Bs ' + fmtF(total);
-            if (igtfSel && igtfShow) igtfShow.textContent = 'Bs ' + fmtF(/s[ií]/i.test(igtfSel.value) ? total * 0.03 : 0);
-          };
-          if (baseEl) baseEl.addEventListener('input', calcIgtf);
-          if (alicEl) alicEl.addEventListener('change', calcIgtf);
-          if (exEl) exEl.addEventListener('input', calcIgtf);
-          if (igtfSel) igtfSel.addEventListener('change', calcIgtf);
-          calcIgtf();
+          /* Renglones por alícuota → IVA y total en vivo.
+
+             Una factura real trae varias alícuotas a la vez: una panadería
+             compra leche y huevos (exentos), manteca (8%) y el resto (16%)
+             en el mismo papel. Antes había un solo campo de base y una sola
+             alícuota, así que tocaba partir la factura en varios registros. */
+          const montos = montarMontos(body);
+          bodyRef.__montos = montos;
           // Reposición de inventario (solo compras): suma cantidades al stock de los productos
           if (esCompra) {
             invBox = document.createElement('div');
@@ -8213,11 +8362,20 @@
           const periodo = esCompra ? (v.periodo || _periodoActualKey()) : (fP.length === 3 ? fP[0] + '-' + fP[1] : _periodoActualKey());
           if (window.__periodoCerrado && window.__periodoCerrado(periodo)) return '🔒 El período de declaración elegido está CERRADO. Reábrelo con el botón del período en Fiscal si necesitas registrar.';
           const esAnulada = !esCompra && /^s[ií]/i.test(v.anularVenta || '');
-          if (esAnulada) { v = Object.assign({}, v, { nombre: 'ANULADA', rif: '', base: '0', exento: '0', igtfAplica: 'No' }); }
+          if (esAnulada) { v = Object.assign({}, v, { nombre: 'ANULADA', rif: '', igtfAplica: 'No' }); }
           if (!v.nombre) return 'Indica el ' + (esCompra ? 'proveedor' : 'cliente') + '.';
-          const base = parseFloat(v.base) || 0, exento = parseFloat(v.exento) || 0;
-          const alic = v.alic === '8%' ? 0.08 : v.alic === 'Exento' ? 0 : 0.16;
-          const iva = base * alic, total = base + iva + exento;
+          /* Los montos ya NO salen de tres campos sueltos sino de los renglones,
+             porque una factura puede traer varias alícuotas a la vez. */
+          const M = (!esAnulada && bodyRef && bodyRef.__montos) ? bodyRef.__montos.leer()
+            : { exento: 0, base_gen: 0, iva_gen: 0, base_red: 0, iva_red: 0, base_adic: 0, iva_adic: 0, base: 0, iva: 0, total: 0 };
+          const base = M.base, exento = M.exento, iva = M.iva, total = M.total;
+          /* 'alicuota' se conserva por compatibilidad con lo ya cargado y con las
+             pantallas que aún la leen. Con varias alícuotas en la misma factura
+             deja de tener un único valor: se guarda la de mayor peso, y quien
+             necesite el detalle usa las columnas por renglón. */
+          const alic = M.base_adic > 0 ? ALICUOTAS.adic.pct
+            : M.base_gen >= M.base_red ? (M.base_gen > 0 ? 0.16 : 0)
+              : 0.08;
           const igtf = /s[ií]/i.test(v.igtfAplica || '') ? total * 0.03 : 0; // IGTF sobre el total de la factura
           const p = (v.fecha || '').split('-');
           const fecha = p.length === 3 ? (p[2] + '/' + p[1] + '/' + p[0].slice(2)) : '';
@@ -8227,6 +8385,11 @@
             cuenta_id: window.__CUENTA_ID, empresa_id: window.__EMPRESA_ACTIVA.id, tipo: tipo, fecha: fecha, periodo: periodo,
             tercero_nombre: v.nombre, tercero_rif: normRif(v.rif), numero_factura: v.numFactura, numero_control: v.numControl,
             tipo_doc: (v.tipoDoc || (esCompra ? 'FC' : 'FV')).slice(0, 2), exento: exento, base: base, alicuota: alic, iva: iva, igtf: igtf, total: total,
+            // Desglose por renglón de la Forma 30. 'base' e 'iva' siguen siendo
+            // los TOTALES, así que las retenciones y los asientos no cambian.
+            base_gen: M.base_gen, iva_gen: M.iva_gen,
+            base_red: M.base_red, iva_red: M.iva_red,
+            base_adic: M.base_adic, iva_adic: M.iva_adic,
           }).then(({ error }) => {
             if (saveBtnEl) saveBtnEl.disabled = false;
             if (error) { toast('No se pudo guardar: ' + error.message, 'error'); return; }
@@ -8337,8 +8500,8 @@
       const tbody = table.querySelector('tbody'), tfoot = table.querySelector('tfoot');
       const totRow = (tot, ex, base, iva, igtf) => '<tr class="libro-tot"><td colspan="7" style="text-align:right;">TOTALES DEL PERÍODO</td><td class="num">' + fmtF(tot) + '</td><td class="num">' + fmtF(ex) + '</td><td class="num">' + fmtF(base) + '</td><td></td><td class="num">' + fmtF(iva) + '</td>' + (esCompra ? '' : '<td class="num">' + fmtF(igtf) + '</td>') + '</tr>';
       const setN = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = fmtF(v); };
-      const resetF30c = () => { ['f30c-ex', 'f30c-base16', 'f30c-iva16', 'f30c-base8', 'f30c-iva8', 'f30c-baseTot', 'f30c-ivaTot', 'f30c-ded', 'f30c-dedTot', 'f30c-credTot'].forEach((id) => setN(id, 0)); };
-      const resetF30v = () => { ['f30v-base16', 'f30v-iva16', 'f30v-base8', 'f30v-iva8', 'f30v-baseTot', 'f30v-ivaTot', 'f30v-debTot', 'f30v-igtf', 'f30v-igtfBase'].forEach((id) => setN(id, 0)); renderIslrBox(0); window.__IGTF_VENTAS = { base: 0, ops: 0, monto: 0 }; if (window.__renderIGTF) window.__renderIGTF(); };
+      const resetF30c = () => { ['f30c-ex', 'f30c-base16', 'f30c-iva16', 'f30c-base8', 'f30c-iva8', 'f30c-baseAd', 'f30c-ivaAd', 'f30c-baseTot', 'f30c-ivaTot', 'f30c-ded', 'f30c-dedTot', 'f30c-credTot'].forEach((id) => setN(id, 0)); };
+      const resetF30v = () => { ['f30v-base16', 'f30v-iva16', 'f30v-base8', 'f30v-iva8', 'f30v-baseAd', 'f30v-ivaAd', 'f30v-baseTot', 'f30v-ivaTot', 'f30v-debTot', 'f30v-igtf', 'f30v-igtfBase'].forEach((id) => setN(id, 0)); renderIslrBox(0); window.__IGTF_VENTAS = { base: 0, ops: 0, monto: 0 }; if (window.__renderIGTF) window.__renderIGTF(); };
       const vacio = (txt) => {
         if (tbody) tbody.innerHTML = '<tr><td colspan="' + (esCompra ? 12 : 13) + '" style="text-align:center;color:var(--fg-muted);padding:14px;">' + (txt || ('Sin registros. Usa "Registrar ' + tipo + '".')) + '</td></tr>';
         if (tfoot) tfoot.innerHTML = totRow(0, 0, 0, 0, 0);
@@ -8364,12 +8527,23 @@
       if (!arr.length) { vacio('Sin registros en ' + _perLabel() + '. Cambia el período arriba o usa "Registrar ' + tipo + '".'); return; }
       // Totales y Forma 30: SIEMPRE sobre el mes completo (la paginación es solo visual)
       let tTot = 0, tEx = 0, tBase = 0, tIva = 0, tIgtf = 0;
-      let base16 = 0, iva16 = 0, base8 = 0, iva8 = 0;
+      let base16 = 0, iva16 = 0, base8 = 0, iva8 = 0, baseAd = 0, ivaAd = 0;
       arr.forEach((r) => {
         if (/anulada/i.test(r.tercero_nombre || '')) return; // una factura ANULADA no suma al período
         const tot = Number(r.total) || 0, ex = Number(r.exento) || 0, base = Number(r.base) || 0, iva = Number(r.iva) || 0, igtf = Number(r.igtf) || 0, alic = Number(r.alicuota) || 0;
         tTot += tot; tEx += ex; tBase += base; tIva += iva; tIgtf += igtf;
-        if (alic >= 0.15) { base16 += base; iva16 += iva; } else if (alic > 0) { base8 += base; iva8 += iva; }
+        /* El reparto por renglón sale de las columnas del desglose. Si la fila es
+           anterior al desglose y quedó sin migrar, se reparte por su alícuota
+           única, como antes — así ningún registro viejo desaparece del formulario
+           por no haber corrido el SQL todavía. */
+        const bg = Number(r.base_gen) || 0, br = Number(r.base_red) || 0, ba = Number(r.base_adic) || 0;
+        if (bg || br || ba) {
+          base16 += bg; iva16 += Number(r.iva_gen) || 0;
+          base8 += br; iva8 += Number(r.iva_red) || 0;
+          baseAd += ba; ivaAd += Number(r.iva_adic) || 0;
+        } else if (alic >= 0.25) { baseAd += base; ivaAd += iva; }
+        else if (alic >= 0.12) { base16 += base; iva16 += iva; }
+        else if (alic > 0) { base8 += base; iva8 += iva; }
       });
       // Paginación: lotes de 20 operaciones por página
       const PAG_FILAS = 20;
@@ -8379,7 +8553,10 @@
       const inicio = (pag - 1) * PAG_FILAS;
       tbody.innerHTML = arr.slice(inicio, inicio + PAG_FILAS).map((r, i) => {
         const tot = Number(r.total) || 0, ex = Number(r.exento) || 0, base = Number(r.base) || 0, iva = Number(r.iva) || 0, igtf = Number(r.igtf) || 0, alic = Number(r.alicuota) || 0;
-        const alicTxt = alic > 0 ? (Math.round(alic * 100) + '%') : 'Ex.';
+        /* Con varias alícuotas en la misma factura un solo porcentaje mentiría:
+           se dice "Varias" y el desglose vive en las columnas del registro. */
+        const cuantas = [Number(r.base_gen) || 0, Number(r.base_red) || 0, Number(r.base_adic) || 0].filter((x) => x > 0).length;
+        const alicTxt = cuantas > 1 ? 'Varias' : (alic > 0 ? (Math.round(alic * 100) + '%') : 'Ex.');
         const anulada = /anulada/i.test(r.tercero_nombre || '');
         const nombreCel = anulada ? '<span class="tag danger">ANULADA</span>' : (r.tercero_nombre || '');
         return '<tr data-id="' + (r.id || '') + '" data-libro="' + tipo + '" style="cursor:pointer;' + (anulada ? 'opacity:.6;' : '') + '" title="Clic para editar o eliminar"><td class="ctr">' + (inicio + i + 1) + '</td><td>' + (r.fecha || '') + '</td><td class="mono">' + (r.tercero_rif || '') + '</td><td class="primary">' + nombreCel + '</td>'
@@ -8406,6 +8583,7 @@
         _credF = ivaTotD;
         setN('f30c-ex', tEx);
         setN('f30c-base16', base16); setN('f30c-iva16', iva16D);
+        setN('f30c-baseAd', baseAd); setN('f30c-ivaAd', ivaAd);
         setN('f30c-base8', base8); setN('f30c-iva8', iva8D);
         setN('f30c-baseTot', base16 + base8 + tEx); setN('f30c-ivaTot', ivaTotD);
         setN('f30c-ded', ivaTotD); setN('f30c-dedTot', ivaTotD); setN('f30c-credTot', ivaTotD);
@@ -8413,6 +8591,7 @@
         _debF = ivaTotD;
         setN('f30v-base16', base16); setN('f30v-iva16', iva16D);
         setN('f30v-base8', base8); setN('f30v-iva8', iva8D);
+        setN('f30v-baseAd', baseAd); setN('f30v-ivaAd', ivaAd);
         setN('f30v-baseTot', base16 + base8 + tEx); setN('f30v-ivaTot', ivaTotD);
         setN('f30v-debTot', ivaTotD);
         setN('f30v-igtf', tIgtf); setN('f30v-igtfBase', tIgtf > 0 ? tIgtf / 0.03 : 0);
@@ -8430,9 +8609,8 @@
       const r = (_libroData[tipo] || []).find((x) => String(x.id) === String(id));
       if (!r) return;
       const esCompra = tipo === 'compra';
-      const alicNum = Number(r.alicuota) || 0;
-      const alicVal = alicNum >= 0.15 ? '16%' : alicNum > 0 ? '8%' : 'Exento';
       const tdMap = { FC: 'FC (Factura)', FV: 'FV (Factura de venta)', NC: 'NC (Nota de crédito)', ND: 'ND (Nota de débito)' };
+      let editMontos = null; // la caja de renglones, montada en afterRender
       window.openFormModal && window.openFormModal({
         title: esCompra ? 'Editar compra (Libro de Compras)' : 'Editar venta (Libro de Ventas)',
         saveLabel: 'Guardar cambios',
@@ -8446,31 +8624,16 @@
           { name: 'rif', label: 'RIF', upper: true, value: r.tercero_rif || '' },
           { name: 'numFactura', label: 'N° de Factura', value: r.numero_factura || '' },
           { name: 'numControl', label: 'N° de Control', value: r.numero_control || '' },
-          { name: 'base', label: 'Base imponible (Bs)', type: 'number', step: '0.01', value: r.base != null ? String(r.base) : '' },
-          { name: 'alic', label: 'Alícuota IVA', type: 'select', options: ['16%', '8%', 'Exento'], value: alicVal },
-          { name: 'exento', label: 'Monto exento / sin ' + (esCompra ? 'crédito' : 'débito') + ' (Bs)', type: 'number', step: '0.01', value: r.exento != null ? String(r.exento) : '' },
+          { name: 'numResumen', col: 2, type: 'static', label: '', html: montosHTML() },
         ].concat(esCompra ? [] : [
           { name: 'igtfAplica', label: '¿Aplica IGTF? (3%)', type: 'select', options: ['No', 'Sí (3%)'], value: (Number(r.igtf) > 0 ? 'Sí (3%)' : 'No') },
           { name: 'igtfShow', label: 'IGTF 3% (calculado del total con IVA)', type: 'static', html: '<span class="mono" id="igtfShowVal">Bs ' + fmtF(Number(r.igtf) || 0) + '</span>' },
         ])),
         afterRender: (body) => {
-          const baseEl = body.querySelector('[data-name="base"]');
-          const alicEl = body.querySelector('[data-name="alic"]');
-          const exEl = body.querySelector('[data-name="exento"]');
-          const igtfSel = body.querySelector('[data-name="igtfAplica"]');
-          const igtfShow = document.getElementById('igtfShowVal');
-          const calcIgtf = () => {
-            if (!igtfSel || !igtfShow) return;
-            const b = parseFloat(baseEl && baseEl.value) || 0;
-            const al = alicEl && alicEl.value === '8%' ? 0.08 : alicEl && alicEl.value === 'Exento' ? 0 : 0.16;
-            const ex = parseFloat(exEl && exEl.value) || 0;
-            const total = b + b * al + ex;
-            igtfShow.textContent = 'Bs ' + fmtF(/s[ií]/i.test(igtfSel.value) ? total * 0.03 : 0);
-          };
-          if (baseEl) baseEl.addEventListener('input', calcIgtf);
-          if (alicEl) alicEl.addEventListener('change', calcIgtf);
-          if (exEl) exEl.addEventListener('input', calcIgtf);
-          if (igtfSel) igtfSel.addEventListener('change', calcIgtf);
+          // Se monta con la fila ya cargada: si trae varias alícuotas salen
+          // sus renglones, y si es anterior al desglose se reparte por su
+          // alícuota única en vez de quedar en cero.
+          editMontos = montarMontos(body, r);
         },
         onSave: (v) => {
           if (!window.sb) return 'Sin conexión.';
@@ -8480,14 +8643,22 @@
           else { const fp = (v.fecha || '').split('/'); perNuevo = fp.length === 3 ? '20' + fp[2] + '-' + String(fp[1]).padStart(2, '0') : (r.periodo || _periodoActualKey()); }
           if (window.__periodoCerrado && (window.__periodoCerrado(r.periodo) || window.__periodoCerrado(perNuevo))) return '🔒 Este registro pertenece a un período CERRADO (declarado). Reábrelo en Fiscal para modificarlo.';
           if (!v.nombre) return 'Indica el ' + (esCompra ? 'proveedor' : 'cliente') + '.';
-          const base = parseFloat(v.base) || 0, exento = parseFloat(v.exento) || 0;
-          const alic = v.alic === '8%' ? 0.08 : v.alic === 'Exento' ? 0 : 0.16;
-          const iva = base * alic, total = base + iva + exento;
+          const M = editMontos ? editMontos.leer()
+            : { exento: 0, base_gen: 0, iva_gen: 0, base_red: 0, iva_red: 0, base_adic: 0, iva_adic: 0, base: 0, iva: 0, total: 0 };
+          const base = M.base, exento = M.exento, iva = M.iva, total = M.total;
+          // 'alicuota' se conserva por compatibilidad; con varias en la misma
+          // factura deja de tener un único valor y manda la de mayor peso.
+          const alic = M.base_adic > 0 ? ALICUOTAS.adic.pct
+            : M.base_gen >= M.base_red ? (M.base_gen > 0 ? 0.16 : 0)
+              : 0.08;
           const igtf = /s[ií]/i.test(v.igtfAplica || '') ? total * 0.03 : 0; // IGTF sobre el total de la factura
           window.sb.from('libro_fiscal').update({
             fecha: v.fecha, periodo: perNuevo, tipo_doc: (v.tipoDoc || '').slice(0, 2), tercero_nombre: v.nombre,
             tercero_rif: (v.rif || '').toUpperCase().replace(/[\s.\-]/g, ''), numero_factura: v.numFactura, numero_control: v.numControl,
             exento: exento, base: base, alicuota: alic, iva: iva, igtf: igtf, total: total,
+            base_gen: M.base_gen, iva_gen: M.iva_gen,
+            base_red: M.base_red, iva_red: M.iva_red,
+            base_adic: M.base_adic, iva_adic: M.iva_adic,
           }).eq('id', id).then(({ error }) => {
             if (error) { toast('No se pudo actualizar: ' + error.message, 'error'); return; }
             if (window.__invalidarArrastres) window.__invalidarArrastres();

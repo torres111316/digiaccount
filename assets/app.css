@@ -7002,6 +7002,29 @@
   .fm-numbox-sum-row.total span { color: var(--fg-primary); font-weight: var(--fw-semibold); }
   .fm-numbox-sum-row.total strong { font-size: 16px; color: var(--da-cyan-700); }
   @media (max-width: 560px) { .fm-numbox-row { grid-template-columns: 1fr; } }
+
+  /* Renglones por alícuota dentro del registro del libro fiscal.
+     Reusa la retícula de .ic-head/.ic-row (monto · alícuota · IVA · quitar). */
+  .lf-reng { padding: 14px; background: var(--bg-surface); }
+  .lf-reng .ic-row select {
+    width: 100%; min-width: 0; height: 36px; border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm); padding: 0 8px; font-size: 12.5px;
+    font-family: var(--font-body); color: var(--fg-primary); background: var(--bg-surface); outline: none;
+  }
+  .lf-reng .lf-iva { font-size: 12.5px; color: var(--fg-muted); text-align: right; padding-right: 4px; }
+  .lf-reng-hint { font-size: 10.5px; color: var(--fg-muted); margin-top: 8px; line-height: 1.45; }
+  .fm-numbox-sum-row.lf-check small { font-weight: 400; color: var(--fg-muted); }
+  .fm-numbox-sum-row.lf-check input {
+    width: 130px; height: 30px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+    padding: 0 9px; font-size: 12.5px; font-family: var(--font-mono); text-align: right;
+    color: var(--fg-primary); background: var(--da-white); outline: none;
+  }
+  .lf-dif { font-size: 11.5px; font-weight: var(--fw-semibold); min-height: 0; }
+  .lf-dif.ok  { color: var(--da-green-700, #157347); }
+  .lf-dif.mal { color: var(--da-red-700, #b02a37); }
+  @media (max-width: 560px) {
+    .lf-reng .ic-head, .lf-reng .ic-row { grid-template-columns: minmax(0,1.4fr) minmax(0,1.4fr) minmax(0,.8fr) 32px; }
+  }
   .fm-field input:focus, .fm-field select:focus { border-color: var(--da-cyan-500); }
   /* Input de archivo: botón acorde al diseño de los botones del sistema */
   .fm-field input[type="file"] {
