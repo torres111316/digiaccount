@@ -7943,6 +7943,18 @@
           if (ncEl && (forzar || !ncEl.value)) ncEl.value = '00-' + pad;
         });
       }
+      /* ¿El N° de control es de talonario (00-12345678) o de máquina fiscal?
+         El de talonario cambia en CADA factura → hay que borrarlo.
+         El de máquina fiscal es un código alfanumérico largo que se repite en
+         todas las facturas del mismo equipo → borrarlo obligaría a reescribirlo
+         factura tras factura, que es justo lo que hace lenta la carga.
+
+         Se distingue por si TIENE LETRAS, no por el guion. Es la regla que falla
+         del lado seguro: si alguien escribe el talonario sin guion (00123456) se
+         borra igual, mientras que confundirse al revés dejaría el número de la
+         factura anterior puesto en la siguiente, y eso no se nota al guardar. */
+      const ES_MAQUINA_FISCAL = (s) => /[A-Za-z]/.test(String(s || ''));
+
       // Tras registrar, limpia solo lo que cambia de una factura a otra (cliente, RIF, números,
       // montos) y deja lo que se repite en una sesión de carga (fecha, tipo, condición, IGTF…)
       // para poder seguir registrando facturas seguidas sin cerrar ni volver a llenar todo.
@@ -7951,6 +7963,16 @@
         const setV = (n, val) => { const el = bodyRef.querySelector('[data-name="' + n + '"]'); if (el) el.value = val; };
         setV('nombre', ''); setV('rif', ''); setV('base', ''); setV('exento', '');
         setV('retComp', '');
+        /* COMPRAS: los números venían quedándose de la factura anterior porque
+           autonumerar() se sale de una en compras (no hay correlativo propio:
+           los números son los del PROVEEDOR). Se limpian aquí. */
+        if (esCompra) {
+          setV('numFactura', '');
+          const ncEl = bodyRef.querySelector('[data-name="numControl"]');
+          if (ncEl && !ES_MAQUINA_FISCAL(ncEl.value)) ncEl.value = '';
+          const alicEl = bodyRef.querySelector('[data-name="alic"]');
+          if (alicEl) alicEl.value = '16%';
+        }
         const retSel = bodyRef.querySelector('[data-name="retPct"]'); if (retSel) retSel.value = 'Sin retención';
         const anularSel = bodyRef.querySelector('[data-name="anularVenta"]');
         if (anularSel) { anularSel.value = 'No'; anularSel.dispatchEvent(new Event('change')); }
@@ -8012,6 +8034,18 @@
           // VENTAS: el N° de factura y de control son correlativos (uno detrás del otro) →
           // se sugiere el siguiente automáticamente, pero queda editable por si hace falta ajustarlo.
           autonumerar();
+          // COMPRAS: se avisa qué se borra y qué no al pasar a la siguiente factura, para que
+          // nadie descubra por accidente que el código de la máquina fiscal se quedó puesto.
+          if (esCompra) {
+            const ncWrap = body.querySelector('[data-name="numControl"]');
+            const wrap = ncWrap && ncWrap.closest('.fm-field');
+            if (wrap) {
+              const h = document.createElement('div');
+              h.style.cssText = 'font-size:10.5px;color:var(--fg-muted);margin-top:3px;';
+              h.textContent = "Si es de talonario (solo números) se borra en cada factura. Si es código de máquina fiscal (con letras) se mantiene puesto, y puedes cambiarlo cuando quieras.";
+              wrap.appendChild(h);
+            }
+          }
           // VENTAS: toggle "Anulada" — reserva el número sin monto (reemplaza el truco manual
           // de poner "ANULADA" como cliente y dejar los montos a mano, propenso a error).
           const anularSel = body.querySelector('[data-name="anularVenta"]');
