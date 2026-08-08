@@ -8140,16 +8140,10 @@
           setV('numFactura', '');
           const ncEl = bodyRef.querySelector('[data-name="numControl"]');
           if (ncEl && !ES_MAQUINA_FISCAL(ncEl.value)) ncEl.value = '';
-          const alicEl = bodyRef.querySelector('[data-name="alic"]');
-          if (alicEl) alicEl.value = '16%';
         }
         const retSel = bodyRef.querySelector('[data-name="retPct"]'); if (retSel) retSel.value = 'Sin retención';
         const anularSel = bodyRef.querySelector('[data-name="anularVenta"]');
         if (anularSel) { anularSel.value = 'No'; anularSel.dispatchEvent(new Event('change')); }
-        const baseEl = bodyRef.querySelector('[data-name="base"]');
-        if (baseEl) baseEl.dispatchEvent(new Event('input')); // refresca IVA/Total mostrados a 0
-        const exEl = bodyRef.querySelector('[data-name="exento"]');
-        if (exEl) exEl.dispatchEvent(new Event('input')); // limpia el hint "= Bs ..." bajo el campo
         if (invBox) { const rows = invBox.querySelector('#invCompraRows'); if (rows) rows.innerHTML = '<div class="ic-empty">Agrega los productos que llegaron con esta compra.</div>'; }
         const factEl = bodyRef.querySelector('[data-name="facturaFile"]'); if (factEl) factEl.value = '';
         autonumerar(true);
@@ -8398,6 +8392,15 @@
             if (window.cargarTesoreria) window.cargarTesoreria();   // refresca CxP/CxC (panel de Compras/Ventas)
             if (window.cargarDashboard) window.cargarDashboard();   // y los KPIs del Dashboard
             toast(esAnulada ? ('N° ' + v.numFactura + ' reservado como ANULADO') : ((esCompra ? 'Compra' : 'Venta') + ' registrada en el libro · Bs ' + fmtF(total)), 'success');
+            /* El formulario se limpia AQUÍ, no al final.
+
+               Debajo vienen el asiento contable, la reposición de inventario y
+               la retención. Si cualquiera de esos revienta, antes se llevaba
+               por delante la limpieza y el usuario quedaba viendo los datos de
+               la factura que YA se guardó — creyendo que no se guardó, y
+               registrándola dos veces. Lo que la pantalla muestra no puede
+               depender de que el resto haya salido bien. */
+            limpiarParaSiguiente();
             // Asiento contable de la COMPRA: Debe Inventario + IVA crédito / Haber CxP.
             // (Las ventas NO se contabilizan desde el libro: eso lo hace el RECIBO. El libro es solo para declarar.)
             if (esCompra && window.__postAsiento) {
@@ -8476,8 +8479,6 @@
                 toast('Retención de IVA ' + (esCompra ? 'practicada' : 'sufrida') + ' registrada · Bs ' + fmtF(retMonto), 'success');
               });
             }
-            // Deja el formulario listo para la SIGUIENTE factura (el modal no se cierra)
-            limpiarParaSiguiente();
           });
         },
       });
