@@ -103,6 +103,12 @@
           cond: /especial/i.test(cond) ? 'Contribuyente Especial' : /formal/i.test(cond) ? 'Contribuyente Formal' : (type === 'natural' ? 'Persona Natural' : 'Contribuyente Ordinario'),
           fiscalActivo: fiscalActivo,
           modo: fiscalActivo ? 'libro' : 'recibos', // DERIVADO del módulo Fiscal: activo→libros, inactivo→recibos
+          /* 'recibo' o 'factura'. En modo factura los documentos son
+             inalterables y se corrigen solo con notas (000121 Art. 3.d). Lo
+             enciende el fundador cuando esa empresa tiene su autorización del
+             SENIAT, nunca el cliente por su cuenta. */
+          modo_doc: opt.dataset.modoDoc || 'recibo',
+          autorizacionSeniat: opt.dataset.autorizacion || '',
           declaraDpp: opt.dataset.dpp !== 'false', // emprendimientos NO declaran Protección a las Pensiones
           firmaEmpresa: opt.dataset.firma || '',
         };
@@ -192,7 +198,7 @@
     if (!window.sb || !dd || !addBtn) return;
     // SOLO las empresas de MI cuenta: sin este filtro, el fundador (superadmin,
     // que por RLS ve todo) veía en su selector las empresas de TODOS los clientes.
-    let q = window.sb.from('empresas').select('id, nombre, rif, condicion_fiscal, fiscal_activo, firma_empresa, direccion, telefono, representante, representante_ci, representante_cargo, registro_mercantil, ciudad');
+    let q = window.sb.from('empresas').select('id, nombre, rif, condicion_fiscal, fiscal_activo, firma_empresa, direccion, telefono, representante, representante_ci, representante_cargo, registro_mercantil, ciudad, modo_doc, autorizada_desde, autorizacion_seniat');
     if (window.__CUENTA_ID) q = q.eq('cuenta_id', window.__CUENTA_ID);
     const { data, error } = await q.order('nombre');
     if (error) { console.warn('[DigiAccount] No se pudieron cargar las empresas:', error.message); return; }
@@ -218,6 +224,8 @@
       opt.dataset.empresaId = emp.id || '';
       opt.dataset.fiscal = String(!!emp.fiscal_activo);
       opt.dataset.dpp = String(emp.declara_dpp !== false); // emprendimientos: exentos de Protección a las Pensiones
+      opt.dataset.modoDoc = emp.modo_doc || 'recibo';
+      opt.dataset.autorizacion = emp.autorizacion_seniat || '';
       if (emp.firma_empresa) opt.dataset.firma = emp.firma_empresa;
       if (emp.direccion) opt.dataset.direccion = emp.direccion;
       if (emp.telefono) opt.dataset.telefono = emp.telefono;
@@ -6726,11 +6734,22 @@
         else cobrarBtn.hidden = true;
       }
       // Botón "Anular": solo recibos de venta SIN cobros registrados y no anulados ya
+      /* Anular o emitir nota: nunca los dos.
+
+         En modo RECIBO se anula como siempre — un recibo no es una factura y
+         nadie que trabaje hoy se ve afectado. En modo FACTURA se esconde
+         Anular y aparece la nota de credito, porque la 000121 (Art. 3.d) solo
+         admite corregir o anular una factura mediante notas, conservando el
+         documento original inalterable. */
+      const _esFactura = (window.__EMPRESA_ACTIVA && window.__EMPRESA_ACTIVA.modo_doc) === 'factura';
       const anularBtn = document.getElementById('facturaAnular');
-      if (anularBtn) {
-        const cobrado2 = window.__cobradoDe ? window.__cobradoDe(num) : 0;
-        anularBtn.hidden = !(f.tipo === 'venta' && !anulada && cobrado2 < 0.01 && f._id);
-      }
+      const notaBtn = document.getElementById('facturaNota');
+      const cobrado2 = window.__cobradoDe ? window.__cobradoDe(num) : 0;
+      const esVentaViva = f.tipo === 'venta' && !anulada && f._id;
+      if (anularBtn) anularBtn.hidden = !(esVentaViva && cobrado2 < 0.01 && !_esFactura);
+      /* La nota SI se puede emitir aunque la factura tenga cobros: para eso
+         existe. Devolver mercancia ya pagada es el caso mas comun de todos. */
+      if (notaBtn) notaBtn.hidden = !(esVentaViva && _esFactura);
 
       overlay.dataset.open = 'true';
       drawIcons();
@@ -6782,6 +6801,150 @@
       if (window.cargarTesoreria) window.cargarTesoreria();
       if (window.cargarDashboard) window.cargarDashboard();
     });
+    /* Emitir una nota de credito o de debito sobre la factura abierta.
+
+       La factura original NO se toca: la nota es un documento NUEVO que
+       apunta a ella. Que la factura este anulada se averigua buscando sus
+       notas, no leyendo un campo que alguien tuvo que cambiar. */
+    const notaBtnEl = document.getElementById('facturaNota');
+    if (notaBtnEl) notaBtnEl.addEventListener('click', () => {
+      if (!currentFac || !currentFac.f || !currentFac.f._id) return;
+      emitirNota(currentFac);
+    });
+
+    // Los motivos son los que de verdad ocurren, no una lista generica.
+    const MOTIVOS_NOTA = {
+      NC: ['Devolución de mercancía', 'Descuento o ajuste al precio pactado',
+        'Factura emitida por equivocación', 'Otro'],
+      ND: ['Cargo adicional no facturado', 'Ajuste de precio al alza',
+        'Intereses o gastos de cobranza', 'Otro'],
+    };
+
+    function emitirNota(fac) {
+      const f = fac.f, num = fac.num;
+      const t = calcFactura(f);
+      const cobrado = window.__cobradoDe ? window.__cobradoDe(num) : 0;
+
+      window.openFormModal && window.openFormModal({
+        title: 'Emitir nota sobre la factura ' + num,
+        saveLabel: 'Emitir la nota',
+        fields: [
+          { name: 'tipo', label: 'Tipo de documento', type: 'select', options: [
+            { value: 'NC', label: 'Nota de CRÉDITO — disminuye lo facturado' },
+            { value: 'ND', label: 'Nota de DÉBITO — aumenta lo facturado' } ] },
+          { name: 'alcance', label: '¿Por cuánto?', type: 'select', options: [
+            { value: 'total', label: 'Por el total de la factura (' + fmtF(t.total) + ')' },
+            { value: 'parcial', label: 'Por una parte' } ] },
+          { name: 'monto', label: 'Monto de la nota (Bs)', type: 'number', step: '0.01', value: t.total.toFixed(2) },
+          { name: 'motivo', label: 'Motivo', type: 'select', options: MOTIVOS_NOTA.NC },
+          { name: 'detalle', label: 'Explicación (queda impresa en la nota)', col: 2,
+            placeholder: 'Ej. El cliente devolvió 2 sillas por defecto de fábrica' },
+          { name: 'aviso', col: 2, type: 'static', label: '', html:
+            '<div style="font-size:11.5px;color:var(--fg-muted);line-height:1.5;border-left:3px solid var(--da-cyan-600);padding-left:10px;">'
+            + 'La factura <strong>' + esc(num) + '</strong> no se modifica: queda tal como se emitió. '
+            + 'La nota es un documento aparte que la corrige, y así lo exige la Providencia 000121.'
+            + (cobrado > 0.01 ? '<br><br>Esta factura tiene <strong>Bs ' + fmtF(cobrado) + '</strong> cobrados. '
+              + 'Emitir la nota no devuelve ese dinero: el reintegro, si lo hay, se registra por Tesorería.' : '')
+            + '</div>' },
+        ],
+        afterRender: (body) => {
+          const tipoEl = body.querySelector('[data-name="tipo"]');
+          const alcEl = body.querySelector('[data-name="alcance"]');
+          const montoEl = body.querySelector('[data-name="monto"]');
+          const motivoEl = body.querySelector('[data-name="motivo"]');
+          const pintarMotivos = () => {
+            const lista = MOTIVOS_NOTA[tipoEl.value] || MOTIVOS_NOTA.NC;
+            motivoEl.innerHTML = lista.map((m) => '<option>' + esc(m) + '</option>').join('');
+          };
+          const pintarMonto = () => {
+            const wrap = montoEl.closest('.fm-field');
+            const parcial = alcEl.value === 'parcial';
+            if (wrap) wrap.style.display = parcial ? '' : 'none';
+            if (!parcial) montoEl.value = t.total.toFixed(2);
+          };
+          tipoEl.addEventListener('change', pintarMotivos);
+          alcEl.addEventListener('change', pintarMonto);
+          pintarMotivos(); pintarMonto();
+        },
+        onSave: (v) => {
+          if (!window.sb || !window.__CUENTA_ID) return 'Sin conexión.';
+          const tipo = v.tipo === 'ND' ? 'ND' : 'NC';
+          const monto = v.alcance === 'parcial' ? (parseFloat(v.monto) || 0) : t.total;
+          if (monto <= 0) return 'El monto de la nota tiene que ser mayor que cero.';
+          if (tipo === 'NC' && monto > t.total + 0.01) {
+            return 'Una nota de crédito no puede superar el total de la factura (Bs ' + fmtF(t.total) + ').';
+          }
+          const motivo = (v.motivo || '') + ((v.detalle || '').trim() ? ' — ' + v.detalle.trim() : '');
+          if (!motivo.trim()) return 'Indica el motivo de la nota.';
+          guardarNota({ fac: fac, tipo: tipo, monto: monto, motivo: motivo });
+        },
+      });
+    }
+
+    async function guardarNota(arg) {
+      const fac = arg.fac, tipo = arg.tipo, monto = arg.monto, motivo = arg.motivo;
+      const f = fac.f, num = fac.num;
+      const empId = (window.__EMPRESA_ACTIVA && window.__EMPRESA_ACTIVA.id) || null;
+
+      // Correlativo propio de las notas, por empresa y por tipo.
+      const previas = await window.sb.from('facturas')
+        .select('numero').eq('empresa_id', empId).eq('tipo_doc', tipo);
+      const usados = ((previas && previas.data) || [])
+        .map((x) => parseInt(String(x.numero || '').replace(/[^0-9]/g, ''), 10))
+        .filter((n) => !isNaN(n));
+      const numeroNota = tipo + '-' + String((usados.length ? Math.max.apply(null, usados) : 0) + 1).padStart(8, '0');
+
+      /* El N de CONTROL lo asigna la imprenta digital, no nosotros
+         (000102 Art. 7 numeral 4). Mientras no haya imprenta contratada se
+         deja vacio: inventarlo aqui seria justo lo que la providencia evita. */
+      const hoy = new Date();
+      const fecha = String(hoy.getDate()).padStart(2, '0') + '/' + String(hoy.getMonth() + 1).padStart(2, '0') + '/' + hoy.getFullYear();
+      const tf = calcFactura(f);
+      const proporcion = tf.total > 0 ? monto / tf.total : 0;
+      const alic = Number(f.alic) || 0;
+
+      const ins = await window.sb.from('facturas').insert({
+        cuenta_id: window.__CUENTA_ID, empresa_id: empId,
+        numero: numeroNota, control: '', tipo: 'venta', tipo_doc: tipo,
+        factura_afectada: f._id, motivo: motivo,
+        fecha: fecha, emitida_en: hoy.toISOString(),
+        cliente_nombre: (f.parte && f.parte.n) || '', cliente_rif: (f.parte && f.parte.rif) || '',
+        cliente_dom: (f.parte && f.parte.dom) || '',
+        alicuota: alic, igtf: false, condicion: f.cond || 'Contado',
+        items: [{ d: 'Nota de ' + (tipo === 'NC' ? 'crédito' : 'débito') + ' sobre la factura ' + num + ' · ' + motivo,
+          c: 1, p: monto / (1 + alic) }],
+        subtotal: tf.subtotal * proporcion, iva: tf.iva * proporcion, igtf_monto: 0, total: monto,
+        estado: 'Emitida',
+      });
+      if (ins && ins.error) { if (window.toast) window.toast('No se pudo emitir la nota: ' + ins.error.message, 'error'); return; }
+
+      /* Asiento del ajuste. La NC reversa proporcionalmente lo que la venta
+         registro; la ND lo aumenta. Solo en modo recibos: en modo libro la
+         contabilizacion la hace el Libro de Ventas. */
+      const _modo = (window.__EMPRESA_ACTIVA && window.__EMPRESA_ACTIVA.modo) || 'recibos';
+      if (window.__postAsiento && _modo !== 'libro') {
+        const sub = tf.subtotal * proporcion, iva = tf.iva * proporcion;
+        const ln = [];
+        if (tipo === 'NC') {
+          ln.push({ cta: '4.1.1.01 · Venta de mercancía', debe: sub, haber: 0 });
+          if (iva > 0.005) ln.push({ cta: '2.1.3.01 · IVA débito fiscal', debe: iva, haber: 0 });
+          ln.push({ cta: '1.1.2.01 · Cuentas por cobrar comerciales', debe: 0, haber: monto });
+        } else {
+          ln.push({ cta: '1.1.2.01 · Cuentas por cobrar comerciales', debe: monto, haber: 0 });
+          ln.push({ cta: '4.1.1.01 · Venta de mercancía', debe: 0, haber: sub });
+          if (iva > 0.005) ln.push({ cta: '2.1.3.01 · IVA débito fiscal', debe: 0, haber: iva });
+        }
+        window.__postAsiento(numeroNota + ' sobre factura ' + num + ' · ' + motivo, numeroNota, ln, 'auto')
+          .then((r) => { if (r && r.error) console.warn('[DigiAccount] Asiento de la nota:', r.error.message); });
+      }
+
+      close();
+      if (window.toast) window.toast(numeroNota + ' emitida sobre la factura ' + num + ' · Bs ' + fmtF(monto), 'success');
+      if (window.cargarFacturas) window.cargarFacturas();
+      if (window.cargarTesoreria) window.cargarTesoreria();
+      if (window.cargarDashboard) window.cargarDashboard();
+    }
+
     const cb = document.getElementById('facturaClose');
     if (cb) cb.addEventListener('click', close);
     // Despachar: genera la Guía de Despacho a partir de la factura abierta
