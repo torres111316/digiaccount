@@ -130,9 +130,17 @@ create policy eventos_ver on public.eventos_sistema for select to authenticated
 -- COMPROBACIÓN (descomentar y correr después)
 --
 -- 1) ¿Quedaron los disparadores puestos?
--- select event_object_table as tabla, trigger_name
+--
+--    OJO: information_schema.triggers devuelve UNA FILA POR EVENTO, así que un
+--    disparador declarado "after insert or update or delete" aparece TRES veces
+--    por tabla. No están repetidos. Esta consulta los agrupa para que se lean
+--    las 8 tablas de una vez, cada una con sus tres eventos:
+--
+-- select event_object_table as tabla,
+--        string_agg(event_manipulation, ', ' order by event_manipulation) as eventos
 --   from information_schema.triggers
 --  where trigger_schema = 'public' and trigger_name = 'trg_auditar'
+--  group by event_object_table
 --  order by tabla;
 --
 -- 2) ¿Está grabando? Registra o edita cualquier factura y corre:
