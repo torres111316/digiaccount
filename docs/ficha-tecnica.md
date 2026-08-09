@@ -167,15 +167,17 @@ registradas en `eventos_sistema`, porque los disparadores no distinguen el orige
 
 ## 7 · Conservación y contingencia
 
-**Conservación (10 años).** Los registros fiscales no se eliminan del sistema. La base
-de datos cuenta con respaldos automáticos diarios y retención por punto en el tiempo.
-*(Pendiente: formalizar la política de retención a diez años y el procedimiento de
-restauración — ver sección 9.)*
+**Conservación (10 años).** Los registros fiscales no se eliminan, y no por política
+sino por estructura: los disparadores de inalterabilidad rechazan toda eliminación. La
+conservación se apoya en tres niveles —base en producción, respaldos del proveedor de
+infraestructura y archivo independiente en formato abierto—, detallados en
+[`politica-conservacion.md`](politica-conservacion.md).
 
-**Contingencia.** La aplicación funciona como aplicación web progresiva con
-trabajador de servicio, lo que le permite abrir y operar sin conexión con los datos
-ya descargados. *(Pendiente: el procedimiento formal de contingencia del Artículo 16
-de la 000102 — ver sección 9.)*
+**Contingencia.** La aplicación es una aplicación web progresiva instalable: abre y
+permite **consultar** sin conexión con los datos ya descargados. **No permite emitir
+documentos sin conexión**, lo que deja sin cubrir el nivel 2 de la escalera del
+Artículo 16 de la 000102. Se declara con su plan en
+[`procedimiento-contingencia.md`](procedimiento-contingencia.md).
 
 ---
 
@@ -186,7 +188,7 @@ de la 000102 — ver sección 9.)*
 | Usuario ↔ aplicación | HTTPS (TLS 1.3), a través de Cloudflare | Operativo |
 | Aplicación ↔ base de datos | HTTPS sobre PostgREST, con token JWT por sesión | Operativo |
 | Aplicación ↔ automatización (n8n) | HTTPS, en dominio propio | Operativo |
-| **Sistema ↔ SENIAT (consulta)** | API de solo lectura con clave de acceso | **Pendiente — sección 9** |
+| **Sistema ↔ SENIAT (consulta)** | API de solo lectura sobre HTTPS, con clave por empresa | Operativo |
 | **Sistema ↔ SENIAT (remisión)** | Según formato que publique el SENIAT | **Pendiente — sección 9** |
 | Sistema ↔ imprenta digital | Según la imprenta que se contrate | **Pendiente — sección 9** |
 
@@ -203,12 +205,12 @@ que lo declara con su plan.
 
 | Requisito | Situación | De quién depende |
 |---|---|---|
-| **Clave de consulta y API para el SENIAT** (Art. 3.h) | Por construir. Se prevé un perfil de solo lectura sobre registros fiscales y de eventos, con credenciales entregadas al SENIAT | **Del proveedor.** Es lo próximo a construir |
+| **Clave de consulta y API** (Art. 3.h) | **Construida.** Seis consultas de solo lectura, clave por empresa, cada consulta registrada | Cumplido |
 | **Remisión automática al SENIAT** (Art. 3.b) | Diseñada; la infraestructura de automatización está operativa. Falta el formato técnico | Del SENIAT: los instructivos aún no se publican en el portal fiscal |
 | **Integración con imprenta digital** (000102, Art. 7.4) | Por definir. El número de control se deja deliberadamente vacío mientras no exista imprenta contratada | De la contratación de una imprenta autorizada |
 | **Formato de la factura digital** (000102, Art. 7) | Parcial. Faltan los numerales que dependen de la imprenta (4, 5, 14 y 15) | De lo anterior |
-| **Política de conservación a 10 años** | Por formalizar | Del proveedor. Es documental |
-| **Procedimiento de contingencia** (000102, Art. 16) | Por formalizar | Del proveedor. Es documental |
+| **Política de conservación a 10 años** | Redactada. Falta automatizar la exportación mensual al archivo independiente | Del proveedor |
+| **Emisión sin conexión** (000102, Art. 16 nivel 2) | **No cubierto.** La arquitectura existe y está probada en el otro producto de la empresa; su traslado depende además de los rangos que entregue la imprenta | Del proveedor y de la imprenta |
 | **Constitución de la compañía** | En trámite | Del registro mercantil |
 
 ---
