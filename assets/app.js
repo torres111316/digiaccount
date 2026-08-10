@@ -1069,6 +1069,9 @@
        de factura y la base. */
     async function registrarRetencion(pre) {
       pre = pre || {};
+      // Lo que ya tiene retenida la factura elegida. Lo llena afterRender al
+      // consultar la base, y lo lee onSave, que no puede esperar consultas.
+      const _yaRetenida = { iva: null, islr: null };
       const terceros = (window.__getTerceros ? window.__getTerceros() : []);
       // Facturas reales registradas en los libros (compras + ventas) de la empresa activa,
       // para ofrecerlas a elegir según la dirección y el tercero de la retención.
@@ -1179,6 +1182,37 @@
             compDl.innerHTML = list.map((x) => '<option value="' + esc(x.comprobante) + '">' + esc(x.comprobante + ' · ' + (x.fecha || '')) + '</option>').join('');
             if (compInput) compInput.placeholder = list.length ? 'Escríbelo, o elige uno existente para agrupar' : 'Escríbelo tal como viene en el comprobante';
           };
+          /* Al escoger la factura se consulta si ya tiene retenciones y se
+             dice ENSEGUIDA, no al guardar. Llenar catorce dígitos, el
+             porcentaje y la base para que después le digan a uno que no, es
+             la peor forma de decir que no. */
+          const factEl = body.querySelector('[data-name="factura"]');
+          const avisoDup = document.createElement('div');
+          avisoDup.className = 'ret-dup';
+          if (factEl && factEl.closest('.fm-field')) factEl.closest('.fm-field').appendChild(avisoDup);
+          const revisarDuplicado = async () => {
+            _yaRetenida.iva = null; _yaRetenida.islr = null;
+            avisoDup.innerHTML = '';
+            const nf = (factEl && factEl.value || '').trim();
+            if (!nf) return;
+            const dirAhora = /^practicada/i.test((body.querySelector('[data-name="direccion"]') || {}).value || '') ? 'practicada' : 'sufrida';
+            const rifAhora = (body.querySelector('[data-name="rif"]') || {}).value || '';
+            const yaHay = await window.__retencionesDeFactura(nf, dirAhora, rifAhora);
+            yaHay.forEach((x) => { if (x.tipo === 'iva' || x.tipo === 'islr') _yaRetenida[x.tipo] = x; });
+            const partes = [];
+            if (_yaRetenida.iva) partes.push('IVA por Bs ' + fmt(Number(_yaRetenida.iva.monto) || 0));
+            if (_yaRetenida.islr) partes.push('ISLR por Bs ' + fmt(Number(_yaRetenida.islr.monto) || 0));
+            if (!partes.length) return;
+            avisoDup.innerHTML = '⚠ Esta factura ya tiene retención de <strong>' + esc(partes.join(' y ')) + '</strong>.'
+              + (_yaRetenida.iva && _yaRetenida.islr
+                ? ' No queda ninguna por cargar.'
+                : ' Solo puedes cargarle la de <strong>' + (_yaRetenida.iva ? 'ISLR' : 'IVA') + '</strong>.');
+          };
+          if (factEl) { factEl.addEventListener('change', revisarDuplicado); factEl.addEventListener('input', revisarDuplicado); }
+          const dirEl = body.querySelector('[data-name="direccion"]');
+          if (dirEl) dirEl.addEventListener('change', revisarDuplicado);
+          revisarDuplicado();
+
           prov.addEventListener('change', refrescarComprobantes); prov.addEventListener('input', refrescarComprobantes);
           if (dirSel) dirSel.addEventListener('change', refrescarComprobantes);
           if (tipoSel) tipoSel.addEventListener('change', refrescarComprobantes);
@@ -1227,18 +1261,17 @@
              14 dígitos, y sin él la retención no puede salir en el archivo
              que se le entrega al SENIAT. */
           /* No dos veces el mismo impuesto sobre la misma factura.
-             La base también lo impide con una llave única; esto es para que
-             el aviso salga en español y no como un error de Postgres. */
+
+             Aquí se usa lo que se consultó al elegir la factura (_yaRetenida).
+             Guardar no puede esperar una consulta, así que la palabra final la
+             tiene la llave única de la base: si algo se escapa de este lado,
+             el insert la rechaza y se traduce el error 23505. */
           const nfac = (v.factura || '').trim();
-          if (nfac) {
-            const previas = window.__retencionesDeFactura(nfac, dir, v.rif)
-              .filter((x) => x.tipo === (esIslr ? 'islr' : 'iva'));
-            if (previas.length) {
-              const y = previas[0];
-              return 'La factura ' + nfac + ' YA tiene retención de ' + (esIslr ? 'ISLR' : 'IVA')
-                + (y.comprobante ? ' (comprobante ' + y.comprobante + ')' : '')
-                + ' por Bs ' + fmt(Number(y.monto) || 0) + '. Cargarla otra vez duplicaría el monto en la declaración.';
-            }
+          if (nfac && _yaRetenida[(esIslr ? 'islr' : 'iva')]) {
+            const y = _yaRetenida[(esIslr ? 'islr' : 'iva')];
+            return 'La factura ' + nfac + ' YA tiene retención de ' + (esIslr ? 'ISLR' : 'IVA')
+              + (y.comprobante ? ' (comprobante ' + y.comprobante + ')' : '')
+              + ' por Bs ' + fmt(Number(y.monto) || 0) + '. Cargarla otra vez duplicaría el monto en la declaración.';
           }
 
           let compFinal = comp;
@@ -1273,16 +1306,25 @@
     if (addBtn) addBtn.addEventListener('click', () => registrarRetencion());
     window.__registrarRetencion = registrarRetencion;
 
-    /* Qué retenciones tiene ya una factura. Se consulta ANTES de abrir el
-       formulario, para avisar en vez de dejar llenarlo todo y rechazarlo al
-       guardar — que es la peor forma de decir que no. */
-    window.__retencionesDeFactura = (factura, direccion, rif) => {
-      const nf = (factura || '').trim().toLowerCase();
-      if (!nf) return [];
+    /* Qué retenciones tiene ya una factura.
+
+       Se le pregunta a la BASE, no a la lista que tiene cargada la pantalla
+       de Retenciones. Ese era el error: quien trabaja en el Libro sin haber
+       abierto Retenciones tenía esa lista vacía, la comprobación no
+       encontraba nada y dejaba cargar la retención dos veces. Una
+       comprobación de duplicados no puede depender de qué pantalla se abrió
+       antes. */
+    window.__retencionesDeFactura = async (factura, direccion, rif) => {
+      const nf = (factura || '').trim();
+      if (!nf || !window.sb || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) return [];
+      const { data, error } = await window.sb.from('retenciones')
+        .select('id, tipo, direccion, comprobante, monto, factura, tercero_rif, fecha')
+        .eq('empresa_id', window.__EMPRESA_ACTIVA.id)
+        .eq('direccion', direccion)
+        .eq('factura', nf);
+      if (error) { console.warn('[DigiAccount] No se pudo comprobar retenciones previas:', error.message); return []; }
       const nr = normRif(rif || '');
-      return _retData.filter((x) => (x.factura || '').trim().toLowerCase() === nf
-        && x.direccion === direccion
-        && (!nr || normRif(x.tercero_rif || '') === nr));
+      return (data || []).filter((x) => !nr || normRif(x.tercero_rif || '') === nr);
     };
 
     // Comprobante de retención: clona el template OFICIAL completo (#compIva/#compIslr)
@@ -9093,9 +9135,9 @@
           /* Si esta factura ya tiene retenciones, se dice AQUÍ, junto al
              botón, antes de que nadie llene nada. */
           const btnRet = body.querySelector('#btnRetDeFactura');
-          if (btnRet && window.__retencionesDeFactura) {
+          if (btnRet && window.__retencionesDeFactura) (async () => {
             const dirRet = esCompra ? 'practicada' : 'sufrida';
-            const yaHay = window.__retencionesDeFactura(r.numero_factura, dirRet, r.tercero_rif);
+            const yaHay = await window.__retencionesDeFactura(r.numero_factura, dirRet, r.tercero_rif);
             const conIva = yaHay.filter((x) => x.tipo === 'iva');
             const conIslr = yaHay.filter((x) => x.tipo === 'islr');
             if (yaHay.length) {
@@ -9116,7 +9158,7 @@
                 btnRet.title = 'Ya tiene las dos retenciones cargadas';
               }
             }
-          }
+          })();
           if (btnRet) btnRet.addEventListener('click', () => {
             if (!window.__registrarRetencion) {
               if (window.toast) window.toast('No pude abrir el registro de retenciones. Ve a Fiscal → Retenciones y regístrala desde ahí.', 'error');

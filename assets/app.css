@@ -7056,6 +7056,12 @@
   .ret-calc-comp.ok    { color: var(--da-green-700, #157347); }
   .ret-calc-comp.mal   { color: var(--da-red-700, #b02a37); font-weight: var(--fw-semibold); }
   .ret-calc-comp.aviso { color: var(--da-amber-700, #9a6700); border-top: 0; padding-top: 2px; }
+
+  /* Aviso de que la factura ya tiene retención */
+  .ret-dup:not(:empty) {
+    font-size: 11.5px; line-height: 1.5; margin-top: 5px; padding: 7px 9px; border-radius: 6px;
+    background: var(--da-amber-50, #fff8e6); color: var(--da-amber-700, #9a6700);
+  }
   @media (max-width: 640px) { .libro-pager-info { width: 100%; text-align: center; margin: 4px 0 0; } }
   @media (max-width: 560px) {
     .lf-reng .ic-head, .lf-reng .ic-row { grid-template-columns: minmax(0,1.4fr) minmax(0,1.4fr) minmax(0,.8fr) 32px; }
