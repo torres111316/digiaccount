@@ -1037,7 +1037,7 @@
           { name: 'rif', label: 'RIF (mayúscula, sin guiones)', upper: true, placeholder: 'J123456789', value: pre.rif || '' },
           { name: 'factura', label: 'Factura afectada (elige una registrada)', type: 'datalist', options: [], placeholder: 'Primero elige el tercero…', value: pre.factura || '' },
           { name: 'numControl', label: 'N° de Control (se llena de la factura)', placeholder: '00-00000000', value: pre.numControl || '' },
-          { name: 'comprobante', label: 'N° Comprobante (vacío = nuevo · o elige uno para agrupar)', type: 'datalist', options: [], placeholder: 'Se genera automáticamente' },
+          { name: 'comprobante', label: 'N° de comprobante (el del documento · o elige uno para agrupar)', type: 'datalist', options: [], placeholder: 'Escríbelo tal como viene' },
           { name: 'base', label: 'Base imponible / monto del pago (Bs)', type: 'number', step: '0.01', placeholder: '0.00', value: pre.base != null ? String(pre.base) : '' },
           { name: 'pct', label: '% de retención', type: 'number', step: '0.01', placeholder: '75' },
           { name: 'sustraendo', label: 'Sustraendo (ISLR, automático)', type: 'number', step: '0.01', placeholder: '0.00' },
@@ -1111,7 +1111,7 @@
               && ((rifN && normRif(x.tercero_rif) === rifN) || (nom && (x.tercero_nombre || '').toLowerCase() === nom)))
               .filter((x) => { if (seen[x.comprobante]) return false; seen[x.comprobante] = true; return true; });
             compDl.innerHTML = list.map((x) => '<option value="' + esc(x.comprobante) + '">' + esc(x.comprobante + ' · ' + (x.fecha || '')) + '</option>').join('');
-            if (compInput) compInput.placeholder = list.length ? 'Vacío = nuevo N° · o elige uno existente para agrupar' : 'Se genera automáticamente';
+            if (compInput) compInput.placeholder = list.length ? 'Escríbelo, o elige uno existente para agrupar' : 'Escríbelo tal como viene en el comprobante';
           };
           prov.addEventListener('change', refrescarComprobantes); prov.addEventListener('input', refrescarComprobantes);
           if (dirSel) dirSel.addEventListener('change', refrescarComprobantes);
@@ -1142,12 +1142,18 @@
           const p = (v.fecha || '').split('-');
           const fecha = p.length === 3 ? (p[2] + '/' + p[1] + '/' + p[0].slice(2)) : '';
           const dir = /^practicada/i.test(v.direccion) ? 'practicada' : 'sufrida';
-          // N° de comprobante: ISLR = correlativo simple; IVA = formato AAAAMM+correlativo
-          let comp = v.comprobante;
-          if (!comp) {
-            if (esIslr) { const n = _retData.filter((x) => x.tipo === 'islr').length + 1; comp = String(n).padStart(8, '0'); }
-            else { const seq = _retData.filter((x) => x.tipo === 'iva').length + 1; comp = (p.length === 3 ? (p[0] + p[1] + String(seq).padStart(8, '0')) : String(seq).padStart(14, '0')); }
-          }
+          /* El N° de comprobante NO se inventa.
+
+             En una retención SUFRIDA el número viene en el comprobante que
+             manda el cliente: generarlo pondría en el sistema un número que no
+             coincide con el papel, y ese descuadre solo aparece cuando ya está
+             declarado. En una PRACTICADA lo asigna quien retiene, según su
+             propio correlativo.
+
+             Se autonumera solo lo que esta empresa emite por su cuenta: el
+             número de factura y el de control de las VENTAS. */
+          const comp = (v.comprobante || '').trim();
+          if (!comp) return 'Escribe el N° de comprobante — el que trae el documento, o elige uno existente para agrupar varias retenciones.';
           window.sb.from('retenciones').insert({
             cuenta_id: window.__CUENTA_ID, empresa_id: window.__EMPRESA_ACTIVA.id,
             direccion: dir, tipo: (v.tipo || 'IVA').toLowerCase(), fecha: fecha, comprobante: comp,
@@ -8451,7 +8457,7 @@
           { name: 'igtfShow', label: 'IGTF 3% (calculado del total con IVA)', type: 'static', html: '<span class="mono" id="igtfShowVal">Bs 0,00</span>' },
         ]).concat([
           { name: 'retPct', label: (esCompra ? 'IVA que le retienes al proveedor' : 'IVA que te retuvo el cliente') + ' (opcional)', type: 'select', options: ['Sin retención', '75%', '100%'] },
-          { name: 'retComp', label: 'N° comprobante de retención' + (esCompra ? ' (vacío = se genera)' : ' (el que te dio el cliente)'), placeholder: esCompra ? 'Se genera solo' : 'Ej. 20260600000123' },
+          { name: 'retComp', label: 'N° comprobante de retención' + (esCompra ? ' (el de tu comprobante)' : ' (el que te dio el cliente)'), placeholder: 'Ej. 20260600000123 · déjalo vacío si aún no lo tienes' },
         ]).concat(esCompra ? [] : [
           { name: 'anularVenta', label: '¿Este número es una factura ANULADA? (solo reserva el correlativo, sin monto)', col: 2, type: 'select', options: ['No', 'Sí — Anulada'] },
         ])),
@@ -8739,10 +8745,16 @@
             }
             // Si se indicó retención de IVA, registra el comprobante de retención asociado a esta factura
             const retPctNum = v.retPct === '100%' ? 100 : v.retPct === '75%' ? 75 : 0;
-            if (retPctNum && iva > 0) {
+            if (retPctNum && iva > 0 && !(v.retComp || '').trim()) {
+              toast('Se registró la factura, pero la retención NO: falta el N° de comprobante. Ábrela y usa "Registrar la retención de esta factura" cuando lo tengas.', 'error');
+            }
+            if (retPctNum && iva > 0 && (v.retComp || '').trim()) {
               const retMonto = iva * retPctNum / 100;
-              let comp = (v.retComp || '').trim();
-              if (!comp && esCompra && p.length === 3) comp = p[0] + p[1] + String(Date.now()).slice(-8);
+              /* Tampoco aquí se inventa el número. Si no se escribió, la
+                 retención NO se registra junto con la factura: se avisa y se
+                 carga después desde el botón de la propia factura, que es
+                 cuando de verdad llega el comprobante. */
+              const comp = (v.retComp || '').trim();
               window.sb.from('retenciones').insert({
                 cuenta_id: window.__CUENTA_ID, empresa_id: window.__EMPRESA_ACTIVA.id,
                 direccion: esCompra ? 'practicada' : 'sufrida', tipo: 'iva', fecha: fecha, periodo: periodo, comprobante: comp,
