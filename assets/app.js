@@ -833,6 +833,91 @@
 
     // El % de retención depende del impuesto: IVA = dropdown estricto 0/75/100;
     // ISLR = entrada libre con sugerencias comunes (varía por concepto del Decreto 1.808).
+    /* Pinta el cálculo de la retención en vivo.
+
+       Para IVA:  base (que es el IVA de la factura) x %  = retenido
+       Para ISLR: base x % - sustraendo = retenido, y se muestra el CÓDIGO del
+       Anexo 6.1 que se está aplicando, que es lo que va impreso en el
+       comprobante y lo que revisa el SENIAT. */
+    function setupCalcRetencion(body) {
+      const caja = body.querySelector('#retCalc');
+      if (!caja) return;
+      const val = (n) => { const el = body.querySelector('[data-name="' + n + '"]'); return el ? el.value : ''; };
+      const pintar = () => {
+        const esIslr = /islr/i.test(val('tipo'));
+        const base = parseFloat(val('base')) || 0;
+        const pct = parseFloat(String(val('pct')).replace('%', '')) || 0;
+        if (!base || !pct) {
+          caja.innerHTML = '<span class="ret-calc-vacio">Escribe la base y elige el porcentaje para ver cuánto se retiene.</span>';
+          return;
+        }
+        if (esIslr) {
+          const variant = variantIslr(val('concepto'), val('sujeto'));
+          const cod = variant ? variant[0] : '—';
+          const sust = parseFloat(val('sustraendo')) || 0;
+          const monto = Math.max(0, base * pct / 100 - sust);
+          caja.innerHTML =
+            '<div class="ret-calc-fila"><span>Código del Anexo 6.1</span><strong class="mono">' + esc(cod) + '</strong></div>'
+            + '<div class="ret-calc-fila"><span>Base del pago</span><strong class="mono">Bs ' + fmt(base) + '</strong></div>'
+            + '<div class="ret-calc-fila"><span>Porcentaje</span><strong class="mono">' + pct + '%</strong></div>'
+            + (sust > 0 ? '<div class="ret-calc-fila"><span>Menos sustraendo</span><strong class="mono">− Bs ' + fmt(sust) + '</strong></div>' : '')
+            + '<div class="ret-calc-fila total"><span>Se retiene de ISLR</span><strong class="mono">Bs ' + fmt(monto) + '</strong></div>';
+        } else {
+          const monto = base * pct / 100;
+          caja.innerHTML =
+            '<div class="ret-calc-fila"><span>IVA de la factura</span><strong class="mono">Bs ' + fmt(base) + '</strong></div>'
+            + '<div class="ret-calc-fila"><span>Porcentaje retenido</span><strong class="mono">' + pct + '%</strong></div>'
+            + '<div class="ret-calc-fila total"><span>Se retiene de IVA</span><strong class="mono">Bs ' + fmt(monto) + '</strong></div>'
+            + '<div class="ret-calc-fila"><span>Le queda al tercero</span><strong class="mono">Bs ' + fmt(base - monto) + '</strong></div>';
+        }
+      };
+      // Se escucha en todo el formulario: el campo del porcentaje se vuelve a
+      // dibujar al cambiar de impuesto, así que un oyente propio se perdería.
+      body.addEventListener('input', pintar);
+      body.addEventListener('change', pintar);
+      pintar();
+      return pintar;
+    }
+
+    /* La base significa cosas distintas según el impuesto, y confundirlas es
+       el error más caro de este formulario.
+
+       En la retención de IVA la base es el IVA DE LA FACTURA — no su base
+       imponible—. En la de ISLR es el monto del pago por el servicio. Cuando
+       el formulario se abre desde una factura del libro, se trae el número
+       correcto para cada caso y se cambia solo al cambiar de impuesto. */
+    function setupBaseSegunImpuesto(body, pre) {
+      pre = pre || {};
+      if (pre.baseIva == null && pre.baseIslr == null) return;
+      const tipoSel = body.querySelector('[data-name="tipo"]');
+      const baseEl = body.querySelector('[data-name="base"]');
+      if (!tipoSel || !baseEl) return;
+
+      const wrap = baseEl.closest('.fm-field');
+      let pista = wrap ? wrap.querySelector('.ret-pista') : null;
+      if (wrap && !pista) {
+        pista = document.createElement('div');
+        pista.className = 'ret-pista';
+        wrap.appendChild(pista);
+      }
+
+      const aplicar = () => {
+        const esIslr = /islr/i.test(tipoSel.value);
+        const quiero = esIslr ? pre.baseIslr : pre.baseIva;
+        if (quiero != null) baseEl.value = Number(quiero).toFixed(2);
+        if (pista) {
+          pista.innerHTML = esIslr
+            ? 'De la factura: base imponible <strong>Bs ' + fmt(Number(pre.baseIslr) || 0) + '</strong>. '
+              + 'El ISLR se retiene sobre el monto del pago — ajústalo si tu caso es otro.'
+            : 'De la factura: IVA <strong>Bs ' + fmt(Number(pre.baseIva) || 0) + '</strong>. '
+              + 'La retención de IVA se calcula sobre el IVA, no sobre la base imponible.';
+        }
+        baseEl.dispatchEvent(new Event('input', { bubbles: true }));
+      };
+      tipoSel.addEventListener('change', aplicar);
+      aplicar();
+    }
+
     function setupPctField(body) {
       const tipoSel = body.querySelector('[data-name="tipo"]');
       const pctEl = body.querySelector('[data-name="pct"]');
@@ -956,6 +1041,12 @@
           { name: 'base', label: 'Base imponible / monto del pago (Bs)', type: 'number', step: '0.01', placeholder: '0.00', value: pre.base != null ? String(pre.base) : '' },
           { name: 'pct', label: '% de retención', type: 'number', step: '0.01', placeholder: '75' },
           { name: 'sustraendo', label: 'Sustraendo (ISLR, automático)', type: 'number', step: '0.01', placeholder: '0.00' },
+          /* Lo que de verdad se está reteniendo, calculado a la vista.
+             Antes había que escoger el porcentaje y confiar: el monto solo
+             aparecía después de guardar. En una retención, ese número es EL
+             dato — es lo que va al comprobante y lo que el tercero descuenta. */
+          { name: 'resumenRet', col: 2, type: 'static', label: '', html:
+            '<div class="ret-calc" id="retCalc"></div>' },
         ],
         afterRender: (body) => {
           const dirSel = body.querySelector('[data-name="direccion"]');
@@ -1030,6 +1121,8 @@
           refrescarComprobantes();
           setupPctField(body);
           setupIslrFields(body);
+          setupCalcRetencion(body);
+          setupBaseSegunImpuesto(body, pre);
         },
         onSave: (v) => {
           if (!window.sb || !window.__CUENTA_ID || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) return 'No hay una empresa activa seleccionada.';
@@ -8881,7 +8974,12 @@
               rif: r.tercero_rif || '',
               factura: r.numero_factura || '',
               numControl: r.numero_control || '',
+              // Se mandan LAS DOS: la de IVA es el IVA de la factura y la de
+              // ISLR es la base imponible. El formulario cambia una por otra
+              // según el impuesto que se elija.
               base: Number(r.iva) || 0,
+              baseIva: Number(r.iva) || 0,
+              baseIslr: Number(r.base) || 0,
             };
             const cancelar = document.getElementById('fmCancel');
             if (cancelar) cancelar.click();
