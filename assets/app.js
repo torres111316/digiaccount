@@ -8561,6 +8561,29 @@
          factura anterior puesto en la siguiente, y eso no se nota al guardar. */
       const ES_MAQUINA_FISCAL = (s) => /[A-Za-z]/.test(String(s || ''));
 
+      /* Pinta el atajo a lo último registrado. Se vuelve a llamar tras cada
+         guardado, así que siempre apunta a la factura recién cargada. */
+      function pintarUltimo() {
+        if (!bodyRef) return;
+        const caja = bodyRef.querySelector('#lfUltimo');
+        if (!caja) return;
+        const u = _ultimoRegistro[tipo];
+        if (!u) { caja.innerHTML = ''; return; }
+        caja.innerHTML = '<button type="button" class="btn btn-ghost" id="btnVolverUltimo" style="height:30px;font-size:12px;">'
+          + '<i data-lucide="corner-up-left" style="width:14px;height:14px;"></i> Volver a la anterior · '
+          + esc(u.num) + (u.nombre ? ' · ' + esc(u.nombre) : '') + '</button>';
+        const b = caja.querySelector('#btnVolverUltimo');
+        if (b) b.addEventListener('click', () => {
+          /* Se cierra este formulario y se abre el de edición de esa factura.
+             Al cerrar el de edición, el de registro NO vuelve solo: es
+             preferible a apilar dos formularios uno encima del otro. */
+          const cancelar = document.getElementById('fmCancel');
+          if (cancelar) cancelar.click();
+          setTimeout(() => editLibroFiscal(u.id, tipo), 150);
+        });
+        if (window.lucide) window.lucide.createIcons();
+      }
+
       // Tras registrar, limpia solo lo que cambia de una factura a otra (cliente, RIF, números,
       // montos) y deja lo que se repite en una sesión de carga (fecha, tipo, condición, IGTF…)
       // para poder seguir registrando facturas seguidas sin cerrar ni volver a llenar todo.
@@ -8592,6 +8615,7 @@
         fields: (esCompra && (window.__ES_FUNDADOR || window.__ADDON_AGENTES) && window.__ocrFactura ? [
           { name: 'facturaFile', label: '🤖 Factura del proveedor (PDF o foto) — el Agente IA la lee y llena el formulario', col: 2, type: 'file' },
         ] : []).concat([
+          { name: 'volverUltimo', col: 2, type: 'static', label: '', html: '<div id="lfUltimo"></div>' },
           { name: 'fecha', label: 'Fecha de la factura', type: 'date', value: window.__hoyISO() },
         ]).concat(esCompra ? [
           // Solo COMPRAS: el crédito se declara en el período en que llega la factura (puede diferir de su fecha).
@@ -8618,6 +8642,7 @@
         ])),
         afterRender: (body) => {
           bodyRef = body;
+          pintarUltimo();
           const prov = body.querySelector('[data-name="nombre"]');
           const rif = body.querySelector('[data-name="rif"]');
           if (!prov) return;
@@ -8820,9 +8845,17 @@
             base_gen: M.base_gen, iva_gen: M.iva_gen,
             base_red: M.base_red, iva_red: M.iva_red,
             base_adic: M.base_adic, iva_adic: M.iva_adic,
-          }).then(({ error }) => {
+          }).select('id').then(({ data: guardado, error }) => {
             if (saveBtnEl) saveBtnEl.disabled = false;
             if (error) { toast('No se pudo guardar: ' + error.message, 'error'); return; }
+            /* Se recuerda lo último que se registró para poder volver a
+               corregirlo sin cerrar el formulario. Al cargar cincuenta
+               facturas seguidas uno nota el error en la siguiente, no en la
+               que está llenando. */
+            if (guardado && guardado[0]) {
+              _ultimoRegistro[tipo] = { id: guardado[0].id, num: v.numFactura || '(sin N°)', nombre: v.nombre };
+              pintarUltimo();
+            }
             if (window.__invalidarArrastres) window.__invalidarArrastres(); // el nuevo registro puede cambiar los arrastres
             if (window.cargarLibroFiscal) window.cargarLibroFiscal(tipo);
             if (window.cargarTesoreria) window.cargarTesoreria();   // refresca CxP/CxC (panel de Compras/Ventas)
@@ -8939,6 +8972,11 @@
     const _perLabel = () => MESES_FIS[parseInt(_fiscalPer.mm, 10) - 1] + ' 20' + _fiscalPer.aa;
     const _libroData = { compra: [], venta: [] }; // últimas filas cargadas por tipo (para editar/eliminar)
     const _libroPage = { compra: 1, venta: 1 }; // página actual de cada libro (20 filas por página)
+    /* Lo último que se registró en cada libro, para poder volver a corregirlo
+       sin cerrar el formulario. Al cargar cincuenta facturas seguidas uno nota
+       el error en la SIGUIENTE, no en la que está llenando — y para entonces
+       la anterior ya se limpió de la pantalla. */
+    const _ultimoRegistro = { compra: null, venta: null };
     /* Los números de página, en forma compacta.
 
        Con 22 páginas no caben 22 botones, así que se muestran la primera, la
@@ -8959,6 +8997,29 @@
       });
       return html;
     }
+
+    /* Convierte una fecha 'dd/mm/aa' en algo que SÍ se puede ordenar.
+
+       Las fechas se guardan como texto en formato venezolano, con el día
+       adelante. Ordenar ese texto ordena por el DÍA: '28/06/26' cae después
+       de '01/07/26' porque compara el 28 contra el 01. Eso mandaba al final
+       del libro las facturas de junio declaradas en julio, que son
+       justamente las que van primero.
+
+       Se devuelve 'aaaammdd', que ordena igual como texto que como fecha.
+       El siglo se deduce del año de dos dígitos: 70 o más es del siglo
+       pasado, el resto de este. */
+    function fechaOrdenable(f) {
+      const p = String(f || '').split('/');
+      if (p.length !== 3) return '99999999'; // sin fecha, al final
+      const dd = p[0].padStart(2, '0');
+      const mm = p[1].padStart(2, '0');
+      const aa = parseInt(p[2], 10);
+      if (isNaN(aa)) return '99999999';
+      const anio = aa >= 70 ? 1900 + aa : 2000 + aa;
+      return String(anio) + mm + dd;
+    }
+    window.__fechaOrdenable = fechaOrdenable;
 
     async function cargarLibroFiscal(tipo, page) {
       const tabName = tipo === 'compra' ? 'compras' : 'ventas';
@@ -8987,10 +9048,16 @@
       const sufPer = '/' + _fiscalPer.mm + '/' + _fiscalPer.aa;   // respaldo por fecha (filas sin período)
       const { data, error } = await window.__sbAll((q) => q
         .eq('empresa_id', window.__EMPRESA_ACTIVA.id).eq('tipo', tipo)
-        .or('periodo.eq.' + perDecl + ',and(periodo.is.null,fecha.like.*' + sufPer + ')')
-        .order('fecha').order('numero_factura'), 'libro_fiscal', '*');
+        .or('periodo.eq.' + perDecl + ',and(periodo.is.null,fecha.like.*' + sufPer + ')'), 'libro_fiscal', '*');
       if (error) { console.warn('[DigiAccount] No se pudo cargar el libro fiscal:', error.message); vacio('No se pudieron cargar (¿creaste la tabla libro_fiscal?).'); return; }
-      const arr = data || [];
+      /* El orden se hace AQUÍ y no en la consulta: la base ordenaría el texto
+         'dd/mm/aa' por el día. Primero por fecha real, y a igual fecha por
+         número de factura, que es como se lee un libro fiscal. */
+      const arr = (data || []).sort((a, b) => {
+        const fa = fechaOrdenable(a.fecha), fb = fechaOrdenable(b.fecha);
+        if (fa !== fb) return fa.localeCompare(fb);
+        return String(a.numero_factura || '').localeCompare(String(b.numero_factura || ''), 'es', { numeric: true });
+      });
       _libroData[tipo] = arr;
       window.__libroData = _libroData; // expuesto para la impresión (printLibro está en otro IIFE)
       if (!arr.length) { vacio('Sin registros en ' + _perLabel() + '. Cambia el período arriba o usa "Registrar ' + tipo + '".'); return; }
