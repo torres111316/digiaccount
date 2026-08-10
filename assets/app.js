@@ -8674,6 +8674,27 @@
     const _perLabel = () => MESES_FIS[parseInt(_fiscalPer.mm, 10) - 1] + ' 20' + _fiscalPer.aa;
     const _libroData = { compra: [], venta: [] }; // últimas filas cargadas por tipo (para editar/eliminar)
     const _libroPage = { compra: 1, venta: 1 }; // página actual de cada libro (20 filas por página)
+    /* Los números de página, en forma compacta.
+
+       Con 22 páginas no caben 22 botones, así que se muestran la primera, la
+       última y las vecinas de la actual, con puntos suspensivos en medio. Lo
+       importante es que la primera y la última SIEMPRE estén: llegar al final
+       de un mes es lo que uno más quiere hacer y era justo lo que no se podía. */
+    function numerosPagina(tipo, pag, total) {
+      const quiero = new Set([1, total, pag, pag - 1, pag + 1]);
+      if (pag <= 3) { quiero.add(2); quiero.add(3); quiero.add(4); }
+      if (pag >= total - 2) { quiero.add(total - 1); quiero.add(total - 2); quiero.add(total - 3); }
+      const nums = [...quiero].filter((n) => n >= 1 && n <= total).sort((a, b) => a - b);
+      let html = '', previo = 0;
+      nums.forEach((n) => {
+        if (previo && n > previo + 1) html += '<span class="libro-pager-sep">…</span>';
+        html += '<button class="btn btn-ghost' + (n === pag ? ' activa' : '') + '" data-lp="' + tipo + '"'
+          + ' data-lp-goto="' + n + '"' + (n === pag ? ' aria-current="page"' : '') + '>' + n + '</button>';
+        previo = n;
+      });
+      return html;
+    }
+
     async function cargarLibroFiscal(tipo, page) {
       const tabName = tipo === 'compra' ? 'compras' : 'ventas';
       const sel = tipo === 'compra' ? 'table.libro-compras' : 'table.libro-ventas:not(.libro-maquina)';
@@ -8747,13 +8768,25 @@
           + '<td class="num">' + fmtF(tot) + '</td><td class="num">' + fmtF(ex) + '</td><td class="num">' + fmtF(base) + '</td><td class="ctr">' + alicTxt + '</td><td class="num">' + fmtF(iva) + '</td>'
           + (esCompra ? '' : '<td class="num">' + fmtF(igtf) + '</td>') + '</tr>';
       }).join('');
+      /* Paginador con números que SÍ navegan.
+
+         Antes solo había Anterior y Siguiente: para llegar a la última página
+         de un mes cargado había que pulsar Siguiente una y otra vez. Los
+         números que se veían arriba de la tabla eran decoración que quedó de
+         la maqueta —decían 18 y 22 escritos a mano— y al pulsarlos no pasaba
+         nada, porque nunca estuvieron conectados a nada. */
       const pagerRow = totalPag > 1
-        ? '<tr><td colspan="' + (esCompra ? 12 : 13) + '" style="padding:6px 10px;"><div style="display:flex;justify-content:center;align-items:center;gap:14px;font-size:12px;color:var(--fg-muted);">'
-          + '<button class="btn btn-ghost" data-lp="' + tipo + '" data-lp-dir="-1"' + (pag <= 1 ? ' disabled' : '') + ' style="height:26px;font-size:11px;">« Anterior</button>'
-          + '<span>Página ' + pag + ' de ' + totalPag + ' · ' + arr.length + ' operaciones del período</span>'
-          + '<button class="btn btn-ghost" data-lp="' + tipo + '" data-lp-dir="1"' + (pag >= totalPag ? ' disabled' : '') + ' style="height:26px;font-size:11px;">Siguiente »</button>'
+        ? '<tr><td colspan="' + (esCompra ? 12 : 13) + '" style="padding:8px 10px;"><div class="libro-pager">'
+          + '<button class="btn btn-ghost" data-lp="' + tipo + '" data-lp-goto="1"' + (pag <= 1 ? ' disabled' : '') + ' title="Primera">«</button>'
+          + '<button class="btn btn-ghost" data-lp="' + tipo + '" data-lp-goto="' + (pag - 1) + '"' + (pag <= 1 ? ' disabled' : '') + '>Anterior</button>'
+          + numerosPagina(tipo, pag, totalPag)
+          + '<button class="btn btn-ghost" data-lp="' + tipo + '" data-lp-goto="' + (pag + 1) + '"' + (pag >= totalPag ? ' disabled' : '') + '>Siguiente</button>'
+          + '<button class="btn btn-ghost" data-lp="' + tipo + '" data-lp-goto="' + totalPag + '"' + (pag >= totalPag ? ' disabled' : '') + ' title="Última">»</button>'
+          + '<span class="libro-pager-info">' + arr.length + ' operaciones en ' + esc(_perLabel()) + '</span>'
           + '</div></td></tr>'
-        : '';
+        : '<tr><td colspan="' + (esCompra ? 12 : 13) + '" style="padding:8px 10px;"><div class="libro-pager">'
+          + '<span class="libro-pager-info">' + arr.length + ' operaci' + (arr.length === 1 ? 'ón' : 'ones') + ' en ' + esc(_perLabel()) + '</span>'
+          + '</div></td></tr>';
       if (tfoot) tfoot.innerHTML = totRow(tTot, tEx, tBase, tIva, tIgtf) + pagerRow;
       // Traslado a la Forma 30: el IVA se declara sobre la BASE TOTAL por alícuota × la tasa
       // (método del SENIAT), NO sumando el IVA céntimo a céntimo de cada factura. Así el
@@ -8972,7 +9005,10 @@
     view.addEventListener('click', (e) => {
       const pb = e.target.closest('button[data-lp]');
       if (pb && !pb.disabled) {
-        cargarLibroFiscal(pb.dataset.lp, (_libroPage[pb.dataset.lp] || 1) + parseInt(pb.dataset.lpDir, 10));
+        // Se navega a una página CONCRETA, no por saltos relativos: así el
+        // primero, el último y cualquier número intermedio usan el mismo camino.
+        const destino = parseInt(pb.dataset.lpGoto, 10);
+        if (!isNaN(destino)) cargarLibroFiscal(pb.dataset.lp, destino);
         return;
       }
       const tr = e.target.closest('tr[data-id][data-libro]');
