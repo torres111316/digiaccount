@@ -910,32 +910,50 @@
       aplicar();
     }
 
-    async function registrarRetencion() {
+    /* `pre` permite abrir el formulario ya cargado desde otra pantalla.
+       El caso real: en Venezuela la retencion casi nunca llega el mismo dia
+       de la factura — el cliente la manda dias despues. Entonces uno esta en
+       el Libro de Ventas, con la factura al frente, y desde ahi tiene que
+       poder registrarla sin volver a escribir el tercero, el RIF, el numero
+       de factura y la base. */
+    async function registrarRetencion(pre) {
+      pre = pre || {};
       const terceros = (window.__getTerceros ? window.__getTerceros() : []);
       // Facturas reales registradas en los libros (compras + ventas) de la empresa activa,
       // para ofrecerlas a elegir según la dirección y el tercero de la retención.
       let facturas = [];
       if (window.sb && window.__EMPRESA_ACTIVA && window.__EMPRESA_ACTIVA.id) {
-        const { data } = await window.sb.from('libro_fiscal')
-          .select('numero_factura, numero_control, tercero_nombre, tercero_rif, base, iva, tipo')
-          .eq('empresa_id', window.__EMPRESA_ACTIVA.id).order('fecha', { ascending: false });
+        /* Se pagina con __sbAll: PostgREST corta en 1000 filas y una empresa
+           con libros históricos cargados se pasa de ese tope. Sin esto, las
+           facturas recientes quedaban FUERA del corte y no aparecían al
+           registrar la retención.
+
+           Y se ordena por PERÍODO, no por fecha: 'fecha' es texto en formato
+           dd/mm/aa, y ordenado como texto '31/12/24' va antes que '01/07/26'
+           porque compara el 31 contra el 01. El período es 'aaaa-mm', que sí
+           ordena cronológicamente. */
+        const { data } = await window.__sbAll(
+          (q) => q.eq('empresa_id', window.__EMPRESA_ACTIVA.id)
+            .order('periodo', { ascending: false }).order('numero_factura', { ascending: false }),
+          'libro_fiscal',
+          'numero_factura, numero_control, tercero_nombre, tercero_rif, base, iva, tipo, fecha, periodo');
         facturas = data || [];
       }
       window.openFormModal && window.openFormModal({
         title: curDir === 'sufridas' ? 'Registrar retención sufrida (un cliente me retuvo)' : 'Registrar retención practicada (yo retengo)',
         saveLabel: 'Registrar',
         fields: [
-          { name: 'direccion', label: 'Dirección', type: 'select', options: ['Practicada (yo retengo a un proveedor)', 'Sufrida (un cliente me retiene)'], value: curDir === 'sufridas' ? 'Sufrida (un cliente me retiene)' : 'Practicada (yo retengo a un proveedor)' },
+          { name: 'direccion', label: 'Dirección', type: 'select', options: ['Practicada (yo retengo a un proveedor)', 'Sufrida (un cliente me retiene)'], value: pre.direccion || (curDir === 'sufridas' ? 'Sufrida (un cliente me retiene)' : 'Practicada (yo retengo a un proveedor)') },
           { name: 'tipo', label: 'Impuesto', type: 'select', options: ['IVA', 'ISLR'] },
           { name: 'concepto', label: 'Concepto de retención (ISLR)', col: 2, type: 'select', options: CONCEPTOS_ISLR.map((c) => c.act) },
           { name: 'sujeto', label: 'Tipo de sujeto (ISLR)', type: 'select', options: [{ value: 'PNR', label: 'PN Residente' }, { value: 'PNNR', label: 'PN No Residente' }, { value: 'PJD', label: 'PJ Domiciliada' }, { value: 'PJND', label: 'PJ No Domiciliada' }] },
           { name: 'fecha', label: 'Fecha', type: 'date', value: window.__hoyISO() },
-          { name: 'nombre', label: 'Tercero (escribe iniciales y elige)', col: 2, type: 'datalist', options: terceros.map((t) => t.nombre), placeholder: 'Proveedor o cliente…' },
-          { name: 'rif', label: 'RIF (mayúscula, sin guiones)', upper: true, placeholder: 'J123456789' },
-          { name: 'factura', label: 'Factura afectada (elige una registrada)', type: 'datalist', options: [], placeholder: 'Primero elige el tercero…' },
-          { name: 'numControl', label: 'N° de Control (se llena de la factura)', placeholder: '00-00000000' },
+          { name: 'nombre', label: 'Tercero (escribe iniciales y elige)', col: 2, type: 'datalist', options: terceros.map((t) => t.nombre), placeholder: 'Proveedor o cliente…', value: pre.nombre || '' },
+          { name: 'rif', label: 'RIF (mayúscula, sin guiones)', upper: true, placeholder: 'J123456789', value: pre.rif || '' },
+          { name: 'factura', label: 'Factura afectada (elige una registrada)', type: 'datalist', options: [], placeholder: 'Primero elige el tercero…', value: pre.factura || '' },
+          { name: 'numControl', label: 'N° de Control (se llena de la factura)', placeholder: '00-00000000', value: pre.numControl || '' },
           { name: 'comprobante', label: 'N° Comprobante (vacío = nuevo · o elige uno para agrupar)', type: 'datalist', options: [], placeholder: 'Se genera automáticamente' },
-          { name: 'base', label: 'Base imponible / monto del pago (Bs)', type: 'number', step: '0.01', placeholder: '0.00' },
+          { name: 'base', label: 'Base imponible / monto del pago (Bs)', type: 'number', step: '0.01', placeholder: '0.00', value: pre.base != null ? String(pre.base) : '' },
           { name: 'pct', label: '% de retención', type: 'number', step: '0.01', placeholder: '75' },
           { name: 'sustraendo', label: 'Sustraendo (ISLR, automático)', type: 'number', step: '0.01', placeholder: '0.00' },
         ],
@@ -1052,7 +1070,8 @@
       });
     }
     const addBtn = document.getElementById('retAddBtn');
-    if (addBtn) addBtn.addEventListener('click', registrarRetencion);
+    if (addBtn) addBtn.addEventListener('click', () => registrarRetencion());
+    window.__registrarRetencion = registrarRetencion;
 
     // Comprobante de retención: clona el template OFICIAL completo (#compIva/#compIslr)
     // y lo llena con datos reales (firmas, partes, base legal SNAT/2025/000054 o Decreto 1.808).
@@ -8789,6 +8808,22 @@
           { name: 'numFactura', label: 'N° de Factura', value: r.numero_factura || '' },
           { name: 'numControl', label: 'N° de Control', value: r.numero_control || '' },
           { name: 'numResumen', col: 2, type: 'static', label: '', html: montosHTML() },
+          /* Atajo a la retención.
+
+             En Venezuela la retención casi nunca llega el mismo día de la
+             factura: el cliente la manda días después. Sin este atajo había
+             que salir del libro, ir a Retenciones y volver a escribir el
+             tercero, el RIF, el número de factura y la base — con la factura
+             delante y ya registrada. */
+          { name: 'atajoRet', col: 2, type: 'static', label: '', html:
+            '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;border-top:1px solid var(--border-default);padding-top:12px;">'
+            + '<button type="button" class="btn btn-ghost" id="btnRetDeFactura" style="height:32px;font-size:12px;">'
+            + '<i data-lucide="percent"></i> Registrar la retención de esta factura</button>'
+            + '<span style="font-size:11px;color:var(--fg-muted);">'
+            + (Number(r.iva) > 0
+              ? 'Se abre con el ' + (esCompra ? 'proveedor' : 'cliente') + ', el N° de factura y la base (Bs ' + fmtF(Number(r.iva) || 0) + ') ya puestos.'
+              : 'Esta factura no tiene IVA, así que no habría retención de IVA que registrar.')
+            + '</span></div>' },
         ].concat(esCompra ? [] : [
           { name: 'igtfAplica', label: '¿Aplica IGTF? (3%)', type: 'select', options: ['No', 'Sí (3%)'], value: (Number(r.igtf) > 0 ? 'Sí (3%)' : 'No') },
           { name: 'igtfShow', label: 'IGTF 3% (calculado del total con IVA)', type: 'static', html: '<span class="mono" id="igtfShowVal">Bs ' + fmtF(Number(r.igtf) || 0) + '</span>' },
@@ -8798,6 +8833,28 @@
           // sus renglones, y si es anterior al desglose se reparte por su
           // alícuota única en vez de quedar en cero.
           editMontos = montarMontos(body, r);
+
+          const btnRet = body.querySelector('#btnRetDeFactura');
+          if (btnRet) btnRet.addEventListener('click', () => {
+            if (!window.__registrarRetencion) {
+              if (window.toast) window.toast('No pude abrir el registro de retenciones. Ve a Fiscal → Retenciones y regístrala desde ahí.', 'error');
+              return;
+            }
+            /* La base de una retención de IVA es el IVA de la factura, no su
+               base imponible. Es el error más común al llenarlo a mano. */
+            const datos = {
+              direccion: esCompra ? 'Practicada (yo retengo a un proveedor)' : 'Sufrida (un cliente me retiene)',
+              nombre: r.tercero_nombre || '',
+              rif: r.tercero_rif || '',
+              factura: r.numero_factura || '',
+              numControl: r.numero_control || '',
+              base: Number(r.iva) || 0,
+            };
+            const cancelar = document.getElementById('fmCancel');
+            if (cancelar) cancelar.click();
+            setTimeout(() => window.__registrarRetencion(datos), 150);
+          });
+          if (window.lucide) window.lucide.createIcons();
         },
         onSave: (v) => {
           if (!window.sb) return 'Sin conexión.';
