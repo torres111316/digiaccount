@@ -1226,6 +1226,21 @@
              El de IVA sí se exige: ese comprobante siempre trae su número de
              14 dígitos, y sin él la retención no puede salir en el archivo
              que se le entrega al SENIAT. */
+          /* No dos veces el mismo impuesto sobre la misma factura.
+             La base también lo impide con una llave única; esto es para que
+             el aviso salga en español y no como un error de Postgres. */
+          const nfac = (v.factura || '').trim();
+          if (nfac) {
+            const previas = window.__retencionesDeFactura(nfac, dir, v.rif)
+              .filter((x) => x.tipo === (esIslr ? 'islr' : 'iva'));
+            if (previas.length) {
+              const y = previas[0];
+              return 'La factura ' + nfac + ' YA tiene retención de ' + (esIslr ? 'ISLR' : 'IVA')
+                + (y.comprobante ? ' (comprobante ' + y.comprobante + ')' : '')
+                + ' por Bs ' + fmt(Number(y.monto) || 0) + '. Cargarla otra vez duplicaría el monto en la declaración.';
+            }
+          }
+
           let compFinal = comp;
           if (!esIslr) {
             if (!comp) return 'Escribe el N° de comprobante de la retención de IVA — el que trae el documento, o elige uno existente para agrupar varias.';
@@ -1240,7 +1255,14 @@
             base: base, pct: pct, monto: monto, estado: 'Registrado',
             concepto: esIslr ? v.concepto : null, concepto_codigo: esIslr ? cod : null, sujeto: esIslr ? suj : null, sustraendo: sust,
           }).then(({ error }) => {
-            if (error) { if (window.toast) window.toast('No se pudo guardar: ' + error.message, 'error'); return; }
+            if (error) {
+              // 23505 = llave duplicada. Aquí solo puede ser la que impide dos
+              // retenciones del mismo impuesto sobre la misma factura.
+              if (window.toast) window.toast(error.code === '23505'
+                ? 'Esa factura ya tiene retención de este impuesto. No se puede cargar dos veces.'
+                : 'No se pudo guardar: ' + error.message, 'error');
+              return;
+            }
             if (window.cargarRetenciones) window.cargarRetenciones();
             if (window.toast) window.toast('Retención registrada · Bs ' + fmt(monto), 'success');
           });
@@ -1250,6 +1272,18 @@
     const addBtn = document.getElementById('retAddBtn');
     if (addBtn) addBtn.addEventListener('click', () => registrarRetencion());
     window.__registrarRetencion = registrarRetencion;
+
+    /* Qué retenciones tiene ya una factura. Se consulta ANTES de abrir el
+       formulario, para avisar en vez de dejar llenarlo todo y rechazarlo al
+       guardar — que es la peor forma de decir que no. */
+    window.__retencionesDeFactura = (factura, direccion, rif) => {
+      const nf = (factura || '').trim().toLowerCase();
+      if (!nf) return [];
+      const nr = normRif(rif || '');
+      return _retData.filter((x) => (x.factura || '').trim().toLowerCase() === nf
+        && x.direccion === direccion
+        && (!nr || normRif(x.tercero_rif || '') === nr));
+    };
 
     // Comprobante de retención: clona el template OFICIAL completo (#compIva/#compIslr)
     // y lo llena con datos reales (firmas, partes, base legal SNAT/2025/000054 o Decreto 1.808).
@@ -8840,7 +8874,12 @@
                 tercero_nombre: v.nombre, tercero_rif: normRif(v.rif), factura: v.numFactura, numero_control: v.numControl,
                 base: iva, pct: retPctNum, monto: retMonto, estado: 'Registrado',
               }).then(({ error: e2 }) => {
-                if (e2) { toast('Factura ok, pero la retención no se guardó: ' + e2.message, 'error'); return; }
+                if (e2) {
+                  toast(e2.code === '23505'
+                    ? 'La factura se guardó. La retención NO: esa factura ya tenía una de IVA registrada.'
+                    : 'Factura ok, pero la retención no se guardó: ' + e2.message, 'error');
+                  return;
+                }
                 if (window.cargarRetenciones) window.cargarRetenciones();
                 toast('Retención de IVA ' + (esCompra ? 'practicada' : 'sufrida') + ' registrada · Bs ' + fmtF(retMonto), 'success');
               });
@@ -9051,7 +9090,33 @@
           // alícuota única en vez de quedar en cero.
           editMontos = montarMontos(body, r);
 
+          /* Si esta factura ya tiene retenciones, se dice AQUÍ, junto al
+             botón, antes de que nadie llene nada. */
           const btnRet = body.querySelector('#btnRetDeFactura');
+          if (btnRet && window.__retencionesDeFactura) {
+            const dirRet = esCompra ? 'practicada' : 'sufrida';
+            const yaHay = window.__retencionesDeFactura(r.numero_factura, dirRet, r.tercero_rif);
+            const conIva = yaHay.filter((x) => x.tipo === 'iva');
+            const conIslr = yaHay.filter((x) => x.tipo === 'islr');
+            if (yaHay.length) {
+              const partes = [];
+              if (conIva.length) partes.push('IVA por Bs ' + fmtF(Number(conIva[0].monto) || 0)
+                + (conIva[0].comprobante ? ' (comp. ' + conIva[0].comprobante + ')' : ''));
+              if (conIslr.length) partes.push('ISLR por Bs ' + fmtF(Number(conIslr[0].monto) || 0));
+              const aviso = document.createElement('div');
+              aviso.style.cssText = 'font-size:11.5px;margin-top:8px;padding:8px 10px;border-radius:6px;'
+                + 'background:var(--da-amber-50,#fff8e6);color:var(--da-amber-700,#9a6700);line-height:1.5;';
+              aviso.innerHTML = 'Esta factura ya tiene retención de <strong>' + esc(partes.join(' y ')) + '</strong>.'
+                + (conIva.length && conIslr.length
+                  ? ' No queda ninguna por cargar.'
+                  : ' Si abres el registro, cárgale solo la de <strong>' + (conIva.length ? 'ISLR' : 'IVA') + '</strong>.');
+              btnRet.parentElement.appendChild(aviso);
+              if (conIva.length && conIslr.length) {
+                btnRet.disabled = true;
+                btnRet.title = 'Ya tiene las dos retenciones cargadas';
+              }
+            }
+          }
           if (btnRet) btnRet.addEventListener('click', () => {
             if (!window.__registrarRetencion) {
               if (window.toast) window.toast('No pude abrir el registro de retenciones. Ve a Fiscal → Retenciones y regístrala desde ahí.', 'error');
