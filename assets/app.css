@@ -7046,6 +7046,16 @@
   .ret-calc-fila.total span { color: var(--fg-primary); font-weight: var(--fw-semibold); }
   .ret-calc-fila.total strong { font-size: 16px; color: var(--da-cyan-700); }
   .ret-pista { font-size: 10.5px; color: var(--fg-muted); margin-top: 3px; line-height: 1.45; }
+
+  /* Desglose del N° de comprobante mientras se escribe */
+  .ret-calc-comp {
+    font-size: 11.5px; line-height: 1.5; margin-top: 6px; padding-top: 6px;
+    border-top: 1px dashed var(--border-strong);
+  }
+  .ret-calc-comp strong { font-family: var(--font-mono); }
+  .ret-calc-comp.ok    { color: var(--da-green-700, #157347); }
+  .ret-calc-comp.mal   { color: var(--da-red-700, #b02a37); font-weight: var(--fw-semibold); }
+  .ret-calc-comp.aviso { color: var(--da-amber-700, #9a6700); border-top: 0; padding-top: 2px; }
   @media (max-width: 640px) { .libro-pager-info { width: 100%; text-align: center; margin: 4px 0 0; } }
   @media (max-width: 560px) {
     .lf-reng .ic-head, .lf-reng .ic-row { grid-template-columns: minmax(0,1.4fr) minmax(0,1.4fr) minmax(0,.8fr) 32px; }

@@ -839,6 +839,17 @@
        Para ISLR: base x % - sustraendo = retenido, y se muestra el CÓDIGO del
        Anexo 6.1 que se está aplicando, que es lo que va impreso en el
        comprobante y lo que revisa el SENIAT. */
+    // Arma el bloque del comprobante; se usa en los dos caminos del cálculo.
+    function bloqueCompDe(comp, fechaISO) {
+      comp = (comp || '').trim();
+      if (!comp) return '';
+      const rev = revisarCompIva(comp, fechaISO);
+      if (rev.error) return '<div class="ret-calc-comp mal">✗ ' + esc(rev.error) + '</div>';
+      return '<div class="ret-calc-comp ok">✓ Comprobante · año <strong>' + esc(rev.anio)
+        + '</strong> · mes <strong>' + esc(rev.mes) + '</strong> · correlativo <strong>' + esc(rev.correlativo) + '</strong></div>'
+        + (rev.aviso ? '<div class="ret-calc-comp aviso">⚠ ' + esc(rev.aviso) + '</div>' : '');
+    }
+
     function setupCalcRetencion(body) {
       const caja = body.querySelector('#retCalc');
       if (!caja) return;
@@ -848,9 +859,25 @@
         const base = parseFloat(val('base')) || 0;
         const pct = parseFloat(String(val('pct')).replace('%', '')) || 0;
         if (!base || !pct) {
-          caja.innerHTML = '<span class="ret-calc-vacio">Escribe la base y elige el porcentaje para ver cuánto se retiene.</span>';
+          caja.innerHTML = '<span class="ret-calc-vacio">Escribe la base y elige el porcentaje para ver cuánto se retiene.</span>'
+            + (esIslr ? '' : bloqueCompDe(val('comprobante'), val('fecha')));
           return;
         }
+        /* El desglose del comprobante de IVA, mientras se escribe. Es lo que
+           permite cachar un dígito de más sin contar catorce a ojo. */
+        let bloqueComp = '';
+        if (!esIslr) {
+          const comp = (val('comprobante') || '').trim();
+          if (comp) {
+            const rev = revisarCompIva(comp, val('fecha'));
+            bloqueComp = rev.error
+              ? '<div class="ret-calc-comp mal">✗ ' + esc(rev.error) + '</div>'
+              : '<div class="ret-calc-comp ok">✓ Comprobante · año <strong>' + esc(rev.anio)
+                + '</strong> · mes <strong>' + esc(rev.mes) + '</strong> · correlativo <strong>' + esc(rev.correlativo) + '</strong></div>'
+                + (rev.aviso ? '<div class="ret-calc-comp aviso">⚠ ' + esc(rev.aviso) + '</div>' : '');
+          }
+        }
+
         if (esIslr) {
           const variant = variantIslr(val('concepto'), val('sujeto'));
           const cod = variant ? variant[0] : '—';
@@ -868,7 +895,8 @@
             '<div class="ret-calc-fila"><span>IVA de la factura</span><strong class="mono">Bs ' + fmt(base) + '</strong></div>'
             + '<div class="ret-calc-fila"><span>Porcentaje retenido</span><strong class="mono">' + pct + '%</strong></div>'
             + '<div class="ret-calc-fila total"><span>Se retiene de IVA</span><strong class="mono">Bs ' + fmt(monto) + '</strong></div>'
-            + '<div class="ret-calc-fila"><span>Le queda al tercero</span><strong class="mono">Bs ' + fmt(base - monto) + '</strong></div>';
+            + '<div class="ret-calc-fila"><span>Le queda al tercero</span><strong class="mono">Bs ' + fmt(base - monto) + '</strong></div>'
+            + bloqueComp;
         }
       };
       // Se escucha en todo el formulario: el campo del porcentaje se vuelve a
@@ -916,6 +944,44 @@
       };
       tipoSel.addEventListener('change', aplicar);
       aplicar();
+    }
+
+    /* Comprueba el N° de comprobante de retención de IVA.
+
+       El formato es AAAAMMSSSSSSSS: 4 dígitos de año, 2 de mes y 8 de
+       correlativo — 14 en total (Providencia SNAT/2024/000102, Art. 11).
+
+       Catorce dígitos seguidos no se revisan a ojo: por eso, además de
+       contarlos, se devuelve el desglose para mostrarlo. Un año o un mes
+       imposibles delatan un dígito de más o de menos mejor que cualquier
+       recuento. */
+    function revisarCompIva(comp, fechaISO) {
+      const limpio = String(comp || '').replace(/[\s.\-\/]/g, '');
+      if (!limpio) return { error: 'Falta el N° de comprobante.' };
+      if (!/^[0-9]+$/.test(limpio)) return { error: 'El N° de comprobante lleva solo números. Quita letras y signos.' };
+      if (limpio.length !== 14) {
+        return { error: 'El N° de comprobante de IVA lleva 14 dígitos (año, mes y 8 de correlativo). Escribiste ' + limpio.length + '.' };
+      }
+      const anio = parseInt(limpio.slice(0, 4), 10);
+      const mes = parseInt(limpio.slice(4, 6), 10);
+      const ahora = new Date().getFullYear();
+      if (mes < 1 || mes > 12) {
+        return { error: 'Los dígitos 5 y 6 son el mes, del 01 al 12, y ahí dice "' + limpio.slice(4, 6) + '". Revisa el número.' };
+      }
+      if (anio < 2000 || anio > ahora + 1) {
+        return { error: 'Los primeros 4 dígitos son el año y ahí dice "' + limpio.slice(0, 4) + '". Revisa el número.' };
+      }
+      let aviso = null;
+      const p = String(fechaISO || '').split('-');
+      if (p.length === 3 && (p[0] + p[1]) !== limpio.slice(0, 6)) {
+        aviso = 'El comprobante dice ' + limpio.slice(4, 6) + '/' + limpio.slice(0, 4)
+          + ' y la fecha que pusiste es ' + p[2] + '/' + p[1] + '/' + p[0] + '. Puede ser correcto, pero verifícalo.';
+      }
+      return {
+        valor: limpio,
+        anio: limpio.slice(0, 4), mes: limpio.slice(4, 6), correlativo: limpio.slice(6),
+        aviso: aviso,
+      };
     }
 
     function setupPctField(body) {
@@ -1160,12 +1226,16 @@
              El de IVA sí se exige: ese comprobante siempre trae su número de
              14 dígitos, y sin él la retención no puede salir en el archivo
              que se le entrega al SENIAT. */
-          if (!comp && !esIslr) {
-            return 'Escribe el N° de comprobante de la retención de IVA — el que trae el documento, o elige uno existente para agrupar varias.';
+          let compFinal = comp;
+          if (!esIslr) {
+            if (!comp) return 'Escribe el N° de comprobante de la retención de IVA — el que trae el documento, o elige uno existente para agrupar varias.';
+            const rev = revisarCompIva(comp, v.fecha);
+            if (rev.error) return rev.error;
+            compFinal = rev.valor; // se guarda ya normalizado, sin guiones ni espacios
           }
           window.sb.from('retenciones').insert({
             cuenta_id: window.__CUENTA_ID, empresa_id: window.__EMPRESA_ACTIVA.id,
-            direccion: dir, tipo: (v.tipo || 'IVA').toLowerCase(), fecha: fecha, comprobante: comp,
+            direccion: dir, tipo: (v.tipo || 'IVA').toLowerCase(), fecha: fecha, comprobante: compFinal,
             tercero_nombre: v.nombre, tercero_rif: normRif(v.rif), factura: v.factura, numero_control: v.numControl || null,
             base: base, pct: pct, monto: monto, estado: 'Registrado',
             concepto: esIslr ? v.concepto : null, concepto_codigo: esIslr ? cod : null, sujeto: esIslr ? suj : null, sustraendo: sust,
