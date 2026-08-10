@@ -1037,7 +1037,7 @@
           { name: 'rif', label: 'RIF (mayúscula, sin guiones)', upper: true, placeholder: 'J123456789', value: pre.rif || '' },
           { name: 'factura', label: 'Factura afectada (elige una registrada)', type: 'datalist', options: [], placeholder: 'Primero elige el tercero…', value: pre.factura || '' },
           { name: 'numControl', label: 'N° de Control (se llena de la factura)', placeholder: '00-00000000', value: pre.numControl || '' },
-          { name: 'comprobante', label: 'N° de comprobante (el del documento · o elige uno para agrupar)', type: 'datalist', options: [], placeholder: 'Escríbelo tal como viene' },
+          { name: 'comprobante', label: 'N° de comprobante (obligatorio en IVA · en ISLR déjalo vacío si no lo hay)', type: 'datalist', options: [], placeholder: 'Tal como viene en el documento' },
           { name: 'base', label: 'Base imponible / monto del pago (Bs)', type: 'number', step: '0.01', placeholder: '0.00', value: pre.base != null ? String(pre.base) : '' },
           { name: 'pct', label: '% de retención', type: 'number', step: '0.01', placeholder: '75' },
           { name: 'sustraendo', label: 'Sustraendo (ISLR, automático)', type: 'number', step: '0.01', placeholder: '0.00' },
@@ -1153,7 +1153,16 @@
              Se autonumera solo lo que esta empresa emite por su cuenta: el
              número de factura y el de control de las VENTAS. */
           const comp = (v.comprobante || '').trim();
-          if (!comp) return 'Escribe el N° de comprobante — el que trae el documento, o elige uno existente para agrupar varias retenciones.';
+          /* El ISLR se registra MUCHAS VECES SIN número de comprobante: en la
+             práctica no siempre lo hay, y obligarlo llevaba a inventar ceros
+             para poder guardar. Se deja vacío y ya.
+
+             El de IVA sí se exige: ese comprobante siempre trae su número de
+             14 dígitos, y sin él la retención no puede salir en el archivo
+             que se le entrega al SENIAT. */
+          if (!comp && !esIslr) {
+            return 'Escribe el N° de comprobante de la retención de IVA — el que trae el documento, o elige uno existente para agrupar varias.';
+          }
           window.sb.from('retenciones').insert({
             cuenta_id: window.__CUENTA_ID, empresa_id: window.__EMPRESA_ACTIVA.id,
             direccion: dir, tipo: (v.tipo || 'IVA').toLowerCase(), fecha: fecha, comprobante: comp,
