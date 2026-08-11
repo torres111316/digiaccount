@@ -4185,7 +4185,7 @@
           <div class="cfg-fields">
             <label class="cfg-f"><span>Color principal</span><input type="color" id="cfgColor" value="#0a2342"></label>
             <label class="cfg-f"><span>Color secundario</span><input type="color" id="cfgColor2" value="#0e9bbf"></label>
-            <label class="cfg-f"><span>Moneda de visualización</span><select id="cfgMoneda"><option value="bs">Bolívares (Bs)</option><option value="usd">Dólares ($)</option></select></label>
+            
           </div>
         </div>
 
@@ -4194,7 +4194,7 @@
           <div class="cfg-card-head"><span class="cfg-ic"><i data-lucide="landmark"></i></span><div><div class="cfg-tt">Configuración fiscal</div><div class="cfg-sub">Reglas tributarias de tu empresa (SENIAT).</div></div></div>
           <div class="cfg-fields">
             <label class="cfg-f"><span>Alícuota de IVA por defecto</span><select id="cfgIva"><option value="16">16% (general)</option><option value="8">8% (reducida)</option><option value="0">Exento</option></select></label>
-            <label class="cfg-f"><span>Período de declaración de IVA</span><select id="cfgPeriodoIva"><option>Quincenal (especial)</option><option>Mensual (ordinario)</option></select></label>
+            <label class="cfg-f"><span>Período de declaración de IVA</span><input id="cfgPeriodoIva" readonly value="—"><small class="cfg-hint">Lo determina la condición fiscal, no se elige.</small></label>
           </div>
           <div class="cfg-toggles">
             <div class="cfg-toggle"><div><strong>Agente de retención de IVA</strong><small>Retiene IVA a sus proveedores</small></div><label class="cc-switch"><input type="checkbox" id="cfgAgenteRet" checked><span></span></label></div>
@@ -4207,7 +4207,7 @@
           <div class="cfg-card-head"><span class="cfg-ic"><i data-lucide="file-text"></i></span><div><div class="cfg-tt">Facturación</div><div class="cfg-sub">Cómo emites tus documentos de venta.</div></div></div>
           <div class="cfg-fields">
             <label class="cfg-f"><span>Medio de emisión</span><select id="cfgMedio"><option value="libre">Forma libre (imprenta)</option><option value="electronica">Factura electrónica</option><option value="maquina">Máquina fiscal</option></select></label>
-            <label class="cfg-f"><span>Próximo N° de factura</span><input id="cfgNumFac" value="00-000001"></label>
+            <label class="cfg-f"><span>Próximo N° de factura</span><input id="cfgNumFac" readonly value="—"><small class="cfg-hint">Lo calcula el sistema del último realmente emitido.</small></label>
             <label class="cfg-f"><span>Fuente de tasa de cambio</span><select id="cfgFuenteTasa"><option value="bcv">BCV (oficial)</option><option value="manual">Manual</option></select></label>
             <label class="cfg-f"><span>Tasa actual (Bs/USD)</span><input id="cfgTasa" value="" readonly><small class="cfg-hint" id="cfgTasaOrigen">Tasa oficial del BCV, se actualiza sola.</small></label>
           </div>

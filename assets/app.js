@@ -8575,6 +8575,16 @@
        aritmética de impuestos se separan tarde o temprano. Si editar
        aplastara una factura de varias alícuotas a una sola, el desglose se
        perdería sin que nadie lo note hasta la declaración. */
+    /* La alícuota que se propone al abrir un renglón sale de la preferencia de
+       la empresa (Configuración → Configuración fiscal). Antes esa casilla no
+       la leía nadie: se podía cambiar y no pasaba nada. */
+    function _alicPorDefecto() {
+      const p = (window.__EMPRESA_PREFS || {}).alicuota;
+      if (p === 8) return 'red';
+      if (p === 0) return 'exento';
+      return 'gen';
+    }
+
     function montosHTML() {
       return '<div class="fm-numbox" id="lfMontos">'
         + '<div class="lf-reng">'
@@ -8662,7 +8672,7 @@
         r.className = 'ic-row';
         r.innerHTML = '<input class="lf-monto" type="number" step="0.01" placeholder="0,00" value="' + (monto != null && monto !== '' ? esc(String(monto)) : '') + '">'
           + '<select class="lf-alic">'
-          + Object.keys(ALICUOTAS).map((k) => '<option value="' + k + '"' + (k === (clave || 'gen') ? ' selected' : '') + '>' + esc(ALICUOTAS[k].txt) + '</option>').join('')
+          + Object.keys(ALICUOTAS).map((k) => '<option value="' + k + '"' + (k === (clave || _alicPorDefecto()) ? ' selected' : '') + '>' + esc(ALICUOTAS[k].txt) + '</option>').join('')
           + '</select>'
           + '<span class="lf-iva mono">—</span>'
           + '<button type="button" class="btn btn-ghost lf-del" title="Quitar renglón"><i data-lucide="x" style="width:14px;height:14px;"></i></button>';
@@ -8818,7 +8828,9 @@
         ].concat(esCompra ? [
           { name: 'cond', label: 'Condición de pago', type: 'select', options: ['Contado', 'Crédito 15 días', 'Crédito 30 días', 'Crédito 60 días'] },
         ] : [
-          { name: 'igtfAplica', label: '¿Aplica IGTF? (cobro en divisas/cripto)', type: 'select', options: ['No', 'Sí (3%)'] },
+          // El valor que se propone sale de la preferencia de la empresa.
+          { name: 'igtfAplica', label: '¿Aplica IGTF? (cobro en divisas/cripto)', type: 'select', options: ['No', 'Sí (3%)'],
+            value: (window.__EMPRESA_PREFS || {}).igtf ? 'Sí (3%)' : 'No' },
           { name: 'igtfShow', label: 'IGTF 3% (calculado del total con IVA)', type: 'static', html: '<span class="mono" id="igtfShowVal">Bs 0,00</span>' },
         ]).concat([
           { name: 'retPct', label: (esCompra ? 'IVA que le retienes al proveedor' : 'IVA que te retuvo el cliente') + ' (opcional)', type: 'select', options: ['Sin retención', '75%', '100%'] },
@@ -12120,7 +12132,7 @@
         return;
       }
       const { data, error } = await window.sb.from('empresas')
-        .select('nombre, rif, condicion_fiscal, direccion, telefono, whatsapp, email, ciudad, color_primario, color_secundario')
+        .select('nombre, rif, condicion_fiscal, direccion, telefono, whatsapp, email, ciudad, color_primario, color_secundario, alicuota_default, aplica_igtf, medio_emision, fuente_tasa')
         .eq('id', emp.id).maybeSingle();
       if (error || !data) { console.warn('[DigiAccount] No se pudo cargar la configuración de la empresa'); return; }
       set('cfgRazon', data.nombre);
@@ -12136,6 +12148,20 @@
       if ($c('cfgColor') && data.color_primario) $c('cfgColor').value = data.color_primario;
       if ($c('cfgColor2') && data.color_secundario) $c('cfgColor2').value = data.color_secundario;
       aplicarAgenteRetencion(data.condicion_fiscal);
+      if ($c('cfgIva')) $c('cfgIva').value = String(data.alicuota_default != null ? Number(data.alicuota_default) : 16);
+      if ($c('cfgIgtf')) $c('cfgIgtf').checked = !!data.aplica_igtf;
+      if ($c('cfgMedio')) $c('cfgMedio').value = data.medio_emision || 'forma-libre';
+      if ($c('cfgFuenteTasa')) $c('cfgFuenteTasa').value = data.fuente_tasa || 'bcv';
+      // Se propagan a quien las usa de verdad
+      window.__EMPRESA_PREFS = {
+        alicuota: Number(data.alicuota_default) || 16,
+        igtf: !!data.aplica_igtf,
+        medio: data.medio_emision || 'forma-libre',
+        fuenteTasa: data.fuente_tasa || 'bcv',
+      };
+      window.medioEmision = window.__EMPRESA_PREFS.medio;
+      aplicarPeriodoIva(data.condicion_fiscal);
+      await pintarProximoNumero();
       pintarTasa();
       const nom = $c('cfgEmpresaNombre');
       if (nom) nom.textContent = data.nombre || '—';
@@ -12165,6 +12191,34 @@
       }
     }
 
+    /* El período de declaración de IVA lo fija la condición fiscal: los
+       sujetos pasivos especiales declaran quincenal y los ordinarios mensual.
+       No es una preferencia, así que se muestra y no se elige — guardarlo
+       aparte permitiría que contradiga a la condición. */
+    function aplicarPeriodoIva(cond) {
+      const el = $c('cfgPeriodoIva');
+      if (!el) return;
+      el.value = /especial/i.test(String(cond || '')) ? 'Quincenal' : 'Mensual';
+    }
+
+    /* El próximo N° de factura lo calcula el sistema del último realmente
+       emitido. Antes era un campo escribible con "00-000001" fijo: escribir
+       ahí un número no cambiaba nada y solo servía para creer que sí. */
+    async function pintarProximoNumero() {
+      const el = $c('cfgNumFac');
+      if (!el) return;
+      const emp = window.__EMPRESA_ACTIVA;
+      if (!emp || !emp.id || !window.sb) { el.value = '—'; return; }
+      const { data } = await window.sb.from('libro_fiscal')
+        .select('numero_factura').eq('empresa_id', emp.id).eq('tipo', 'venta');
+      let max = 0;
+      (data || []).forEach((r) => {
+        const n = parseInt(String(r.numero_factura || '').replace(/[^0-9]/g, ''), 10);
+        if (!isNaN(n) && n > max) max = n;
+      });
+      el.value = String(max + 1).padStart(6, '0');
+    }
+
     /* La tasa venía del valor de respaldo (36,80) porque el campo se llenaba
        al arrancar el módulo, antes de que llegara la tasa real de Supabase.
        Ahora se pinta cuando se abre la configuración y cada vez que la tasa
@@ -12173,13 +12227,17 @@
     function pintarTasa() {
       const el = $c('cfgTasa');
       if (!el) return;
+      // Con fuente BCV la tasa es de solo lectura; con fuente manual se escribe.
+      const manual = (($c('cfgFuenteTasa') || {}).value || 'bcv') === 'manual';
+      el.readOnly = !manual;
       const v = Number(window.__BCV) || 0;
-      el.value = v ? bsFmt(v) : '—';
+      if (!manual || !el.value || el.value === '—') el.value = v ? bsFmt(v) : '—';
       const org = $c('cfgTasaOrigen');
       if (org) {
         const f = document.getElementById('fxFecha');
-        org.textContent = 'Tasa oficial del BCV' + (f && f.textContent.trim() ? ' · valor del ' + f.textContent.trim() : '')
-          + ' · se actualiza sola.';
+        org.textContent = manual
+          ? 'Tasa fijada a mano. Cámbiala a BCV para que se actualice sola.'
+          : 'Tasa oficial del BCV' + (f && f.textContent.trim() ? ' · valor del ' + f.textContent.trim() : '') + ' · se actualiza sola.';
       }
     }
     window.__pintarTasaConfig = pintarTasa;
@@ -12188,8 +12246,12 @@
     // Al cambiar la condición en el formulario, el interruptor la sigue en el
     // acto: así se ve la consecuencia antes de guardar, no después.
     if ($c('cfgTipoContrib')) {
-      $c('cfgTipoContrib').addEventListener('change', (e) => aplicarAgenteRetencion(e.target.value));
+      $c('cfgTipoContrib').addEventListener('change', (e) => {
+        aplicarAgenteRetencion(e.target.value);
+        aplicarPeriodoIva(e.target.value);
+      });
     }
+    if ($c('cfgFuenteTasa')) $c('cfgFuenteTasa').addEventListener('change', pintarTasa);
 
     $c('cfgGuardar').addEventListener('click', async () => {
       // Tasa de cambio → se propaga a Cobros y recibos
@@ -12220,6 +12282,10 @@
         email: ($c('cfgEmail').value || '').trim(),
         color_primario: ($c('cfgColor') || {}).value || null,
         color_secundario: ($c('cfgColor2') || {}).value || null,
+        alicuota_default: Number(($c('cfgIva') || {}).value) || 16,
+        aplica_igtf: !!(($c('cfgIgtf') || {}).checked),
+        medio_emision: ($c('cfgMedio') || {}).value || 'forma-libre',
+        fuente_tasa: ($c('cfgFuenteTasa') || {}).value || 'bcv',
       };
       const { error } = await window.sb.from('empresas').update(fila).eq('id', emp.id);
       if (error) { toast('No se pudo guardar: ' + error.message, 'error'); return; }
