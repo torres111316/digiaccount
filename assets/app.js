@@ -13101,6 +13101,11 @@
           rif: rif,
           condicion_fiscal: condFiscal,
           fiscal_activo: (window.__CUENTA_TIPO === 'contador'), // contador: Fiscal ON por defecto; empresa: OFF
+          /* El domicilio fiscal se pedía en el asistente y NO se guardaba: había
+             que volver a escribirlo en Configuración empresa por empresa. Va
+             impreso en facturas, recibos y comprobantes de retención, así que
+             no es un dato accesorio. */
+          direccion: ((document.getElementById('cwDom') || {}).value || '').trim() || null,
           // Datos de contacto de la empresa (para el CRM del fundador)
           telefono: ((document.getElementById('cwTel') || {}).value || '').trim() || null,
           whatsapp: ((document.getElementById('cwWhatsapp') || {}).value || '').trim() || null,
@@ -13108,9 +13113,19 @@
         };
         window.sb.from('empresas').insert(filaEmp).select('id').single().then(({ data: nueva, error }) => {
           if (error && /column|schema cache/i.test(error.message || '')) {
-            // columnas de contacto aún no existen: guarda sin ellas (no bloquear el alta)
-            delete filaEmp.telefono; delete filaEmp.whatsapp; delete filaEmp.email;
-            return window.sb.from('empresas').insert(filaEmp).select('id').single().then(({ data: n2, error: e2 }) => manejarAlta(e2, n2));
+            /* Alguna columna no existe todavía en esa base: se reintenta sin
+               los datos opcionales para no bloquear el alta. Pero se AVISA: si
+               se descartan en silencio, la empresa queda creada a medias y
+               nadie se entera hasta que falta el dato en un documento. */
+            const perdidos = ['direccion', 'telefono', 'whatsapp', 'email'].filter((k) => filaEmp[k]);
+            delete filaEmp.direccion; delete filaEmp.telefono; delete filaEmp.whatsapp; delete filaEmp.email;
+            return window.sb.from('empresas').insert(filaEmp).select('id').single().then(({ data: n2, error: e2 }) => {
+              if (!e2 && perdidos.length && window.toast) {
+                window.toast('La empresa se creó, pero no se guardó: ' + perdidos.join(', ')
+                  + '. Complétalo en Configuración.', 'error');
+              }
+              manejarAlta(e2, n2);
+            });
           }
           return manejarAlta(error, nueva);
         });
