@@ -605,19 +605,35 @@
         if (visible) shown++;
       });
       const noun = curDir === 'practicadas' ? 'practicados' : 'sufridos';
-      if (countEl) countEl.innerHTML = 'Mostrando <strong>1–' + shown + '</strong> de <strong>' + shown + '</strong> comprobantes ' + noun;
+      /* El total sale de los DATOS del período, no de las filas visibles: la
+         tabla se pagina de 20 en 20 y antes decía "de 20" habiendo 47. */
+      const arrDir = _retPageArr[curDir] || [];
+      const totalPeriodo = curFilter === 'todos' ? arrDir.length : arrDir.filter((r) => r.tipo === curFilter).length;
+      if (countEl) {
+        countEl.innerHTML = totalPeriodo > shown
+          ? 'Mostrando <strong>' + shown + '</strong> de <strong>' + totalPeriodo + '</strong> comprobantes ' + noun + ' del período'
+          : 'Mostrando <strong>' + totalPeriodo + '</strong> comprobante' + (totalPeriodo === 1 ? '' : 's') + ' ' + noun + ' del período';
+      }
     }
 
-    // Recalcula las tarjetas de resumen leyendo la vista activa
+    /* Recalcula las tarjetas de resumen SOBRE LOS DATOS del período.
+
+       Antes las sumaba leyendo las filas pintadas en la tabla, y la tabla
+       está paginada de 20 en 20: el resumen mostraba el total de la PÁGINA,
+       no el del período. Con más de 20 comprobantes el número salía corto y
+       nada avisaba — la Forma 30, que sí usa los datos completos, daba otra
+       cifra y era la buena.
+
+       Es la clase de error que se descubre después de declarar. */
     function refreshSummary() {
+      const arr = _retPageArr[curDir] || [];
       let ivaT = 0, ivaC = 0, islrT = 0, islrC = 0, ivaPct = '75%', islrPct = '3%';
-      rows().forEach((tr) => {
-        if (!tr.dataset.rettype) return; // fila de estado vacío
-        const tds = tr.querySelectorAll('td');
-        const monto = parseNum(tds[8].textContent);
-        const pct = tds[7].textContent.trim();
-        if (tr.dataset.rettype === 'iva') { ivaT += monto; ivaC++; ivaPct = pct; }
-        else { islrT += monto; islrC++; islrPct = pct; }
+      arr.forEach((r) => {
+        const monto = Number(r.monto) || 0;
+        const p = Number(r.pct) || 0;
+        const pctTxt = (Number.isInteger(p) ? p : p.toFixed(2)) + '%';
+        if (r.tipo === 'iva') { ivaT += monto; ivaC++; ivaPct = pctTxt; }
+        else { islrT += monto; islrC++; islrPct = pctTxt; }
       });
       const totT = ivaT + islrT, totC = ivaC + islrC;
       const q = (sel) => summary.querySelector('[data-sum="' + sel + '"]');
@@ -754,9 +770,34 @@
     }
     document.addEventListener('click', (e) => {
       const b = e.target.closest('button[data-rp]');
-      if (b && !b.disabled) pintar(b.dataset.rp, _retPageArr[b.dataset.rp] || [], (_retPage[b.dataset.rp] || 1) + parseInt(b.dataset.rpDir, 10));
+      if (b && !b.disabled) {
+        pintar(b.dataset.rp, _retPageArr[b.dataset.rp] || [], (_retPage[b.dataset.rp] || 1) + parseInt(b.dataset.rpDir, 10));
+        // El resumen ya no depende de lo pintado, pero el contador de
+        // "Mostrando X de Y" sí: se refresca al cambiar de página.
+        applyFilter();
+      }
     });
     let _retData = []; // últimas retenciones cargadas (para editar/eliminar por id)
+
+    // El período que se está mirando ahora mismo en el módulo Fiscal.
+    const _MESES_RET = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+      'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+    function _periodoVigente() {
+      const p = window.__fiscalPer;
+      if (p && p.mm && p.aa) return '20' + p.aa + '-' + p.mm;
+      const d = new Date();
+      return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+    }
+    function _opcionesPeriodoRet() {
+      const out = [];
+      const base = _periodoVigente();
+      let y = parseInt(base.slice(0, 4), 10), m = parseInt(base.slice(5, 7), 10);
+      for (let i = 0; i < 24; i++) {
+        out.push({ value: y + '-' + String(m).padStart(2, '0'), label: _MESES_RET[m - 1] + ' ' + y });
+        m--; if (m < 1) { m = 12; y--; }
+      }
+      return out;
+    }
 
     // Mini-cuadro de retenciones dentro de una Forma 30 (compras=practicadas, ventas=sufridas)
     function renderMini(tableEl, arr) {
@@ -1101,7 +1142,14 @@
           { name: 'tipo', label: 'Impuesto', type: 'select', options: ['IVA', 'ISLR'] },
           { name: 'concepto', label: 'Concepto de retención (ISLR)', col: 2, type: 'select', options: CONCEPTOS_ISLR.map((c) => c.act) },
           { name: 'sujeto', label: 'Tipo de sujeto (ISLR)', type: 'select', options: [{ value: 'PNR', label: 'PN Residente' }, { value: 'PNNR', label: 'PN No Residente' }, { value: 'PJD', label: 'PJ Domiciliada' }, { value: 'PJND', label: 'PJ No Domiciliada' }] },
-          { name: 'fecha', label: 'Fecha', type: 'date', value: window.__hoyISO() },
+          { name: 'fecha', label: 'Fecha del comprobante', type: 'date', value: window.__hoyISO() },
+          /* El período de declaración va aparte de la fecha, igual que en el
+             libro de compras. Un cliente manda en agosto la retención de una
+             factura de julio: la fecha es de agosto y el período, julio. Sin
+             este campo la retención se iba al mes de su fecha y desaparecía
+             del período al que pertenece. */
+          { name: 'periodo', label: 'Período en que se declara', type: 'select',
+            options: _opcionesPeriodoRet(), value: _periodoVigente() },
           { name: 'nombre', label: 'Tercero (escribe iniciales y elige)', col: 2, type: 'datalist', options: terceros.map((t) => t.nombre), placeholder: 'Proveedor o cliente…', value: pre.nombre || '' },
           { name: 'rif', label: 'RIF (mayúscula, sin guiones)', upper: true, placeholder: 'J123456789', value: pre.rif || '' },
           { name: 'factura', label: 'Factura afectada (elige una registrada)', type: 'datalist', options: [], placeholder: 'Primero elige el tercero…', value: pre.factura || '' },
@@ -1283,7 +1331,8 @@
           }
           window.sb.from('retenciones').insert({
             cuenta_id: window.__CUENTA_ID, empresa_id: window.__EMPRESA_ACTIVA.id,
-            direccion: dir, tipo: (v.tipo || 'IVA').toLowerCase(), fecha: fecha, comprobante: compFinal,
+            direccion: dir, tipo: (v.tipo || 'IVA').toLowerCase(), fecha: fecha,
+            periodo: v.periodo || _periodoVigente(), comprobante: compFinal,
             tercero_nombre: v.nombre, tercero_rif: normRif(v.rif), factura: v.factura, numero_control: v.numControl || null,
             base: base, pct: pct, monto: monto, estado: 'Registrado',
             concepto: esIslr ? v.concepto : null, concepto_codigo: esIslr ? cod : null, sujeto: esIslr ? suj : null, sustraendo: sust,
