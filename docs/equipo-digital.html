@@ -14,6 +14,7 @@
     --tenue:   #79868F;
     --regla:   #D6DDE2;
     --firme:   #AEB9C0;
+    --alerta:  #B23A3A;
     --sombra:  0 1px 2px rgba(19,26,33,.05), 0 10px 30px -22px rgba(19,26,33,.5);
 
     /* Un color por persona */
@@ -21,6 +22,7 @@
     --c-juan:   #0E6B4E;  --p-juan:   #E1EEE8;
     --c-carlos: #2A5AA8;  --p-carlos: #E4EBF7;
     --c-andrea: #0B7079;  --p-andrea: #DDEFF0;
+    --c-elena:  #93304F;  --p-elena:  #F8E5EB;
     --c-rafael: #6A3C86;  --p-rafael: #EEE6F4;
 
     --display: "Helvetica Neue", Helvetica, Arial, sans-serif;
@@ -38,12 +40,14 @@
       --tenue:   #7D8B95;
       --regla:   #28323A;
       --firme:   #3B4750;
+      --alerta:  #E07878;
       --sombra:  0 1px 2px rgba(0,0,0,.5), 0 10px 30px -22px rgba(0,0,0,.9);
 
       --c-maria:  #E2A551;  --p-maria:  #2B2113;
       --c-juan:   #4FAE84;  --p-juan:   #122720;
       --c-carlos: #7BA5E8;  --p-carlos: #162034;
       --c-andrea: #46B0B8;  --p-andrea: #0F2A2C;
+      --c-elena:  #DB7D9C;  --p-elena:  #2E1620;
       --c-rafael: #B58CD0;  --p-rafael: #251A2E;
     }
   }
@@ -56,12 +60,14 @@
     --tenue:   #7D8B95;
     --regla:   #28323A;
     --firme:   #3B4750;
+    --alerta:  #E07878;
     --sombra:  0 1px 2px rgba(0,0,0,.5), 0 10px 30px -22px rgba(0,0,0,.9);
 
     --c-maria:  #E2A551;  --p-maria:  #2B2113;
     --c-juan:   #4FAE84;  --p-juan:   #122720;
     --c-carlos: #7BA5E8;  --p-carlos: #162034;
     --c-andrea: #46B0B8;  --p-andrea: #0F2A2C;
+    --c-elena:  #DB7D9C;  --p-elena:  #2E1620;
     --c-rafael: #B58CD0;  --p-rafael: #251A2E;
   }
 
@@ -132,6 +138,7 @@
   .j  { --c: var(--c-juan);   --p: var(--p-juan); }
   .ca { --c: var(--c-carlos); --p: var(--p-carlos); }
   .an { --c: var(--c-andrea); --p: var(--p-andrea); }
+  .e  { --c: var(--c-elena);  --p: var(--p-elena); }
   .r  { --c: var(--c-rafael); --p: var(--p-rafael); }
 
   .retrato {
@@ -152,9 +159,17 @@
   .icono { width: 22px; height: 22px; color: var(--c); opacity: .85; }
 
   .expediente { padding: 26px 30px 28px; min-width: 0; }
+  .fila-nombre { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px 14px; margin-bottom: 3px; }
   .nombre {
     font-size: 25px; font-weight: 700; letter-spacing: -.028em;
-    line-height: 1.1; margin: 0 0 3px;
+    line-height: 1.1; margin: 0;
+  }
+  .autonomia {
+    font-family: var(--dato);
+    font-size: 10px; letter-spacing: .12em; text-transform: uppercase;
+    padding: 3px 9px; border-radius: 2px;
+    background: var(--p); color: var(--c);
+    border: 1px solid var(--c);
   }
   .cargo {
     font-family: var(--dato);
@@ -208,7 +223,7 @@
     background: var(--hoja); border: 1px solid var(--regla); border-radius: 3px;
     padding: 30px 28px; box-shadow: var(--sombra); margin-bottom: 30px;
   }
-  .fila-eq { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 22px; }
+  .fila-eq { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 22px; }
   .mini {
     display: flex; align-items: center; gap: 10px;
     background: var(--p); border-radius: 999px; padding: 7px 16px 7px 7px;
@@ -219,10 +234,34 @@
     font-size: 13px; font-weight: 700;
   }
   .mini span { font-size: 13.5px; font-weight: 700; letter-spacing: -.01em; }
+  .paso-sep { font-family: var(--dato); color: var(--firme); font-size: 15px; }
   .flecha-nota {
     font-family: var(--dato); font-size: 11.5px; letter-spacing: .05em;
     color: var(--tenue); text-transform: uppercase; margin: 0 0 14px;
   }
+
+  /* ---------- Tablas ---------- */
+  .marco { overflow-x: auto; margin: 24px 0; }
+  table {
+    width: 100%; min-width: 520px; border-collapse: collapse;
+    font-size: 14px; background: var(--hoja);
+  }
+  caption {
+    caption-side: top; text-align: left;
+    font-family: var(--dato); font-size: 10.5px;
+    letter-spacing: .16em; text-transform: uppercase;
+    color: var(--tenue); padding-bottom: 10px;
+  }
+  th, td { padding: 11px 14px; text-align: left; }
+  thead th {
+    font-family: var(--dato); font-weight: 400;
+    font-size: 10.5px; letter-spacing: .11em; text-transform: uppercase;
+    color: var(--tenue); border-bottom: 1.5px solid var(--firme); white-space: nowrap;
+  }
+  tbody tr { border-bottom: 1px solid var(--regla); }
+  tbody tr:nth-child(even) { background: var(--franja); }
+  td.mod { font-family: var(--dato); font-size: 12.5px; color: var(--tinta-2); }
+  td.quien { font-weight: 700; letter-spacing: -.01em; }
 
   /* ---------- Reglas ---------- */
   .reglas { display: grid; gap: 2px; background: var(--regla); border: 1px solid var(--regla); border-radius: 3px; overflow: hidden; margin: 26px 0; }
@@ -237,8 +276,8 @@
     font-family: var(--dato); font-size: 10px; letter-spacing: .16em;
     text-transform: uppercase; margin: 0 0 10px;
   }
-  .msg.no { border-top: 3px solid #B4472C; }
-  .msg.no .msg-tag { color: #B4472C; }
+  .msg.no { border-top: 3px solid var(--alerta); }
+  .msg.no .msg-tag { color: var(--alerta); }
   .msg.si { border-top: 3px solid var(--c-juan); }
   .msg.si .msg-tag { color: var(--c-juan); }
   .msg p { font-family: var(--voz); font-size: 16px; line-height: 1.5; margin: 0; }
@@ -254,7 +293,7 @@
 
   <header class="cab">
     <p class="marca">DigiAccount · Identidad de producto</p>
-    <h1>Cinco empleados que no piden vacaciones</h1>
+    <h1>Seis empleados que no piden vacaciones</h1>
     <p class="bajada">Detrás son automatizaciones. Para el cliente son un equipo con nombre, cargo y forma de hablar — porque un contador no contrata «un modelo de lenguaje». Contrata a alguien que le lleve el trabajo.</p>
   </header>
 
@@ -265,7 +304,15 @@
 
     <p class="lectura">Una lista de funciones —<em>OCR de documentos, clasificación automática, validación de correlativos</em>— no le dice nada a un contador. Un organigrama sí. Cuando el cliente entra al sistema y ve que <strong>María</strong> le recibió catorce comprobantes por WhatsApp mientras él estaba en la calle, entiende el producto sin que nadie se lo explique.</p>
 
-    <p class="lectura">Cada uno de los cinco corresponde a un módulo real y a una automatización que existe o que está por construirse. <strong>No hay personajes de adorno:</strong> si un agente no tiene trabajo que hacer, no está en la nómina.</p>
+    <p class="lectura">Cada uno de los seis corresponde a un módulo real y a una automatización que existe o que está por construirse. <strong>No hay personajes de adorno:</strong> si un agente no tiene trabajo que hacer, no está en la nómina.</p>
+
+    <h3>Los tres niveles de autonomía</h3>
+    <p class="lectura">Cada persona trabaja con un grado distinto de libertad, y ese grado está declarado en su ficha. No es un detalle técnico: es lo que le dice al cliente qué va a pasar sin que él mire.</p>
+    <ul class="encargos" style="--c: var(--firme); max-width: 66ch">
+      <li><strong>Sugiere</strong> — prepara el trabajo y espera tu aprobación. Todo lo que toca los libros vive aquí.</li>
+      <li><strong>Auto + aviso</strong> — lo hace y te lo notifica. Solo para cálculos reversibles que no alteran un documento fiscal.</li>
+      <li><strong>Silencioso</strong> — corre en segundo plano. Únicamente lectura y análisis, nunca escritura.</li>
+    </ul>
   </section>
 
   <!-- ================= EL EQUIPO ================= -->
@@ -284,7 +331,10 @@
           </svg>
         </div>
         <div class="expediente">
-          <h3 class="nombre">María</h3>
+          <div class="fila-nombre">
+            <h3 class="nombre">María</h3>
+            <span class="autonomia">Sugiere</span>
+          </div>
           <p class="cargo">Asistente administrativa</p>
           <p class="resumen">Recibe todo lo que llega de afuera y lo convierte en registros. Es la primera puerta del sistema.</p>
           <ul class="encargos">
@@ -307,7 +357,10 @@
           </svg>
         </div>
         <div class="expediente">
-          <h3 class="nombre">Juan</h3>
+          <div class="fila-nombre">
+            <h3 class="nombre">Juan</h3>
+            <span class="autonomia">Sugiere</span>
+          </div>
           <p class="cargo">Analista contable</p>
           <p class="resumen">Traduce cada operación al lenguaje del mayor. Aprende de cómo esa empresa ha clasificado antes.</p>
           <ul class="encargos">
@@ -321,6 +374,32 @@
         </div>
       </article>
 
+      <!-- ELENA -->
+      <article class="ficha e">
+        <div class="retrato">
+          <div class="avatar">E</div>
+          <svg class="icono" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3.5 7.5 12 3l8.5 4.5v9L12 21l-8.5-4.5z"/><path d="M3.5 7.5 12 12l8.5-4.5"/><path d="M12 12v9"/>
+          </svg>
+        </div>
+        <div class="expediente">
+          <div class="fila-nombre">
+            <h3 class="nombre">Elena</h3>
+            <span class="autonomia">Auto + aviso</span>
+          </div>
+          <p class="cargo">Costos e inventario</p>
+          <p class="resumen">Sabe cuánto cuesta de verdad lo que vendes y cuánto queda en el depósito. Es la que ve la plata que se pierde sin que nadie la note.</p>
+          <ul class="encargos">
+            <li>Recalcula el costo promedio de cada producto conforme entran las compras</li>
+            <li>Avisa cuando un precio de venta quedó por debajo del costo de reposición</li>
+            <li>Cuadra el inventario teórico contra el conteo físico y explica la diferencia</li>
+            <li>Señala qué está por agotarse y qué lleva meses sin moverse</li>
+          </ul>
+          <p class="voz">El costo del filtro de aceite subió 34% en la última compra. Lo sigues vendiendo al precio de hace tres meses: pierdes Bs 180 en cada uno.</p>
+          <p class="limite"><b>Lo que no hace</b>Cambiar precios ni ajustar existencias. Elena recalcula el costo y avisa; mover la lista de precios o cuadrar un faltante es decisión tuya.</p>
+        </div>
+      </article>
+
       <!-- CARLOS -->
       <article class="ficha ca">
         <div class="retrato">
@@ -330,7 +409,10 @@
           </svg>
         </div>
         <div class="expediente">
-          <h3 class="nombre">Carlos</h3>
+          <div class="fila-nombre">
+            <h3 class="nombre">Carlos</h3>
+            <span class="autonomia">Sugiere</span>
+          </div>
           <p class="cargo">Especialista de nómina</p>
           <p class="resumen">Lleva la gente: lo que se les paga, lo que se les debe y lo que se les acumula.</p>
           <ul class="encargos">
@@ -353,8 +435,11 @@
           </svg>
         </div>
         <div class="expediente">
-          <h3 class="nombre">Andrea</h3>
-          <p class="cargo">Tesorería y cobranzas</p>
+          <div class="fila-nombre">
+            <h3 class="nombre">Andrea</h3>
+            <span class="autonomia">Sugiere</span>
+          </div>
+          <p class="cargo">Ventas, tesorería y cobranzas</p>
           <p class="resumen">Cuadra lo que entró contra lo que se facturó, y persigue lo que falta.</p>
           <ul class="encargos">
             <li>Cruza los pagos móviles recibidos contra las facturas pendientes</li>
@@ -376,17 +461,21 @@
           </svg>
         </div>
         <div class="expediente">
-          <h3 class="nombre">Rafael</h3>
+          <div class="fila-nombre">
+            <h3 class="nombre">Rafael</h3>
+            <span class="autonomia">Auto + aviso</span>
+          </div>
           <p class="cargo">Gerente fiscal · revisa antes de declarar</p>
           <p class="resumen">El último en ver los libros. No registra nada: busca lo que se le escapó a los demás.</p>
           <ul class="encargos">
             <li>Revisa el libro del período completo antes de que declares</li>
             <li>Busca retenciones sin comprobante, facturas repetidas, correlativos saltados</li>
             <li>Verifica que la base cuadre con su alícuota en cada renglón</li>
+            <li>Lee los estados financieros y te dice qué cambió y por qué</li>
             <li>Te recuerda tu fecha de declaración según el terminal del RIF</li>
           </ul>
           <p class="voz">Antes de declarar julio: hay dos facturas con el mismo número de control y una retención de ISLR sin comprobante. Te dejo el detalle.</p>
-          <p class="limite"><b>Lo que no hace</b>Declarar. Rafael revisa y te entrega el informe; la declaración la presentas tú.</p>
+          <p class="limite"><b>Lo que no hace</b>Declarar ni corregir. Rafael revisa y te entrega el informe; presentar la declaración y arreglar lo que señale es tuyo.</p>
         </div>
       </article>
 
@@ -399,17 +488,64 @@
     <h2>El documento entra por María y sale por Rafael</h2>
 
     <div class="mando">
-      <p class="flecha-nota">Recorrido de un documento</p>
+      <p class="flecha-nota">Recorrido de una compra</p>
       <div class="fila-eq">
         <div class="mini m"><span class="pastilla">M</span><span>Recibe</span></div>
+        <span class="paso-sep">→</span>
         <div class="mini j"><span class="pastilla">J</span><span>Clasifica</span></div>
-        <div class="mini an"><span class="pastilla">A</span><span>Cobra</span></div>
+        <span class="paso-sep">→</span>
+        <div class="mini e"><span class="pastilla">E</span><span>Costea</span></div>
+        <span class="paso-sep">→</span>
         <div class="mini r"><span class="pastilla">R</span><span>Revisa</span></div>
       </div>
-      <p style="margin:0;font-family:var(--voz);font-size:16.5px;color:var(--tinta-2);max-width:62ch">Carlos trabaja aparte, sobre la nómina, y también le entrega a Rafael. Cada paso deja su registro, así que siempre se sabe quién propuso qué y quién lo aprobó.</p>
+
+      <p class="flecha-nota">Recorrido de una venta</p>
+      <div class="fila-eq">
+        <div class="mini e"><span class="pastilla">E</span><span>Descarga stock</span></div>
+        <span class="paso-sep">→</span>
+        <div class="mini an"><span class="pastilla">A</span><span>Cobra</span></div>
+        <span class="paso-sep">→</span>
+        <div class="mini j"><span class="pastilla">J</span><span>Asienta</span></div>
+        <span class="paso-sep">→</span>
+        <div class="mini r"><span class="pastilla">R</span><span>Revisa</span></div>
+      </div>
+
+      <p style="margin:0;font-family:var(--voz);font-size:16.5px;color:var(--tinta-2);max-width:64ch">Carlos trabaja aparte, sobre la nómina, y también le entrega a Rafael. Cada paso deja su registro, así que siempre se sabe quién propuso qué y quién lo aprobó.</p>
     </div>
 
-    <p class="lectura">Esa cadena es lo que hace creíble la historia. No son cinco chatbots sueltos con nombre bonito: es un flujo real donde cada uno recibe del anterior, y el último tiene autoridad de revisión sobre todos.</p>
+    <p class="lectura">Esa cadena es lo que hace creíble la historia. No son seis chatbots sueltos con nombre bonito: es un flujo real donde cada uno recibe del anterior, y el último tiene autoridad de revisión sobre todos.</p>
+
+    <p class="lectura"><strong>Elena aparece en los dos recorridos</strong>, y ahí está su valor. En la compra fija el costo; en la venta descarga la existencia. Es la única que ve las dos puntas del mismo producto — por eso es la que puede decirte que estás vendiendo por debajo del costo.</p>
+  </section>
+
+  <!-- ================= MAPEO AL MÓDULO ================= -->
+  <section>
+    <p class="rotulo">Ajuste al módulo actual</p>
+    <h2>Ocho tarjetas se vuelven seis personas</h2>
+
+    <p class="lectura">El Centro de Agentes tiene hoy ocho tarjetas más un Gerente IA. Tres de ellas no son cargos distintos: son partes del trabajo de alguien. Consolidarlas hace el organigrama más creíble, no más pobre — <em>un equipo de seis con trabajo real se sostiene mejor que uno de nueve donde tres no tienen qué hacer.</em></p>
+
+    <div class="marco">
+      <table>
+        <caption>Correspondencia con las tarjetas del módulo</caption>
+        <thead>
+          <tr><th>Tarjeta actual</th><th>Persona</th><th>Por qué</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="mod">Agente OCR / Documentos</td><td class="quien" style="color:var(--c-maria)">María</td><td>Mismo trabajo, con nombre</td></tr>
+          <tr><td class="mod">Agente Contable</td><td class="quien" style="color:var(--c-juan)">Juan</td><td>Mismo trabajo, con nombre</td></tr>
+          <tr><td class="mod">Agente Inventario</td><td class="quien" style="color:var(--c-elena)">Elena</td><td>Se le suma costos, que es lo que faltaba</td></tr>
+          <tr><td class="mod">Agente Nómina</td><td class="quien" style="color:var(--c-carlos)">Carlos</td><td>Mismo trabajo, con nombre</td></tr>
+          <tr><td class="mod">Agente Tesorería</td><td class="quien" style="color:var(--c-andrea)">Andrea</td><td>Mismo trabajo, con nombre</td></tr>
+          <tr><td class="mod">Agente Ventas</td><td class="quien" style="color:var(--c-andrea)">Andrea</td><td>Facturar y cobrar son un solo flujo</td></tr>
+          <tr><td class="mod">Agente Fiscal</td><td class="quien" style="color:var(--c-rafael)">Rafael</td><td>Es su especialidad, no un cargo aparte</td></tr>
+          <tr><td class="mod">Agente Analista</td><td class="quien" style="color:var(--c-rafael)">Rafael</td><td>Quien revisa los libros es quien los interpreta</td></tr>
+          <tr><td class="mod">Gerente IA</td><td class="quien" style="color:var(--c-rafael)">Rafael</td><td>El gerente ya tiene nombre</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="lectura">Los niveles de autonomía del módulo (<em>sugiere</em>, <em>auto + aviso</em>, <em>silencioso</em>) se conservan tal cual: ya son el concepto correcto y ahora aparecen en cada ficha. La regla que los ordena es simple — <strong>nada que escriba en un libro fiscal puede estar en automático.</strong></p>
   </section>
 
   <!-- ================= REGLAS ================= -->
@@ -451,17 +587,17 @@
       </div>
       <div class="msg si">
         <p class="msg-tag">Di esto</p>
-        <p>«Cinco asistentes que le preparan el trabajo. Usted revisa y aprueba — y le queda el tiempo para lo que de verdad cobra.»</p>
+        <p>«Seis asistentes que le preparan el trabajo. Usted revisa y aprueba — y le queda el tiempo para lo que de verdad cobra.»</p>
       </div>
     </div>
 
     <p class="lectura">La primera versión suena más fuerte y es más débil. <strong>Choca con la única regla que hace confiable al sistema</strong> — si los agentes reemplazan al especialista, entonces el paso de aprobación sobra; y si sobra, el primer número mal leído es responsabilidad tuya. La segunda versión convierte esa misma revisión en la garantía: <em>nada entra a sus libros sin que usted lo vea.</em></p>
 
-    <p class="lectura">Y hay un argumento más honesto y más difícil de copiar: <strong>estos cinco no saben contabilidad en general — saben la de aquí.</strong> Conocen los códigos del Anexo 6.1 con su sustraendo, los catorce dígitos del comprobante de IVA, el calendario por terminal de RIF, la Forma 30 con sus alícuotas. Un asistente genérico lee una factura. El tuyo sabe qué hacer con ella según la condición fiscal de esa empresa.</p>
+    <p class="lectura">Y hay un argumento más honesto y más difícil de copiar: <strong>estos seis no saben contabilidad en general — saben la de aquí.</strong> Conocen los códigos del Anexo 6.1 con su sustraendo, los catorce dígitos del comprobante de IVA, el calendario por terminal de RIF, la Forma 30 con sus alícuotas. Un asistente genérico lee una factura. El tuyo sabe qué hacer con ella según la condición fiscal de esa empresa.</p>
   </section>
 
   <p class="pie">
-    Los cinco cargos corresponden a módulos existentes de DigiAccount. Los avatares son monogramas de color, no retratos: nadie debe poder confundirlos con fotos de personas reales.<br>
+    Los seis cargos corresponden a módulos existentes de DigiAccount. Los avatares son monogramas de color, no retratos: nadie debe poder confundirlos con fotos de personas reales.<br>
     Frases de ejemplo redactadas como referencia de tono para la redacción de la interfaz.
   </p>
 

@@ -9229,7 +9229,7 @@
       const totRow = (tot, ex, base, iva, igtf) => '<tr class="libro-tot"><td colspan="7" style="text-align:right;">TOTALES DEL PERÍODO</td><td class="num">' + fmtF(tot) + '</td><td class="num">' + fmtF(ex) + '</td><td class="num">' + fmtF(base) + '</td><td></td><td class="num">' + fmtF(iva) + '</td>' + (esCompra ? '' : '<td class="num">' + fmtF(igtf) + '</td>') + '</tr>';
       const setN = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = fmtF(v); };
       const resetF30c = () => { ['f30c-ex', 'f30c-base16', 'f30c-iva16', 'f30c-base8', 'f30c-iva8', 'f30c-baseAd', 'f30c-ivaAd', 'f30c-baseTot', 'f30c-ivaTot', 'f30c-ded', 'f30c-dedTot', 'f30c-credTot'].forEach((id) => setN(id, 0)); };
-      const resetF30v = () => { ['f30v-base16', 'f30v-iva16', 'f30v-base8', 'f30v-iva8', 'f30v-baseAd', 'f30v-ivaAd', 'f30v-baseTot', 'f30v-ivaTot', 'f30v-debTot', 'f30v-igtf', 'f30v-igtfBase'].forEach((id) => setN(id, 0)); renderIslrBox(0); window.__IGTF_VENTAS = { base: 0, ops: 0, monto: 0 }; if (window.__renderIGTF) window.__renderIGTF(); };
+      const resetF30v = () => { ['f30v-ex', 'f30v-base16', 'f30v-iva16', 'f30v-base8', 'f30v-iva8', 'f30v-baseAd', 'f30v-ivaAd', 'f30v-baseTot', 'f30v-ivaTot', 'f30v-debTot', 'f30v-igtf', 'f30v-igtfBase'].forEach((id) => setN(id, 0)); renderIslrBox(0); window.__IGTF_VENTAS = { base: 0, ops: 0, monto: 0 }; if (window.__renderIGTF) window.__renderIGTF(); };
       const vacio = (txt) => {
         if (tbody) tbody.innerHTML = '<tr><td colspan="' + (esCompra ? 12 : 13) + '" style="text-align:center;color:var(--fg-muted);padding:14px;">' + (txt || ('Sin registros. Usa "Registrar ' + tipo + '".')) + '</td></tr>';
         if (tfoot) tfoot.innerHTML = totRow(0, 0, 0, 0, 0);
@@ -9335,6 +9335,11 @@
         setN('f30c-ded', ivaTotD); setN('f30c-dedTot', ivaTotD); setN('f30c-credTot', ivaTotD);
       } else {
         _debF = ivaTotD;
+        /* Ventas internas no gravadas (código 40). Se calculaba y hasta se
+           sumaba al total del código 46, pero no se pintaba en su propio
+           renglón: el cuadro mostraba un total que no cuadraba con sus
+           partes. Compras siempre lo tuvo (f30c-ex); a ventas se le quedó. */
+        setN('f30v-ex', tEx);
         setN('f30v-base16', base16); setN('f30v-iva16', iva16D);
         setN('f30v-base8', base8); setN('f30v-iva8', iva8D);
         setN('f30v-baseAd', baseAd); setN('f30v-ivaAd', ivaAd);
