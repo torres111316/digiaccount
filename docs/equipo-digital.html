@@ -1,0 +1,468 @@
+<title>DigiAccount · El equipo digital</title>
+
+<style>
+  /* ============================================================
+     Un directorio de personal. Papel frío de oficina, tinta densa,
+     y un color propio por persona — el color es la identidad.
+     ============================================================ */
+  :root {
+    --papel:   #F2F4F6;
+    --hoja:    #FCFDFD;
+    --franja:  #E9EDF0;
+    --tinta:   #131A21;
+    --tinta-2: #47535E;
+    --tenue:   #79868F;
+    --regla:   #D6DDE2;
+    --firme:   #AEB9C0;
+    --sombra:  0 1px 2px rgba(19,26,33,.05), 0 10px 30px -22px rgba(19,26,33,.5);
+
+    /* Un color por persona */
+    --c-maria:  #A96A12;  --p-maria:  #FAF0DE;
+    --c-juan:   #0E6B4E;  --p-juan:   #E1EEE8;
+    --c-carlos: #2A5AA8;  --p-carlos: #E4EBF7;
+    --c-andrea: #0B7079;  --p-andrea: #DDEFF0;
+    --c-rafael: #6A3C86;  --p-rafael: #EEE6F4;
+
+    --display: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    --voz: Charter, "Bitstream Charter", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+    --dato: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, Menlo, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --papel:   #0D1216;
+      --hoja:    #151C22;
+      --franja:  #1A222A;
+      --tinta:   #E4EAEF;
+      --tinta-2: #A8B5BE;
+      --tenue:   #7D8B95;
+      --regla:   #28323A;
+      --firme:   #3B4750;
+      --sombra:  0 1px 2px rgba(0,0,0,.5), 0 10px 30px -22px rgba(0,0,0,.9);
+
+      --c-maria:  #E2A551;  --p-maria:  #2B2113;
+      --c-juan:   #4FAE84;  --p-juan:   #122720;
+      --c-carlos: #7BA5E8;  --p-carlos: #162034;
+      --c-andrea: #46B0B8;  --p-andrea: #0F2A2C;
+      --c-rafael: #B58CD0;  --p-rafael: #251A2E;
+    }
+  }
+  :root[data-theme="dark"] {
+    --papel:   #0D1216;
+    --hoja:    #151C22;
+    --franja:  #1A222A;
+    --tinta:   #E4EAEF;
+    --tinta-2: #A8B5BE;
+    --tenue:   #7D8B95;
+    --regla:   #28323A;
+    --firme:   #3B4750;
+    --sombra:  0 1px 2px rgba(0,0,0,.5), 0 10px 30px -22px rgba(0,0,0,.9);
+
+    --c-maria:  #E2A551;  --p-maria:  #2B2113;
+    --c-juan:   #4FAE84;  --p-juan:   #122720;
+    --c-carlos: #7BA5E8;  --p-carlos: #162034;
+    --c-andrea: #46B0B8;  --p-andrea: #0F2A2C;
+    --c-rafael: #B58CD0;  --p-rafael: #251A2E;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--papel);
+    color: var(--tinta);
+    font-family: var(--display);
+    font-size: 16.5px;
+    line-height: 1.6;
+    margin: 0;
+    padding: 0 20px 100px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .hoja { max-width: 980px; margin: 0 auto; }
+
+  /* ---------- Cabecera ---------- */
+  .cab { padding: 68px 0 34px; border-bottom: 2px solid var(--tinta); }
+  .marca {
+    font-family: var(--dato);
+    font-size: 11px; letter-spacing: .2em; text-transform: uppercase;
+    color: var(--tenue); margin: 0 0 18px;
+  }
+  h1 {
+    font-size: clamp(32px, 5.6vw, 52px);
+    font-weight: 700; letter-spacing: -.032em; line-height: 1.02;
+    text-wrap: balance; margin: 0 0 20px; max-width: 18ch;
+  }
+  .bajada {
+    font-family: var(--voz);
+    font-size: clamp(17px, 2.2vw, 20px);
+    line-height: 1.55; color: var(--tinta-2);
+    max-width: 56ch; margin: 0;
+  }
+
+  /* ---------- Secciones ---------- */
+  section { padding-top: 60px; }
+  .rotulo {
+    font-family: var(--dato);
+    font-size: 10.5px; letter-spacing: .2em; text-transform: uppercase;
+    color: var(--tenue); padding-bottom: 8px;
+    border-bottom: 1px solid var(--regla); margin-bottom: 24px;
+  }
+  h2 {
+    font-size: clamp(23px, 3.2vw, 30px);
+    font-weight: 700; letter-spacing: -.024em; line-height: 1.18;
+    text-wrap: balance; margin: 0 0 18px;
+  }
+  h3 { font-size: 16px; font-weight: 700; letter-spacing: -.008em; margin: 32px 0 10px; }
+  p { margin: 0 0 16px; max-width: 66ch; }
+  .lectura { font-family: var(--voz); font-size: 17px; line-height: 1.66; }
+
+  /* ---------- Fichas de personal ---------- */
+  .plantilla { display: grid; gap: 18px; margin-top: 8px; }
+
+  .ficha {
+    background: var(--hoja);
+    border: 1px solid var(--regla);
+    border-left: 4px solid var(--c);
+    border-radius: 3px;
+    box-shadow: var(--sombra);
+    display: grid;
+    grid-template-columns: 132px 1fr;
+    overflow: hidden;
+  }
+  .m  { --c: var(--c-maria);  --p: var(--p-maria); }
+  .j  { --c: var(--c-juan);   --p: var(--p-juan); }
+  .ca { --c: var(--c-carlos); --p: var(--p-carlos); }
+  .an { --c: var(--c-andrea); --p: var(--p-andrea); }
+  .r  { --c: var(--c-rafael); --p: var(--p-rafael); }
+
+  .retrato {
+    background: var(--p);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 12px; padding: 30px 16px;
+    border-right: 1px solid var(--regla);
+  }
+  .avatar {
+    width: 72px; height: 72px; border-radius: 50%;
+    background: var(--c);
+    display: grid; place-items: center;
+    font-size: 27px; font-weight: 700; letter-spacing: -.03em;
+    color: var(--hoja);
+    box-shadow: 0 3px 10px -3px var(--c);
+  }
+  .icono { width: 22px; height: 22px; color: var(--c); opacity: .85; }
+
+  .expediente { padding: 26px 30px 28px; min-width: 0; }
+  .nombre {
+    font-size: 25px; font-weight: 700; letter-spacing: -.028em;
+    line-height: 1.1; margin: 0 0 3px;
+  }
+  .cargo {
+    font-family: var(--dato);
+    font-size: 11px; letter-spacing: .13em; text-transform: uppercase;
+    color: var(--c); margin: 0 0 16px;
+  }
+  .resumen { font-family: var(--voz); font-size: 16.5px; color: var(--tinta-2); margin: 0 0 20px; max-width: 58ch; }
+
+  .encargos { list-style: none; margin: 0 0 20px; padding: 0; display: grid; gap: 7px; }
+  .encargos li {
+    font-size: 14.5px; line-height: 1.5;
+    padding-left: 20px; position: relative; color: var(--tinta);
+  }
+  .encargos li::before {
+    content: ""; position: absolute; left: 2px; top: .62em;
+    width: 7px; height: 7px; border-radius: 1px;
+    background: var(--c);
+  }
+
+  .voz {
+    background: var(--p);
+    border-radius: 3px;
+    padding: 15px 18px;
+    margin: 0 0 18px;
+    font-family: var(--voz);
+    font-size: 15.5px; font-style: italic; line-height: 1.5;
+    color: var(--tinta);
+    max-width: 60ch;
+  }
+  .voz::before { content: "\201C"; }
+  .voz::after  { content: "\201D"; }
+
+  .limite {
+    font-family: var(--dato);
+    font-size: 11.5px; line-height: 1.6;
+    color: var(--tenue);
+    padding-top: 14px;
+    border-top: 1px solid var(--regla);
+    max-width: 60ch;
+  }
+  .limite b { color: var(--tinta-2); font-weight: 400; text-transform: uppercase; letter-spacing: .1em; font-size: 10px; display: block; margin-bottom: 3px; }
+
+  @media (max-width: 640px) {
+    .ficha { grid-template-columns: 1fr; }
+    .retrato { flex-direction: row; border-right: none; border-bottom: 1px solid var(--regla); padding: 18px; justify-content: flex-start; gap: 16px; }
+    .expediente { padding: 22px 22px 24px; }
+  }
+
+  /* ---------- Cadena de mando ---------- */
+  .mando {
+    background: var(--hoja); border: 1px solid var(--regla); border-radius: 3px;
+    padding: 30px 28px; box-shadow: var(--sombra); margin-bottom: 30px;
+  }
+  .fila-eq { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 22px; }
+  .mini {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--p); border-radius: 999px; padding: 7px 16px 7px 7px;
+  }
+  .mini .pastilla {
+    width: 30px; height: 30px; border-radius: 50%; background: var(--c);
+    display: grid; place-items: center; color: var(--hoja);
+    font-size: 13px; font-weight: 700;
+  }
+  .mini span { font-size: 13.5px; font-weight: 700; letter-spacing: -.01em; }
+  .flecha-nota {
+    font-family: var(--dato); font-size: 11.5px; letter-spacing: .05em;
+    color: var(--tenue); text-transform: uppercase; margin: 0 0 14px;
+  }
+
+  /* ---------- Reglas ---------- */
+  .reglas { display: grid; gap: 2px; background: var(--regla); border: 1px solid var(--regla); border-radius: 3px; overflow: hidden; margin: 26px 0; }
+  .regla-it { background: var(--hoja); padding: 22px 26px; }
+  .regla-it h3 { margin: 0 0 7px; font-size: 15.5px; }
+  .regla-it p { margin: 0; font-size: 15px; color: var(--tinta-2); max-width: 64ch; }
+
+  /* ---------- Contraste de mensajes ---------- */
+  .contraste { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 24px 0; }
+  .msg { border-radius: 3px; padding: 20px 22px; border: 1px solid var(--regla); background: var(--hoja); }
+  .msg-tag {
+    font-family: var(--dato); font-size: 10px; letter-spacing: .16em;
+    text-transform: uppercase; margin: 0 0 10px;
+  }
+  .msg.no { border-top: 3px solid #B4472C; }
+  .msg.no .msg-tag { color: #B4472C; }
+  .msg.si { border-top: 3px solid var(--c-juan); }
+  .msg.si .msg-tag { color: var(--c-juan); }
+  .msg p { font-family: var(--voz); font-size: 16px; line-height: 1.5; margin: 0; }
+  @media (max-width: 600px) { .contraste { grid-template-columns: 1fr; } }
+
+  .pie {
+    margin-top: 64px; padding-top: 22px; border-top: 1px solid var(--regla);
+    font-family: var(--dato); font-size: 11.5px; line-height: 1.8; color: var(--tenue);
+  }
+</style>
+
+<div class="hoja">
+
+  <header class="cab">
+    <p class="marca">DigiAccount · Identidad de producto</p>
+    <h1>Cinco empleados que no piden vacaciones</h1>
+    <p class="bajada">Detrás son automatizaciones. Para el cliente son un equipo con nombre, cargo y forma de hablar — porque un contador no contrata «un modelo de lenguaje». Contrata a alguien que le lleve el trabajo.</p>
+  </header>
+
+  <!-- ================= LA IDEA ================= -->
+  <section>
+    <p class="rotulo">La idea</p>
+    <h2>Cargos, no funciones</h2>
+
+    <p class="lectura">Una lista de funciones —<em>OCR de documentos, clasificación automática, validación de correlativos</em>— no le dice nada a un contador. Un organigrama sí. Cuando el cliente entra al sistema y ve que <strong>María</strong> le recibió catorce comprobantes por WhatsApp mientras él estaba en la calle, entiende el producto sin que nadie se lo explique.</p>
+
+    <p class="lectura">Cada uno de los cinco corresponde a un módulo real y a una automatización que existe o que está por construirse. <strong>No hay personajes de adorno:</strong> si un agente no tiene trabajo que hacer, no está en la nómina.</p>
+  </section>
+
+  <!-- ================= EL EQUIPO ================= -->
+  <section>
+    <p class="rotulo">El equipo</p>
+    <h2>Quién hace qué</h2>
+
+    <div class="plantilla">
+
+      <!-- MARÍA -->
+      <article class="ficha m">
+        <div class="retrato">
+          <div class="avatar">M</div>
+          <svg class="icono" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M4 4h16v13H7l-3 3z"/><path d="M8 9h8"/><path d="M8 13h5"/>
+          </svg>
+        </div>
+        <div class="expediente">
+          <h3 class="nombre">María</h3>
+          <p class="cargo">Asistente administrativa</p>
+          <p class="resumen">Recibe todo lo que llega de afuera y lo convierte en registros. Es la primera puerta del sistema.</p>
+          <ul class="encargos">
+            <li>Lee las facturas de compra que le mandas por foto y arma el libro</li>
+            <li>Recibe comprobantes de retención por WhatsApp y los enlaza a su factura</li>
+            <li>Detecta el proveedor por el RIF, aunque la foto venga torcida</li>
+            <li>Te avisa cuando un comprobante llega de un período que ya declaraste</li>
+          </ul>
+          <p class="voz">Llegaron 14 comprobantes de retención de IVA. Doce los enlacé a su factura; dos no encontré a qué corresponden. ¿Los revisas?</p>
+          <p class="limite"><b>Lo que no hace</b>Registrar sin que alguien confirme. Todo lo que María lee queda en la bandeja de pendientes hasta que lo apruebas.</p>
+        </div>
+      </article>
+
+      <!-- JUAN -->
+      <article class="ficha j">
+        <div class="retrato">
+          <div class="avatar">J</div>
+          <svg class="icono" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="4" y="3" width="16" height="18" rx="1.5"/><path d="M8 8h8"/><path d="M8 12h8"/><path d="M8 16h4"/>
+          </svg>
+        </div>
+        <div class="expediente">
+          <h3 class="nombre">Juan</h3>
+          <p class="cargo">Analista contable</p>
+          <p class="resumen">Traduce cada operación al lenguaje del mayor. Aprende de cómo esa empresa ha clasificado antes.</p>
+          <ul class="encargos">
+            <li>Propone el asiento de cada compra y cada venta, con su cuenta</li>
+            <li>Usa el histórico de la empresa como referencia, no reglas genéricas</li>
+            <li>Arma el asiento resumen del mes y la liquidación del período</li>
+            <li>Marca lo que no logra clasificar en vez de inventar una cuenta</li>
+          </ul>
+          <p class="voz">Esta compra la clasifiqué en Repuestos y accesorios — es donde han ido las siete anteriores de este mismo proveedor.</p>
+          <p class="limite"><b>Lo que no hace</b>Contabilizar solo. Juan propone el asiento; el asiento entra al libro cuando lo apruebas.</p>
+        </div>
+      </article>
+
+      <!-- CARLOS -->
+      <article class="ficha ca">
+        <div class="retrato">
+          <div class="avatar">C</div>
+          <svg class="icono" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="9" cy="8" r="3.2"/><path d="M3.5 20c0-3.2 2.5-5.2 5.5-5.2s5.5 2 5.5 5.2"/><path d="M17 11h5"/><path d="M17 15h5"/>
+          </svg>
+        </div>
+        <div class="expediente">
+          <h3 class="nombre">Carlos</h3>
+          <p class="cargo">Especialista de nómina</p>
+          <p class="resumen">Lleva la gente: lo que se les paga, lo que se les debe y lo que se les acumula.</p>
+          <ul class="encargos">
+            <li>Calcula la nómina con la base cotizable en bolívares y los bonos en divisas</li>
+            <li>Convierte el cestaticket a la tasa BCV del día que corresponde</li>
+            <li>Lleva vacaciones, utilidades y prestaciones sociales al día</li>
+            <li>Avisa cuando a un trabajador le toca su período de vacaciones</li>
+          </ul>
+          <p class="voz">A tres trabajadores les corresponden vacaciones este mes. Ya calculé el bono vacacional de cada uno según su antigüedad.</p>
+          <p class="limite"><b>Lo que no hace</b>Pagar. Carlos calcula y prepara; la orden de pago la das tú desde Tesorería.</p>
+        </div>
+      </article>
+
+      <!-- ANDREA -->
+      <article class="ficha an">
+        <div class="retrato">
+          <div class="avatar">A</div>
+          <svg class="icono" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3 7h18v12H3z"/><path d="M3 11h18"/><path d="M7 15h4"/>
+          </svg>
+        </div>
+        <div class="expediente">
+          <h3 class="nombre">Andrea</h3>
+          <p class="cargo">Tesorería y cobranzas</p>
+          <p class="resumen">Cuadra lo que entró contra lo que se facturó, y persigue lo que falta.</p>
+          <ul class="encargos">
+            <li>Cruza los pagos móviles recibidos contra las facturas pendientes</li>
+            <li>Sugiere el enlace cuando coinciden monto <em>y</em> teléfono, nombre o recibo</li>
+            <li>Arma la relación de cuentas por cobrar vencidas por antigüedad</li>
+            <li>Prepara el recordatorio de cobro listo para enviar por WhatsApp</li>
+          </ul>
+          <p class="voz">Entró un pago de Bs 4.820 desde un teléfono que coincide con Distribuidora Andina. Su factura 00-004412 es por ese monto exacto. ¿Lo enlazo?</p>
+          <p class="limite"><b>Lo que no hace</b>Asignar por monto solamente. Si solo coincide la cifra, Andrea lo sugiere pero no lo aplica.</p>
+        </div>
+      </article>
+
+      <!-- RAFAEL -->
+      <article class="ficha r">
+        <div class="retrato">
+          <div class="avatar">R</div>
+          <svg class="icono" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 3l8 3.5v5c0 5-3.4 8.8-8 9.5-4.6-.7-8-4.5-8-9.5v-5z"/><path d="M9 12l2.2 2.2L15.5 10"/>
+          </svg>
+        </div>
+        <div class="expediente">
+          <h3 class="nombre">Rafael</h3>
+          <p class="cargo">Gerente fiscal · revisa antes de declarar</p>
+          <p class="resumen">El último en ver los libros. No registra nada: busca lo que se le escapó a los demás.</p>
+          <ul class="encargos">
+            <li>Revisa el libro del período completo antes de que declares</li>
+            <li>Busca retenciones sin comprobante, facturas repetidas, correlativos saltados</li>
+            <li>Verifica que la base cuadre con su alícuota en cada renglón</li>
+            <li>Te recuerda tu fecha de declaración según el terminal del RIF</li>
+          </ul>
+          <p class="voz">Antes de declarar julio: hay dos facturas con el mismo número de control y una retención de ISLR sin comprobante. Te dejo el detalle.</p>
+          <p class="limite"><b>Lo que no hace</b>Declarar. Rafael revisa y te entrega el informe; la declaración la presentas tú.</p>
+        </div>
+      </article>
+
+    </div>
+  </section>
+
+  <!-- ================= CADENA DE MANDO ================= -->
+  <section>
+    <p class="rotulo">Cómo trabajan juntos</p>
+    <h2>El documento entra por María y sale por Rafael</h2>
+
+    <div class="mando">
+      <p class="flecha-nota">Recorrido de un documento</p>
+      <div class="fila-eq">
+        <div class="mini m"><span class="pastilla">M</span><span>Recibe</span></div>
+        <div class="mini j"><span class="pastilla">J</span><span>Clasifica</span></div>
+        <div class="mini an"><span class="pastilla">A</span><span>Cobra</span></div>
+        <div class="mini r"><span class="pastilla">R</span><span>Revisa</span></div>
+      </div>
+      <p style="margin:0;font-family:var(--voz);font-size:16.5px;color:var(--tinta-2);max-width:62ch">Carlos trabaja aparte, sobre la nómina, y también le entrega a Rafael. Cada paso deja su registro, así que siempre se sabe quién propuso qué y quién lo aprobó.</p>
+    </div>
+
+    <p class="lectura">Esa cadena es lo que hace creíble la historia. No son cinco chatbots sueltos con nombre bonito: es un flujo real donde cada uno recibe del anterior, y el último tiene autoridad de revisión sobre todos.</p>
+  </section>
+
+  <!-- ================= REGLAS ================= -->
+  <section>
+    <p class="rotulo">Reglas de la personificación</p>
+    <h2>Lo que mantiene la ilusión honesta</h2>
+
+    <div class="reglas">
+      <div class="regla-it">
+        <h3>Siempre se dice que son digitales</h3>
+        <p>«Tu equipo digital», «empleados digitales», «asistentes con IA». Nunca se insinúa que hay una persona detrás. El cliente sabe qué compró — y eso es justamente lo que lo hace impresionante, no lo contrario.</p>
+      </div>
+      <div class="regla-it">
+        <h3>Cada uno habla solo de lo suyo</h3>
+        <p>María no opina de contabilidad. Rafael no registra facturas. Si un agente se sale de su cargo, la ficción se cae y con ella la confianza en el sistema.</p>
+      </div>
+      <div class="regla-it">
+        <h3>Hablan como colegas, no como robots ni como amigos</h3>
+        <p>Nada de «¡Hola! 😊 Soy María, tu asistente virtual». Tampoco «PROCESO COMPLETADO: 14 REGISTROS». El tono es el de un colega competente que te pasa un reporte: directo, con el número exacto, y termina en una pregunta si necesita tu decisión.</p>
+      </div>
+      <div class="regla-it">
+        <h3>Ninguno firma nada</h3>
+        <p>Proponen, calculan, revisan y avisan. La aprobación siempre lleva nombre de persona real — porque la Providencia 000121 exige que los documentos fiscales sean inalterables, y porque un contador no le entrega su firma a nadie.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= EL DISCURSO ================= -->
+  <section>
+    <p class="rotulo">Cómo se vende</p>
+    <h2>Tu equipo multiplicado, no sustituido</h2>
+
+    <p class="lectura">Hay dos maneras de contar esto, y una es peligrosa.</p>
+
+    <div class="contraste">
+      <div class="msg no">
+        <p class="msg-tag">No digas esto</p>
+        <p>«Hacen el trabajo de diez personas y están más preparados que cualquier especialista.»</p>
+      </div>
+      <div class="msg si">
+        <p class="msg-tag">Di esto</p>
+        <p>«Cinco asistentes que le preparan el trabajo. Usted revisa y aprueba — y le queda el tiempo para lo que de verdad cobra.»</p>
+      </div>
+    </div>
+
+    <p class="lectura">La primera versión suena más fuerte y es más débil. <strong>Choca con la única regla que hace confiable al sistema</strong> — si los agentes reemplazan al especialista, entonces el paso de aprobación sobra; y si sobra, el primer número mal leído es responsabilidad tuya. La segunda versión convierte esa misma revisión en la garantía: <em>nada entra a sus libros sin que usted lo vea.</em></p>
+
+    <p class="lectura">Y hay un argumento más honesto y más difícil de copiar: <strong>estos cinco no saben contabilidad en general — saben la de aquí.</strong> Conocen los códigos del Anexo 6.1 con su sustraendo, los catorce dígitos del comprobante de IVA, el calendario por terminal de RIF, la Forma 30 con sus alícuotas. Un asistente genérico lee una factura. El tuyo sabe qué hacer con ella según la condición fiscal de esa empresa.</p>
+  </section>
+
+  <p class="pie">
+    Los cinco cargos corresponden a módulos existentes de DigiAccount. Los avatares son monogramas de color, no retratos: nadie debe poder confundirlos con fotos de personas reales.<br>
+    Frases de ejemplo redactadas como referencia de tono para la redacción de la interfaz.
+  </p>
+
+</div>
