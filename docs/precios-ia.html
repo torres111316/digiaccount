@@ -1,0 +1,586 @@
+<title>DigiAccount · Capa de IA — costos y precios</title>
+
+<style>
+  /* ============================================================
+     Paleta: papel de mayor contable (greenbar), tinta verde para
+     las cifras, rojo de bolígrafo del contador para los costos.
+     ============================================================ */
+  :root {
+    --papel:      #F1F4F0;
+    --hoja:       #FBFCFA;
+    --franja:     #E7ECE6;
+    --tinta:      #141D19;
+    --tinta-2:    #4A574F;
+    --tenue:      #77857C;
+    --regla:      #D0D8D1;
+    --regla-viva: #A9B5AB;
+    --verde:      #0E6B4E;
+    --verde-piso: #E2EFE8;
+    --rojo:       #A93F27;
+    --rojo-piso:  #F6E7E2;
+    --sombra:     0 1px 2px rgba(20,29,25,.05), 0 8px 24px -18px rgba(20,29,25,.35);
+
+    --display: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    --lectura: Charter, "Bitstream Charter", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+    --dato: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, Menlo, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --papel:      #0F1512;
+      --hoja:       #161D19;
+      --franja:     #1B231E;
+      --tinta:      #E3EAE4;
+      --tinta-2:    #AEBBB2;
+      --tenue:      #859389;
+      --regla:      #2A342D;
+      --regla-viva: #3C4A40;
+      --verde:      #4FAE84;
+      --verde-piso: #12271F;
+      --rojo:       #DE8168;
+      --rojo-piso:  #2A1B16;
+      --sombra:     0 1px 2px rgba(0,0,0,.4), 0 8px 24px -18px rgba(0,0,0,.8);
+    }
+  }
+  :root[data-theme="dark"] {
+    --papel:      #0F1512;
+    --hoja:       #161D19;
+    --franja:     #1B231E;
+    --tinta:      #E3EAE4;
+    --tinta-2:    #AEBBB2;
+    --tenue:      #859389;
+    --regla:      #2A342D;
+    --regla-viva: #3C4A40;
+    --verde:      #4FAE84;
+    --verde-piso: #12271F;
+    --rojo:       #DE8168;
+    --rojo-piso:  #2A1B16;
+    --sombra:     0 1px 2px rgba(0,0,0,.4), 0 8px 24px -18px rgba(0,0,0,.8);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--papel);
+    color: var(--tinta);
+    font-family: var(--lectura);
+    font-size: 17px;
+    line-height: 1.62;
+    margin: 0;
+    padding: 0 20px 96px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .hoja { max-width: 940px; margin: 0 auto; }
+
+  /* ---------- Cabecera ---------- */
+  .cab {
+    padding: 64px 0 30px;
+    border-bottom: 2px solid var(--tinta);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 28px;
+    align-items: flex-end;
+    justify-content: space-between;
+  }
+  .cab-txt { max-width: 34ch; }
+  .marca {
+    font-family: var(--dato);
+    font-size: 11px;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    color: var(--verde);
+    margin: 0 0 16px;
+  }
+  h1 {
+    font-family: var(--display);
+    font-size: clamp(30px, 5vw, 44px);
+    font-weight: 700;
+    letter-spacing: -.025em;
+    line-height: 1.05;
+    text-wrap: balance;
+    margin: 0;
+  }
+  .cab-meta {
+    font-family: var(--dato);
+    font-size: 11.5px;
+    line-height: 1.9;
+    color: var(--tenue);
+    text-align: right;
+  }
+  .cab-meta b { color: var(--tinta-2); font-weight: 400; }
+
+  /* ---------- Secciones ---------- */
+  section { padding-top: 56px; }
+  .rotulo {
+    font-family: var(--dato);
+    font-size: 10.5px;
+    letter-spacing: .2em;
+    text-transform: uppercase;
+    color: var(--tenue);
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--regla);
+    margin-bottom: 22px;
+  }
+  h2 {
+    font-family: var(--display);
+    font-size: clamp(22px, 3vw, 27px);
+    font-weight: 700;
+    letter-spacing: -.02em;
+    line-height: 1.2;
+    text-wrap: balance;
+    margin: 0 0 18px;
+  }
+  h3 {
+    font-family: var(--display);
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: -.005em;
+    margin: 34px 0 10px;
+  }
+  p { margin: 0 0 16px; max-width: 68ch; }
+  strong { font-weight: 700; }
+  em { font-style: italic; color: var(--tinta-2); }
+
+  /* ---------- El hallazgo ---------- */
+  .hallazgo {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 30px;
+    align-items: center;
+    background: var(--hoja);
+    border: 1px solid var(--regla);
+    border-left: 3px solid var(--verde);
+    border-radius: 2px;
+    padding: 30px 32px;
+    box-shadow: var(--sombra);
+    margin-bottom: 28px;
+  }
+  .cifra-gr {
+    font-family: var(--dato);
+    font-size: clamp(38px, 7vw, 58px);
+    font-weight: 700;
+    line-height: 1;
+    color: var(--verde);
+    letter-spacing: -.04em;
+    font-variant-numeric: tabular-nums;
+  }
+  .cifra-pie {
+    font-family: var(--dato);
+    font-size: 10.5px;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+    color: var(--tenue);
+    margin-top: 10px;
+    line-height: 1.6;
+  }
+  .hallazgo p { margin: 0; font-size: 18px; }
+  @media (max-width: 620px) { .hallazgo { grid-template-columns: 1fr; gap: 20px; } }
+
+  /* ---------- Tablas de mayor ---------- */
+  .marco { overflow-x: auto; margin: 26px 0; }
+  table {
+    width: 100%;
+    min-width: 560px;
+    border-collapse: collapse;
+    font-family: var(--dato);
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    background: var(--hoja);
+  }
+  caption {
+    caption-side: top;
+    text-align: left;
+    font-family: var(--dato);
+    font-size: 10.5px;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--tenue);
+    padding-bottom: 10px;
+  }
+  th, td { padding: 11px 14px; text-align: right; }
+  th:first-child, td:first-child { text-align: left; }
+  thead th {
+    font-weight: 400;
+    font-size: 10.5px;
+    letter-spacing: .11em;
+    text-transform: uppercase;
+    color: var(--tenue);
+    border-bottom: 1.5px solid var(--regla-viva);
+    white-space: nowrap;
+  }
+  tbody tr { border-bottom: 1px solid var(--regla); }
+  tbody tr:nth-child(even) { background: var(--franja); }
+  tbody td:first-child { font-family: var(--display); font-size: 13.5px; font-weight: 700; letter-spacing: -.01em; }
+  .costo  { color: var(--rojo); }
+  .gana   { color: var(--verde); font-weight: 700; }
+  tfoot td {
+    border-top: 2px solid var(--tinta);
+    font-weight: 700;
+    padding-top: 13px;
+  }
+  .nota-tabla {
+    font-family: var(--dato);
+    font-size: 11.5px;
+    line-height: 1.65;
+    color: var(--tenue);
+    margin: -14px 0 26px;
+    max-width: 74ch;
+  }
+
+  /* ---------- Etiquetas ---------- */
+  .chip {
+    display: inline-block;
+    font-family: var(--dato);
+    font-size: 10px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 2px;
+    background: var(--verde-piso);
+    color: var(--verde);
+    vertical-align: middle;
+    margin-left: 8px;
+  }
+  .chip.alt { background: var(--rojo-piso); color: var(--rojo); }
+
+  /* ---------- Orden de construcción ---------- */
+  .pasos { display: grid; gap: 2px; margin: 26px 0 8px; background: var(--regla); border: 1px solid var(--regla); border-radius: 2px; overflow: hidden; }
+  .paso {
+    display: grid;
+    grid-template-columns: 58px 1fr;
+    gap: 20px;
+    background: var(--hoja);
+    padding: 22px 24px;
+  }
+  .paso-ord {
+    font-family: var(--dato);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .05em;
+    color: var(--verde);
+    padding-top: 3px;
+  }
+  .paso h3 { margin: 0 0 6px; font-size: 16.5px; }
+  .paso p { margin: 0; font-size: 15.5px; color: var(--tinta-2); max-width: 62ch; }
+  @media (max-width: 560px) { .paso { grid-template-columns: 1fr; gap: 8px; } }
+
+  /* ---------- Regla destacada ---------- */
+  .regla-caja {
+    background: var(--hoja);
+    border: 1px solid var(--regla);
+    border-top: 3px solid var(--rojo);
+    border-radius: 2px;
+    padding: 28px 30px;
+    margin: 26px 0;
+    box-shadow: var(--sombra);
+  }
+  .regla-caja .lema {
+    font-family: var(--display);
+    font-size: clamp(19px, 3vw, 24px);
+    font-weight: 700;
+    letter-spacing: -.02em;
+    line-height: 1.25;
+    margin: 0 0 16px;
+    max-width: 26ch;
+  }
+  .regla-caja p:last-child { margin-bottom: 0; }
+
+  /* ---------- Cierre ---------- */
+  .pie {
+    margin-top: 60px;
+    padding-top: 22px;
+    border-top: 1px solid var(--regla);
+    font-family: var(--dato);
+    font-size: 11.5px;
+    line-height: 1.8;
+    color: var(--tenue);
+  }
+
+  a { color: var(--verde); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  a:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--verde); outline-offset: 3px; }
+</style>
+
+<div class="hoja">
+
+  <header class="cab">
+    <div class="cab-txt">
+      <p class="marca">DigiAccount · Documento interno</p>
+      <h1>La capa de IA: lo que cuesta y lo que debe costar</h1>
+    </div>
+    <div class="cab-meta">
+      Preparado para <b>Luis Torres</b><br>
+      11 de agosto de 2026<br>
+      Precios API vigentes <b>jun · 2026</b>
+    </div>
+  </header>
+
+  <!-- ================= EL HALLAZGO ================= -->
+  <section>
+    <p class="rotulo">El hallazgo</p>
+
+    <div class="hallazgo">
+      <div>
+        <div class="cifra-gr">$1,50</div>
+        <div class="cifra-pie">por empresa<br>al mes</div>
+      </div>
+      <p>Eso es lo que cuesta procesar con IA una empresa completa: doscientas facturas leídas, clasificadas contablemente, más la revisión del período y treinta consultas al asesor.</p>
+    </div>
+
+    <p><strong>El costo no es el obstáculo, y tampoco debe ser el que fije el precio.</strong> Con márgenes entre 63% y 95%, la IA no es un centro de costo que hay que cubrir: es la función que justifica subir de plan.</p>
+
+    <p>Eso cambia la pregunta. No es <em>¿cuánto tengo que cobrar para no perder?</em> sino <em>¿cuánto vale para un contador dejar de transcribir?</em> El resto de este documento contesta las dos, en ese orden.</p>
+  </section>
+
+  <!-- ================= COSTO ================= -->
+  <section>
+    <p class="rotulo">Primero · Lo que cuesta de verdad</p>
+    <h2>Cada tarea con el modelo que le corresponde</h2>
+
+    <p>Usar el modelo más caro para todo sería como mandar al socio de la firma a transcribir facturas. La arquitectura sensata reparte: extracción con el modelo rápido, criterio fiscal con el capaz.</p>
+
+    <div class="marco">
+      <table>
+        <caption>Costo unitario por tarea · precios de lista, procesamiento en lote</caption>
+        <thead>
+          <tr>
+            <th>Tarea</th>
+            <th>Modelo</th>
+            <th>Unidad</th>
+            <th>Costo</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Leer factura o comprobante</td>
+            <td>Haiku 4.5</td>
+            <td>documento</td>
+            <td class="costo">$0,0028</td>
+          </tr>
+          <tr>
+            <td>Proponer asiento contable</td>
+            <td>Haiku 4.5</td>
+            <td>documento</td>
+            <td class="costo">$0,0015</td>
+          </tr>
+          <tr>
+            <td>Revisar el libro antes de declarar</td>
+            <td>Opus 5</td>
+            <td>período</td>
+            <td class="costo">$0,25</td>
+          </tr>
+          <tr>
+            <td>Consulta al asesor fiscal</td>
+            <td>Sonnet 5</td>
+            <td>consulta</td>
+            <td class="costo">$0,012</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="nota-tabla">El procesamiento en lote descuenta 50% y aplica a todo lo que no necesita respuesta inmediata — que es casi todo: se carga el libro y se revisa después. La revisión antes de declarar sí usa el modelo más capaz, y aun así cuesta veinticinco centavos por empresa y período.</p>
+
+    <h3>Lo que suma una empresa típica</h3>
+
+    <div class="marco">
+      <table>
+        <caption>Empresa con 200 documentos mensuales</caption>
+        <thead>
+          <tr><th>Concepto</th><th>Cantidad</th><th>Costo</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Extracción de documentos</td><td>200</td><td class="costo">$0,56</td></tr>
+          <tr><td>Clasificación contable</td><td>200</td><td class="costo">$0,30</td></tr>
+          <tr><td>Revisión del período</td><td>1</td><td class="costo">$0,25</td></tr>
+          <tr><td>Consultas al asesor</td><td>30</td><td class="costo">$0,36</td></tr>
+        </tbody>
+        <tfoot>
+          <tr><td>Total por empresa</td><td></td><td class="costo">$1,47</td></tr>
+        </tfoot>
+      </table>
+    </div>
+  </section>
+
+  <!-- ================= PRECIOS ================= -->
+  <section>
+    <p class="rotulo">Segundo · Lo que debe costar</p>
+    <h2>La IA como complemento sobre el plan que ya tienen</h2>
+
+    <p>Los planes actuales de DigiAccount no cambian. La IA se suma encima, con un precio proporcional al tamaño del plan — porque el costo también crece con el número de empresas.</p>
+
+    <div class="marco">
+      <table>
+        <caption>Contadores</caption>
+        <thead>
+          <tr>
+            <th>Plan</th>
+            <th>Actual</th>
+            <th>+ IA</th>
+            <th>Total</th>
+            <th>Costo</th>
+            <th>Margen</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Contador Básico<br><span style="font-family:var(--dato);font-size:11px;font-weight:400;color:var(--tenue)">3 empresas</span></td>
+            <td>$49</td><td>+$30</td><td><strong>$79</strong></td>
+            <td class="costo">$4,50</td><td class="gana">85%</td>
+          </tr>
+          <tr>
+            <td>Contador PRO<br><span style="font-family:var(--dato);font-size:11px;font-weight:400;color:var(--tenue)">10 empresas</span></td>
+            <td>$79</td><td>+$50</td><td><strong>$129</strong></td>
+            <td class="costo">$15</td><td class="gana">70%</td>
+          </tr>
+          <tr>
+            <td>Firma Contable<br><span style="font-family:var(--dato);font-size:11px;font-weight:400;color:var(--tenue)">ilimitadas · ~30 reales</span></td>
+            <td>$199</td><td>+$120</td><td><strong>$319</strong></td>
+            <td class="costo">$45</td><td class="gana">63%</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="marco">
+      <table>
+        <caption>Empresas</caption>
+        <thead>
+          <tr>
+            <th>Plan</th>
+            <th>Actual</th>
+            <th>+ IA</th>
+            <th>Total</th>
+            <th>Costo</th>
+            <th>Margen</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Emprendimientos y PYME</td>
+            <td>$29</td><td>+$20</td><td><strong>$49</strong></td>
+            <td class="costo">$1,50</td><td class="gana">93%</td>
+          </tr>
+          <tr>
+            <td>Empresa Completa</td>
+            <td>$99</td><td>+$60</td><td><strong>$159</strong></td>
+            <td class="costo">$3</td><td class="gana">95%</td>
+          </tr>
+          <tr>
+            <td>Grupo Empresarial<br><span style="font-family:var(--dato);font-size:11px;font-weight:400;color:var(--tenue)">5 empresas</span></td>
+            <td>$299</td><td>+$150</td><td><strong>$449</strong></td>
+            <td class="costo">$7,50</td><td class="gana">95%</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Por qué estos números y no otros</h3>
+
+    <p><strong>El complemento ronda el 60% del plan base.</strong> Es un salto que se nota en la factura pero que se justifica solo: para un Contador PRO son <strong>$12,90 por empresa al mes</strong> a cambio de dejar de transcribir. Si le ahorra dos horas mensuales por cliente, ya se pagó tres veces.</p>
+
+    <p><strong>El margen más bajo es el de Firma Contable, y sigue en 63%.</strong> Ese es el piso, y baja solo porque el plan es de empresas ilimitadas. Aun con cincuenta empresas activas el margen se mantiene sobre 50%.</p>
+  </section>
+
+  <!-- ================= CUOTA ================= -->
+  <section>
+    <p class="rotulo">Tercero · El seguro</p>
+    <h2>Cuota incluida y excedente</h2>
+
+    <p>Un plan de <em>IA ilimitada</em> es una invitación a que alguien suba diez mil imágenes. La cuota no está para cobrar más: está para que el caso extremo no se lleve el margen por delante.</p>
+
+    <div class="marco">
+      <table>
+        <caption>Documentos incluidos por mes</caption>
+        <thead>
+          <tr><th>Plan</th><th>Incluidos</th><th>Uso típico</th><th>Holgura</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Contador Básico</td><td>900</td><td>600</td><td class="gana">1,5×</td></tr>
+          <tr><td>Contador PRO</td><td>3.000</td><td>2.000</td><td class="gana">1,5×</td></tr>
+          <tr><td>Firma Contable</td><td>10.000</td><td>6.000</td><td class="gana">1,7×</td></tr>
+          <tr><td>Emprendimientos y PYME</td><td>400</td><td>200</td><td class="gana">2,0×</td></tr>
+          <tr><td>Empresa Completa</td><td>1.200</td><td>400</td><td class="gana">3,0×</td></tr>
+          <tr><td>Grupo Empresarial</td><td>3.000</td><td>1.000</td><td class="gana">3,0×</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p><strong>Excedente: $0,05 por documento.</strong> Son dieciocho veces el costo real, y aun así al cliente le suena a nada — <em>cinco centavos por factura</em>. Nadie discute eso; el que lo paga es porque de verdad está usando el sistema a fondo.</p>
+
+    <p>Para dimensionar el riesgo: el complemento de Contador PRO cuesta $50 y cubriría <strong>casi dieciocho mil documentos</strong> antes de quedar en cero. La cuota son tres mil. Hay seis veces de colchón <em>antes</em> de que el excedente siquiera entre en juego.</p>
+  </section>
+
+  <!-- ================= CONSTRUCCIÓN ================= -->
+  <section>
+    <p class="rotulo">Cuarto · Qué construir</p>
+    <h2>Cuatro funciones, no doce agentes</h2>
+
+    <p>El organigrama de agentes con nombre es presentación. El valor está en cuatro cosas concretas, y conviene construirlas en este orden — de mayor dolor resuelto a mayor sofisticación.</p>
+
+    <div class="pasos">
+      <div class="paso">
+        <div class="paso-ord">01</div>
+        <div>
+          <h3>Comprobantes de retención por WhatsApp <span class="chip">empezar aquí</span></h3>
+          <p>El dolor real y demostrado: llegan tarde, se transcriben a mano, y de ahí salieron los descuadres de julio. El cliente manda la foto, el sistema la lee y la propone para la factura que corresponde. Resultado verificable en segundos.</p>
+        </div>
+      </div>
+      <div class="paso">
+        <div class="paso-ord">02</div>
+        <div>
+          <h3>Carga del libro de compras con la foto</h3>
+          <p>El OCR ya funciona. Falta conectarlo al flujo de carga masiva para que una tanda de facturas entre completa, con su preview y su confirmación.</p>
+        </div>
+      </div>
+      <div class="paso">
+        <div class="paso-ord">03</div>
+        <div>
+          <h3>Propuesta de asiento contable</h3>
+          <p>Compra de repuestos, propone la cuenta. Con el histórico contable de esa misma empresa como referencia, el acierto es alto desde el primer mes.</p>
+        </div>
+      </div>
+      <div class="paso">
+        <div class="paso-ord">04</div>
+        <div>
+          <h3>Revisión antes de declarar <span class="chip">el que vale oro</span></h3>
+          <p>Un pase sobre el libro del período buscando lo que se escapa: retenciones sin comprobante, facturas repetidas, un correlativo saltado, base que no cuadra con su alícuota. Veinticinco centavos por empresa a cambio de no presentar una sustitutiva.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= LA REGLA ================= -->
+  <section>
+    <p class="rotulo">Quinto · El límite</p>
+    <h2>La regla que no se rompe</h2>
+
+    <div class="regla-caja">
+      <p class="lema">La IA propone. El humano confirma. Nunca escribe sola en el libro.</p>
+      <p><strong>Por criterio contable:</strong> un número mal leído en un libro fiscal es peor que no tener IA. Con revisión humana, un error cuesta un segundo; sin ella, cuesta una declaración.</p>
+      <p><strong>Y por cumplimiento:</strong> la Providencia 000121 exige inalterabilidad. Si un proceso automático puede modificar un documento fiscal ya emitido, el sistema <em>permite</em> la alteración — y la disposición final quinta hace al proveedor coautor de defraudación. La IA escribe en una bandeja de pendientes, nunca en el libro.</p>
+    </div>
+
+    <p>Es la misma regla que ya rige el cruce de cobros del sistema: <em>una sola coincidencia solo sugiere.</em> Aplicarla aquí no es una limitación técnica sino <strong>argumento de venta</strong>. <em>Le propone, usted aprueba</em> es exactamente lo que un contador necesita oír antes de dejar entrar una máquina a sus libros.</p>
+  </section>
+
+  <!-- ================= POSICIONAMIENTO ================= -->
+  <section>
+    <p class="rotulo">Sexto · Cómo se vende</p>
+    <h2>No vendas IA. Vende que dejen de transcribir.</h2>
+
+    <p>La página de precios no debería decir <em>agentes de inteligencia artificial</em>. Debería decir <strong>«cargue el libro de compras con la foto»</strong>. La IA es cómo se hace, no qué se vende.</p>
+
+    <h3>La diferencia real frente a la competencia</h3>
+
+    <p>No es la IA. Cualquiera pone un OCR y en un trimestre te alcanzan. <strong>Es la IA sobre el conocimiento fiscal venezolano que ya está construido en el sistema:</strong> los códigos del Anexo 6.1 con su sustraendo, los catorce dígitos del comprobante de IVA, las reglas de quién retiene y a quién, el calendario por terminal de RIF, la Forma 30 con sus alícuotas.</p>
+
+    <p>Un ERP genérico con IA lee una factura. DigiAccount lee una factura <em>y sabe qué hacer con ella según la condición fiscal de esa empresa</em>. Esa distancia no se cierra con un modelo mejor — se cierra con años de oficio contable, y ya está adentro.</p>
+  </section>
+
+  <p class="pie">
+    Costos calculados con precios de lista de junio de 2026 y descuento de lote del 50%. Los márgenes son brutos: no incluyen infraestructura, soporte ni procesamiento de pagos.<br>
+    Las cifras de uso típico asumen 200 documentos por empresa al mes; conviene revisarlas contra el uso real después del primer trimestre.
+  </p>
+
+</div>
