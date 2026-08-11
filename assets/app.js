@@ -2569,14 +2569,18 @@
     const exportDiario = document.getElementById('contaExportBtn');
     if (exportDiario) exportDiario.addEventListener('click', () => {
       const rows = [['Asiento', 'Fecha', 'Descripción', 'Referencia', 'Cuenta', 'Debe', 'Haber']];
-      view.querySelectorAll('.conta-tab[data-tab="diario"] .asiento').forEach((a) => {
-        const num = (a.querySelector('.asiento-num') || {}).textContent || '';
-        const fecha = (a.querySelector('.asiento-date') || {}).textContent.trim() || '';
-        const desc = (a.querySelector('.asiento-desc') || {}).textContent || '';
-        const ref = (a.querySelector('.asiento-ref') || {}).textContent.replace('Ref:', '').trim() || '';
-        a.querySelectorAll('tbody tr').forEach((tr) => {
-          const c = tr.querySelectorAll('td');
-          rows.push([num, fecha, desc, ref, c[1] ? c[1].textContent : '', c[2] ? c[2].textContent : '', c[3] ? c[3].textContent : '']);
+      /* Se exportan los DATOS del período, no los asientos pintados. El Diario
+         se pagina de 10 en 10: leyendo el DOM salía un CSV con diez asientos
+         que parecía el libro completo. */
+      const _exp = (window.__diarioDelMes || []).slice().sort((a, b) => (a.numero || 0) - (b.numero || 0));
+      _exp.forEach((a) => {
+        const num = a.numero != null ? String(a.numero).padStart(4, '0') : '';
+        const fecha = a.fecha || '';
+        const desc = a.descripcion || '';
+        const ref = a.referencia || '';
+        (Array.isArray(a.lineas) ? a.lineas : []).forEach((l) => {
+          rows.push([num, fecha, desc, ref, l.cta || '',
+            Number(l.debe) || 0 ? String(l.debe) : '', Number(l.haber) || 0 ? String(l.haber) : '']);
         });
       });
       csvDownload(rows, 'Libro_Diario_Ejercicio_' + ejercicioInfo().anio + '.csv');
@@ -2643,19 +2647,32 @@
     function renderMayor(code, name) {
       if (!mayorBody) return;
       const deudora = DEUDORAS.includes(code.charAt(0));
-      // Asientos del Diario en orden cronológico ascendente (el DOM va descendente)
-      const asientos = Array.from(view.querySelectorAll('.conta-tab[data-tab="diario"] .asiento')).reverse();
+
+      /* Los movimientos salen de los DATOS del período, no de los asientos
+         pintados en el Diario.
+
+         El Diario se pagina de 10 en 10. Leyéndolo del DOM, el Mayor de una
+         cuenta solo recogía los movimientos de los 10 asientos de la página
+         que estuviera abierta — y con eso el saldo de la cuenta salía mal, sin
+         que nada avisara. Es el mismo error que tenía el resumen de
+         retenciones: calcular sobre lo que se ve en vez de sobre lo que hay.
+
+         Se usa __diarioDelMes, que es el mes seleccionado SIN paginar, para
+         que el Mayor siga al filtro de mes del Diario como siempre. */
+      const delPeriodo = (window.__diarioDelMes || asientosData || [])
+        .slice()
+        .sort((a, b) => (a.numero || 0) - (b.numero || 0));
       const movs = [];
-      asientos.forEach((a) => {
-        const fecha = ((a.querySelector('.asiento-date') || {}).textContent || '').trim();
-        const anum = ((a.querySelector('.asiento-num') || {}).textContent || '').trim();
-        const desc = ((a.querySelector('.asiento-desc') || {}).textContent || '').trim();
-        const ref = ((a.querySelector('.asiento-ref') || {}).textContent || '').replace('Ref:', '').trim();
-        a.querySelectorAll('tbody tr').forEach((tr) => {
-          const td = tr.querySelectorAll('td');
-          if (td.length < 4) return;
-          if (td[0].textContent.trim() !== code) return;
-          movs.push({ fecha, anum, desc, ref, deb: num2(td[2].textContent), haber: num2(td[3].textContent) });
+      delPeriodo.forEach((a) => {
+        const fecha = a.fecha || '';
+        const anum = a.numero != null ? String(a.numero).padStart(4, '0') : '';
+        const desc = a.descripcion || '';
+        const ref = a.referencia || '';
+        (Array.isArray(a.lineas) ? a.lineas : []).forEach((l) => {
+          // La cuenta viene como '1.1.1.01 · Nombre'; se compara solo el código.
+          const cod = String(l.cta || '').split(' · ')[0].trim();
+          if (cod !== code) return;
+          movs.push({ fecha, anum, desc, ref, deb: Number(l.debe) || 0, haber: Number(l.haber) || 0 });
         });
       });
 
