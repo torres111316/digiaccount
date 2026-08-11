@@ -122,8 +122,12 @@
         setText('companyRif', rif);
         // Coherencia con Configuración: refleja la empresa activa
         const cfgN = document.getElementById('cfgEmpresaNombre'); if (cfgN) cfgN.textContent = name;
-        const cfgR = document.getElementById('cfgRazon'); if (cfgR && !cfgR.value) cfgR.value = name;
-        const cfgF = document.getElementById('cfgRif'); if (cfgF && !cfgF.value) cfgF.value = rif;
+        /* Configuración: se llena SIEMPRE, con la empresa que se acaba de
+           elegir. Antes decía `if (!cfgR.value)` — solo llenaba el campo si
+           estaba vacío—, así que al cambiar de empresa se quedaba con los
+           datos de la anterior. Uno creía estar viendo una empresa y estaba
+           viendo otra, y al guardar habría escrito sobre la equivocada. */
+        if (window.__cargarConfigEmpresa) window.__cargarConfigEmpresa();
 
         const badge = document.getElementById('contribBadge');
         const lbl = document.getElementById('contribLabel');
@@ -12098,17 +12102,79 @@
     const tasaInput = document.getElementById('cfgTasa');
     if (tasaInput && window.__BCV) tasaInput.value = bsFmt(window.__BCV);
 
-    document.getElementById('cfgGuardar').addEventListener('click', () => {
-      const razon = (document.getElementById('cfgRazon').value || '').trim();
-      if (razon) document.getElementById('cfgEmpresaNombre').textContent = razon;
+    const $c = (id) => document.getElementById(id);
+
+    /* Trae de la BASE los datos de la empresa activa y llena el formulario.
+
+       Se consulta la base y no se usa lo que trae el selector, porque el
+       selector solo lleva unos pocos campos. Un formulario a medio llenar
+       sobre datos fiscales es tan engañoso como uno con los datos de otra
+       empresa. */
+    async function cargarConfigEmpresa() {
+      const emp = window.__EMPRESA_ACTIVA;
+      const set = (id, val) => { const el = $c(id); if (el) el.value = val == null ? '' : String(val); };
+      if (!emp || !emp.id || !window.sb) {
+        ['cfgRazon', 'cfgRif', 'cfgDom', 'cfgTel', 'cfgWsp', 'cfgEmail'].forEach((id) => set(id, ''));
+        return;
+      }
+      const { data, error } = await window.sb.from('empresas')
+        .select('nombre, rif, condicion_fiscal, direccion, telefono, whatsapp, email, ciudad')
+        .eq('id', emp.id).maybeSingle();
+      if (error || !data) { console.warn('[DigiAccount] No se pudo cargar la configuración de la empresa'); return; }
+      set('cfgRazon', data.nombre);
+      set('cfgRif', data.rif);
+      set('cfgDom', data.direccion);
+      set('cfgTel', data.telefono);
+      set('cfgWsp', data.whatsapp);
+      set('cfgEmail', data.email);
+      const tc = $c('cfgTipoContrib');
+      // El selector guarda el valor de la base ('ordinario'/'especial'/'formal'),
+      // así que no hay que traducir textos ni depender de cómo estén escritos.
+      if (tc) tc.value = String(data.condicion_fiscal || 'ordinario').toLowerCase();
+      const nom = $c('cfgEmpresaNombre');
+      if (nom) nom.textContent = data.nombre || '—';
+    }
+    window.__cargarConfigEmpresa = cargarConfigEmpresa;
+    cargarConfigEmpresa();
+
+    $c('cfgGuardar').addEventListener('click', async () => {
       // Tasa de cambio → se propaga a Cobros y recibos
-      const tasa = parseFloat(String((document.getElementById('cfgTasa') || {}).value || '').replace(',', '.'));
+      const tasa = parseFloat(String(($c('cfgTasa') || {}).value || '').replace(',', '.'));
       if (tasa && tasa > 0) {
         window.__BCV = tasa;
-        const bcvTasa = document.getElementById('bcvTasa');
+        const bcvTasa = $c('bcvTasa');
         if (bcvTasa) bcvTasa.textContent = bsFmt(tasa);
       }
-      toast('Configuración guardada correctamente', 'success');
+
+      const emp = window.__EMPRESA_ACTIVA;
+      if (!emp || !emp.id || !window.sb) { toast('No hay una empresa activa seleccionada', 'error'); return; }
+
+      const razon = ($c('cfgRazon').value || '').trim();
+      if (!razon) { toast('La razón social no puede quedar vacía', 'error'); return; }
+
+      /* Antes esto NO guardaba nada: solo cambiaba una etiqueta en pantalla y
+         decía "Configuración guardada correctamente". Editar la condición
+         fiscal de una empresa y que no se guarde es de las cosas que se
+         descubren tarde y mal. */
+      const fila = {
+        nombre: razon,
+        rif: ($c('cfgRif').value || '').trim().toUpperCase(),
+        condicion_fiscal: ($c('cfgTipoContrib') || {}).value || 'ordinario',
+        direccion: ($c('cfgDom').value || '').trim(),
+        telefono: ($c('cfgTel').value || '').trim(),
+        whatsapp: ($c('cfgWsp').value || '').trim(),
+        email: ($c('cfgEmail').value || '').trim(),
+      };
+      const { error } = await window.sb.from('empresas').update(fila).eq('id', emp.id);
+      if (error) { toast('No se pudo guardar: ' + error.message, 'error'); return; }
+
+      // Se refresca lo que depende de la empresa: nombre, selector y el cuadro
+      // de ISLR, que cambia si cambió la condición fiscal.
+      const nom = $c('cfgEmpresaNombre');
+      if (nom) nom.textContent = razon;
+      if (window.cargarEmpresas) window.cargarEmpresas();
+      if (window.__renderIslrBox) window.__renderIslrBox(0);
+      toast('Datos de ' + razon + ' guardados', 'success');
     });
 
     // ---- Métodos de cobro de la empresa a sus clientes ----
