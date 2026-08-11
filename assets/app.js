@@ -113,6 +113,9 @@
           firmaEmpresa: opt.dataset.firma || '',
         };
         aplicarFiscal(fiscalActivo);
+        // El cuadro de ISLR depende de la condición fiscal: se repinta ya, sin
+        // esperar a que alguien cargue el libro.
+        if (window.__renderIslrBox) window.__renderIslrBox(0);
         setText('entityName', name);
         setText('entityAvatar', avatar);
         setText('companyTitle', name);
@@ -692,6 +695,26 @@
           '</td><td class="num">' + fmt(Number(r.base) || 0) + '</td><td class="num">' + pctTxt + '</td><td class="num">' + fmt(monto) + '</td></tr>');
       });
       document.getElementById('rrTableTotal').textContent = fmt(gran);
+
+      /* Cabecera con los datos REALES. Venían escritos a mano de la maqueta:
+         un RIF en blanco, la palabra "Contribuyente Especial" y una dirección
+         de Valencia que no es de nadie. Un documento que se imprime y se
+         archiva no puede llevar datos de ejemplo. */
+      const emp = window.__EMPRESA_ACTIVA || {};
+      const set = (id, txt) => { const el = document.getElementById(id); if (el) el.innerHTML = txt; };
+      set('rrName', esc(emp.n || 'Empresa'));
+      set('rrMeta', '<span class="mono">RIF ' + esc(emp.rif || '—') + '</span>'
+        + (emp.cond ? ' · ' + esc(emp.cond) : '')
+        + (emp.dom ? '<br>' + esc(emp.dom) : ''));
+      const per = window.__fiscalPer;
+      const perTxt = per && per.mm ? (_MESES_RET[parseInt(per.mm, 10) - 1] + ' 20' + per.aa) : '';
+      set('rrPeriod', esc(perTxt) + (per && per.mm ? '<br><span class="mono">Período 20' + esc(per.aa) + '-' + esc(per.mm) + '</span>' : ''));
+      set('rrTotIva', 'Bs ' + fmt(ivaT));
+      set('rrCntIva', ivaC + ' comprobante' + (ivaC === 1 ? '' : 's'));
+      set('rrTotIslr', 'Bs ' + fmt(islrT));
+      set('rrCntIslr', islrC + ' comprobante' + (islrC === 1 ? '' : 's'));
+      set('rrTotAll', 'Bs ' + fmt(gran));
+      set('rrCntAll', (ivaC + islrC) + ' comprobante' + ((ivaC + islrC) === 1 ? '' : 's'));
 
       // Cabecera y totales según dirección
       const eyebrow = document.getElementById('rrEyebrow');
@@ -8363,28 +8386,40 @@
     //    estimada, pagada en porciones — NO se calcula sobre las ventas del mes.
     function renderIslrBox(brutos) {
       const box = document.getElementById('islrEstimBox');
-      if (!box) return;
+      const box2 = document.getElementById('islrEstimBox2');
+      if (!box && !box2) return;
       const emp = window.__EMPRESA_ACTIVA || {};
       const cond = emp.cond || 'Contribuyente Ordinario';
+      // Se pinta en el cuadro real y en su copia, para que no queden diciendo
+      // cosas distintas sobre la misma empresa.
+      const pintar = (html) => { if (box) box.innerHTML = html; if (box2) box2.innerHTML = html; };
       if (/especial/i.test(cond)) {
         const ini = (emp.rif || '').toUpperCase().replace(/[^A-Z]/g, '').charAt(0);
         const esNatural = ini === 'V' || ini === 'E';
         const periodo = esNatural ? 'mensual' : 'quincenal';
         const tipoTxt = esNatural ? 'firma personal (persona natural)' : 'persona jurídica (C.A.)';
-        box.innerHTML = '<div class="op-head"><span class="op-tag teal">Anticipo ISLR</span> Sobre ingresos brutos</div>'
+        pintar('<div class="op-head"><span class="op-tag teal">Anticipo ISLR</span> Sobre ingresos brutos</div>'
           + '<div class="op-row"><span>Ingresos brutos del período</span><span class="mono">' + fmtF(brutos) + '</span></div>'
           + '<div class="op-row"><span>Porcentaje aplicable</span><span class="mono">1%</span></div>'
           + '<div class="op-row"><span>Periodicidad</span><span class="mono">' + periodo + '</span></div>'
           + '<div class="op-row total"><span>Anticipo a enterar</span><span class="mono">' + fmtF(brutos * 0.01) + '</span></div>'
-          + '<div class="op-foot">Decreto Constituyente 3.719 · se genera automáticamente con la declaración de IVA (' + periodo + ', por ser ' + tipoTxt + ').</div>';
+          + '<div class="op-foot">Decreto Constituyente 3.719 · se genera automáticamente con la declaración de IVA (' + periodo + ', por ser ' + tipoTxt + ').</div>');
       } else {
-        box.innerHTML = '<div class="op-head"><span class="op-tag teal">Estimada ISLR</span> Declaración estimada (anual)</div>'
+        pintar('<div class="op-head"><span class="op-tag teal">Estimada ISLR</span> Declaración estimada (anual)</div>'
           + '<div class="op-row"><span>Base de cálculo</span><span class="mono">Renta neta estimada</span></div>'
           + '<div class="op-row"><span>Modalidad de pago</span><span class="mono">En porciones</span></div>'
           + '<div class="op-row total"><span>Sobre ventas del mes</span><span class="mono">No aplica</span></div>'
-          + '<div class="op-foot">LISLR Art. 82 · obligatoria si la renta neta del año anterior supera 1.500 U.T. · se estima sobre la renta neta (≥80% del año anterior) y se paga en porciones, no sobre las ventas brutas.</div>';
+          + '<div class="op-foot">LISLR Art. 82 · obligatoria si la renta neta del año anterior supera 1.500 U.T. · se estima sobre la renta neta (≥80% del año anterior) y se paga en porciones, no sobre las ventas brutas.</div>');
       }
     }
+    /* Se expone para poder repintarlo al CAMBIAR DE EMPRESA.
+
+       Antes solo se llamaba al cargar el libro fiscal. Si no se cargaba —o si
+       se cambiaba de empresa sin volver a cargarlo— el cuadro se quedaba con
+       lo de la empresa anterior, o peor, con el "Anticipo ISLR" que venía fijo
+       en el HTML. Así una empresa Ordinaria veía Anticipos, que no le
+       corresponden, y una Especial podía ver la Estimada. */
+    window.__renderIslrBox = renderIslrBox;
     function actualizarAutoliquidacion() {
       const setN = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = fmtF(v); };
       const credDisp = _credF + _excedAnt;                     // crédito del período + excedente del mes anterior
