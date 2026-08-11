@@ -7058,6 +7058,10 @@
   .ret-calc-comp.aviso { color: var(--da-amber-700, #9a6700); border-top: 0; padding-top: 2px; }
 
   /* Aviso de que la factura ya tiene retención */
+  /* Nota bajo un campo de configuración */
+  .cfg-hint { display: block; font-size: 10.5px; color: var(--fg-muted); margin-top: 4px; line-height: 1.4; }
+  .cfg-f input[readonly] { background: var(--bg-subtle, #f4f6fa); color: var(--fg-muted); cursor: default; }
+
   .ret-dup:not(:empty) {
     font-size: 11.5px; line-height: 1.5; margin-top: 5px; padding: 7px 9px; border-radius: 6px;
     background: var(--da-amber-50, #fff8e6); color: var(--da-amber-700, #9a6700);

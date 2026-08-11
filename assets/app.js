@@ -4581,6 +4581,8 @@
       // El checkout de planes usa window.__BCV
       window.__BCV = hoy;
       const bt = document.getElementById('bcvTasa'); if (bt) bt.textContent = fmt(hoy);
+      // La configuración muestra esta misma tasa: se repinta al llegar.
+      if (window.__pintarTasaConfig) window.__pintarTasaConfig();
       // Fecha VALOR de la tasa BCV en el panel (dd/mm/aaaa)
       const ff = document.getElementById('fxFecha');
       if (ff) { const p = String(vig.fecha).split('-'); ff.textContent = p[2] + '/' + p[1] + '/' + p[0]; }
@@ -12118,7 +12120,7 @@
         return;
       }
       const { data, error } = await window.sb.from('empresas')
-        .select('nombre, rif, condicion_fiscal, direccion, telefono, whatsapp, email, ciudad')
+        .select('nombre, rif, condicion_fiscal, direccion, telefono, whatsapp, email, ciudad, color_primario, color_secundario')
         .eq('id', emp.id).maybeSingle();
       if (error || !data) { console.warn('[DigiAccount] No se pudo cargar la configuración de la empresa'); return; }
       set('cfgRazon', data.nombre);
@@ -12131,11 +12133,63 @@
       // El selector guarda el valor de la base ('ordinario'/'especial'/'formal'),
       // así que no hay que traducir textos ni depender de cómo estén escritos.
       if (tc) tc.value = String(data.condicion_fiscal || 'ordinario').toLowerCase();
+      if ($c('cfgColor') && data.color_primario) $c('cfgColor').value = data.color_primario;
+      if ($c('cfgColor2') && data.color_secundario) $c('cfgColor2').value = data.color_secundario;
+      aplicarAgenteRetencion(data.condicion_fiscal);
+      pintarTasa();
       const nom = $c('cfgEmpresaNombre');
       if (nom) nom.textContent = data.nombre || '—';
     }
     window.__cargarConfigEmpresa = cargarConfigEmpresa;
+
+    /* Ser agente de retención de IVA NO es una preferencia: lo determina la
+       condición fiscal. Los sujetos pasivos ESPECIALES lo son por designación
+       del SENIAT; los ordinarios no.
+
+       Por eso el interruptor se DERIVA de la condición y queda bloqueado, en
+       vez de guardarse aparte. Dos campos que dicen lo mismo terminan
+       diciendo cosas distintas, y aquí eso significaría retener a un proveedor
+       sin estar designado, o no retenerle debiendo hacerlo. */
+    function aplicarAgenteRetencion(cond) {
+      const esp = /especial/i.test(String(cond || ''));
+      const chk = $c('cfgAgenteRet');
+      if (!chk) return;
+      chk.checked = esp;
+      chk.disabled = true;
+      const caja = chk.closest('.cfg-toggle');
+      const txt = caja && caja.querySelector('small');
+      if (txt) {
+        txt.textContent = esp
+          ? 'Sí — por ser contribuyente especial, retiene IVA a sus proveedores'
+          : 'No — solo los contribuyentes especiales son agentes de retención';
+      }
+    }
+
+    /* La tasa venía del valor de respaldo (36,80) porque el campo se llenaba
+       al arrancar el módulo, antes de que llegara la tasa real de Supabase.
+       Ahora se pinta cuando se abre la configuración y cada vez que la tasa
+       cambia, y el campo es de solo lectura: la tasa oficial no se escribe a
+       mano desde aquí. */
+    function pintarTasa() {
+      const el = $c('cfgTasa');
+      if (!el) return;
+      const v = Number(window.__BCV) || 0;
+      el.value = v ? bsFmt(v) : '—';
+      const org = $c('cfgTasaOrigen');
+      if (org) {
+        const f = document.getElementById('fxFecha');
+        org.textContent = 'Tasa oficial del BCV' + (f && f.textContent.trim() ? ' · valor del ' + f.textContent.trim() : '')
+          + ' · se actualiza sola.';
+      }
+    }
+    window.__pintarTasaConfig = pintarTasa;
     cargarConfigEmpresa();
+
+    // Al cambiar la condición en el formulario, el interruptor la sigue en el
+    // acto: así se ve la consecuencia antes de guardar, no después.
+    if ($c('cfgTipoContrib')) {
+      $c('cfgTipoContrib').addEventListener('change', (e) => aplicarAgenteRetencion(e.target.value));
+    }
 
     $c('cfgGuardar').addEventListener('click', async () => {
       // Tasa de cambio → se propaga a Cobros y recibos
@@ -12164,6 +12218,8 @@
         telefono: ($c('cfgTel').value || '').trim(),
         whatsapp: ($c('cfgWsp').value || '').trim(),
         email: ($c('cfgEmail').value || '').trim(),
+        color_primario: ($c('cfgColor') || {}).value || null,
+        color_secundario: ($c('cfgColor2') || {}).value || null,
       };
       const { error } = await window.sb.from('empresas').update(fila).eq('id', emp.id);
       if (error) { toast('No se pudo guardar: ' + error.message, 'error'); return; }
