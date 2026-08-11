@@ -668,20 +668,28 @@
     const printBtn = document.getElementById('retReciboPrint');
 
     function buildRecibo() {
-      const visible = rows().filter((tr) => !tr.hidden);
+      /* Se arma sobre los DATOS del período, no sobre las filas pintadas.
+
+         Antes leía `rows().filter(tr => !tr.hidden)`, y la tabla se pagina de
+         20 en 20: el "recibo del período" salía con las 20 primeras. Un recibe
+         incompleto de retenciones es peor que ninguno, porque parece completo. */
+      const todas = (_retPageArr[curDir] || [])
+        .filter((r) => curFilter === 'todos' || r.tipo === curFilter);
       const body = document.getElementById('rrTableBody');
       let ivaT = 0, ivaC = 0, islrT = 0, islrC = 0, gran = 0;
       body.innerHTML = '';
-      visible.forEach((tr) => {
-        const tds = tr.querySelectorAll('td');
-        const monto = parseNum(tds[8].textContent);
+      todas.forEach((r) => {
+        const monto = Number(r.monto) || 0;
         gran += monto;
-        if (tr.dataset.rettype === 'iva') { ivaT += monto; ivaC++; } else { islrT += monto; islrC++; }
-        const tipoTag = tr.dataset.rettype === 'iva' ? '<span class="tag cyan">IVA</span>' : '<span class="tag navy">ISLR</span>';
+        const esIva = r.tipo === 'iva';
+        if (esIva) { ivaT += monto; ivaC++; } else { islrT += monto; islrC++; }
+        const p = Number(r.pct) || 0;
+        const pctTxt = (Number.isInteger(p) ? p : p.toFixed(2)) + '%';
+        const tipoTag = esIva ? '<span class="tag cyan">IVA</span>' : '<span class="tag navy">ISLR</span>';
         body.insertAdjacentHTML('beforeend',
-          '<tr><td>' + tds[0].textContent + '</td><td class="mono">' + tds[1].textContent + '</td><td>' + tipoTag +
-          '</td><td class="mono">' + tds[3].textContent + '</td><td>' + tds[4].textContent + '</td><td class="mono">' + tds[5].textContent +
-          '</td><td class="num">' + tds[6].textContent + '</td><td class="num">' + tds[7].textContent + '</td><td class="num">' + tds[8].textContent + '</td></tr>');
+          '<tr><td>' + esc(r.fecha || '') + '</td><td class="mono">' + esc(r.comprobante || '') + '</td><td>' + tipoTag +
+          '</td><td class="mono">' + esc(r.tercero_rif || '') + '</td><td>' + esc(r.tercero_nombre || '') + '</td><td class="mono">' + esc(r.factura || '') +
+          '</td><td class="num">' + fmt(Number(r.base) || 0) + '</td><td class="num">' + pctTxt + '</td><td class="num">' + fmt(monto) + '</td></tr>');
       });
       document.getElementById('rrTableTotal').textContent = fmt(gran);
 
@@ -740,7 +748,13 @@
         + '<td class="mono">' + esc(r.tercero_rif || '') + '</td><td class="primary">' + esc(r.tercero_nombre || '') + '</td>'
         + '<td class="mono">' + esc(r.factura || '') + '</td><td class="num">' + fmt(Number(r.base) || 0) + '</td>'
         + '<td class="num">' + pctTxt + '</td><td class="num">' + fmt(Number(r.monto) || 0) + '</td>'
-        + '<td><span class="tag success">' + esc(r.estado || 'Registrado') + '</span></td></tr>';
+        + '<td><span class="tag success">' + esc(r.estado || 'Registrado') + '</span> '
+        /* Imprimir desde la propia fila. Antes solo se llegaba abriendo la
+           retención para editarla y pulsando "Comprobante" ahí dentro, que es
+           un sitio donde nadie lo busca — y en las SUFRIDAS es donde más falta
+           hace, porque son las que hay que archivar y mostrar. */
+        + '<button class="icon-btn ret-print" data-retprint="' + esc(String(r.id)) + '" title="Imprimir el comprobante">'
+        + '<i data-lucide="printer"></i></button></td></tr>';
     }
     const _retPage = { practicadas: 1, sufridas: 1 };   // página actual por dirección (20 por página)
     const _retPageArr = { practicadas: [], sufridas: [] }; // datos vigentes para re-pintar al paginar
@@ -769,6 +783,13 @@
       tb.innerHTML = html;
     }
     document.addEventListener('click', (e) => {
+      const pr = e.target.closest('button[data-retprint]');
+      if (pr) {
+        e.stopPropagation(); // no abrir también el modal de editar
+        const r = _retData.find((x) => String(x.id) === pr.dataset.retprint);
+        if (r) imprimirComprobante(r);
+        return;
+      }
       const b = e.target.closest('button[data-rp]');
       if (b && !b.disabled) {
         pintar(b.dataset.rp, _retPageArr[b.dataset.rp] || [], (_retPage[b.dataset.rp] || 1) + parseInt(b.dataset.rpDir, 10));
@@ -1148,7 +1169,7 @@
              factura de julio: la fecha es de agosto y el período, julio. Sin
              este campo la retención se iba al mes de su fecha y desaparecía
              del período al que pertenece. */
-          { name: 'periodo', label: 'Período en que se declara', type: 'select',
+          { name: 'periodo', label: 'Período en que se declara (sigue a la factura, no al comprobante)', type: 'select',
             options: _opcionesPeriodoRet(), value: _periodoVigente() },
           { name: 'nombre', label: 'Tercero (escribe iniciales y elige)', col: 2, type: 'datalist', options: terceros.map((t) => t.nombre), placeholder: 'Proveedor o cliente…', value: pre.nombre || '' },
           { name: 'rif', label: 'RIF (mayúscula, sin guiones)', upper: true, placeholder: 'J123456789', value: pre.rif || '' },
@@ -1256,7 +1277,65 @@
                 ? ' No queda ninguna por cargar.'
                 : ' Solo puedes cargarle la de <strong>' + (_yaRetenida.iva ? 'ISLR' : 'IVA') + '</strong>.');
           };
-          if (factEl) { factEl.addEventListener('change', revisarDuplicado); factEl.addEventListener('input', revisarDuplicado); }
+          /* El período de la factura manda sobre el de la fecha del comprobante.
+
+             La misma retención vive en DOS períodos distintos según de qué lado
+             se mire: quien la sufre la declara con su factura de venta; quien la
+             practica, en el mes en que emitió el comprobante. Un cliente que
+             manda en agosto la retención de una factura de julio va a
+             declararla como practicada en AGOSTO, mientras que aquí va en
+             JULIO. Las dos cosas son correctas y no tienen por qué coincidir.
+
+             El sistema lo dice en voz alta en vez de dejarlo a la memoria. */
+          const perEl = body.querySelector('[data-name="periodo"]');
+          const perWrap = perEl ? perEl.closest('.fm-field') : null;
+          let perPista = null;
+          if (perWrap) {
+            perPista = document.createElement('div');
+            perPista.className = 'ret-pista';
+            perWrap.appendChild(perPista);
+          }
+          const _mesTxt = (per) => {
+            const p = String(per || '').split('-');
+            if (p.length !== 2) return per || '';
+            return _MESES_RET[parseInt(p[1], 10) - 1] + ' ' + p[0];
+          };
+          const ajustarPeriodo = () => {
+            if (!perEl || !perPista) return;
+            const nf = (factEl && factEl.value || '').trim().toLowerCase();
+            const fac = facturas.find((f) => (f.numero_factura || '').trim().toLowerCase() === nf);
+            const esSufrida = !/^practicada/i.test((body.querySelector('[data-name="direccion"]') || {}).value || '');
+            const perFac = fac && fac.periodo ? fac.periodo : null;
+            const fechaComp = (body.querySelector('[data-name="fecha"]') || {}).value || '';
+            const perComp = fechaComp.length >= 7 ? fechaComp.slice(0, 7) : null;
+
+            if (!perFac) { perPista.innerHTML = ''; return; }
+
+            // Se propone el período de la FACTURA, que es lo que se declara.
+            if ([...perEl.options].some((o) => o.value === perFac)) perEl.value = perFac;
+
+            let txt = 'La factura es de <strong>' + esc(_mesTxt(perFac)) + '</strong>';
+            if (perComp && perComp !== perFac) {
+              txt += ' y el comprobante es de <strong>' + esc(_mesTxt(perComp)) + '</strong>. '
+                + 'Se declara con la factura.';
+              if (esSufrida) {
+                txt += ' Tu cliente la declarará como <strong>practicada en ' + esc(_mesTxt(perComp))
+                  + '</strong>: son períodos distintos y ambos son correctos.';
+              }
+            } else {
+              txt += '.';
+            }
+            perPista.innerHTML = txt;
+          };
+          if (factEl) {
+            factEl.addEventListener('change', revisarDuplicado); factEl.addEventListener('input', revisarDuplicado);
+            factEl.addEventListener('change', ajustarPeriodo); factEl.addEventListener('input', ajustarPeriodo);
+          }
+          const fechaEl = body.querySelector('[data-name="fecha"]');
+          if (fechaEl) fechaEl.addEventListener('change', ajustarPeriodo);
+          const dirEl2 = body.querySelector('[data-name="direccion"]');
+          if (dirEl2) dirEl2.addEventListener('change', ajustarPeriodo);
+          ajustarPeriodo();
           const dirEl = body.querySelector('[data-name="direccion"]');
           if (dirEl) dirEl.addEventListener('change', revisarDuplicado);
           revisarDuplicado();
