@@ -4528,18 +4528,20 @@
           <div class="panel-title-block"><div class="title"><span style="display:inline-flex;align-items:center;gap:8px;"><i data-lucide="network" style="width:15px;height:15px;color:var(--da-cyan-600);"></i> Organigrama de agentes</span></div><div class="sub">Un gerente que coordina · 7 especialistas subordinados</div></div>
         </div>
 
-        <div class="ag-manager">
-          <div class="agm-avatar"><i data-lucide="brain-circuit"></i></div>
+        <div class="ag-manager" style="--ag:#6A3C86;">
+          <div class="agm-avatar agm-mono">R</div>
           <div class="agm-info">
-            <div class="agm-name">Gerente General IA <span class="ag-status online"><span class="dot"></span> En línea</span></div>
-            <div class="agm-role">Orquestador · tu punto de contacto único</div>
-            <div class="agm-desc">Entiende tu intención, delega en el especialista correcto, prioriza y te consulta solo lo crítico. Hablas con él; él coordina a todos.</div>
+            <div class="agm-name">Rafael <span class="ag-est est-med">En construcción</span></div>
+            <div class="agm-role">Gerente fiscal · coordina al equipo y revisa antes de declarar</div>
+            <div class="agm-desc">Es el último en ver los libros. No registra nada: busca lo que se le escapó a los demás — retenciones sin comprobante, facturas repetidas, correlativos saltados. Hablas con él; él coordina a todos.</div>
           </div>
           <div class="agm-side">
-            <div class="agm-stat"><strong>0</strong><span>tareas coordinadas hoy</span></div>
+            <div class="agm-stat"><strong>0</strong><span>revisiones hechas</span></div>
             <button class="btn btn-primary" style="height:34px;font-size:12px;" data-ag-chat><i data-lucide="message-circle"></i> Hablar</button>
           </div>
         </div>
+
+        <div class="ag-resumen" id="agResumen"></div>
 
         <div class="ag-grid" id="agGrid"><!-- agentes por JS --></div>
       </div>

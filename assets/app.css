@@ -7058,6 +7058,44 @@
   .ret-calc-comp.aviso { color: var(--da-amber-700, #9a6700); border-top: 0; padding-top: 2px; }
 
   /* Aviso de que la factura ya tiene retención */
+  /* ---- Equipo digital: fichas con estado real de desarrollo ---- */
+  .ag-resumen { display:flex; flex-wrap:wrap; align-items:center; gap:8px 16px; margin:14px 0 18px; font-size:12px; }
+  .agr-it { display:inline-flex; align-items:center; gap:6px; padding:4px 11px; border-radius:999px; font-weight:600; }
+  .agr-it b { font-size:14px; }
+  .agr-nota { color:var(--fg-muted); font-size:11.5px; flex:1 1 240px; }
+
+  /* Un solo juego de colores para el estado, usado en fichas y resumen */
+  .est-ok   { background:rgba(28,143,90,.12);  color:#137a4a; }
+  .est-med  { background:rgba(201,122,20,.14); color:#a56410; }
+  .est-plan { background:rgba(120,132,145,.14); color:#66727e; }
+
+  .ag-card { border-left:3px solid var(--ag, var(--da-blue)); display:flex; flex-direction:column; }
+  .ag-card-top { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
+  .ag-mono {
+    position:relative; width:46px; height:46px; border-radius:50%;
+    background:var(--ag); color:#fff; display:grid; place-items:center;
+    font-size:19px; font-weight:800; letter-spacing:-.02em; flex:none;
+  }
+  .ag-mono-badge {
+    position:absolute; right:-3px; bottom:-3px; width:20px; height:20px; border-radius:50%;
+    background:var(--da-white); border:1px solid var(--border); color:var(--ag);
+    display:grid; place-items:center;
+  }
+  .ag-mono-badge i, .ag-mono-badge svg { width:11px; height:11px; }
+  .ag-est { font-size:10.5px; font-weight:700; letter-spacing:.04em; padding:3px 9px; border-radius:999px; white-space:nowrap; }
+
+  .ag-linea { font-size:12px; line-height:1.45; margin-top:10px; padding-left:11px; border-left:2px solid var(--border); color:var(--fg); }
+  .ag-linea b { display:block; font-size:9.5px; letter-spacing:.13em; text-transform:uppercase; color:var(--fg-muted); font-weight:600; margin-bottom:2px; }
+  .ag-linea.hoy { border-left-color:var(--ag); }
+  .ag-linea.nada { color:var(--fg-muted); font-style:italic; }
+  .ag-orden { font-size:11px; color:var(--fg-muted); }
+  .ag-cardmeta { margin-top:auto; padding-top:12px; }
+
+  .agm-mono {
+    background:var(--ag, var(--da-blue)); color:#fff;
+    display:grid; place-items:center; font-size:22px; font-weight:800; letter-spacing:-.02em;
+  }
+
   /* Nota bajo un campo de configuración */
   .cfg-hint { display: block; font-size: 10.5px; color: var(--fg-muted); margin-top: 4px; line-height: 1.4; }
   .cfg-f input[readonly] { background: var(--bg-subtle, #f4f6fa); color: var(--fg-muted); cursor: default; }

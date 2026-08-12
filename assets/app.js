@@ -11047,17 +11047,46 @@
     const AUTO_LABEL = { sugiere: 'Sugiere', aviso: 'Auto + aviso', silencioso: 'Auto silencioso' };
     const AUTO_CLS = { sugiere: 'sugiere', aviso: 'aviso', silencioso: 'silencioso' };
 
-    // Especialistas subordinados del Gerente IA
+    /* EL EQUIPO DIGITAL — seis cargos, no doce funciones.
+       Cada ficha declara su ESTADO REAL de desarrollo. Un tablero que pinta
+       ocho agentes "en línea" cuando solo uno hace trabajo es una maqueta; uno
+       que dice la verdad es una hoja de ruta. El orden es el de construcción.
+
+       estado: 'activo'  — funciona hoy
+               'parcial' — una parte funciona
+               'plan'    — diseñado, todavía no construido
+       Ver docs/equipo-digital.html para la identidad completa. */
     const AGENTS = [
-      { id: 'contable', n: 'Agente Contable', ic: 'book-open', col: '#2f6df0', spec: 'Asientos · conciliación · cierre', tareas: 0, auto: 'sugiere' },
-      { id: 'fiscal', n: 'Agente Fiscal', ic: 'file-text', col: '#c0392b', spec: 'SENIAT · IVA · ISLR · retenciones', tareas: 0, auto: 'aviso' },
-      { id: 'tesoreria', n: 'Agente Tesorería', ic: 'wallet', col: '#1c8f5a', spec: 'Cobros · pagos · conciliación', tareas: 0, auto: 'aviso' },
-      { id: 'ventas', n: 'Agente Ventas', ic: 'receipt', col: '#0e9bbf', spec: 'Facturación · despachos', tareas: 0, auto: 'sugiere' },
-      { id: 'inventario', n: 'Agente Inventario', ic: 'package', col: '#c97a14', spec: 'Stock · reposición · órdenes', tareas: 0, auto: 'aviso' },
-      { id: 'nomina', n: 'Agente Nómina', ic: 'users', col: '#7b54c9', spec: 'Recibos · LOTTT · parafiscales', tareas: 0, auto: 'sugiere' },
-      { id: 'ocr', n: 'Agente OCR / Documentos', ic: 'scan-text', col: '#3a8dde', spec: 'Lee facturas por foto', tareas: 0, auto: 'aviso' },
-      { id: 'analista', n: 'Agente Analista', ic: 'line-chart', col: '#0f8a8a', spec: 'Salud financiera · reportes', tareas: 0, auto: 'silencioso' },
+      { id: 'maria', n: 'María', ic: 'scan-text', col: '#A96A12', auto: 'sugiere', orden: 1, estado: 'parcial',
+        spec: 'Asistente administrativa',
+        hace: 'Lee facturas de compra por foto y arma el libro',
+        prox: 'Recibir comprobantes de retención por WhatsApp y enlazarlos a su factura' },
+      { id: 'rafael', n: 'Rafael', ic: 'shield-check', col: '#6A3C86', auto: 'aviso', orden: 2, estado: 'plan',
+        spec: 'Gerente fiscal · revisa antes de declarar',
+        hace: '',
+        prox: 'Revisar el libro del período: retenciones sin comprobante, facturas repetidas, correlativos saltados' },
+      { id: 'juan', n: 'Juan', ic: 'book-open', col: '#0E6B4E', auto: 'sugiere', orden: 3, estado: 'plan',
+        spec: 'Analista contable',
+        hace: '',
+        prox: 'Proponer el asiento de cada operación usando el histórico de esa empresa' },
+      { id: 'andrea', n: 'Andrea', ic: 'wallet', col: '#0B7079', auto: 'sugiere', orden: 4, estado: 'plan',
+        spec: 'Ventas, tesorería y cobranzas',
+        hace: '',
+        prox: 'Cruzar los pagos móviles recibidos contra las facturas pendientes' },
+      { id: 'elena', n: 'Elena', ic: 'package', col: '#93304F', auto: 'aviso', orden: 5, estado: 'plan',
+        spec: 'Costos e inventario',
+        hace: '',
+        prox: 'Recalcular el costo promedio y avisar cuando un precio quede por debajo del costo' },
+      { id: 'carlos', n: 'Carlos', ic: 'users', col: '#2A5AA8', auto: 'sugiere', orden: 6, estado: 'plan',
+        spec: 'Especialista de nómina',
+        hace: '',
+        prox: 'Avisar vacaciones vencidas y preparar utilidades y prestaciones sociales' },
     ];
+    const EST = {
+      activo:  { txt: 'Activo',      cls: 'est-ok' },
+      parcial: { txt: 'Parcial',     cls: 'est-med' },
+      plan:    { txt: 'Planificado', cls: 'est-plan' },
+    };
 
     // Gradientes compartidos (volumen metálico, visor con profundidad, ojos brillantes)
     function injectBotDefs() {
@@ -11119,14 +11148,34 @@
 
     const grid = document.getElementById('agGrid');
     function renderGrid() {
-      grid.innerHTML = AGENTS.map((a) =>
-        '<div class="ag-card" data-agent="' + a.id + '">'
-        + '<div class="ag-card-top"><span class="ag-bot" style="--bot:' + a.col + ';">' + robotSvg() + '<span class="ag-bot-badge"><i data-lucide="' + a.ic + '"></i></span></span><span class="ag-status online"><span class="dot"></span> Activo</span></div>'
-        + '<div class="ag-name">' + a.n + '</div><div class="ag-spec">' + a.spec + '</div>'
-        + '<div class="ag-cardmeta"><span><strong>' + a.tareas + '</strong> hoy</span><span class="ag-auto ' + AUTO_CLS[a.auto] + '">' + AUTO_LABEL[a.auto] + '</span></div>'
-        + '<button class="ag-config" data-ag-config="' + a.id + '"><i data-lucide="sliders-horizontal"></i> Autonomía</button>'
+      const esc2 = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+      const orden = AGENTS.slice().sort((a, b) => (a.orden || 99) - (b.orden || 99));
+      grid.innerHTML = orden.map((a) => {
+        const e = EST[a.estado] || EST.plan;
+        return '<div class="ag-card ' + e.cls + '" data-agent="' + a.id + '" style="--ag:' + a.col + ';">'
+        + '<div class="ag-card-top">'
+        +   '<span class="ag-mono">' + esc2(a.n.charAt(0)) + '<span class="ag-mono-badge"><i data-lucide="' + a.ic + '"></i></span></span>'
+        +   '<span class="ag-est">' + e.txt + '</span>'
         + '</div>'
-      ).join('');
+        + '<div class="ag-name">' + esc2(a.n) + '</div><div class="ag-spec">' + esc2(a.spec) + '</div>'
+        + (a.hace
+            ? '<div class="ag-linea hoy"><b>Hoy</b>' + esc2(a.hace) + '</div>'
+            : '<div class="ag-linea nada"><b>Hoy</b>Todavía no hace trabajo</div>')
+        + '<div class="ag-linea prox"><b>Lo próximo</b>' + esc2(a.prox) + '</div>'
+        + '<div class="ag-cardmeta"><span class="ag-orden">' + a.orden + '.º en construirse</span>'
+        +   '<span class="ag-auto ' + AUTO_CLS[a.auto] + '">' + AUTO_LABEL[a.auto] + '</span></div>'
+        + '<button class="ag-config" data-ag-config="' + a.id + '"><i data-lucide="sliders-horizontal"></i> Autonomía</button>'
+        + '</div>';
+      }).join('');
+      const res = document.getElementById('agResumen');
+      if (res) {
+        const c = { activo: 0, parcial: 0, plan: 0 };
+        AGENTS.forEach((a) => { c[a.estado] = (c[a.estado] || 0) + 1; });
+        res.innerHTML = '<span class="agr-it est-ok"><b>' + c.activo + '</b> en funcionamiento</span>'
+          + '<span class="agr-it est-med"><b>' + c.parcial + '</b> parcial</span>'
+          + '<span class="agr-it est-plan"><b>' + c.plan + '</b> por construir</span>'
+          + '<span class="agr-nota">El tablero muestra el estado real. Nada aparece activo si todavía no hace trabajo.</span>';
+      }
       grid.querySelectorAll('[data-ag-config]').forEach((b) => b.addEventListener('click', () => openAuto(b.dataset.agConfig)));
       drawIcons();
     }
