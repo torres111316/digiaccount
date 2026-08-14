@@ -1,0 +1,237 @@
+<title>Carta al SENIAT · DigiAccount</title>
+
+<style>
+  /* ============================================================
+     Papelería de DigiAccount. La hoja es papel: blanca siempre, en
+     cualquier tema, porque se imprime y se envía como PDF. Solo la
+     mesa donde reposa se adapta al tema del lector.
+     ============================================================ */
+  :root {
+    --mesa:   #E8ECF0;
+    --marca:  #0A2342;
+    --cian:   #0E9BBF;
+    --tinta:  #1B2733;
+    --suave:  #5A6875;
+    --regla:  #D5DCE3;
+    --caja:   #EEF4F8;
+    --sombra: 0 2px 4px rgba(10,35,66,.06), 0 18px 50px -28px rgba(10,35,66,.45);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --mesa: #0D1319; --sombra: 0 2px 4px rgba(0,0,0,.5), 0 18px 50px -28px rgba(0,0,0,.9); }
+  }
+  :root[data-theme="dark"] { --mesa: #0D1319; --sombra: 0 2px 4px rgba(0,0,0,.5), 0 18px 50px -28px rgba(0,0,0,.9); }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--mesa);
+    margin: 0;
+    padding: 34px 18px 70px;
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ---------- Barra de ayuda (no se imprime) ---------- */
+  .ayuda {
+    max-width: 820px; margin: 0 auto 20px;
+    display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center;
+    font-size: 12.5px; color: var(--suave);
+  }
+  .ayuda b { color: var(--marca); font-weight: 700; }
+  .btn-imp {
+    font: inherit; font-weight: 700; font-size: 12.5px;
+    color: #fff; background: var(--marca); border: 0;
+    padding: 8px 16px; border-radius: 3px; cursor: pointer;
+  }
+  .btn-imp:hover { background: #0d2d55; }
+  .btn-imp:focus-visible { outline: 2px solid var(--cian); outline-offset: 2px; }
+
+  /* ---------- La hoja ---------- */
+  .carta {
+    max-width: 820px; margin: 0 auto;
+    background: #FFFFFF; color: var(--tinta);
+    padding: 46px 54px 52px;
+    box-shadow: var(--sombra);
+    font-size: 13.4px; line-height: 1.62;
+  }
+
+  /* ---------- Membrete ---------- */
+  .membrete {
+    display: flex; flex-wrap: wrap; gap: 20px;
+    align-items: flex-start; justify-content: space-between;
+    padding-bottom: 14px;
+  }
+  .marca-blq { display: flex; align-items: center; gap: 11px; }
+  .marca-blq svg { width: 40px; height: 40px; flex: none; }
+  .marca-txt .nombre {
+    font-size: 25px; font-weight: 800; letter-spacing: -.035em; line-height: 1;
+    color: var(--marca);
+  }
+  .marca-txt .nombre em { font-style: normal; color: var(--cian); }
+  .marca-txt .lema {
+    font-size: 8.2px; letter-spacing: .13em; text-transform: uppercase;
+    color: var(--suave); margin-top: 4px;
+  }
+  .contacto {
+    text-align: right; font-size: 11.2px; line-height: 1.75; color: var(--suave);
+  }
+  .contacto .quien { color: var(--marca); font-weight: 700; }
+  .regla-marca { height: 2px; background: var(--marca); margin-bottom: 26px; }
+
+  /* ---------- Fecha y destinatario ---------- */
+  .fecha { text-align: right; font-size: 13px; color: var(--tinta); margin-bottom: 26px; }
+  .dest { margin-bottom: 20px; line-height: 1.55; }
+  .dest .nom { font-size: 15.5px; font-weight: 700; color: var(--marca); }
+  .dest .desp { color: var(--suave); }
+
+  .asunto {
+    background: var(--caja); border-left: 3px solid var(--cian);
+    padding: 13px 16px; margin-bottom: 24px;
+    font-size: 12.8px; line-height: 1.55;
+  }
+  .asunto b { color: var(--marca); }
+
+  /* ---------- Cuerpo ---------- */
+  .carta p { margin: 0 0 13px; text-align: justify; hyphens: auto; }
+  .carta strong { font-weight: 700; color: var(--marca); }
+  h2 {
+    font-size: 13.5px; font-weight: 800; color: var(--marca);
+    letter-spacing: -.01em; margin: 24px 0 11px;
+    padding-bottom: 5px; border-bottom: 1px solid var(--regla);
+  }
+  ul, ol { margin: 0 0 13px; padding-left: 20px; }
+  li { margin-bottom: 7px; text-align: justify; }
+  li::marker { color: var(--cian); font-weight: 700; }
+
+  /* ---------- Firma ---------- */
+  .firma { margin-top: 34px; break-inside: avoid; }
+  .firma .linea { width: 210px; border-top: 1px solid var(--tinta); margin-bottom: 7px; }
+  .firma .nom { font-size: 14.5px; font-weight: 800; color: var(--marca); }
+  .firma .cargo { font-size: 12px; line-height: 1.6; color: var(--suave); }
+  .firma .pie {
+    margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--regla);
+    font-size: 10.8px; color: var(--suave);
+  }
+
+  /* ============================================================
+     Impresión: A4, sin la mesa ni la barra de ayuda.
+     ============================================================ */
+  @page { size: A4; margin: 16mm 18mm; }
+  @media print {
+    body { background: #fff; padding: 0; }
+    .ayuda { display: none; }
+    .carta {
+      max-width: none; margin: 0; padding: 0;
+      box-shadow: none; font-size: 10.6pt; line-height: 1.5;
+    }
+    .marca-txt .nombre { font-size: 20pt; }
+    h2 { font-size: 11pt; margin-top: 16pt; break-after: avoid; }
+    .carta p, li { orphans: 3; widows: 3; }
+    .asunto { background: #EEF4F8 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .regla-marca { background: #0A2342 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+</style>
+
+<div class="ayuda">
+  <button class="btn-imp" onclick="window.print()">Imprimir o guardar en PDF</button>
+  <span>Sale en <b>A4</b>. Para enviarla por correo, imprime y elige <b>«Guardar como PDF»</b>.</span>
+</div>
+
+<div class="carta">
+
+  <!-- ================= MEMBRETE ================= -->
+  <div class="membrete">
+    <div class="marca-blq">
+      <svg viewBox="0 0 48 48" aria-hidden="true">
+        <rect x="1.5" y="1.5" width="45" height="45" rx="11" fill="#0A2342"/>
+        <path d="M24 11.5 34.5 34.5h-6.2L24 24.2l-4.3 10.3h-6.2z" fill="#FFFFFF"/>
+        <path d="M24 11.5 34.5 34.5h-6.2L24 24.2z" fill="#0E9BBF"/>
+      </svg>
+      <div class="marca-txt">
+        <div class="nombre">Digi<em>Account</em></div>
+        <div class="lema">Contabilidad · Impuestos · Automatización con IA</div>
+      </div>
+    </div>
+    <div class="contacto">
+      <span class="quien">Luis Torres — C.P.C. 183472</span><br>
+      digiaccount.io · gerencia@digiaccount.io<br>
+      +58 412-5070103
+    </div>
+  </div>
+  <div class="regla-marca"></div>
+
+  <!-- ================= FECHA Y DESTINATARIO ================= -->
+  <p class="fecha">Caracas, ______ de ____________________ de 2026</p>
+
+  <div class="dest">
+    Ciudadano<br>
+    <span class="nom">Román Maniglia</span><br>
+    Superintendente Nacional<br>
+    Servicio Nacional Integrado de Administración Aduanera y Tributaria (SENIAT)<br>
+    <span class="desp">Su Despacho. —</span>
+  </div>
+
+  <div class="asunto">
+    <b>Asunto:</b> Ofrecimiento como aliado técnico nacional en el marco de la
+    digitalización tributaria, y disposición a aportar la experiencia de una
+    plataforma venezolana desarrollada conforme al marco de facturación digital.
+  </div>
+
+  <!-- ================= CUERPO ================= -->
+  <p>Distinguido Superintendente:</p>
+
+  <p>Reciba un respetuoso y cordial saludo, junto con mis mejores deseos de éxito al frente de la Administración Tributaria nacional.</p>
+
+  <p>Me dirijo a usted en mi condición de <strong>Contador Público Colegiado (C.P.C. N° 183472)</strong> y fundador de <strong>DigiAccount</strong>, una plataforma venezolana de contabilidad, tributos y automatización con inteligencia artificial, desarrollada íntegramente en el país para facilitar el cumplimiento fiscal de los contribuyentes y de los profesionales de la contaduría.</p>
+
+  <p>He seguido con especial interés el mandato de <strong>digitalización y automatización del sistema tributario</strong> que usted ha asumido, así como la voluntad de integrar a la banca en los procesos de recaudación. Comparto plenamente esa visión: estoy convencido de que la tecnología puede lograr que el contribuyente cumpla sus obligaciones en pocos pasos y que, simultáneamente, la Administración Tributaria disponga de información más oportuna, trazable y confiable.</p>
+
+  <h2>Lo que se construyó</h2>
+
+  <p>DigiAccount fue concebido tomando como referencia el marco de facturación digital —Providencias SNAT/2024/000102 y SNAT/2024/000121—, y sobre esa base se implementaron, entre otras capacidades:</p>
+
+  <ul>
+    <li><strong>Numeración consecutiva por contribuyente</strong>, verificada contra la base de datos y no contra la sesión del usuario.</li>
+    <li><strong>Emisión de comprobantes de retención en formato digital</strong>, con el correlativo de catorce posiciones y la discriminación de impuestos y alícuotas.</li>
+    <li><strong>Inalterabilidad de los documentos fiscales</strong>, resuelta en el motor de base de datos y no en la interfaz, de modo que no pueda eludirse por otra vía de acceso. La corrección procede únicamente por nota de crédito o de débito, y el documento original se conserva intacto.</li>
+    <li><strong>Registro de eventos del sistema</strong>, escrito por disparadores en la base y no desde la aplicación; ninguna sesión de usuario puede escribirlo, modificarlo ni eliminarlo.</li>
+    <li><strong>Interfaz de consulta para la fiscalización</strong>, con clave por contribuyente, acceso de solo lectura y registro de cada consulta efectuada.</li>
+    <li><strong>Resguardo documental ordenado</strong>, con política de conservación por diez años.</li>
+  </ul>
+
+  <p>Tengo conocimiento de que la Providencia SNAT/2024/000121 fue derogada por la Providencia SNAT/2026/00084, publicada en la Gaceta Oficial N° 43.435 del 12 de agosto de 2026. <strong>Las capacidades descritas se mantienen en la plataforma</strong>, aun cuando hoy no exista una norma que las exija, por considerar que responden a buenas prácticas de integridad y trazabilidad de la información fiscal.</p>
+
+  <h2>Hacia dónde avanza</h2>
+
+  <p>Nuestro desarrollo se orienta hacia una plataforma de asistentes de inteligencia artificial especializados por área tributaria y contable, capaces de acompañar los procesos de principio a fin —tanto para los profesionales de la contaduría como para el propio contribuyente—, siempre bajo un principio que consideramos irrenunciable: <strong>la herramienta propone y la persona aprueba</strong>. Ningún documento fiscal se registra sin intervención humana.</p>
+
+  <p>Con ello buscamos elevar la <strong>precisión, la seguridad y la trazabilidad</strong> en la determinación y el pago de los tributos, de modo que cumplir con el fisco llegue a ser tan sencillo como los pagos que hoy se realizan en pocos clics.</p>
+
+  <h2>Lo que ofrezco</h2>
+
+  <p>En el entendido de que la Administración Tributaria pudiera estar evaluando un nuevo marco para los sistemas informáticos de facturación, <strong>me pongo a su entera disposición como aliado técnico nacional</strong>, en cualquiera de estas formas:</p>
+
+  <ol>
+    <li><strong>Aportar la experiencia de implementación</strong> de los requisitos del marco anterior, con el detalle técnico de cómo fueron resueltos.</li>
+    <li><strong>Participar en mesas de trabajo o consultas técnicas</strong>, si la institución estima conveniente escuchar a desarrolladores nacionales.</li>
+    <li><strong>Poner la plataforma a disposición</strong> para las pruebas de integración que la institución considere pertinentes.</li>
+  </ol>
+
+  <p>Agradecería conocer si existe una hoja de ruta prevista para el marco de facturación electrónica, a fin de orientar nuestro desarrollo en la misma dirección que la institución impulsa.</p>
+
+  <p>Quedo convencido de que las iniciativas nacionales pueden contribuir de manera significativa a los objetivos de la institución. Agradezco de antemano su amable atención y quedo atento a sus indicaciones.</p>
+
+  <p>Atentamente,</p>
+
+  <!-- ================= FIRMA ================= -->
+  <div class="firma">
+    <div class="linea"></div>
+    <div class="nom">Luis Torres</div>
+    <div class="cargo">
+      Contador Público Colegiado — C.P.C. N° 183472<br>
+      Fundador de DigiAccount
+    </div>
+    <div class="pie">digiaccount.io · gerencia@digiaccount.io · +58 412-5070103</div>
+  </div>
+
+</div>
