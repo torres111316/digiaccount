@@ -2,7 +2,9 @@
 
 > **Fundamento:** Providencia Administrativa SNAT/2024/000102, Artículo 18, numeral 7:
 > el emisor debe garantizar al SENIAT *"acceso permanente para consultar los
-> documentos emitidos por diez (10) años"*. Y Providencia SNAT/2024/000121,
+> documentos emitidos por diez (10) años"* — **esta obligación sigue plenamente
+> vigente, es del emisor y no fue tocada por la derogatoria del 12/08/2026**. Y la
+> Providencia SNAT/2024/000121 —hoy derogada—,
 > Artículo 3 literal a: *"conservación, accesibilidad, legibilidad"* de los registros.
 >
 > **Estado:** vigente. Última revisión: 09/08/2026.

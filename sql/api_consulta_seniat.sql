@@ -15,6 +15,12 @@
 -- No hay función que escriba. No es que estén "protegidas": es que no existen.
 --
 -- Idempotente. No borra ni modifica ningún dato existente.
+-- NOTA (14/08/2026): la Providencia SNAT/2024/000121 fue DEROGADA por la
+-- SNAT/2026/00084, Gaceta Oficial 43.435 del 12/08/2026, sin norma que la
+-- sustituya. Lo que sigue NO es obligatorio hoy. Se conserva porque el motivo
+-- de ingeniería no dependía de la norma: un registro fiscal que se pueda
+-- alterar en silencio es malo con providencia o sin ella. Y una derogatoria
+-- sin reemplazo suele preceder a una norma nueva.
 -- =============================================================
 
 create extension if not exists pgcrypto;

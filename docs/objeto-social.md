@@ -11,7 +11,8 @@ hace y va a hacer, porque ampliarlo después cuesta otra asamblea.
 
 Hay dos razones concretas, más allá de lo comercial:
 
-1. **La Providencia SNAT/2024/000121** exige, entre los recaudos de la solicitud de
+1. **La Providencia SNAT/2024/000121** —derogada el 12/08/2026 por la SNAT/2026/00084—
+   exigía, entre los recaudos de la solicitud de
    homologación, el **acta constitutiva** y las cédulas de los socios. El evaluador
    va a leer el objeto: la actividad que se homologa tiene que estar ahí.
 
@@ -111,7 +112,8 @@ homologa el sistema.
         ↓
 2. Registrar el código en el SAPI  (con la C.A. como titular)
         ↓
-3. Solicitar la homologación ante el SENIAT  (Providencia 000121)
+3. ~~Solicitar la homologación ante el SENIAT (Providencia 000121)~~ — **paso
+   eliminado**: la 000121 fue derogada sin reemplazo el 12/08/2026
 ```
 
 No conviene alterar ese orden: la homologación pide el acta constitutiva, y el

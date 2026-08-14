@@ -1,12 +1,37 @@
 # Ficha técnica del sistema — DigiAccount ERP
 
-> Recaudo de la solicitud de autorización como proveedor de sistemas informáticos
-> de facturación, **Providencia Administrativa SNAT/2024/000121, Artículo 4**, que
-> exige la *"ficha técnica del sistema (aplicativo, lenguaje, base de datos,
-> monitoreo y auditoría, tipo de conexión con las plataformas)"*.
+> ## ⚠️ La norma que exigía este recaudo fue derogada
 >
-> **Estado:** borrador de trabajo. Se actualiza a medida que el sistema avanza.
-> Última revisión: 09/08/2026.
+> La **Providencia Administrativa SNAT/2026/00084**, publicada en la Gaceta
+> Oficial N° 43.435 del 12 de agosto de 2026, **deroga la SNAT/2024/000121** —la
+> que regulaba las condiciones y requisitos para los proveedores de sistemas
+> informáticos de facturación— y **no la sustituye por ningún otro régimen**.
+>
+> Este documento **se mantiene a propósito**, por tres razones:
+>
+> 1. Una derogatoria sin reemplazo suele preceder a una norma nueva, no a la
+>    ausencia de norma. Si llega, el trabajo ya está hecho.
+> 2. Lo que aquí se describe es **buena ingeniería con providencia o sin ella**:
+>    un libro fiscal que se pueda alterar en silencio es un mal libro aunque
+>    nadie lo prohíba.
+> 3. Deja de ser un requisito y pasa a ser un **diferenciador verificable**
+>    frente a competidores que no lo tienen.
+>
+> Las obligaciones del **emisor** no cambian: la **Providencia SNAT/2024/000102**
+> sigue vigente y no fue tocada por esta Gaceta.
+
+---
+
+> Se redactó como recaudo de la solicitud de autorización como proveedor de
+> sistemas informáticos de facturación —**Providencia SNAT/2024/000121, Artículo
+> 4**, hoy derogada—, que exigía la *"ficha técnica del sistema (aplicativo,
+> lenguaje, base de datos, monitoreo y auditoría, tipo de conexión con las
+> plataformas)"*. Hoy cumple otra función: **describe con precisión qué es y cómo
+> funciona el sistema**, que es lo que pide cualquier cliente serio, cualquier
+> auditor y cualquier régimen que venga después.
+>
+> **Estado:** documento vivo. Se actualiza a medida que el sistema avanza.
+> Última revisión: 14/08/2026.
 
 ---
 
@@ -119,7 +144,7 @@ ese modo:
 - Ningún registro del libro fiscal se elimina, en ningún caso.
 
 **Estas reglas viven en el motor de la base de datos, no en la interfaz.** La
-disposición final quinta de la Providencia 000121 establece la responsabilidad del
+disposición final quinta de la Providencia 000121 —hoy derogada— establecía la responsabilidad del
 proveedor como coautor si el sistema *permite* la alteración de registros —no
 únicamente si la alteración ocurre—. Una validación de pantalla puede eludirse
 operando contra la API; una restricción del motor no.
@@ -200,25 +225,46 @@ de la base de datos y al de automatización. No se admiten orígenes distintos.
 
 ## 9 · Lo que falta, declarado
 
-Se enumera de forma expresa. Un recaudo que omite lo pendiente es más frágil que uno
-que lo declara con su plan.
+Se enumera de forma expresa. Un documento que omite lo pendiente es más frágil que
+uno que lo declara con su plan.
+
+**La derogatoria del 12/08/2026 partió esta lista en dos.** Lo que exigía la 000121
+al *proveedor del software* dejó de ser obligatorio; lo que exige la 000102 y la Ley
+de IVA al *emisor* sigue igual. Se separan para que se vea cuál es cuál.
+
+### Sigue siendo obligatorio — recae sobre el emisor
 
 | Requisito | Situación | De quién depende |
 |---|---|---|
-| **Clave de consulta y API** (Art. 3.h) | **Construida.** Seis consultas de solo lectura, clave por empresa, cada consulta registrada | Cumplido |
-| **Remisión automática al SENIAT** (Art. 3.b) | Diseñada; la infraestructura de automatización está operativa. Falta el formato técnico | Del SENIAT: los instructivos aún no se publican en el portal fiscal |
-| **Integración con imprenta digital** (000102, Art. 7.4) | Por definir. El número de control se deja deliberadamente vacío mientras no exista imprenta contratada | De la contratación de una imprenta autorizada |
-| **Formato de la factura digital** (000102, Art. 7) | Parcial. Faltan los numerales que dependen de la imprenta (4, 5, 14 y 15) | De lo anterior |
-| **Política de conservación a 10 años** | Redactada. Falta automatizar la exportación mensual al archivo independiente | Del proveedor |
-| **Emisión sin conexión** (000102, Art. 16 nivel 2) | **No cubierto.** La arquitectura existe y está probada en el otro producto de la empresa; su traslado depende además de los rangos que entregue la imprenta | Del proveedor y de la imprenta |
+| **Autorización del emisor** (000102, Arts. 17-20) | Cada empresa que emita necesita la suya. El sistema lo modela: el modo de emisión se activa por empresa, con su fecha y número de autorización | Del cliente |
+| **Integración con imprenta digital** (000102, Art. 7.4) | Por definir. El número de control se deja deliberadamente vacío mientras no exista imprenta contratada | De contratar una imprenta autorizada |
+| **Formato de la factura** (000102, Art. 7) | Modelo completo redactado en `docs/formato-factura.html`, con productos y servicios. Faltan los numerales que asigna la imprenta (4, 5, 14 y 15) | De lo anterior |
+| **Conservación por diez años** (LIVA) | Política redactada. Falta automatizar la exportación mensual al archivo independiente | Del proveedor |
+| **Emisión sin conexión** (000102, Art. 16 nivel 2) | No cubierto. La arquitectura existe y está probada en el otro producto de la empresa; su traslado depende además de los rangos que entregue la imprenta | Del proveedor y de la imprenta |
 | **Constitución de la compañía** | En trámite | Del registro mercantil |
+
+### Ya no es obligatorio — se conserva como estándar propio
+
+Lo exigía la 000121 al proveedor del software. **Nadie lo pide hoy.** Se mantiene
+porque describe capacidades reales del sistema que un cliente puede verificar, y
+porque una derogatoria sin reemplazo bien puede preceder a una norma nueva.
+
+| Capacidad | Situación |
+|---|---|
+| **Clave de consulta y API de fiscalización** (era Art. 3.h) | **Construida y probada desde fuera.** Seis consultas de solo lectura, clave por empresa, cada consulta registrada |
+| **Registro de eventos inalterable** (era Art. 3) | **Construido.** Disparadores en ocho tablas; verificado que ninguna sesión de usuario puede escribirlo, alterarlo ni borrarlo |
+| **Inalterabilidad de documentos fiscales** (era Art. 3) | **Construida.** Solo en modo emisión; la corrección va por nota de crédito o débito, y el documento original nunca se toca |
+| **Remisión automática al SENIAT** (era Art. 3.b) | Diseñada; la infraestructura de automatización está operativa. Nunca se publicaron los formatos técnicos |
+| **Re-autorización por versión** (eran Arts. 9-11) | El trámite desapareció. La capacidad de identificar y comparar versiones se conserva — ver sección 10 |
 
 ---
 
-## 10 · Sobre la re-homologación
+## 10 · Sobre el control de versiones
 
-Los Artículos 9 al 11 de la 000121 exigen nueva autorización ante cada versión nueva
-del sistema. Dos características lo facilitan:
+Los Artículos 9 al 11 de la 000121 —derogada— exigían nueva autorización ante cada
+versión nueva del sistema. **Ese trámite ya no existe**, pero la capacidad de
+identificar y comparar versiones sigue siendo necesaria: la pide cualquier auditoría
+y la pediría un régimen nuevo. Dos características lo facilitan:
 
 - **El código fuente desplegado es el código legible**, sin compilación intermedia.
 - **Todo cambio en la base de datos está versionado** en archivos de migración,
