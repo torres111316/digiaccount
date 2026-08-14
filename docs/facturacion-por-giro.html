@@ -1,0 +1,502 @@
+<title>Facturar según el giro</title>
+
+<style>
+  /* ============================================================
+     Documento de mostrador. Papel de ticket como fondo, tinta
+     densa, rojo de etiqueta de precio para el mundo del escáner y
+     verde de visor de balanza para el peso.
+     ============================================================ */
+  :root {
+    --papel:   #F1F1ED;
+    --hoja:    #FCFCFA;
+    --franja:  #E8E8E2;
+    --tinta:   #17181A;
+    --tinta-2: #4B4D51;
+    --tenue:   #7B7C7F;
+    --regla:   #D6D6D0;
+    --firme:   #ADADA6;
+    --rojo:    #B03A26;
+    --rojo-p:  #F7E7E2;
+    --verde:   #1F6E5E;
+    --verde-p: #E0EFEB;
+    --sombra:  0 1px 2px rgba(23,24,26,.05), 0 12px 34px -24px rgba(23,24,26,.55);
+
+    --texto: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    --lectura: Charter, "Bitstream Charter", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+    --dato: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --papel:   #121312;  --hoja:    #1A1B1A;  --franja:  #202120;
+      --tinta:   #E8E8E4;  --tinta-2: #ADAEB0;  --tenue:   #838486;
+      --regla:   #2E2F2E;  --firme:   #43443F;
+      --rojo:    #E28A72;  --rojo-p:  #2C1A15;
+      --verde:   #57B39C;  --verde-p: #12251F;
+      --sombra:  0 1px 2px rgba(0,0,0,.5), 0 12px 34px -24px rgba(0,0,0,.9);
+    }
+  }
+  :root[data-theme="dark"] {
+    --papel:   #121312;  --hoja:    #1A1B1A;  --franja:  #202120;
+    --tinta:   #E8E8E4;  --tinta-2: #ADAEB0;  --tenue:   #838486;
+    --regla:   #2E2F2E;  --firme:   #43443F;
+    --rojo:    #E28A72;  --rojo-p:  #2C1A15;
+    --verde:   #57B39C;  --verde-p: #12251F;
+    --sombra:  0 1px 2px rgba(0,0,0,.5), 0 12px 34px -24px rgba(0,0,0,.9);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--papel); color: var(--tinta);
+    font-family: var(--texto); font-size: 16px; line-height: 1.6;
+    margin: 0; padding: 0 20px 100px; -webkit-font-smoothing: antialiased;
+  }
+  .hoja { max-width: 960px; margin: 0 auto; }
+
+  /* ---------- Cabecera con franja de código ---------- */
+  .cab { padding: 58px 0 0; }
+  .marca {
+    font-family: var(--dato); font-size: 11px; letter-spacing: .2em;
+    text-transform: uppercase; color: var(--rojo); margin: 0 0 16px;
+  }
+  h1 {
+    font-size: clamp(31px, 5.4vw, 50px); font-weight: 800;
+    letter-spacing: -.035em; line-height: 1.02; text-wrap: balance;
+    margin: 0 0 18px; max-width: 17ch;
+  }
+  .bajada {
+    font-family: var(--lectura); font-size: clamp(16.5px, 2.1vw, 19.5px);
+    line-height: 1.55; color: var(--tinta-2); max-width: 56ch; margin: 0 0 26px;
+  }
+  /* Franja tipo código de barras, dibujada con gradiente */
+  .barra {
+    height: 30px; margin-bottom: 4px;
+    background: repeating-linear-gradient(90deg,
+      var(--tinta) 0 2px, transparent 2px 5px,
+      var(--tinta) 5px 6px, transparent 6px 11px,
+      var(--tinta) 11px 14px, transparent 14px 16px,
+      var(--tinta) 16px 17px, transparent 17px 22px);
+    opacity: .85;
+  }
+  .barra-pie {
+    font-family: var(--dato); font-size: 10px; letter-spacing: .3em;
+    color: var(--tenue); padding-bottom: 22px; border-bottom: 2px solid var(--tinta);
+  }
+
+  /* ---------- Secciones ---------- */
+  section { padding-top: 56px; }
+  .rotulo {
+    font-family: var(--dato); font-size: 10.5px; letter-spacing: .2em;
+    text-transform: uppercase; color: var(--tenue);
+    padding-bottom: 8px; border-bottom: 1px solid var(--regla); margin-bottom: 22px;
+  }
+  h2 {
+    font-size: clamp(23px, 3.2vw, 30px); font-weight: 800;
+    letter-spacing: -.026em; line-height: 1.16; text-wrap: balance; margin: 0 0 16px;
+  }
+  h3 { font-size: 16px; font-weight: 800; letter-spacing: -.008em; margin: 28px 0 9px; }
+  p { margin: 0 0 15px; max-width: 66ch; }
+  .lectura { font-family: var(--lectura); font-size: 17px; line-height: 1.66; }
+  code {
+    font-family: var(--dato); font-size: .88em;
+    background: var(--franja); padding: 1px 5px; border-radius: 2px;
+  }
+
+  /* ---------- Fichas de giro ---------- */
+  .giros { display: grid; gap: 20px; margin-top: 6px; }
+  .giro {
+    background: var(--hoja); border: 1px solid var(--regla);
+    border-left: 4px solid var(--ac); border-radius: 3px;
+    box-shadow: var(--sombra); padding: 26px 30px 28px;
+  }
+  .g-rojo  { --ac: var(--rojo);  --acp: var(--rojo-p); }
+  .g-verde { --ac: var(--verde); --acp: var(--verde-p); }
+  .g-gris  { --ac: var(--firme); --acp: var(--franja); }
+
+  .g-top { display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: baseline; margin-bottom: 6px; }
+  .g-nom { font-size: 21px; font-weight: 800; letter-spacing: -.024em; margin: 0; }
+  .g-tag {
+    font-family: var(--dato); font-size: 10px; letter-spacing: .12em;
+    text-transform: uppercase; padding: 3px 9px; border-radius: 2px;
+    background: var(--acp); color: var(--ac);
+  }
+  .g-quien { font-family: var(--dato); font-size: 12px; color: var(--tenue); margin: 0 0 16px; }
+  .giro p { margin-bottom: 13px; }
+
+  .g-flujo {
+    background: var(--acp); border-radius: 3px; padding: 14px 17px; margin: 0 0 16px;
+    font-family: var(--dato); font-size: 12.5px; line-height: 1.85; color: var(--tinta);
+  }
+  .g-flujo b { color: var(--ac); font-weight: 700; }
+
+  .g-falta { border-top: 1px solid var(--regla); padding-top: 14px; margin-top: 4px; }
+  .g-falta > b {
+    display: block; font-family: var(--dato); font-size: 9.5px;
+    letter-spacing: .13em; text-transform: uppercase; color: var(--tenue);
+    font-weight: 400; margin-bottom: 8px;
+  }
+  .g-falta ul { margin: 0; padding-left: 19px; }
+  .g-falta li { font-size: 14.5px; line-height: 1.5; margin-bottom: 5px; }
+  .g-falta li::marker { color: var(--ac); }
+
+  /* ---------- El código de la balanza ---------- */
+  .ean {
+    background: var(--hoja); border: 1px solid var(--regla); border-radius: 3px;
+    padding: 24px 26px; margin: 22px 0; box-shadow: var(--sombra); overflow-x: auto;
+  }
+  .ean-num {
+    font-family: var(--dato); font-size: clamp(20px, 4vw, 31px); font-weight: 700;
+    letter-spacing: .09em; white-space: nowrap; margin-bottom: 14px;
+  }
+  .ean-num span { padding: 2px 3px; border-radius: 2px; }
+  .e1 { background: var(--rojo-p); color: var(--rojo); }
+  .e2 { background: var(--franja); color: var(--tinta); }
+  .e3 { background: var(--verde-p); color: var(--verde); }
+  .e4 { color: var(--tenue); }
+  .ean-leg { display: grid; gap: 7px; font-size: 13.5px; }
+  .ean-leg div { display: flex; gap: 10px; align-items: baseline; }
+  .ean-leg i {
+    font-style: normal; font-family: var(--dato); font-size: 10px;
+    letter-spacing: .1em; text-transform: uppercase;
+    padding: 2px 8px; border-radius: 2px; white-space: nowrap; flex: none;
+  }
+
+  /* ---------- Tablas ---------- */
+  .marco { overflow-x: auto; margin: 22px 0; }
+  table { width: 100%; min-width: 560px; border-collapse: collapse; font-size: 14px; background: var(--hoja); }
+  caption {
+    caption-side: top; text-align: left; font-family: var(--dato);
+    font-size: 10.5px; letter-spacing: .16em; text-transform: uppercase;
+    color: var(--tenue); padding-bottom: 10px;
+  }
+  th, td { padding: 11px 14px; text-align: left; vertical-align: top; }
+  thead th {
+    font-family: var(--dato); font-weight: 400; font-size: 10.5px;
+    letter-spacing: .11em; text-transform: uppercase; color: var(--tenue);
+    border-bottom: 1.5px solid var(--firme); white-space: nowrap;
+  }
+  tbody tr { border-bottom: 1px solid var(--regla); }
+  tbody tr:nth-child(even) { background: var(--franja); }
+  td:first-child { font-weight: 700; }
+  .si { color: var(--verde); font-weight: 700; }
+  .no { color: var(--rojo); font-weight: 700; }
+
+  /* ---------- Núcleo y captadores ---------- */
+  .nucleo {
+    background: var(--hoja); border: 1px solid var(--regla); border-radius: 3px;
+    padding: 28px 30px; box-shadow: var(--sombra); margin: 24px 0;
+  }
+  .capt { display: grid; gap: 2px; background: var(--regla); border: 1px solid var(--regla); border-radius: 3px; overflow: hidden; margin-top: 18px; }
+  .capt-it { background: var(--hoja); padding: 15px 18px; display: grid; grid-template-columns: 150px 1fr; gap: 16px; align-items: baseline; }
+  .capt-it b { font-family: var(--dato); font-size: 12px; color: var(--rojo); }
+  .capt-it span { font-size: 14.5px; color: var(--tinta-2); }
+  @media (max-width: 560px) { .capt-it { grid-template-columns: 1fr; gap: 3px; } }
+
+  /* ---------- Orden ---------- */
+  .pasos { display: grid; gap: 2px; background: var(--regla); border: 1px solid var(--regla); border-radius: 3px; overflow: hidden; margin: 22px 0; }
+  .paso { background: var(--hoja); padding: 20px 24px; display: grid; grid-template-columns: 46px 1fr; gap: 18px; }
+  .paso-n { font-family: var(--dato); font-size: 19px; font-weight: 800; color: var(--rojo); line-height: 1.2; }
+  .paso h3 { margin: 0 0 5px; font-size: 16px; }
+  .paso p { margin: 0; font-size: 15px; color: var(--tinta-2); max-width: 60ch; }
+  @media (max-width: 560px) { .paso { grid-template-columns: 1fr; gap: 6px; } }
+
+  .aviso {
+    background: var(--rojo-p); border-left: 4px solid var(--rojo);
+    border-radius: 3px; padding: 20px 24px; margin: 22px 0;
+  }
+  .aviso p { margin: 0; }
+  .aviso p + p { margin-top: 11px; }
+
+  .pie {
+    margin-top: 60px; padding-top: 20px; border-top: 1px solid var(--regla);
+    font-family: var(--dato); font-size: 11.5px; line-height: 1.8; color: var(--tenue);
+  }
+</style>
+
+<div class="hoja">
+
+  <header class="cab">
+    <p class="marca">DigiAccount · Documento de diseño</p>
+    <h1>Facturar según el giro del negocio</h1>
+    <p class="bajada">Una tienda de ropa, una panadería y un taller facturan distinto. El documento fiscal es el mismo — lo que cambia es cómo llega cada renglón al ticket.</p>
+    <div class="barra"></div>
+    <div class="barra-pie">2 12345 01234 5</div>
+  </header>
+
+  <!-- ================= LA IDEA ================= -->
+  <section>
+    <p class="rotulo">El punto de partida</p>
+    <h2>Un solo núcleo fiscal, varios captadores de renglón</h2>
+
+    <p class="lectura">Es tentador pensar que cada giro necesita su propio módulo de facturación. <strong>No es así, y creerlo sale caro:</strong> terminarías con tres sistemas de facturación que hay que homologar, corregir y mantener por separado.</p>
+
+    <p class="lectura">La factura de la panadería y la de la tienda de ropa son <em>idénticas</em> en lo que importa: correlativo, RIF del adquiriente, base por alícuota, IVA discriminado, total. Lo único que cambia es <strong>de dónde salió cada línea</strong> — de un escáner, de una etiqueta de balanza, de una búsqueda, o de los dedos de alguien.</p>
+
+    <div class="nucleo">
+      <h3 style="margin-top:0">El núcleo no se toca</h3>
+      <p style="margin-bottom:0">Correlativo por empresa · número de control · base por alícuota · IVA discriminado · IGTF cuando aplique · inalterabilidad · nota de crédito para corregir. <strong>Todo eso ya está construido</strong> y sirve igual para los seis giros.</p>
+
+      <div class="capt">
+        <div class="capt-it"><b>manual</b><span>Alguien escribe la descripción y el monto. Es lo que existe hoy.</span></div>
+        <div class="capt-it"><b>catálogo</b><span>Se busca el producto por nombre y se agrega.</span></div>
+        <div class="capt-it"><b>escáner</b><span>Se lee el código de barras y el producto aparece solo.</span></div>
+        <div class="capt-it"><b>balanza</b><span>Se lee la etiqueta que imprimió la balanza; el peso viene dentro del código.</span></div>
+        <div class="capt-it"><b>plantilla</b><span>Un servicio recurrente que se repite cada mes.</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= LOS GIROS ================= -->
+  <section>
+    <p class="rotulo">Los giros</p>
+    <h2>Cinco situaciones y qué necesita cada una</h2>
+
+    <div class="giros">
+
+      <!-- ROPA / MOSTRADOR -->
+      <article class="giro g-rojo">
+        <div class="g-top">
+          <h3 class="g-nom">Mostrador con código de barras</h3>
+          <span class="g-tag">escáner</span>
+        </div>
+        <p class="g-quien">Tienda de ropa · ferretería · abasto · repuestos · librería</p>
+
+        <p>Producto con precio fijo y código pegado de fábrica o impreso por la tienda. La venta es rápida y repetida: quien atiende <strong>no puede tocar el ratón</strong>.</p>
+
+        <div class="g-flujo">
+          <b>1.</b> El lector dispara el código y lo escribe como si fuera un teclado<br>
+          <b>2.</b> El producto aparece con su precio y su alícuota<br>
+          <b>3.</b> Se repite el disparo por cada artículo<br>
+          <b>4.</b> Se cobra y se emite
+        </div>
+
+        <p>El lector <strong>no necesita ninguna integración</strong>: se conecta por USB y el sistema operativo lo trata como un teclado. Lo único que hace falta es que haya un campo esperando y que el foco no se pierda.</p>
+
+        <div class="g-falta">
+          <b>Qué falta construir</b>
+          <ul>
+            <li><code>productos.codigo_barras</code>, único por empresa</li>
+            <li>La pantalla de mostrador, con el campo siempre enfocado</li>
+            <li>Qué hacer cuando el código no existe: ofrecer darlo de alta sin abandonar la venta</li>
+          </ul>
+        </div>
+      </article>
+
+      <!-- PANADERÍA / BALANZA -->
+      <article class="giro g-verde">
+        <div class="g-top">
+          <h3 class="g-nom">Venta por peso</h3>
+          <span class="g-tag">balanza</span>
+        </div>
+        <p class="g-quien">Panadería · charcutería · carnicería · verdulería · quesos</p>
+
+        <p>El precio no está en el producto sino en <strong>cuánto pesó</strong>. Aquí hay dos caminos muy distintos, y conviene elegir bien porque uno cuesta diez veces más que el otro.</p>
+
+        <p><strong>Balanza etiquetadora</strong> — la común en Venezuela. La balanza pesa, calcula e <strong>imprime una etiqueta con un código de barras que lleva el peso adentro</strong>. En caja se lee esa etiqueta con el mismo lector de siempre. <em>No hay que conectar nada.</em></p>
+
+        <p><strong>Balanza conectada</strong> — cableada al equipo, manda el peso en vivo. Requiere un puente local en la máquina y permisos del navegador. Es el camino caro, y solo hace falta cuando se pesa <em>en la caja</em> y no en el mostrador.</p>
+
+        <div class="g-flujo">
+          <b>1.</b> El cliente pide, se pesa en el mostrador<br>
+          <b>2.</b> La balanza imprime la etiqueta con su código<br>
+          <b>3.</b> En caja se lee la etiqueta y el sistema <b>saca el peso del propio código</b><br>
+          <b>4.</b> Se cobra y se emite
+        </div>
+
+        <div class="g-falta">
+          <b>Qué falta construir</b>
+          <ul>
+            <li><code>productos.por_peso</code> y el precio por kilo</li>
+            <li>El decodificador del código con peso embebido — ver abajo</li>
+            <li>El formato de etiqueta por empresa, porque cambia según la marca de balanza</li>
+          </ul>
+        </div>
+      </article>
+
+      <!-- SERVICIOS -->
+      <article class="giro g-gris">
+        <div class="g-top">
+          <h3 class="g-nom">Servicios</h3>
+          <span class="g-tag">manual · plantilla</span>
+        </div>
+        <p class="g-quien">Contadores · talleres · consultorios · agencias · alquileres</p>
+
+        <p>No hay catálogo ni existencias: hay una descripción y un monto, y a veces horas. Muchos se repiten idénticos cada mes.</p>
+
+        <div class="g-falta">
+          <b>Qué falta construir</b>
+          <ul>
+            <li>Plantillas de servicio recurrente, para no reescribir lo mismo cada mes</li>
+            <li>Poco más — <strong>es el giro que hoy está mejor servido</strong></li>
+          </ul>
+        </div>
+      </article>
+
+      <!-- CRÉDITO -->
+      <article class="giro g-gris">
+        <div class="g-top">
+          <h3 class="g-nom">Venta a crédito y mayoreo</h3>
+          <span class="g-tag">catálogo</span>
+        </div>
+        <p class="g-quien">Distribuidoras · mayoristas · ventas a comercios</p>
+
+        <p>Se factura hoy y se cobra después, a veces en partes. La factura no cierra la operación: la abre.</p>
+
+        <div class="g-falta">
+          <b>Qué falta construir</b>
+          <ul>
+            <li>Que la factura genere la cuenta por cobrar, que es donde <strong>Andrea</strong> ya tiene su trabajo definido</li>
+            <li>Precio por lista o por cliente</li>
+          </ul>
+        </div>
+      </article>
+
+      <!-- RESTAURANTE -->
+      <article class="giro g-gris">
+        <div class="g-top">
+          <h3 class="g-nom">Consumo en mesa</h3>
+          <span class="g-tag">fuera de alcance por ahora</span>
+        </div>
+        <p class="g-quien">Restaurantes · panaderías con consumo · bares</p>
+
+        <p>Mesas abiertas, comandas a cocina, cuentas que se dividen, propina. <strong>Es un producto aparte, no una variante.</strong> Meterlo ahora retrasaría los otros cuatro sin servir bien a este.</p>
+      </article>
+
+    </div>
+  </section>
+
+  <!-- ================= EL CÓDIGO DE LA BALANZA ================= -->
+  <section>
+    <p class="rotulo">El detalle que decide la panadería</p>
+    <h2>El peso viene dentro del código de barras</h2>
+
+    <p class="lectura">Esta es la pieza técnica que hace que la balanza funcione <strong>sin conectar nada</strong>. Los códigos que empiezan por <code>2</code> están reservados internacionalmente para medida variable: cada comercio los usa dentro de su tienda y no viajan al mundo exterior.</p>
+
+    <div class="ean">
+      <div class="ean-num">
+        <span class="e1">2</span> <span class="e2">12345</span> <span class="e3">01234</span> <span class="e4">5</span>
+      </div>
+      <div class="ean-leg">
+        <div><i class="e1">2</i> Prefijo de medida variable — dice «esto lleva peso adentro»</div>
+        <div><i class="e2">12345</i> Código del producto en el catálogo de la tienda</div>
+        <div><i class="e3">01234</i> El dato variable: 1,234 kg de peso — o el precio en céntimos</div>
+        <div><i class="e4">5</i> Dígito verificador</div>
+      </div>
+    </div>
+
+    <div class="aviso">
+      <p><strong>Ojo con esto:</strong> el reparto de esos trece dígitos <strong>no es igual en todas las balanzas</strong>. Unas graban el peso, otras el precio ya calculado. Unas usan cinco dígitos para el producto, otras cuatro o seis.</p>
+      <p>Por eso <strong>el formato tiene que ser una configuración por empresa</strong>, no una constante en el código. Si se asume un formato y el cliente tiene otra balanza, cada venta entra con el peso equivocado — <em>y nadie lo nota hasta que cuadra el inventario.</em></p>
+    </div>
+
+    <p class="lectura">La consecuencia práctica es buena: <strong>una panadería solo necesita el lector de códigos</strong>, que es el mismo aparato barato de la tienda de ropa. La balanza que ya tiene sigue haciendo su trabajo sin cambiar nada.</p>
+  </section>
+
+  <!-- ================= LO FISCAL ================= -->
+  <section>
+    <p class="rotulo">Lo fiscal, que es donde no se puede fallar</p>
+    <h2>Un mismo ticket con varias alícuotas</h2>
+
+    <p class="lectura">Aquí está la razón de fondo por la que el catálogo importa tanto: <strong>en un mismo ticket conviven alícuotas distintas.</strong></p>
+
+    <div class="marco">
+      <table>
+        <caption>Ejemplo de una compra en panadería</caption>
+        <thead>
+          <tr><th>Renglón</th><th>Trato</th><th>Va a la Forma 30</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Pan canilla</td><td>Exento</td><td>Ventas internas no gravadas · código 40</td></tr>
+          <tr><td>Refresco</td><td>Alícuota general</td><td>Base y débito · códigos 42 y 43</td></tr>
+          <tr><td>Torta decorada</td><td>Alícuota general</td><td>Base y débito · códigos 42 y 43</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="lectura">Si la alícuota se elige a mano en cada venta, tarde o temprano alguien marca mal el pan y se declara IVA sobre una operación exenta. <strong>Por eso la alícuota vive en el producto</strong>, no en el renglón: se define una vez, al dar de alta el artículo, y en el mostrador nadie decide nada.</p>
+
+    <p class="lectura">Esa parte ya está resuelta — <code>productos.alicuota</code> existe, y el libro y la Forma 30 ya manejan las cuatro categorías, incluida la adicional. <em>Lo que falta es el catálogo que alimente esa columna.</em></p>
+  </section>
+
+  <!-- ================= EL BLOQUEADOR ================= -->
+  <section>
+    <p class="rotulo">Antes que nada</p>
+    <h2>Los productos son de la cuenta, no de la empresa</h2>
+
+    <div class="aviso">
+      <p>Hoy <code>productos</code> se llavea por <code>cuenta_id</code> y <strong>no tiene <code>empresa_id</code></strong>. Eso significa que la panadería y la tienda de ropa del mismo contador <strong>comparten un solo catálogo.</strong></p>
+      <p>Para llevar libros esa decisión no molestaba, y por eso se dejó así en su momento. <strong>Para vender en mostrador es inviable:</strong> los precios se pisan, las existencias se mezclan, y un código de barras tendría que ser único entre negocios que no tienen nada que ver.</p>
+    </div>
+
+    <p class="lectura">Es el primer paso y no hay forma de saltarlo. Es además la ocasión de agregar de una vez todo lo que el catálogo va a necesitar, para no tocar la tabla tres veces.</p>
+
+    <div class="marco">
+      <table>
+        <caption>Lo que le falta a la tabla de productos</caption>
+        <thead>
+          <tr><th>Columna</th><th>Para qué</th><th>Hoy</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>empresa_id</td><td>Que cada negocio tenga su catálogo</td><td class="no">no existe</td></tr>
+          <tr><td>codigo_barras</td><td>Lo que dispara el lector</td><td class="no">no existe</td></tr>
+          <tr><td>codigo</td><td>Código interno, el que va en la etiqueta de balanza</td><td class="no">no existe</td></tr>
+          <tr><td>por_peso</td><td>Distinguir lo que se vende por kilo</td><td class="no">no existe</td></tr>
+          <tr><td>existencia</td><td>Cuánto queda, para que <strong>Elena</strong> haga su trabajo</td><td class="no">no existe</td></tr>
+          <tr><td>alicuota</td><td>Qué IVA le toca a ese artículo</td><td class="si">ya existe</td></tr>
+          <tr><td>precio · costo · unidad</td><td>Lo básico</td><td class="si">ya existen</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ================= EL ORDEN ================= -->
+  <section>
+    <p class="rotulo">Cómo lo construiría</p>
+    <h2>Cinco pasos, y el primero desbloquea todo</h2>
+
+    <div class="pasos">
+      <div class="paso">
+        <div class="paso-n">1</div>
+        <div>
+          <h3>El catálogo por empresa</h3>
+          <p>Agregar las columnas que faltan y migrar los productos existentes a la empresa que corresponda. Sin esto no se puede hacer nada de lo demás, y hacerlo después obliga a rehacer lo construido encima.</p>
+        </div>
+      </div>
+      <div class="paso">
+        <div class="paso-n">2</div>
+        <div>
+          <h3>La pantalla de mostrador</h3>
+          <p>Un campo siempre enfocado, la lista de lo escaneado, el total grande y el botón de cobrar. Sirve igual para la tienda de ropa que para la panadería, porque las dos leen códigos.</p>
+        </div>
+      </div>
+      <div class="paso">
+        <div class="paso-n">3</div>
+        <div>
+          <h3>El decodificador de balanza</h3>
+          <p>Con su formato configurable por empresa. Es poco código y es lo que abre el giro de alimentos entero: panadería, charcutería, carnicería, verdulería.</p>
+        </div>
+      </div>
+      <div class="paso">
+        <div class="paso-n">4</div>
+        <div>
+          <h3>Existencias que se mueven solas</h3>
+          <p>Que cada venta descargue el inventario y cada compra lo cargue. Es el trabajo de Elena, y es lo que permite avisar cuando un precio queda por debajo del costo.</p>
+        </div>
+      </div>
+      <div class="paso">
+        <div class="paso-n">5</div>
+        <div>
+          <h3>Plantillas de servicio recurrente</h3>
+          <p>Para el giro de servicios, que es el que menos falta le hace pero el más fácil de cerrar.</p>
+        </div>
+      </div>
+    </div>
+
+    <p class="lectura"><strong>Nada de esto toca el núcleo fiscal.</strong> El correlativo, la inalterabilidad, el libro y la Forma 30 quedan exactamente como están — y ese es justamente el punto de haberlo separado así.</p>
+  </section>
+
+  <p class="pie">
+    Documento de diseño. Los formatos de código de barras con medida variable siguen el estándar de prefijo 2 para uso interno del comercio; el reparto exacto de dígitos debe confirmarse contra la balanza de cada cliente.<br>
+    El consumo en mesa queda deliberadamente fuera: es un producto aparte, no una variante de este.
+  </p>
+
+</div>
