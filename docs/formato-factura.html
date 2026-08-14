@@ -1,0 +1,388 @@
+<title>Factura DigiAccount · formato</title>
+
+<style>
+  /* ============================================================
+     Documento técnico con una muestra impresa dentro. El fondo es
+     mesa de trabajo; la factura es papel. Azul DigiAccount para la
+     marca, tinta densa para el dato.
+     ============================================================ */
+  :root {
+    --mesa:    #E9EDF1;
+    --papel:   #FFFFFF;
+    --tinta:   #10161C;
+    --tinta-2: #48545F;
+    --tenue:   #7A8792;
+    --regla:   #D3DAE0;
+    --firme:   #A8B3BC;
+    --marca:   #0A2342;
+    --cian:    #0E7FA0;
+    --alerta:  #A33A2A;
+    --ok:      #14684A;
+    --sombra:  0 1px 3px rgba(16,22,28,.06), 0 14px 40px -26px rgba(16,22,28,.55);
+
+    --texto: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    --lectura: Charter, "Bitstream Charter", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+    --dato: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, Menlo, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --mesa:    #0C1116;
+      --papel:   #151C23;
+      --tinta:   #E5EBF0;
+      --tinta-2: #A9B6C0;
+      --tenue:   #7E8C97;
+      --regla:   #29333B;
+      --firme:   #3D4952;
+      --marca:   #7FA8D8;
+      --cian:    #48B4D0;
+      --alerta:  #DF8878;
+      --ok:      #4FB088;
+      --sombra:  0 1px 3px rgba(0,0,0,.5), 0 14px 40px -26px rgba(0,0,0,.9);
+    }
+  }
+  :root[data-theme="dark"] {
+    --mesa:    #0C1116;
+    --papel:   #151C23;
+    --tinta:   #E5EBF0;
+    --tinta-2: #A9B6C0;
+    --tenue:   #7E8C97;
+    --regla:   #29333B;
+    --firme:   #3D4952;
+    --marca:   #7FA8D8;
+    --cian:    #48B4D0;
+    --alerta:  #DF8878;
+    --ok:      #4FB088;
+    --sombra:  0 1px 3px rgba(0,0,0,.5), 0 14px 40px -26px rgba(0,0,0,.9);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--mesa); color: var(--tinta);
+    font-family: var(--texto); font-size: 16px; line-height: 1.6;
+    margin: 0; padding: 0 20px 96px; -webkit-font-smoothing: antialiased;
+  }
+  .hoja { max-width: 940px; margin: 0 auto; }
+
+  .cab { padding: 60px 0 30px; border-bottom: 2px solid var(--tinta); }
+  .marca-txt {
+    font-family: var(--dato); font-size: 11px; letter-spacing: .2em;
+    text-transform: uppercase; color: var(--cian); margin: 0 0 16px;
+  }
+  h1 {
+    font-size: clamp(29px, 5vw, 44px); font-weight: 700;
+    letter-spacing: -.03em; line-height: 1.04; text-wrap: balance;
+    margin: 0 0 18px; max-width: 20ch;
+  }
+  .bajada {
+    font-family: var(--lectura); font-size: clamp(16px, 2vw, 19px);
+    line-height: 1.55; color: var(--tinta-2); max-width: 58ch; margin: 0;
+  }
+
+  section { padding-top: 54px; }
+  .rotulo {
+    font-family: var(--dato); font-size: 10.5px; letter-spacing: .2em;
+    text-transform: uppercase; color: var(--tenue);
+    padding-bottom: 8px; border-bottom: 1px solid var(--regla); margin-bottom: 22px;
+  }
+  h2 {
+    font-size: clamp(22px, 3vw, 28px); font-weight: 700;
+    letter-spacing: -.022em; line-height: 1.18; text-wrap: balance; margin: 0 0 16px;
+  }
+  h3 { font-size: 15.5px; font-weight: 700; margin: 28px 0 9px; }
+  p { margin: 0 0 15px; max-width: 66ch; }
+  .lectura { font-family: var(--lectura); font-size: 16.5px; line-height: 1.65; }
+
+  /* ---------- Aviso de modelo ---------- */
+  .aviso {
+    background: var(--papel); border: 1px solid var(--regla);
+    border-left: 4px solid var(--alerta); border-radius: 3px;
+    padding: 20px 24px; margin: 0 0 26px; box-shadow: var(--sombra);
+  }
+  .aviso b { color: var(--alerta); }
+  .aviso p { margin: 0; font-size: 15.5px; }
+
+  /* ---------- La factura ---------- */
+  .lienzo { overflow-x: auto; margin: 24px 0 8px; }
+  .factura {
+    position: relative; min-width: 620px;
+    background: var(--papel); border: 1px solid var(--firme);
+    padding: 34px 36px 30px; box-shadow: var(--sombra);
+    font-size: 12.5px; line-height: 1.5; overflow: hidden;
+  }
+  .factura::after {
+    content: "MODELO"; position: absolute; top: 46%; left: 50%;
+    transform: translate(-50%, -50%) rotate(-24deg);
+    font-size: 108px; font-weight: 800; letter-spacing: .06em;
+    color: var(--alerta); opacity: .07; pointer-events: none; white-space: nowrap;
+  }
+
+  .f-top { display: flex; flex-wrap: wrap; gap: 26px; justify-content: space-between; align-items: flex-start; padding-bottom: 18px; border-bottom: 2px solid var(--marca); }
+  .f-emisor .f-logo {
+    font-size: 21px; font-weight: 800; letter-spacing: -.03em;
+    color: var(--marca); margin-bottom: 7px;
+  }
+  .f-emisor .f-linea { font-size: 11.5px; color: var(--tinta-2); line-height: 1.65; max-width: 34ch; }
+  .f-emisor .f-rif { font-family: var(--dato); font-weight: 700; color: var(--tinta); }
+
+  .f-ident { text-align: right; flex: none; }
+  .f-denom {
+    font-size: 19px; font-weight: 800; letter-spacing: .1em;
+    color: var(--marca); margin-bottom: 8px;
+  }
+  .f-num { font-family: var(--dato); font-size: 12.5px; line-height: 1.85; }
+  .f-num b { color: var(--tenue); font-weight: 400; }
+  .f-num .imp { color: var(--cian); }
+
+  .f-receptor { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px 26px; padding: 16px 0; border-bottom: 1px solid var(--regla); }
+  .f-campo b {
+    display: block; font-family: var(--dato); font-size: 9.5px;
+    letter-spacing: .13em; text-transform: uppercase; color: var(--tenue);
+    font-weight: 400; margin-bottom: 2px;
+  }
+  .f-campo span { font-size: 12.5px; }
+  .f-campo .mono { font-family: var(--dato); }
+
+  table.f-det { width: 100%; border-collapse: collapse; margin: 4px 0 0; font-size: 12px; }
+  table.f-det th {
+    font-family: var(--dato); font-weight: 400; font-size: 9.5px;
+    letter-spacing: .11em; text-transform: uppercase; color: var(--tenue);
+    text-align: right; padding: 11px 8px; border-bottom: 1px solid var(--firme); white-space: nowrap;
+  }
+  table.f-det th:first-child, table.f-det td:first-child { text-align: left; }
+  table.f-det td { padding: 10px 8px; text-align: right; border-bottom: 1px solid var(--regla); font-variant-numeric: tabular-nums; }
+  table.f-det td.desc { text-align: left; }
+  table.f-det td.num { font-family: var(--dato); }
+  .f-ex { font-family: var(--dato); font-size: 10px; color: var(--tenue); }
+
+  .f-cierre { display: flex; flex-wrap: wrap; gap: 26px; justify-content: space-between; padding-top: 16px; }
+  .f-nota { font-size: 11px; color: var(--tinta-2); max-width: 40ch; line-height: 1.6; }
+  .f-nota b { display: block; font-family: var(--dato); font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--tenue); font-weight: 400; margin-bottom: 3px; }
+  .f-tot { min-width: 268px; font-family: var(--dato); font-variant-numeric: tabular-nums; }
+  .f-trow { display: flex; justify-content: space-between; gap: 20px; padding: 6px 0; font-size: 12px; }
+  .f-trow.sep { border-top: 1px solid var(--regla); margin-top: 4px; padding-top: 9px; }
+  .f-trow.total { border-top: 2px solid var(--marca); margin-top: 6px; padding-top: 10px; font-size: 15px; font-weight: 700; color: var(--marca); }
+  .f-trow .et { color: var(--tinta-2); }
+
+  .f-pie {
+    margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--regla);
+    font-family: var(--dato); font-size: 9.5px; line-height: 1.75; color: var(--tenue);
+  }
+
+  /* ---------- Tablas del documento ---------- */
+  .marco { overflow-x: auto; margin: 22px 0; }
+  table.spec { width: 100%; min-width: 560px; border-collapse: collapse; font-size: 14px; background: var(--papel); }
+  table.spec caption {
+    caption-side: top; text-align: left; font-family: var(--dato);
+    font-size: 10.5px; letter-spacing: .16em; text-transform: uppercase;
+    color: var(--tenue); padding-bottom: 10px;
+  }
+  table.spec th, table.spec td { padding: 11px 14px; text-align: left; vertical-align: top; }
+  table.spec thead th {
+    font-family: var(--dato); font-weight: 400; font-size: 10.5px;
+    letter-spacing: .11em; text-transform: uppercase; color: var(--tenue);
+    border-bottom: 1.5px solid var(--firme); white-space: nowrap;
+  }
+  table.spec tbody tr { border-bottom: 1px solid var(--regla); }
+  table.spec td:first-child { font-weight: 700; }
+  .fuente {
+    display: inline-block; font-family: var(--dato); font-size: 10px;
+    letter-spacing: .08em; text-transform: uppercase; padding: 2px 8px; border-radius: 2px;
+  }
+  .f-sis { background: rgba(20,104,74,.13); color: var(--ok); }
+  .f-imp { background: rgba(14,127,160,.14); color: var(--cian); }
+  .f-cli { background: rgba(122,135,146,.16); color: var(--tenue); }
+
+  .pie-doc {
+    margin-top: 58px; padding-top: 20px; border-top: 1px solid var(--regla);
+    font-family: var(--dato); font-size: 11.5px; line-height: 1.8; color: var(--tenue);
+  }
+</style>
+
+<div class="hoja">
+
+  <header class="cab">
+    <p class="marca-txt">DigiAccount · Documento de trabajo</p>
+    <h1>El formato de factura de DigiAccount</h1>
+    <p class="bajada">Lo que DigiAccount, C.A. va a emitir por sus suscripciones al ERP, por Al Día y por cualquier servicio que venga después. Este es el papel que se lleva a la imprenta digital.</p>
+  </header>
+
+  <section>
+    <div class="aviso">
+      <p><b>Esto es un modelo, no una factura.</b> El RIF, el número de control y los datos de la imprenta son de relleno. No sirve como comprobante de nada y no debe entregarse a nadie como si lo fuera. Se convierte en factura real el día que DigiAccount, C.A. esté constituida, tenga su RIF y una imprenta autorizada le asigne los rangos.</p>
+    </div>
+  </section>
+
+  <!-- ================= LA FACTURA ================= -->
+  <section>
+    <p class="rotulo">Cómo se ve</p>
+
+    <div class="lienzo">
+      <div class="factura">
+
+        <div class="f-top">
+          <div class="f-emisor">
+            <div class="f-logo">DigiAccount, C.A.</div>
+            <div class="f-linea">
+              <span class="f-rif">RIF J-00000000-0</span><br>
+              Domicilio fiscal del emisor<br>
+              Caracas, Distrito Capital<br>
+              gerencia@digiaccount.io · 0000-0000000
+            </div>
+          </div>
+          <div class="f-ident">
+            <div class="f-denom">FACTURA</div>
+            <div class="f-num">
+              <b>N°</b> 00000123<br>
+              <b>N° de control</b> <span class="imp">00-00000123</span><br>
+              <b>Fecha de emisión</b> 11/08/2026
+            </div>
+          </div>
+        </div>
+
+        <div class="f-receptor">
+          <div class="f-campo"><b>Razón social del adquiriente</b><span>Inversiones Ejemplo, C.A.</span></div>
+          <div class="f-campo"><b>RIF</b><span class="mono">J-00000000-0</span></div>
+          <div class="f-campo"><b>Condición fiscal</b><span>Contribuyente ordinario</span></div>
+          <div class="f-campo"><b>Domicilio fiscal</b><span>Dirección del adquiriente</span></div>
+        </div>
+
+        <table class="f-det">
+          <thead>
+            <tr>
+              <th>Descripción del servicio</th>
+              <th>Cant.</th>
+              <th>Precio unitario</th>
+              <th>Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="desc">Suscripción DigiAccount ERP · plan Contador PRO<br><span class="f-ex">Período 01/08/2026 al 31/08/2026</span></td>
+              <td class="num">1</td>
+              <td class="num">4.740,00</td>
+              <td class="num">4.740,00</td>
+            </tr>
+            <tr>
+              <td class="desc">Complemento Equipo Digital · seis asistentes<br><span class="f-ex">Período 01/08/2026 al 31/08/2026</span></td>
+              <td class="num">1</td>
+              <td class="num">3.000,00</td>
+              <td class="num">3.000,00</td>
+            </tr>
+            <tr>
+              <td class="desc">Implementación inicial y capacitación<br><span class="f-ex">Operación exenta — servicio educativo</span></td>
+              <td class="num">1</td>
+              <td class="num">1.200,00</td>
+              <td class="num">1.200,00</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="f-cierre">
+          <div class="f-nota">
+            <b>Tasa de cambio aplicada</b>
+            Bs 60,00 por USD · tasa oficial BCV con fecha valor 11/08/2026.
+            Montos facturados en bolívares; su equivalencia en divisas se
+            indica solo como referencia del contrato de servicio.
+          </div>
+          <div class="f-tot">
+            <div class="f-trow"><span class="et">Base imponible</span><span>7.740,00</span></div>
+            <div class="f-trow"><span class="et">Operaciones exentas</span><span>1.200,00</span></div>
+            <div class="f-trow sep"><span class="et">IVA 16%</span><span>1.238,40</span></div>
+            <div class="f-trow"><span class="et">IGTF 3% · pago en divisas</span><span>298,15</span></div>
+            <div class="f-trow total"><span>TOTAL A PAGAR Bs</span><span>10.476,55</span></div>
+          </div>
+        </div>
+
+        <div class="f-pie">
+          IMPRENTA DIGITAL AUTORIZADA · RAZÓN SOCIAL · RIF J-00000000-0 · N° DE AUTORIZACIÓN SNAT/0000/0000<br>
+          RANGO ASIGNADO 00-00000001 AL 00-00005000 · VIGENCIA HASTA 00/00/0000 · SISTEMA HOMOLOGADO SNAT/0000/0000
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= DE DÓNDE SALE CADA DATO ================= -->
+  <section>
+    <p class="rotulo">De dónde sale cada dato</p>
+    <h2>Tres orígenes, y solo uno depende de ti</h2>
+
+    <p class="lectura">Esta es la parte que le interesa a la imprenta. Los campos en <span class="fuente f-imp">imprenta</span> son los que ellos asignan y sin los cuales la factura no existe; los de <span class="fuente f-sis">sistema</span> los pone DigiAccount al emitir.</p>
+
+    <div class="marco">
+      <table class="spec">
+        <caption>Campos de la factura</caption>
+        <thead>
+          <tr><th>Campo</th><th>Origen</th><th>Nota</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Denominación «Factura»</td><td><span class="fuente f-sis">sistema</span></td><td>Fija, en el encabezado</td></tr>
+          <tr><td>Número de factura</td><td><span class="fuente f-sis">sistema</span></td><td>Correlativo único, sin saltos ni repeticiones</td></tr>
+          <tr><td>Número de control</td><td><span class="fuente f-imp">imprenta</span></td><td>Del rango asignado. Es el que hoy se deja vacío</td></tr>
+          <tr><td>Rango asignado y vigencia</td><td><span class="fuente f-imp">imprenta</span></td><td>Va impreso en el pie</td></tr>
+          <tr><td>Datos de la imprenta</td><td><span class="fuente f-imp">imprenta</span></td><td>Razón social, RIF y N° de autorización</td></tr>
+          <tr><td>Fecha de emisión</td><td><span class="fuente f-sis">sistema</span></td><td>La del momento de emitir, no editable después</td></tr>
+          <tr><td>Emisor: razón social, RIF y domicilio</td><td><span class="fuente f-sis">sistema</span></td><td>Ficha de DigiAccount, C.A.</td></tr>
+          <tr><td>Adquiriente: razón social y RIF</td><td><span class="fuente f-cli">cliente</span></td><td>De su ficha. Sin RIF se emite a consumidor final</td></tr>
+          <tr><td>Descripción, cantidad y precio</td><td><span class="fuente f-sis">sistema</span></td><td>Del plan o servicio contratado</td></tr>
+          <tr><td>Operaciones exentas, señaladas</td><td><span class="fuente f-sis">sistema</span></td><td>Se indica en el renglón y se totaliza aparte</td></tr>
+          <tr><td>IVA por alícuota</td><td><span class="fuente f-sis">sistema</span></td><td>Desglosado, no sumado al precio</td></tr>
+          <tr><td>IGTF cuando aplique</td><td><span class="fuente f-sis">sistema</span></td><td>Solo si el pago entra en divisas</td></tr>
+          <tr><td>Total a pagar</td><td><span class="fuente f-sis">sistema</span></td><td>En bolívares</td></tr>
+          <tr><td>N° de homologación del sistema</td><td><span class="fuente f-imp">imprenta</span></td><td>Se agrega cuando DigiAccount quede homologado</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="lectura"><strong>Confirma la numeración exacta de los numerales del Artículo 7 contra el texto de la Providencia</strong> cuando vayas a la imprenta. La ficha técnica registra que los que dependen de ellos son el 4, el 5, el 14 y el 15 — que se corresponden con las cuatro filas marcadas <span class="fuente f-imp">imprenta</span> de arriba.</p>
+  </section>
+
+  <!-- ================= DECISIONES ================= -->
+  <section>
+    <p class="rotulo">Decisiones que trae este formato</p>
+    <h2>Cuatro cosas que conviene fijar ahora</h2>
+
+    <h3>Se factura en bolívares, aunque el precio se pacte en dólares</h3>
+    <p class="lectura">El bolívar es la moneda de curso legal, así que el total a pagar va en bolívares. El precio en divisas es la referencia del contrato. La factura declara <strong>qué tasa BCV se usó y con qué fecha valor</strong> — sin eso, un fiscal no puede reconstruir el cálculo y el sistema ya tiene la serie histórica para sostenerlo.</p>
+
+    <h3>El IGTF depende de cómo pagan, no de qué compran</h3>
+    <p class="lectura">Es del <strong>3%</strong> y solo se activa si el pago entra en divisas o cripto. El mismo plan pagado por transferencia en bolívares no lo lleva. Por eso el renglón aparece o desaparece según el medio de pago — no es parte del precio.</p>
+
+    <h3>Un renglón por concepto, no un total redondo</h3>
+    <p class="lectura">La suscripción, el complemento de IA y la implementación van separados. Cuesta un poco más de trabajo y evita dos problemas: que un servicio exento quede tapado dentro de uno gravado, y que el cliente no pueda deducir lo que corresponde.</p>
+
+    <h3>La misma factura sirve para Al Día y lo que venga</h3>
+    <p class="lectura">Cambia la descripción del renglón, no el formato. Un solo correlativo para toda la empresa — <strong>no una numeración por producto</strong>, que es un error común y complica la vida cuando el SENIAT pide la secuencia completa.</p>
+  </section>
+
+  <!-- ================= EL ORDEN ================= -->
+  <section>
+    <p class="rotulo">El orden</p>
+    <h2>Qué va antes de qué</h2>
+
+    <div class="marco">
+      <table class="spec">
+        <caption>Del registro a la primera factura</caption>
+        <thead>
+          <tr><th>Paso</th><th>Qué se obtiene</th><th>Sin esto no se puede</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Constituir DigiAccount, C.A.</td><td>Acta constitutiva</td><td>Nada de lo demás</td></tr>
+          <tr><td>Inscripción en el RIF</td><td>RIF del emisor</td><td>Emitir cualquier factura</td></tr>
+          <tr><td>Contratar imprenta digital</td><td>Rangos de control y su autorización</td><td>Que la factura sea válida</td></tr>
+          <tr><td>Homologar el sistema</td><td>N° de homologación</td><td>Que DigiAccount emita, en vez de solo registrar</td></tr>
+          <tr><td>Primera factura</td><td>—</td><td>—</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="lectura">Los tres primeros pasos no dependen del software. <strong>Mientras no estén, el sistema no debe ofrecer emitir facturas</strong> — y por eso el modo de emisión se activa por empresa, con su fecha y su número de autorización guardados.</p>
+  </section>
+
+  <p class="pie-doc">
+    Modelo preparado para llevar a la imprenta digital. Datos de relleno en RIF, números de control y autorizaciones.<br>
+    La estructura sigue el Artículo 7 de la Providencia SNAT/2024/000102; la correspondencia exacta de numerales debe confirmarse contra el texto vigente.
+  </p>
+
+</div>
