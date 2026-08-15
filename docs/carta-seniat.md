@@ -35,8 +35,8 @@ Servicio Nacional Integrado de Administración Aduanera y Tributaria (SENIAT)
 Su Despacho. —
 
 **Asunto:** Ofrecimiento como aliado técnico nacional para la digitalización e
-interoperabilidad tributaria, desde una plataforma venezolana en operación,
-desarrollada conforme al marco de facturación digital.
+interoperabilidad tributaria, desde una plataforma venezolana desarrollada
+conforme al marco de facturación digital.
 
 ---
 
