@@ -13082,6 +13082,20 @@
     const TG = { 'Persona jurídica (J)': 'std', 'Persona natural (V/E)': 'std', 'Firma Personal (F.P.)': 'fp', 'Emprendimiento (J)': 'emp' };
     const RIFLETRA = { 'Persona jurídica (J)': 'J', 'Persona natural (V/E)': 'V', 'Firma Personal (F.P.)': 'V', 'Emprendimiento (J)': 'J' };
     const tgActual = () => TG[sel.tipo] || 'std';
+    /* Una Firma Personal aparece en el certificado del SENIAT como
+       «NOMBRE DE LA PERSONA (NOMBRE COMERCIAL, F.P.)» — que es exactamente el
+       formato con el que razonSocial() la vuelve a componer más abajo.
+
+       Si el OCR devuelve ese patrón hay que REPARTIRLO en sus dos campos. Si
+       cayera entero en el campo genérico, al guardar se perdería el formato:
+       el asistente compone la razón social a partir de los dos campos, no del
+       texto suelto. */
+    function partirFirmaPersonal(rs) {
+      const m = String(rs || '').match(/^\s*(.+?)\s*\(\s*(.+?)\s*,\s*(?:F\s*\.?\s*P\s*\.?|FIRMA\s+PERSONAL)\s*\)\s*$/i);
+      return m ? { persona: m[1].trim(), comercial: m[2].trim() } : null;
+    }
+    window.__partirFirmaPersonal = partirFirmaPersonal;   // para poder probarlo
+
     function razonSocial() {
       const tg = tgActual();
       if (tg === 'fp') {
@@ -13156,7 +13170,23 @@
         if (card) card.click();
         updateTipoFields();
       }
-      if (d.razon_social) { const n = document.getElementById('cwNombre'); if (n) n.value = d.razon_social; }
+      if (d.razon_social) {
+        /* El propio nombre delata la Firma Personal, y hay que atenderlo DESPUÉS
+           de fijar el tipo por la letra del RIF: una F.P. lleva RIF con V, así
+           que el paso anterior habría elegido «Persona natural» y el formato se
+           perdería. */
+        const fp = partirFirmaPersonal(d.razon_social);
+        if (fp) {
+          const card = scrim.querySelector('.wiz-choice[data-choice="tipo"] .choice-card[data-val="Firma Personal (F.P.)"]');
+          if (card) { card.click(); updateTipoFields(); }
+          const nf = document.getElementById('cwFpNombre');
+          const cf = document.getElementById('cwFpComercial');
+          if (nf) nf.value = fp.persona;
+          if (cf) cf.value = fp.comercial;
+        } else {
+          const n = document.getElementById('cwNombre'); if (n) n.value = d.razon_social;
+        }
+      }
       if (d.rif) { const rEl = document.getElementById('cwRif'); if (rEl) rEl.value = d.rif; }
       if (d.domicilio) { const dom = document.getElementById('cwDom'); if (dom) dom.value = d.domicilio; }
       if (d.condicion) { const c = document.getElementById('cwCond'); if (c) c.value = d.condicion === 'especial' ? 'Contribuyente especial' : 'Contribuyente ordinario'; }
