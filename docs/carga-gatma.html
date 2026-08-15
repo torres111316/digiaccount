@@ -1,0 +1,258 @@
+<title>Carga de GATMA</title>
+<style>
+  :root {
+    --ground: #F6F8FA;
+    --surface: #FFFFFF;
+    --line: #DCE3EA;
+    --line-soft: #EAEFF4;
+    --ink: #16212E;
+    --ink-soft: #55677A;
+    --accent: #1F5C8B;
+    --accent-soft: #E8F0F6;
+    --done: #2E6B4F;
+    --done-soft: #E6F0EA;
+    --hold: #8A5A12;
+    --hold-soft: #F7EEDC;
+    --serif: Georgia, 'Iowan Old Style', 'Times New Roman', serif;
+    --sans: ui-sans-serif, system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    --mono: ui-monospace, 'Cascadia Mono', Consolas, 'Liberation Mono', monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0F151C;
+      --surface: #161F29;
+      --line: #2A3745;
+      --line-soft: #202B36;
+      --ink: #E4EAF0;
+      --ink-soft: #93A4B5;
+      --accent: #6FA8D0;
+      --accent-soft: #1A2A38;
+      --done: #7CBF9C;
+      --done-soft: #16261E;
+      --hold: #D9A854;
+      --hold-soft: #2A2113;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #0F151C;
+    --surface: #161F29;
+    --line: #2A3745;
+    --line-soft: #202B36;
+    --ink: #E4EAF0;
+    --ink-soft: #93A4B5;
+    --accent: #6FA8D0;
+    --accent-soft: #1A2A38;
+    --done: #7CBF9C;
+    --done-soft: #16261E;
+    --hold: #D9A854;
+    --hold-soft: #2A2113;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.6;
+    margin: 0;
+    padding: 0 20px 96px;
+  }
+  .wrap { max-width: 780px; margin: 0 auto; }
+
+  header.top {
+    padding: 56px 0 32px;
+    border-bottom: 2px solid var(--ink);
+    margin-bottom: 40px;
+  }
+  .eyebrow {
+    font-size: 12px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--accent); font-weight: 600; margin: 0 0 12px;
+  }
+  h1 {
+    font-family: var(--serif); font-weight: 400; font-size: clamp(34px, 6vw, 50px);
+    line-height: 1.1; margin: 0 0 14px; text-wrap: balance; letter-spacing: -.01em;
+  }
+  .lede { font-size: 18px; color: var(--ink-soft); margin: 0; max-width: 60ch; }
+
+  h2 {
+    font-family: var(--serif); font-weight: 400; font-size: 27px;
+    margin: 56px 0 6px; text-wrap: balance;
+  }
+  h2 + .sub { color: var(--ink-soft); margin: 0 0 24px; font-size: 15px; }
+
+  /* --- lo ya hecho: compacto, sin peso visual --- */
+  ul.hecho { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 2px; }
+  ul.hecho li {
+    display: grid; grid-template-columns: 22px 1fr; gap: 10px;
+    padding: 9px 0; border-bottom: 1px solid var(--line-soft); align-items: baseline;
+  }
+  ul.hecho li:last-child { border-bottom: 0; }
+  .tick { color: var(--done); font-weight: 700; }
+  ul.hecho b { font-weight: 600; }
+  ul.hecho span { color: var(--ink-soft); }
+
+  /* --- los pasos: es una secuencia real, el numero informa --- */
+  ol.pasos { list-style: none; padding: 0; margin: 0; counter-reset: p; display: flex; flex-direction: column; gap: 14px; }
+  ol.pasos > li {
+    counter-increment: p; background: var(--surface);
+    border: 1px solid var(--line); border-radius: 3px;
+    padding: 22px 24px 24px 66px; position: relative;
+  }
+  ol.pasos > li::before {
+    content: counter(p);
+    position: absolute; left: 22px; top: 22px;
+    font-family: var(--mono); font-size: 13px; font-weight: 700;
+    color: var(--accent); background: var(--accent-soft);
+    width: 28px; height: 28px; border-radius: 50%;
+    display: grid; place-items: center;
+  }
+  ol.pasos h3 { font-size: 17px; margin: 0 0 8px; font-weight: 650; }
+  ol.pasos p { margin: 0 0 12px; color: var(--ink-soft); }
+  ol.pasos p:last-child { margin-bottom: 0; }
+  ol.pasos p.plain { color: var(--ink); }
+
+  pre {
+    background: var(--ground); border: 1px solid var(--line);
+    border-radius: 3px; padding: 13px 15px; overflow-x: auto;
+    font-family: var(--mono); font-size: 13px; line-height: 1.65;
+    margin: 0 0 12px; color: var(--ink);
+  }
+  code { font-family: var(--mono); font-size: .89em; }
+  p code, li code { background: var(--line-soft); padding: 1px 5px; border-radius: 3px; }
+
+  .nota {
+    border-left: 3px solid var(--hold); background: var(--hold-soft);
+    padding: 12px 16px; border-radius: 0 3px 3px 0; margin: 0 0 12px;
+    font-size: 14.5px; color: var(--ink);
+  }
+  .nota b { color: var(--hold); }
+  .nota:last-child { margin-bottom: 0; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 15px; margin: 0; }
+  th, td { text-align: left; padding: 10px 12px 10px 0; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+  th { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-soft); font-weight: 600; }
+  td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .scroll { overflow-x: auto; }
+
+  ul.simple { padding-left: 20px; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+  ul.simple li { padding-left: 2px; }
+
+  footer {
+    margin-top: 64px; padding-top: 22px; border-top: 1px solid var(--line);
+    font-size: 14px; color: var(--ink-soft);
+  }
+  a { color: var(--accent); }
+</style>
+
+<div class="wrap">
+
+<header class="top">
+  <p class="eyebrow">DigiAccount · libros históricos</p>
+  <h1>Carga de GATMA</h1>
+  <p class="lede">Qué quedó construido, qué te toca correr a ti, y qué revisar cuando termine.
+  Los pasos van en orden: cada uno depende del anterior.</p>
+</header>
+
+<h2>Ya está hecho</h2>
+<p class="sub">No tienes que hacer nada con esto. Está en el repo y funcionando.</p>
+<ul class="hecho">
+  <li><span class="tick">✓</span><div><b>Sucursales</b> — <span>la sucursal comparte el RIF de la matriz, así que declara con ella. El libro sigue siendo uno solo.</span></div></li>
+  <li><span class="tick">✓</span><div><b>Quincena</b> — <span>GATMA es especial y declara dos veces al mes. Antes el sistema solo manejaba meses.</span></div></li>
+  <li><span class="tick">✓</span><div><b>El módulo Fiscal ya ofrece quincenas</b> — <span>solo cuando la empresa es especial. En Aguero no cambia nada.</span></div></li>
+  <li><span class="tick">✓</span><div><b>Revisor de libros</b> — <span>encuentra los errores antes de cargar. No escribe nada.</span></div></li>
+  <li><span class="tick">✓</span><div><b>Cargador</b> — <span>no carga sin permiso explícito, ni dos veces la misma factura.</span></div></li>
+</ul>
+
+<h2>Lo que te toca</h2>
+<p class="sub">Todo se corre desde <code>PROYECTOS\DigiAccount</code>.</p>
+
+<ol class="pasos">
+
+  <li>
+    <h3>Dar de alta los dos establecimientos</h3>
+    <p>Ya corriste el SQL, pero ese solo creó la tabla vacía. La matriz y Barquisimeto son un
+    <code>insert</code> aparte. Primero busca el id de GATMA en Supabase:</p>
+    <pre>select id, nombre from empresas where rif like 'J%50282611%';</pre>
+    <p>Y con ese id, crea los dos. <b>Los dos</b>: si solo registras la sucursal, lo de la
+    matriz queda huérfano y el reporte no cuadra.</p>
+    <pre>insert into sucursales (empresa_id, nombre, codigo, direccion, es_matriz)
+values ('&lt;id&gt;', 'Casa Matriz',  '01', '&lt;dirección fiscal&gt;', true),
+       ('&lt;id&gt;', 'Barquisimeto', '02', '&lt;dirección&gt;',        false);</pre>
+  </li>
+
+  <li>
+    <h3>Conseguir la llave</h3>
+    <p>En Supabase: <b>Settings → API → service_role</b>. Cópiala y pégala en la terminal
+    de PowerShell, dentro de la carpeta del proyecto:</p>
+    <pre>$env:DA_TOKEN='pega-la-llave-aquí'
+cd herramientas</pre>
+    <div class="nota"><b>Cuidado.</b> Esa llave salta todos los permisos. No la pegues en
+    un chat ni en un archivo. Se borra sola al cerrar la terminal.</div>
+  </li>
+
+  <li>
+    <h3>Revisar los cuatro archivos</h3>
+    <p>Esto no toca la base. Solo te dice qué está mal:</p>
+    <pre>python revisar_libros.py "ruta\Libro de Ventas GATMA.xlsx"</pre>
+    <p>Repítelo con el de compras, y con los dos de Barquisimeto. Debe salir lo mismo que
+    ya vimos: lo de septiembre y las cuatro facturas de febrero sin cliente.</p>
+    <div class="nota">Si sale algo <b>que no habíamos visto</b>, párate ahí y mándamelo.</div>
+  </li>
+
+  <li>
+    <h3>Ensayo — todavía no escribe nada</h3>
+    <p>Sin <code>--cargar</code>, solo te muestra qué haría:</p>
+    <pre>python cargar_libros.py "ruta\Libro de Ventas GATMA.xlsx" `
+    --rif J-50282611-4 --tipo venta --desde 2025-10 --aceptar "sin tercero"</pre>
+    <p class="plain">Lo primero que imprime es <b>el nombre de la empresa</b>. Si no dice
+    GATMA, no sigas.</p>
+    <p>Te va a listar las cuatro de febrero que entran sin RIF. Mándame esa salida antes
+    de pasar al siguiente paso.</p>
+  </li>
+
+  <li>
+    <h3>Cargar de verdad</h3>
+    <p>El mismo comando con <code>--cargar</code> al final. Y después los otros tres archivos:</p>
+    <div class="scroll"><table>
+      <thead><tr><th>Archivo</th><th>Qué agregar</th></tr></thead>
+      <tbody>
+        <tr><td>Ventas GATMA</td><td><code>--tipo venta --aceptar "sin tercero"</code></td></tr>
+        <tr><td>Compras GATMA</td><td><code>--tipo compra</code></td></tr>
+        <tr><td>Ventas Barquisimeto</td><td><code>--tipo venta --sucursal 02</code></td></tr>
+        <tr><td>Compras Barquisimeto</td><td>—  <span style="color:var(--ink-soft)">está vacío, no hace falta</span></td></tr>
+      </tbody>
+    </table></div>
+    <div class="nota">Si se corta a mitad de camino, <b>vuelve a correr el mismo comando</b>.
+    Sabe qué ya cargó y no lo repite.</div>
+  </li>
+
+</ol>
+
+<h2>Qué revisar en la app</h2>
+<p class="sub">Abre GATMA en el módulo Fiscal y comprueba estas cinco cosas.</p>
+<div class="scroll"><table>
+  <thead><tr><th>Dónde</th><th>Qué debe pasar</th></tr></thead>
+  <tbody>
+    <tr><td><b>Selector de período</b></td><td>Ahora ofrece <i>Julio 2026 · 1ra quincena</i> y <i>2da</i>. En Aguero debe seguir ofreciendo solo meses.</td></tr>
+    <tr><td><b>Libro de ventas</b></td><td>Julio 1ra quincena: <b>4 facturas de la matriz</b>, y <b>no</b> la línea de resumen de Barquisimeto.</td></tr>
+    <tr><td><b>Forma 30</b></td><td>El código 42 de julio 1ra debe dar <b class="num">2.980.867,97</b> — matriz más sucursal, consolidado solo.</td></tr>
+    <tr><td><b>Febrero 2da</b></td><td>Las cuatro facturas están, con sus montos, y sin nombre de cliente.</td></tr>
+    <tr><td><b>Anuladas</b></td><td>Aparecen marcadas en rojo, sin sumar a ningún total.</td></tr>
+  </tbody>
+</table></div>
+
+<h2>Lo que queda pendiente</h2>
+<p class="sub">Nada de esto bloquea la carga.</p>
+<ul class="simple">
+  <li><b>Los datos de febrero</b> — cuando los consigas el lunes. El cargador te deja la consulta para encontrar esas cuatro facturas.</li>
+  <li><b>El cierre de período</b> — hoy cierra el mes completo, o sea las dos quincenas juntas. Es conservador, no incorrecto, pero habría que afinarlo.</li>
+  <li><b>Rellenar la sucursal del histórico</b> — solo si algún día decides que lo ya cargado antes de esto era de la matriz. <b>Hay que hacerlo antes</b> de pasar GATMA a factura digital: después el sistema no deja tocar una venta registrada, y con razón.</li>
+</ul>
+
+<footer>
+  Si algo no sale como dice aquí, mándame la salida completa del comando tal cual la
+  imprime. Y no cargues nada que el revisor no haya aprobado antes.
+</footer>
+
+</div>
