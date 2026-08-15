@@ -8532,17 +8532,42 @@
       const h = new Date();
       return h.getFullYear() + '-' + String(h.getMonth() + 1).padStart(2, '0');
     }
+    /* El valor lleva la quincena pegada ('2026-07·1') cuando la empresa es
+       especial, porque el período de declaración de un especial ES la
+       quincena. `_partirPeriodo` lo vuelve a separar al guardar. */
     function _opcionesPeriodo() {
       // Del período actual hacia atrás 24 meses (para declarar facturas rezagadas)
       const out = [];
+      const esp = window.__esEspecial && window.__esEspecial();
       const base = _periodoActualKey();
       let y = parseInt(base.slice(0, 4), 10), m = parseInt(base.slice(5, 7), 10);
       for (let i = 0; i < 24; i++) {
         const key = y + '-' + String(m).padStart(2, '0');
-        out.push({ value: key, label: _MESES_PER[m - 1] + ' ' + y });
+        const mes = _MESES_PER[m - 1] + ' ' + y;
+        if (esp) {
+          out.push({ value: key + '·1', label: mes + ' · 1ra quincena' });
+          out.push({ value: key + '·2', label: mes + ' · 2da quincena' });
+        } else {
+          out.push({ value: key, label: mes });
+        }
         m--; if (m < 1) { m = 12; y--; }
       }
       return out;
+    }
+    // '2026-07·2' -> { periodo: '2026-07', quincena: 2 }
+    function _partirPeriodo(v) {
+      const t = String(v || '');
+      const i = t.indexOf('·');
+      if (i < 0) return { periodo: t, quincena: null };
+      const q = parseInt(t.slice(i + 1), 10);
+      return { periodo: t.slice(0, i), quincena: (q === 1 || q === 2) ? q : null };
+    }
+    // El valor que debe venir preseleccionado en ese selector.
+    function _periodoActualValor() {
+      const k = _periodoActualKey();
+      if (!(window.__esEspecial && window.__esEspecial())) return k;
+      const p = window.__fiscalPer;
+      return k + '·' + ((p && p.q) ? p.q : (new Date().getDate() <= 15 ? 1 : 2));
     }
     /* Las alícuotas del IVA, en un solo sitio.
 
@@ -8815,7 +8840,7 @@
           { name: 'fecha', label: 'Fecha de la factura', type: 'date', value: window.__hoyISO() },
         ]).concat(esCompra ? [
           // Solo COMPRAS: el crédito se declara en el período en que llega la factura (puede diferir de su fecha).
-          { name: 'periodo', label: 'Período de declaración (si la factura es de un mes anterior, elige el mes en que la declaras)', type: 'select', options: _opcionesPeriodo(), value: _periodoActualKey() },
+          { name: 'periodo', label: 'Período de declaración (si la factura es de un período anterior, elige aquel en que la declaras)', type: 'select', options: _opcionesPeriodo(), value: _periodoActualValor() },
         ] : []).concat([
           { name: 'tipoDoc', label: 'Tipo de documento', type: 'select', options: esCompra ? ['FC (Factura)', 'NC (Nota de crédito)', 'ND (Nota de débito)'] : ['FV (Factura de venta)', 'NC (Nota de crédito)', 'ND (Nota de débito)'] },
           { name: 'nombre', label: (esCompra ? 'Proveedor' : 'Cliente') + ' (escribe las iniciales y elige)', col: 2, type: 'datalist', options: terceros.map((t) => t.nombre), placeholder: 'Ej. Sum… → Suministros Lara, C.A.' },
@@ -9012,7 +9037,18 @@
           if (!window.sb || !window.__CUENTA_ID || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) return 'No hay una empresa activa seleccionada.';
           // Ventas: período = el de su fecha (las emite la empresa). Compras: el mes en que se declara.
           const fP = (v.fecha || '').split('-');
-          const periodo = esCompra ? (v.periodo || _periodoActualKey()) : (fP.length === 3 ? fP[0] + '-' + fP[1] : _periodoActualKey());
+          const elegido = _partirPeriodo(esCompra ? (v.periodo || _periodoActualValor()) : '');
+          const periodo = esCompra ? (elegido.periodo || _periodoActualKey())
+            : (fP.length === 3 ? fP[0] + '-' + fP[1] : _periodoActualKey());
+          /* La quincena de una COMPRA es la que se eligió: una factura
+             recibida tarde se declara en una posterior a la de su fecha, y
+             deducirla del día la mandaría a la que no es. La de una VENTA sí
+             sale del día, porque la emite la empresa el día que la emite.
+             En un ordinario queda nula: declara el mes completo. */
+          const esEsp = window.__esEspecial && window.__esEspecial();
+          const diaV = parseInt(fP[2], 10);
+          const quincena = !esEsp ? null
+            : (esCompra ? elegido.quincena : (diaV && diaV > 15 ? 2 : 1));
           if (window.__periodoCerrado && window.__periodoCerrado(periodo)) return '🔒 El período de declaración elegido está CERRADO. Reábrelo con el botón del período en Fiscal si necesitas registrar.';
           const esAnulada = !esCompra && /^s[ií]/i.test(v.anularVenta || '');
           if (esAnulada) { v = Object.assign({}, v, { nombre: 'ANULADA', rif: '', igtfAplica: 'No' }); }
@@ -9035,7 +9071,7 @@
           const saveBtnEl = document.getElementById('fmSave');
           if (saveBtnEl) saveBtnEl.disabled = true; // evita doble registro mientras el modal sigue abierto
           window.sb.from('libro_fiscal').insert({
-            cuenta_id: window.__CUENTA_ID, empresa_id: window.__EMPRESA_ACTIVA.id, tipo: tipo, fecha: fecha, periodo: periodo,
+            cuenta_id: window.__CUENTA_ID, empresa_id: window.__EMPRESA_ACTIVA.id, tipo: tipo, fecha: fecha, periodo: periodo, quincena: quincena,
             tercero_nombre: v.nombre, tercero_rif: normRif(v.rif), numero_factura: v.numFactura, numero_control: v.numControl,
             tipo_doc: (v.tipoDoc || (esCompra ? 'FC' : 'FV')).slice(0, 2), exento: exento, base: base, alicuota: alic, iva: iva, igtf: igtf, total: total,
             // Desglose por renglón de la Forma 30. 'base' e 'iva' siguen siendo
@@ -9143,7 +9179,8 @@
               const comp = (v.retComp || '').trim();
               window.sb.from('retenciones').insert({
                 cuenta_id: window.__CUENTA_ID, empresa_id: window.__EMPRESA_ACTIVA.id,
-                direccion: esCompra ? 'practicada' : 'sufrida', tipo: 'iva', fecha: fecha, periodo: periodo, comprobante: comp,
+                // La retención sigue a la factura que la origina, también en la quincena.
+                direccion: esCompra ? 'practicada' : 'sufrida', tipo: 'iva', fecha: fecha, periodo: periodo, quincena: quincena, comprobante: comp,
                 tercero_nombre: v.nombre, tercero_rif: normRif(v.rif), factura: v.numFactura, numero_control: v.numControl,
                 base: iva, pct: retPctNum, monto: retMonto, estado: 'Registrado',
               }).then(({ error: e2 }) => {
@@ -9165,9 +9202,34 @@
     // Necesario desde la migración de libros históricos: sin filtro, los totales mezclarían todos los meses.
     const MESES_FIS = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
     const _hoyFis = new Date();
-    let _fiscalPer = { mm: String(_hoyFis.getMonth() + 1).padStart(2, '0'), aa: String(_hoyFis.getFullYear()).slice(2) };
+    /* Un contribuyente ESPECIAL declara el IVA dos veces al mes, así que su
+       período NO es el mes: es la quincena. Con el mes completo, la Forma 30
+       sale con el total de los treinta días y no es lo que se presenta.
+       En un ordinario `q` queda nulo y todo funciona como siempre. */
+    const _esEspecial = () => /especial/i.test((window.__EMPRESA_ACTIVA || {}).cond || '');
+    // Expuesto porque el formulario de registro vive en otro ámbito y necesita
+    // la misma respuesta: dos definiciones de "es especial" se separan.
+    window.__esEspecial = _esEspecial;
+    let _fiscalPer = {
+      mm: String(_hoyFis.getMonth() + 1).padStart(2, '0'),
+      aa: String(_hoyFis.getFullYear()).slice(2),
+      q: _hoyFis.getDate() <= 15 ? 1 : 2,
+    };
     window.__fiscalPer = _fiscalPer; // expuesto para que las retenciones filtren por el mismo período
-    const _perLabel = () => MESES_FIS[parseInt(_fiscalPer.mm, 10) - 1] + ' 20' + _fiscalPer.aa;
+    const _perLabel = () => MESES_FIS[parseInt(_fiscalPer.mm, 10) - 1] + ' 20' + _fiscalPer.aa
+      + (_esEspecial() && _fiscalPer.q ? ' · ' + _fiscalPer.q + (_fiscalPer.q === 1 ? 'ra' : 'da') + ' quincena' : '');
+    /* En qué quincena se declaró una operación.
+
+       Se prefiere lo REGISTRADO sobre lo deducible: una compra recibida
+       tarde se declara en una quincena posterior a la de su factura, y
+       deducirla del día la mostraría en la que no es. El día solo se usa
+       como respaldo para las filas que se cargaron antes de que existiera
+       la columna — así ninguna desaparece del libro por no tenerla. */
+    const _quincenaDe = (r) => {
+      if (r.quincena === 1 || r.quincena === 2) return r.quincena;
+      const d = parseInt(String(r.fecha || '').split('/')[0], 10);
+      return d && d > 15 ? 2 : 1;
+    };
     const _libroData = { compra: [], venta: [] }; // últimas filas cargadas por tipo (para editar/eliminar)
     const _libroPage = { compra: 1, venta: 1 }; // página actual de cada libro (20 filas por página)
     /* Lo último que se registró en cada libro, para poder volver a corregirlo
@@ -9251,7 +9313,14 @@
       /* El orden se hace AQUÍ y no en la consulta: la base ordenaría el texto
          'dd/mm/aa' por el día. Primero por fecha real, y a igual fecha por
          número de factura, que es como se lee un libro fiscal. */
-      const arr = (data || []).sort((a, b) => {
+      /* La quincena se separa AQUÍ y no en la consulta a propósito. Filtrarla
+         en la base dejaría fuera las filas que todavía no la tienen —las
+         cargadas antes de que existiera la columna— y desaparecerían del
+         libro sin avisar. Separándolas aquí, cada una cae en su quincena y
+         ninguna se pierde. El mes de un contribuyente cabe de sobra. */
+      const delPer = (data || []).filter((r) =>
+        !(_esEspecial() && _fiscalPer.q) || _quincenaDe(r) === _fiscalPer.q);
+      const arr = delPer.sort((a, b) => {
         const fa = fechaOrdenable(a.fecha), fb = fechaOrdenable(b.fecha);
         if (fa !== fb) return fa.localeCompare(fb);
         return String(a.numero_factura || '').localeCompare(String(b.numero_factura || ''), 'es', { numeric: true });
@@ -9604,19 +9673,39 @@
     if (periodo) {
       const mainBtn = periodo.querySelector('button:not(.custom-date)');
       if (mainBtn) mainBtn.textContent = _perLabel();
-      const opciones = [];
-      const dOp = new Date();
-      for (let i = 0; i < 14; i++) { opciones.push(MESES_FIS[dOp.getMonth()] + ' ' + dOp.getFullYear()); dOp.setMonth(dOp.getMonth() - 1); }
+      /* Las opciones se arman al ABRIR el selector, no una sola vez al
+         cargar: al cambiar de empresa cambia la condición, y una lista
+         construida antes le ofrecería quincenas a un ordinario —o se las
+         negaría a un especial. */
+      const opcionesPer = () => {
+        const out = [];
+        const dOp = new Date();
+        for (let i = 0; i < 14; i++) {
+          const mes = MESES_FIS[dOp.getMonth()] + ' ' + dOp.getFullYear();
+          if (_esEspecial()) { out.push(mes + ' · 1ra quincena'); out.push(mes + ' · 2da quincena'); }
+          else out.push(mes);
+          dOp.setMonth(dOp.getMonth() - 1);
+        }
+        return out;
+      };
       const abrirSelector = () => {
         window.openFormModal && window.openFormModal({
           title: 'Cambiar período fiscal',
           saveLabel: 'Aplicar',
-          fields: [{ name: 'periodo', label: 'Período a consultar', col: 2, type: 'select', options: opciones, value: _perLabel() }],
+          fields: [{
+            name: 'periodo',
+            label: _esEspecial()
+              ? 'Período a consultar (esta empresa es contribuyente especial: declara por quincena)'
+              : 'Período a consultar',
+            col: 2, type: 'select', options: opcionesPer(), value: _perLabel(),
+          }],
           onSave: (v) => {
-            const p = String(v.periodo || '').split(' ');
+            const partes = String(v.periodo || '').split('·');
+            const p = partes[0].trim().split(' ');
             const idx = MESES_FIS.findIndex((m) => m === p[0]);
             if (idx < 0 || !p[1]) return 'Período inválido.';
-            _fiscalPer = { mm: String(idx + 1).padStart(2, '0'), aa: p[1].slice(2) };
+            const q = /2da/.test(partes[1] || '') ? 2 : (/1ra/.test(partes[1] || '') ? 1 : null);
+            _fiscalPer = { mm: String(idx + 1).padStart(2, '0'), aa: p[1].slice(2), q: q };
             window.__fiscalPer = _fiscalPer;
             if (mainBtn) mainBtn.textContent = _perLabel();
             cargarLibroFiscal('compra');
