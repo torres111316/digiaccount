@@ -13068,11 +13068,17 @@
     const sel = { tipo: 'Persona jurídica (J)', actividad: 'comercial' };
 
     // Selección de tarjetas (single por grupo)
+    /* sel.tipo arranca en 'Persona jurídica (J)', así que por su valor no hay
+       forma de saber si el usuario eligió eso o si nunca tocó nada. Se anota
+       aparte, porque el OCR necesita saberlo: si el usuario ya dijo qué está
+       registrando, el certificado no puede contradecirlo. */
+    let tipoElegido = false;
     scrim.querySelectorAll('.wiz-choice').forEach((grp) => {
       grp.querySelectorAll('.choice-card').forEach((card) => card.addEventListener('click', () => {
         grp.querySelectorAll('.choice-card').forEach((c) => (c.dataset.sel = 'false'));
         card.dataset.sel = 'true';
         sel[grp.dataset.choice] = card.dataset.val;
+        if (grp.dataset.choice === 'tipo') tipoElegido = true;
       }));
     });
     // Toggle de obligaciones
@@ -13095,6 +13101,18 @@
       return m ? { persona: m[1].trim(), comercial: m[2].trim() } : null;
     }
     window.__partirFirmaPersonal = partirFirmaPersonal;   // para poder probarlo
+
+    /* Un Emprendimiento se registra como «EMPRENDIMIENTO Nombre Apellido [N]»,
+       donde el número solo aparece cuando ya existe otro con el mismo nombre. */
+    function partirEmprendimiento(rs) {
+      const m = String(rs || '').match(/^\s*EMPRENDIMIENTO\s+(.+?)\s*$/i);
+      if (!m) return null;
+      const partes = m[1].trim().split(/\s+/);
+      if (partes.length < 2) return null;
+      const num = /^\d+$/.test(partes[partes.length - 1]) ? partes.pop() : '';
+      return { nombre: partes[0], apellido: partes.slice(1).join(' '), num: num };
+    }
+    window.__partirEmprendimiento = partirEmprendimiento;
 
     function razonSocial() {
       const tg = tgActual();
@@ -13163,28 +13181,38 @@
         drawIcons(); return;
       }
       rifDoc.datos = d;
-      // Tipo de entidad según la letra del RIF (J/G → jurídica; V/E → natural)
-      if (d.tipo === 'juridica' || d.tipo === 'natural') {
+      /* El tipo lo elige el usuario ANTES de subir el certificado, y su
+         elección manda. La letra del RIF no alcanza para distinguir: una Firma
+         Personal y una persona natural llevan V las dos, y un Emprendimiento y
+         una C.A. llevan J. Deducirlo del RIF pisaba lo que el usuario ya había
+         dicho — elegía «Firma Personal» y el OCR lo devolvía a «Persona
+         natural», donde ni siquiera se muestran sus campos.
+
+         Solo se propone cuando el usuario todavía no eligió nada. */
+      if (!tipoElegido && (d.tipo === 'juridica' || d.tipo === 'natural')) {
         const val = d.tipo === 'juridica' ? 'Persona jurídica (J)' : 'Persona natural (V/E)';
         const card = scrim.querySelector('.wiz-choice[data-choice="tipo"] .choice-card[data-val="' + val + '"]');
         if (card) card.click();
         updateTipoFields();
       }
       if (d.razon_social) {
-        /* El propio nombre delata la Firma Personal, y hay que atenderlo DESPUÉS
-           de fijar el tipo por la letra del RIF: una F.P. lleva RIF con V, así
-           que el paso anterior habría elegido «Persona natural» y el formato se
-           perdería. */
-        const fp = partirFirmaPersonal(d.razon_social);
-        if (fp) {
-          const card = scrim.querySelector('.wiz-choice[data-choice="tipo"] .choice-card[data-val="Firma Personal (F.P.)"]');
-          if (card) { card.click(); updateTipoFields(); }
-          const nf = document.getElementById('cwFpNombre');
-          const cf = document.getElementById('cwFpComercial');
-          if (nf) nf.value = fp.persona;
-          if (cf) cf.value = fp.comercial;
+        /* La razón social se reparte en los campos DEL TIPO QUE ESTÁ PUESTO,
+           porque el asistente la vuelve a componer a partir de ellos y no del
+           texto suelto. Escribirla siempre en el campo genérico hacía que en
+           una F.P. o un Emprendimiento el dato ni se viera. */
+        const tg = tgActual();
+        const set = (id, v) => { const e = document.getElementById(id); if (e) e.value = v; };
+        if (tg === 'fp') {
+          // El certificado ya trae «NOMBRE (COMERCIAL, F.P.)»: se separa.
+          const fp = partirFirmaPersonal(d.razon_social);
+          set('cwFpNombre', fp ? fp.persona : d.razon_social);
+          if (fp) set('cwFpComercial', fp.comercial);
+        } else if (tg === 'emp') {
+          // Y un Emprendimiento, «EMPRENDIMIENTO Nombre Apellido [N]».
+          const e = partirEmprendimiento(d.razon_social);
+          if (e) { set('cwEmpNombre', e.nombre); set('cwEmpApellido', e.apellido); if (e.num) set('cwEmpNum', e.num); }
         } else {
-          const n = document.getElementById('cwNombre'); if (n) n.value = d.razon_social;
+          set('cwNombre', d.razon_social);
         }
       }
       if (d.rif) { const rEl = document.getElementById('cwRif'); if (rEl) rEl.value = d.rif; }
