@@ -270,13 +270,25 @@ def celda(fila, mapa, campo):
     return fila[i] if i is not None and i < len(fila) else ''
 
 
-def revisar_hoja(hoja, problemas, resumen):
+def recorrer_hoja(hoja):
+    """Lee una hoja y devuelve (meta, filas), sin juzgar nada.
+
+    Lo usan TANTO el revisor como el cargador. Que cada uno interpretara
+    las columnas por su lado terminaría en que uno aprueba lo que el otro
+    carga distinto, y la diferencia aparecería en una declaración.
+
+    Cada fila trae 'clase':
+      'operacion'  una compra o venta real
+      'anulada'    numerada pero en cero
+      'sucursal'   el resumen de un establecimiento; NO es una operación
+    """
     lineas = [c for fila in hoja.filas[:12] for c in fila]
     periodo, quincena, rango, err_per = leer_periodo(lineas)
-    donde = hoja.nombre
+    meta = {'hoja': hoja.nombre, 'periodo': periodo, 'quincena': quincena,
+            'rango': rango, 'errores': [], 'totales': None}
 
     if err_per:
-        problemas.append((donde, '', 'periodo', err_per))
+        meta['errores'].append(('periodo', err_per))
 
     # La hoja dice una quincena en su nombre y otra en su rango.
     # Las alternativas largas van primero: la expresión toma la primera que
@@ -285,66 +297,93 @@ def revisar_hoja(hoja, problemas, resumen):
     if m_nom and quincena:
         dice = 1 if m_nom.group(1) in ('1', '1ra', 'primera') else 2
         if dice != quincena:
-            problemas.append((donde, '', 'periodo',
-                              'La hoja se llama %sda quincena pero su encabezado dice %s'
-                              % (dice, rango)))
+            meta['errores'].append(('periodo',
+                                    'La hoja se llama %sda quincena pero su encabezado dice %s'
+                                    % (dice, rango)))
 
     i_enc = next((i for i, f in enumerate(hoja.filas) if es_encabezado(f)), None)
     if i_enc is None:
-        problemas.append((donde, '', 'estructura', 'No se encontró la fila de encabezados'))
-        return
+        meta['errores'].append(('estructura', 'No se encontró la fila de encabezados'))
+        return meta, []
     mapa = mapear_columnas(hoja.filas[i_enc])
     faltan = [c for c in ('fecha', 'total', 'base', 'iva') if c not in mapa]
     if faltan:
-        problemas.append((donde, '', 'estructura',
-                          'Faltan columnas en el encabezado: ' + ', '.join(faltan)))
-        return
+        meta['errores'].append(('estructura',
+                                'Faltan columnas en el encabezado: ' + ', '.join(faltan)))
+        return meta, []
 
-    suma = {'total': 0.0, 'exento': 0.0, 'base': 0.0, 'iva': 0.0}
-    operaciones, sucursales, anuladas = 0, [], []
-    totales_hoja = None
-
+    filas, cerrada = [], False
     for fila in hoja.filas[i_enc + 1:]:
         crudo = ' '.join(texto(c) for c in fila)
         if not crudo.strip():
             continue
 
-        # El renglón de TOTALES de la hoja, para contrastarlo al final.
+        # El renglón de TOTALES de la hoja, para contrastarlo después.
         if re.match(r'^\s*totales?\s*:?\s*$', plano(texto(fila[0]) if fila else '')):
-            totales_hoja = {k: (num(celda(fila, mapa, k)) or 0.0) for k in suma}
+            meta['totales'] = {k: (num(celda(fila, mapa, k)) or 0.0)
+                               for k in ('total', 'exento', 'base', 'iva')}
+            cerrada = True
             continue
         # Debajo de TOTALES viene el cuadro de la Forma 30, que no son filas.
-        if totales_hoja is not None:
+        if cerrada:
             continue
 
         f, f_txt = leer_fecha(celda(fila, mapa, 'fecha'))
-        rif = texto(celda(fila, mapa, 'rif'))
-        nombre = texto(celda(fila, mapa, 'nombre'))
-        factura = texto(celda(fila, mapa, 'factura'))
-        total = num(celda(fila, mapa, 'total')) or 0.0
-        exento = num(celda(fila, mapa, 'exento')) or 0.0
-        base = num(celda(fila, mapa, 'base')) or 0.0
-        iva = num(celda(fila, mapa, 'iva')) or 0.0
-        igtf = num(celda(fila, mapa, 'igtf')) or 0.0
-        alic = num(celda(fila, mapa, 'alicuota'))
+        r = {
+            'fecha': f, 'fecha_txt': f_txt,
+            'rif': texto(celda(fila, mapa, 'rif')),
+            'nombre': texto(celda(fila, mapa, 'nombre')),
+            'factura': texto(celda(fila, mapa, 'factura')),
+            'control': texto(celda(fila, mapa, 'control')),
+            'total': num(celda(fila, mapa, 'total')) or 0.0,
+            'exento': num(celda(fila, mapa, 'exento')) or 0.0,
+            'base': num(celda(fila, mapa, 'base')) or 0.0,
+            'iva': num(celda(fila, mapa, 'iva')) or 0.0,
+            'igtf': num(celda(fila, mapa, 'igtf')) or 0.0,
+            'retenido': num(celda(fila, mapa, 'retenido')) or 0.0,
+            'alicuota': num(celda(fila, mapa, 'alicuota')),
+        }
 
         # La línea de resumen de una sucursal: NO es una operación, y
         # cargarla junto a las facturas de esa sucursal contaría el período
         # dos veces.
-        if re.search(r'sucursal', plano(rif + ' ' + nombre + ' ' + crudo)) and not factura:
-            sucursales.append((donde, total, base, iva))
+        if re.search(r'sucursal', plano(r['rif'] + ' ' + r['nombre'] + ' ' + crudo)) and not r['factura']:
+            r['clase'] = 'sucursal'
+            filas.append(r)
             continue
 
-        hay_monto = abs(total) > TOLERANCIA or abs(base) > TOLERANCIA
-        if not hay_monto and not f and not factura:
+        hay_monto = abs(r['total']) > TOLERANCIA or abs(r['base']) > TOLERANCIA
+        if not hay_monto and not f and not r['factura']:
             continue                      # fila del formato, sin llenar
 
-        ref = factura or (f_txt or '(sin fecha)')
+        r['ref'] = r['factura'] or (f_txt or '(sin fecha)')
+        r['clase'] = 'operacion' if hay_monto else 'anulada'
+        filas.append(r)
 
-        if not hay_monto:
-            anuladas.append((donde, ref))
+    return meta, filas
+
+
+def revisar_hoja(hoja, problemas, resumen):
+    meta, filas = recorrer_hoja(hoja)
+    donde, periodo = meta['hoja'], meta['periodo']
+    for clase, msg in meta['errores']:
+        problemas.append((donde, '', clase, msg))
+
+    suma = {'total': 0.0, 'exento': 0.0, 'base': 0.0, 'iva': 0.0}
+    operaciones, sucursales, anuladas = 0, [], []
+
+    for r in filas:
+        if r['clase'] == 'sucursal':
+            sucursales.append((donde, r['total'], r['base'], r['iva']))
+            continue
+        if r['clase'] == 'anulada':
+            anuladas.append((donde, r['ref']))
             continue
 
+        ref = r['ref']
+        f, f_txt, rif, nombre, factura = r['fecha'], r['fecha_txt'], r['rif'], r['nombre'], r['factura']
+        total, exento, base, iva, igtf, alic = (r['total'], r['exento'], r['base'],
+                                                r['iva'], r['igtf'], r['alicuota'])
         operaciones += 1
         suma['total'] += total
         suma['exento'] += exento
@@ -391,9 +430,9 @@ def revisar_hoja(hoja, problemas, resumen):
                               'Sin número de factura en una operación de %s' % mm(total)))
 
     # --- la hoja suma lo que dice sumar ---
-    if totales_hoja:
+    if meta['totales']:
         for campo in ('total', 'base', 'iva'):
-            dice = totales_hoja.get(campo) or 0.0
+            dice = meta['totales'].get(campo) or 0.0
             # El TOTALES de la casa matriz incluye la línea de la sucursal.
             propio = suma[campo] + sum(s[{'total': 1, 'base': 2, 'iva': 3}[campo]]
                                        for s in sucursales)
@@ -403,7 +442,7 @@ def revisar_hoja(hoja, problemas, resumen):
                                   % (mm(dice), campo, mm(propio), mm(dice - propio))))
 
     resumen.append({
-        'hoja': donde, 'periodo': periodo, 'quincena': quincena,
+        'hoja': donde, 'periodo': periodo, 'quincena': meta['quincena'],
         'operaciones': operaciones, 'anuladas': anuladas,
         'sucursales': sucursales, 'base': suma['base'],
     })
