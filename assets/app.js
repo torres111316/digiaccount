@@ -13203,10 +13203,16 @@
         const tg = tgActual();
         const set = (id, v) => { const e = document.getElementById(id); if (e) e.value = v; };
         if (tg === 'fp') {
-          // El certificado ya trae «NOMBRE (COMERCIAL, F.P.)»: se separa.
+          /* Dos fuentes para el nombre comercial, en orden:
+             1. El bloque «Firmas Personales» del certificado, que es donde
+                realmente vive — el OCR lo devuelve en d.firma_personal.
+             2. El propio nombre, si viniera ya compuesto «NOMBRE (COMERCIAL, F.P.)».
+             Si ninguna lo trae, el campo queda vacío y lo escribe el usuario;
+             es obligatorio para guardar, así que no se cuela a medio llenar. */
           const fp = partirFirmaPersonal(d.razon_social);
           set('cwFpNombre', fp ? fp.persona : d.razon_social);
-          if (fp) set('cwFpComercial', fp.comercial);
+          const comercial = d.firma_personal || (fp ? fp.comercial : '');
+          if (comercial) set('cwFpComercial', comercial);
         } else if (tg === 'emp') {
           // Y un Emprendimiento, «EMPRENDIMIENTO Nombre Apellido [N]».
           const e = partirEmprendimiento(d.razon_social);
@@ -13220,7 +13226,8 @@
       if (d.condicion) { const c = document.getElementById('cwCond'); if (c) c.value = d.condicion === 'especial' ? 'Contribuyente especial' : 'Contribuyente ordinario'; }
       updatePreview();
       const conf = d.confianza != null ? ' · certeza ' + Math.round(d.confianza * 100) + '%' : '';
-      setTxt('🤖 RIF leído ✓ · ' + (d.rif || file.name) + conf, 'Datos cargados: revisa y corrige lo que haga falta. El documento se archivará en la Bóveda Fiscal de la empresa.');
+      if (d.firma_personal) setTxt('🤖 RIF leído ✓ · firma personal: ' + d.firma_personal, 'Datos cargados: revisa y corrige lo que haga falta.');
+      else setTxt('🤖 RIF leído ✓ · ' + (d.rif || file.name) + conf, 'Datos cargados: revisa y corrige lo que haga falta. El documento se archivará en la Bóveda Fiscal de la empresa.');
       if (window.toast) window.toast('🤖 RIF leído' + (d.razon_social ? ' · ' + d.razon_social : '') + conf, 'success');
       drawIcons();
     }
