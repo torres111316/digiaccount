@@ -846,7 +846,10 @@
                 <tr><td colspan="6" style="text-align:center;color:var(--fg-muted);padding:14px;">Sin retenciones registradas en el período</td></tr>
               </tbody>
               <tfoot>
-                <tr class="t-iva"><td colspan="5">Total IVA retenido (75%)</td><td class="num">0,00</td></tr>
+                <!-- Sin porcentaje en la etiqueta: no siempre se retiene el 75%. Hay
+                     proveedores a los que se les retiene el 100%, y el pie decía 75%
+                     igual. El porcentaje de cada retención va en su propia columna. -->
+                <tr class="t-iva"><td colspan="5">Total IVA retenido</td><td class="num">0,00</td></tr>
                 <tr class="t-islr"><td colspan="5">Total ISLR retenido · Decreto 1.808</td><td class="num">0,00</td></tr>
                 <tr class="t-tot"><td colspan="5">Total retenido del período</td><td class="num">0,00</td></tr>
               </tfoot>
@@ -1193,7 +1196,10 @@
           <div class="ret-card total">
             <div class="rc-l">Total retenido</div>
             <div class="rc-v" data-sum="total">Bs 0,00</div>
-            <div class="rc-c" data-sum="total-c">6 comprobantes · 2da quincena May 2026</div>
+            <!-- Arranca en cero, como sus dos vecinas. Traía "6 comprobantes ·
+                 2da quincena May 2026" de la maqueta: un conteo y un período
+                 inventados que se veían hasta que el JS los reemplazaba. -->
+            <div class="rc-c" data-sum="total-c">0 comprobantes</div>
           </div>
         </div>
 
@@ -1382,9 +1388,13 @@
             </div>
 
             <div class="comp-meta-strip">
-              <div class="cell"><div class="l">Fecha de emisión</div><div class="v">28/05/2026</div></div>
-              <div class="cell"><div class="l">Período fiscal</div><div class="v">Año 2026 · Mes 05</div></div>
-              <div class="cell"><div class="l">% Retención</div><div class="v">75%</div></div>
+              <!-- Vacías a propósito. El JS las llena con los datos reales de la
+                   retención; el valor inicial traía 28/05/2026 y 75% de la maqueta.
+                   En un comprobante fiscal un dato falso pero verosímil es peor que
+                   uno vacío: si el llenado fallara, se imprimiría igual. -->
+              <div class="cell"><div class="l">Fecha de emisión</div><div class="v">—</div></div>
+              <div class="cell"><div class="l">Período fiscal</div><div class="v">—</div></div>
+              <div class="cell"><div class="l">% Retención</div><div class="v">—</div></div>
               <div class="cell"><div class="l">Providencia</div><div class="v">SNAT/2025/000054</div></div>
             </div>
 

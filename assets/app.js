@@ -634,22 +634,37 @@
        Es la clase de error que se descubre después de declarar. */
     function refreshSummary() {
       const arr = _retPageArr[curDir] || [];
-      let ivaT = 0, ivaC = 0, islrT = 0, islrC = 0, ivaPct = '75%', islrPct = '3%';
+      /* Los porcentajes se juntan TODOS, no se queda el último.
+         Antes arrancaban en '75%' y '3%' escritos a mano y cada retención
+         pisaba al anterior: con un proveedor al 75% y otro al 100%, el
+         resumen mostraba el de la última fila leída y parecía que todas
+         fueron a ese porcentaje. No siempre se retiene el 75%. */
+      let ivaT = 0, ivaC = 0, islrT = 0, islrC = 0;
+      const pctIva = new Set(), pctIslr = new Set();
       arr.forEach((r) => {
         const monto = Number(r.monto) || 0;
         const p = Number(r.pct) || 0;
         const pctTxt = (Number.isInteger(p) ? p : p.toFixed(2)) + '%';
-        if (r.tipo === 'iva') { ivaT += monto; ivaC++; ivaPct = pctTxt; }
-        else { islrT += monto; islrC++; islrPct = pctTxt; }
+        if (r.tipo === 'iva') { ivaT += monto; ivaC++; if (p) pctIva.add(pctTxt); }
+        else { islrT += monto; islrC++; if (p) pctIslr.add(pctTxt); }
       });
+      // Uno solo se nombra; varios se enumeran; ninguno no dice nada.
+      const juntar = (s) => {
+        const v = [...s].sort((a, b) => parseFloat(a) - parseFloat(b));
+        return v.length === 0 ? '' : v.length <= 3 ? v.join(' y ') : v.length + ' porcentajes';
+      };
+      const ivaPct = juntar(pctIva), islrPct = juntar(pctIslr);
       const totT = ivaT + islrT, totC = ivaC + islrC;
       const q = (sel) => summary.querySelector('[data-sum="' + sel + '"]');
       q('iva').textContent = 'Bs ' + fmt(ivaT);
-      q('iva-c').textContent = ivaC + ' comprobante' + (ivaC === 1 ? '' : 's') + ' · ' + ivaPct;
+      q('iva-c').textContent = ivaC + ' comprobante' + (ivaC === 1 ? '' : 's') + (ivaPct ? ' · ' + ivaPct : '');
       q('islr').textContent = 'Bs ' + fmt(islrT);
-      q('islr-c').textContent = islrC + ' comprobante' + (islrC === 1 ? '' : 's') + (islrC ? ' · ' + islrPct : '');
+      q('islr-c').textContent = islrC + ' comprobante' + (islrC === 1 ? '' : 's') + (islrPct ? ' · ' + islrPct : '');
       q('total').textContent = 'Bs ' + fmt(totT);
-      const noun = curDir === 'practicadas' ? '2da quincena May 2026' : 'sufridas en ventas';
+      /* El período REAL. Decía "2da quincena May 2026" escrito a mano desde la
+         maqueta: se quedó ahí en mayo y siguió diciendo mayo en cualquier
+         empresa y cualquier mes. */
+      const noun = curDir === 'practicadas' ? _perLabelRet() : 'sufridas en ventas';
       q('total-c').textContent = totC + ' comprobante' + (totC === 1 ? '' : 's') + ' · ' + noun;
     }
 
@@ -835,6 +850,15 @@
       if (p && p.mm && p.aa) return '20' + p.aa + '-' + p.mm;
       const d = new Date();
       return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+    }
+    /* El período que se está mirando, en palabras. Sigue al selector del
+       módulo Fiscal, incluida la quincena cuando la empresa declara así. */
+    function _perLabelRet() {
+      const p = window.__fiscalPer;
+      if (!p || !p.mm || !p.aa) return 'del período';
+      const mes = _MESES_RET[parseInt(p.mm, 10) - 1] + ' 20' + p.aa;
+      const esp = window.__esEspecial && window.__esEspecial();
+      return (esp && p.q) ? (p.q === 1 ? '1ra' : '2da') + ' quincena ' + mes : mes;
     }
     function _opcionesPeriodoRet() {
       const out = [];
