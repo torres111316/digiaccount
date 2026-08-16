@@ -857,7 +857,7 @@
       const p = window.__fiscalPer;
       if (!p || !p.mm || !p.aa) return 'del período';
       const mes = _MESES_RET[parseInt(p.mm, 10) - 1] + ' 20' + p.aa;
-      const esp = window.__esEspecial && window.__esEspecial();
+      const esp = window.__retencionesPorQuincena && window.__retencionesPorQuincena();
       return (esp && p.q) ? (p.q === 1 ? '1ra' : '2da') + ' quincena ' + mes : mes;
     }
     function _opcionesPeriodoRet() {
@@ -8562,7 +8562,7 @@
     function _opcionesPeriodo() {
       // Del período actual hacia atrás 24 meses (para declarar facturas rezagadas)
       const out = [];
-      const esp = window.__esEspecial && window.__esEspecial();
+      const esp = window.__ivaPorQuincena && window.__ivaPorQuincena();
       const base = _periodoActualKey();
       let y = parseInt(base.slice(0, 4), 10), m = parseInt(base.slice(5, 7), 10);
       for (let i = 0; i < 24; i++) {
@@ -8589,7 +8589,7 @@
     // El valor que debe venir preseleccionado en ese selector.
     function _periodoActualValor() {
       const k = _periodoActualKey();
-      if (!(window.__esEspecial && window.__esEspecial())) return k;
+      if (!(window.__ivaPorQuincena && window.__ivaPorQuincena())) return k;
       const p = window.__fiscalPer;
       return k + '·' + ((p && p.q) ? p.q : (new Date().getDate() <= 15 ? 1 : 2));
     }
@@ -9069,7 +9069,7 @@
              deducirla del día la mandaría a la que no es. La de una VENTA sí
              sale del día, porque la emite la empresa el día que la emite.
              En un ordinario queda nula: declara el mes completo. */
-          const esEsp = window.__esEspecial && window.__esEspecial();
+          const esEsp = window.__ivaPorQuincena && window.__ivaPorQuincena();
           const diaV = parseInt(fP[2], 10);
           const quincena = !esEsp ? null
             : (esCompra ? elegido.quincena : (diaV && diaV > 15 ? 2 : 1));
@@ -9230,23 +9230,44 @@
        período NO es el mes: es la quincena. Con el mes completo, la Forma 30
        sale con el total de los treinta días y no es lo que se presenta.
        En un ordinario `q` queda nulo y todo funciona como siempre. */
-    /* Ser especial NO basta para declarar por quincena: también hay que ser
-       persona jurídica. Un especial persona natural —RIF con V o E— declara
-       el IVA mensual, igual que su anticipo de ISLR, y el cuadro del anticipo
-       ya distinguía así desde antes.
+    /* La periodicidad NO es de la empresa, es de cada obligación. Un mismo
+       contribuyente especial puede deber unas cosas por quincena y otras por
+       mes, y meterlo todo en un solo "es especial" fue el error:
 
-       Se ve en los libros reales: los de GATMA (J) vienen por quincena y los
-       de Radian (V) por mes, llevados por el mismo contador. Ofrecerle
-       quincenas a Radian sería ofrecerle un período que no presenta. */
-    const _esEspecial = () => {
-      const emp = window.__EMPRESA_ACTIVA || {};
-      if (!/especial/i.test(emp.cond || '')) return false;
-      const ini = String(emp.rif || '').toUpperCase().replace(/[^A-Z]/g, '').charAt(0);
-      return ini !== 'V' && ini !== 'E';
+                              especial C.A.   especial F.P.   ordinario
+         Declaración de IVA      quincenal        MENSUAL       mensual
+         Retenciones de IVA      quincenal       quincenal      no aplica
+         IGTF (Forma 21)         quincenal       quincenal      no aplica
+         Retenciones de ISLR      mensual         mensual        mensual
+
+       Se ve en los libros reales, llevados por el mismo contador: los de
+       GATMA (C.A.) vienen por quincena y los de Radian (firma personal) por
+       mes — pero los archivos de retención de Radian sí dicen "1RA QUINCENA".
+    */
+    const _esEspecialFiscal = () =>
+      /especial/i.test((window.__EMPRESA_ACTIVA || {}).cond || '');
+    const _esPersonaNatural = () => {
+      const ini = String((window.__EMPRESA_ACTIVA || {}).rif || '')
+        .toUpperCase().replace(/[^A-Z]/g, '').charAt(0);
+      return ini === 'V' || ini === 'E';
     };
-    // Expuesto porque el formulario de registro vive en otro ámbito y necesita
-    // la misma respuesta: dos definiciones de "declara por quincena" se separan.
-    window.__esEspecial = _esEspecial;
+
+    /* El IVA lo declara por quincena solo el especial persona JURÍDICA. Una
+       firma personal especial lo declara mensual, igual que su anticipo de
+       ISLR — el cuadro del anticipo ya distinguía así desde antes. */
+    const _ivaPorQuincena = () => _esEspecialFiscal() && !_esPersonaNatural();
+
+    /* Las retenciones de IVA y el IGTF se enteran por quincena en TODO
+       especial, sea C.A. o firma personal. Es una obligación del agente de
+       retención, y esa condición no depende de si es persona natural. */
+    const _retencionesPorQuincena = () => _esEspecialFiscal();
+
+    /* Se exponen porque el formulario de registro vive en otro ámbito: dos
+       definiciones de lo mismo se separan con el tiempo. El nombre dice qué
+       obligación es — `esEspecial` a secas fue justo lo que confundió las
+       dos periodicidades. */
+    window.__ivaPorQuincena = _ivaPorQuincena;
+    window.__retencionesPorQuincena = _retencionesPorQuincena;
     let _fiscalPer = {
       mm: String(_hoyFis.getMonth() + 1).padStart(2, '0'),
       aa: String(_hoyFis.getFullYear()).slice(2),
@@ -9254,7 +9275,7 @@
     };
     window.__fiscalPer = _fiscalPer; // expuesto para que las retenciones filtren por el mismo período
     const _perLabel = () => MESES_FIS[parseInt(_fiscalPer.mm, 10) - 1] + ' 20' + _fiscalPer.aa
-      + (_esEspecial() && _fiscalPer.q ? ' · ' + _fiscalPer.q + (_fiscalPer.q === 1 ? 'ra' : 'da') + ' quincena' : '');
+      + (_ivaPorQuincena() && _fiscalPer.q ? ' · ' + _fiscalPer.q + (_fiscalPer.q === 1 ? 'ra' : 'da') + ' quincena' : '');
     /* En qué quincena se declaró una operación.
 
        Se prefiere lo REGISTRADO sobre lo deducible: una compra recibida
@@ -9445,7 +9466,7 @@
          libro sin avisar. Separándolas aquí, cada una cae en su quincena y
          ninguna se pierde. El mes de un contribuyente cabe de sobra. */
       const delPer = (data || []).filter((r) =>
-        !(_esEspecial() && _fiscalPer.q) || _quincenaDe(r) === _fiscalPer.q);
+        !(_ivaPorQuincena() && _fiscalPer.q) || _quincenaDe(r) === _fiscalPer.q);
       const arr = delPer.sort((a, b) => {
         const fa = fechaOrdenable(a.fecha), fb = fechaOrdenable(b.fecha);
         if (fa !== fb) return fa.localeCompare(fb);
@@ -9824,7 +9845,7 @@
         const dOp = new Date();
         for (let i = 0; i < 14; i++) {
           const mes = MESES_FIS[dOp.getMonth()] + ' ' + dOp.getFullYear();
-          if (_esEspecial()) { out.push(mes + ' · 1ra quincena'); out.push(mes + ' · 2da quincena'); }
+          if (_ivaPorQuincena()) { out.push(mes + ' · 1ra quincena'); out.push(mes + ' · 2da quincena'); }
           else out.push(mes);
           dOp.setMonth(dOp.getMonth() - 1);
         }
@@ -9836,7 +9857,7 @@
           saveLabel: 'Aplicar',
           fields: [{
             name: 'periodo',
-            label: _esEspecial()
+            label: _ivaPorQuincena()
               ? 'Período a consultar (esta empresa es contribuyente especial: declara por quincena)'
               : 'Período a consultar',
             col: 2, type: 'select', options: opcionesPer(), value: _perLabel(),
