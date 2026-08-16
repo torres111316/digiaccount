@@ -9294,6 +9294,95 @@
     }
     window.__fechaOrdenable = fechaOrdenable;
 
+    /* Suma un conjunto de filas del libro. Una ANULADA no suma: conserva su
+       número para que no se pierda el salto en la serie, pero no es una
+       operación del período. */
+    function sumarFilas(filas) {
+      const s = { tot: 0, ex: 0, base: 0, iva: 0, igtf: 0 };
+      (filas || []).forEach((r) => {
+        if (/anulada/i.test(r.tercero_nombre || '')) return;
+        s.tot += Number(r.total) || 0;
+        s.ex += Number(r.exento) || 0;
+        s.base += Number(r.base) || 0;
+        s.iva += Number(r.iva) || 0;
+        s.igtf += Number(r.igtf) || 0;
+      });
+      return s;
+    }
+
+    /* La tabla de ventas por MÁQUINA FISCAL.
+
+       Existía en la pantalla con sus columnas correctas —máquina, N° de Z,
+       rango de comprobantes— pero con el cuerpo vacío y nada que lo llenara:
+       era un cuadro de adorno. Un negocio que vende al público por impresora
+       fiscal asienta un renglón por día, no una factura por venta, y sin esta
+       tabla sus ventas se verían en la de facturas, sin el número de Z que es
+       lo único que permite contrastarlas contra la cinta.
+
+       La pestaña se esconde cuando la empresa no vende así, para no ofrecer
+       una vista que siempre estaría vacía. */
+    function pintarMaquina(filas) {
+      const vista = document.querySelector('.ventas-view[data-ventasmode="maquina"]');
+      const nav = document.getElementById('ventasModeNav');
+      const btn = nav && nav.querySelector('button[data-vmode="maquina"]');
+      const hay = (filas || []).length > 0;
+      if (btn) btn.hidden = !hay;
+      // Si estaba mirando la vista de máquina y cambia a una empresa que no
+      // vende así, se la devuelve a facturas en vez de dejarla en blanco.
+      if (!hay && vista && !vista.hidden && nav) {
+        const bf = nav.querySelector('button[data-vmode="facturas"]');
+        if (bf) bf.click();
+      }
+      if (!vista) return;
+      const tabla = vista.querySelector('table.libro-maquina');
+      if (!tabla) return;
+      const cuerpo = tabla.querySelector('tbody'), pie = tabla.querySelector('tfoot');
+
+      // El chip de la máquina decía un serial escrito a mano en la maqueta.
+      const chip = vista.querySelector('.filter-chip');
+      const seriales = [...new Set((filas || []).map((r) => r.maquina_fiscal).filter(Boolean))];
+      if (chip) {
+        chip.innerHTML = '<i data-lucide="cpu"></i> ' + (seriales.length
+          ? 'Máquina: ' + esc(seriales.join(' · '))
+          : 'Sin máquina fiscal');
+      }
+
+      if (!hay) {
+        if (cuerpo) cuerpo.innerHTML = '<tr><td colspan="14" style="text-align:center;color:var(--fg-muted);padding:14px;">Sin reportes Z en ' + esc(_perLabel()) + '.</td></tr>';
+        if (pie) pie.innerHTML = '';
+        return;
+      }
+
+      if (cuerpo) {
+        cuerpo.innerHTML = filas.map((r, i) => {
+          const alic = Number(r.alicuota) || 0;
+          return '<tr data-id="' + esc(r.id || '') + '" data-libro="venta">'
+            + '<td class="ctr">' + (i + 1) + '</td>'
+            + '<td>' + esc(r.fecha || '') + '</td>'
+            + '<td class="mono">' + esc(r.maquina_fiscal || '') + '</td>'
+            + '<td class="ctr mono">' + esc(r.numero_zeta || '') + '</td>'
+            + '<td class="mono">' + esc(r.comprobante_desde || '') + '</td>'
+            + '<td class="mono">' + esc(r.comprobante_hasta || '') + '</td>'
+            + '<td class="ctr"></td><td class="ctr"></td>'
+            + '<td class="num">' + fmtF(Number(r.total) || 0) + '</td>'
+            + '<td class="num">' + fmtF(Number(r.exento) || 0) + '</td>'
+            + '<td class="num">' + fmtF(Number(r.base) || 0) + '</td>'
+            + '<td class="num">' + fmtF(Number(r.igtf) || 0) + '</td>'
+            + '<td class="ctr">' + (alic > 0 ? Math.round(alic * 100) + '%' : 'Ex.') + '</td>'
+            + '<td class="num">' + fmtF(Number(r.iva) || 0) + '</td></tr>';
+        }).join('');
+      }
+      if (pie) {
+        const s = sumarFilas(filas);
+        pie.innerHTML = '<tr class="libro-tot"><td colspan="8" style="text-align:right;">TOTALES DEL PERÍODO ('
+          + filas.length + ' reporte' + (filas.length === 1 ? '' : 's') + ' Z)</td>'
+          + '<td class="num">' + fmtF(s.tot) + '</td><td class="num">' + fmtF(s.ex) + '</td>'
+          + '<td class="num">' + fmtF(s.base) + '</td><td class="num">' + fmtF(s.igtf) + '</td>'
+          + '<td></td><td class="num">' + fmtF(s.iva) + '</td></tr>';
+      }
+      if (window.lucide) window.lucide.createIcons();
+    }
+
     async function cargarLibroFiscal(tipo, page) {
       const tabName = tipo === 'compra' ? 'compras' : 'ventas';
       const sel = tipo === 'compra' ? 'table.libro-compras' : 'table.libro-ventas:not(.libro-maquina)';
@@ -9308,7 +9397,7 @@
       const vacio = (txt) => {
         if (tbody) tbody.innerHTML = '<tr><td colspan="' + (esCompra ? 12 : 13) + '" style="text-align:center;color:var(--fg-muted);padding:14px;">' + (txt || ('Sin registros. Usa "Registrar ' + tipo + '".')) + '</td></tr>';
         if (tfoot) tfoot.innerHTML = totRow(0, 0, 0, 0, 0);
-        if (esCompra) { _credF = 0; resetF30c(); } else { _debF = 0; resetF30v(); }
+        if (esCompra) { _credF = 0; resetF30c(); } else { _debF = 0; resetF30v(); pintarMaquina([]); }
         _libroData[tipo] = [];
         actualizarAutoliquidacion();
         calcularArrastres(); // el período puede no tener operaciones propias pero SÍ arrastre del mes anterior
@@ -9361,13 +9450,24 @@
         else if (alic >= 0.12) { base16 += base; iva16 += iva; }
         else if (alic > 0) { base8 += base; iva8 += iva; }
       });
+      /* Las ventas por MÁQUINA FISCAL se pintan en su propia tabla, que tiene
+         las columnas que les corresponden —máquina, N° de Z, rango de
+         comprobantes— en vez de un cliente y un número de factura que no
+         tienen. El reparto es SOLO de pintado: los totales y la Forma 30 de
+         arriba ya se calcularon sobre `arr` completo, porque un reporte Z es
+         una venta del período como cualquier otra. Sacarlo de ahí le quitaría
+         al libro de Radian el 99% de sus ventas. */
+      const arrZeta = esCompra ? [] : arr.filter((r) => r.numero_zeta);
+      const arrFact = esCompra ? arr : arr.filter((r) => !r.numero_zeta);
+      if (!esCompra) pintarMaquina(arrZeta);
+
       // Paginación: lotes de 20 operaciones por página
       const PAG_FILAS = 20;
-      const totalPag = Math.max(1, Math.ceil(arr.length / PAG_FILAS));
+      const totalPag = Math.max(1, Math.ceil(arrFact.length / PAG_FILAS));
       const pag = Math.min(Math.max(1, page || 1), totalPag);
       _libroPage[tipo] = pag;
       const inicio = (pag - 1) * PAG_FILAS;
-      tbody.innerHTML = arr.slice(inicio, inicio + PAG_FILAS).map((r, i) => {
+      tbody.innerHTML = arrFact.slice(inicio, inicio + PAG_FILAS).map((r, i) => {
         const tot = Number(r.total) || 0, ex = Number(r.exento) || 0, base = Number(r.base) || 0, iva = Number(r.iva) || 0, igtf = Number(r.igtf) || 0, alic = Number(r.alicuota) || 0;
         /* Con varias alícuotas en la misma factura un solo porcentaje mentiría:
            se dice "Varias" y el desglose vive en las columnas del registro. */
@@ -9394,12 +9494,17 @@
           + numerosPagina(tipo, pag, totalPag)
           + '<button class="btn btn-ghost" data-lp="' + tipo + '" data-lp-goto="' + (pag + 1) + '"' + (pag >= totalPag ? ' disabled' : '') + '>Siguiente</button>'
           + '<button class="btn btn-ghost" data-lp="' + tipo + '" data-lp-goto="' + totalPag + '"' + (pag >= totalPag ? ' disabled' : '') + ' title="Última">»</button>'
-          + '<span class="libro-pager-info">' + arr.length + ' operaciones en ' + esc(_perLabel()) + '</span>'
+          + '<span class="libro-pager-info">' + arrFact.length + ' operaciones en ' + esc(_perLabel()) + '</span>'
           + '</div></td></tr>'
         : '<tr><td colspan="' + (esCompra ? 12 : 13) + '" style="padding:8px 10px;"><div class="libro-pager">'
-          + '<span class="libro-pager-info">' + arr.length + ' operaci' + (arr.length === 1 ? 'ón' : 'ones') + ' en ' + esc(_perLabel()) + '</span>'
+          + '<span class="libro-pager-info">' + arrFact.length + ' operaci' + (arrFact.length === 1 ? 'ón' : 'ones') + ' en ' + esc(_perLabel()) + '</span>'
           + '</div></td></tr>';
-      if (tfoot) tfoot.innerHTML = totRow(tTot, tEx, tBase, tIva, tIgtf) + pagerRow;
+      /* El pie suma lo que ESTA tabla muestra, no el período entero: con los
+         reportes Z en su propia tabla, un pie que los incluyera diría un
+         total que no sale de las filas que se están viendo. El período
+         completo —factura y máquina juntas— es lo que traslada la Forma 30. */
+      const sF = sumarFilas(arrFact);
+      if (tfoot) tfoot.innerHTML = totRow(sF.tot, sF.ex, sF.base, sF.iva, sF.igtf) + pagerRow;
       // Traslado a la Forma 30: el IVA se declara sobre la BASE TOTAL por alícuota × la tasa
       // (método del SENIAT), NO sumando el IVA céntimo a céntimo de cada factura. Así el
       // Débito/Crédito declarado coincide con lo que calcula el portal (evita ±céntimos).
