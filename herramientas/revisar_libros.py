@@ -221,6 +221,11 @@ COLUMNAS = {
     # dejan espacios entre las letras y no contienen la palabra 'rif'.
     'rif':      ['=no r i f', '=r i f', 'r i f', 'rif'],
     'operacion': ['n de oper', 'n de operacion'],
+    # El comprobante de la RETENCIÓN, que no es ninguno de los otros tres
+    # "comprobante" que aparecen en estos libros: ni el 'Numero de
+    # Comprobante' del documento de compra, ni el primero y el último de la
+    # máquina fiscal. Por eso los apodos llevan el complemento entero.
+    'comprobante': ['comprobante de retencion', 'comprobante de iva'],
     # Ventas por impresora fiscal: un renglón por reporte Z diario.
     'maquina':  ['maquina fiscal'],
     'zeta':     ['numero de zeta', 'n de zeta', 'zeta'],
@@ -369,6 +374,7 @@ def recorrer_hoja(hoja):
             'igtf': num(celda(fila, mapa, 'igtf')) or 0.0,
             'retenido': num(celda(fila, mapa, 'retenido')) or 0.0,
             'alicuota': num(celda(fila, mapa, 'alicuota')),
+            'comprobante': texto(celda(fila, mapa, 'comprobante')),
             'maquina': texto(celda(fila, mapa, 'maquina')),
             'zeta': texto(celda(fila, mapa, 'zeta')),
             'comp_desde': texto(celda(fila, mapa, 'comp_desde')),
