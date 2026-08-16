@@ -1,26 +1,28 @@
 # Objeto social de la compañía — borrador para el abogado
 
 > **Estado:** borrador. **Debe revisarlo un abogado mercantil antes de registrar.**
-> Actualizado el 08/08/2026.
+> Actualizado el 16/08/2026, tras la derogatoria de la Providencia 000121.
 
 ## Para qué sirve este documento
 
-DigiAccount necesita constituirse como compañía anónima antes de poder homologar el
-sistema ante el SENIAT. El objeto social tiene que cubrir todo lo que la empresa
-hace y va a hacer, porque ampliarlo después cuesta otra asamblea.
+El objeto social tiene que cubrir todo lo que la empresa hace y va a hacer, porque
+ampliarlo después cuesta otra asamblea. Conviene escribirlo ancho de una vez.
 
-Hay dos razones concretas, más allá de lo comercial:
+Hasta el 12 de agosto de 2026 había una razón adicional: constituir la compañía era
+requisito para homologar el sistema ante el SENIAT, y el evaluador iba a leer el objeto
+para verificar que la actividad homologada estuviera ahí. **Ese trámite ya no existe**
+—la Providencia SNAT/2024/000121 fue derogada sin reemplazo por la SNAT/2026/00084,
+Gaceta 43.435— así que el objeto ya no se escribe para pasar una evaluación.
 
-1. **La Providencia SNAT/2024/000121** —derogada el 12/08/2026 por la SNAT/2026/00084—
-   exigía, entre los recaudos de la solicitud de
-   homologación, el **acta constitutiva** y las cédulas de los socios. El evaluador
-   va a leer el objeto: la actividad que se homologa tiene que estar ahí.
+Queda una razón regulatoria, y sigue viva:
 
-2. **La Providencia SNAT/2024/000102, Artículo 19** manda que la solicitud de
-   autorización de **cada emisor** incluya *"los datos del tercero que desarrolló el
-   aplicativo"*. Es decir: **DigiAccount aparece nombrada en la solicitud de cada
-   cliente**, no solo en la suya. Su identidad legal la va a mirar el SENIAT muchas
-   veces.
+> **Providencia SNAT/2024/000102, Artículo 19.** La solicitud de autorización de
+> **cada emisor** debe incluir *"los datos del tercero que desarrolló el aplicativo"*.
+
+Es decir: **DigiAccount aparece nombrada en la solicitud de cada cliente**, no solo en
+la suya. Su identidad legal la va a mirar el SENIAT muchas veces, aunque nadie la esté
+evaluando a ella. Un objeto que no mencione el desarrollo de sistemas de facturación
+deja esa mención coja.
 
 ---
 
@@ -51,7 +53,15 @@ de programación de aplicaciones (API), incluyendo la conexión con institucione
 bancarias, financieras y con organismos del Estado, en los términos que la normativa
 aplicable permita.
 
-### d) Equipos, dispositivos y accesorios tecnológicos
+### d) Procesamiento, alojamiento y custodia de información
+
+El procesamiento de datos por cuenta de terceros; el alojamiento de sistemas,
+aplicaciones y bases de datos; y la **custodia, resguardo y conservación de documentos
+y registros electrónicos**, incluidos los de carácter fiscal y contable, por los plazos
+que la ley imponga a sus titulares, así como su recuperación, exportación y entrega a
+requerimiento del titular o de la autoridad competente.
+
+### e) Equipos, dispositivos y accesorios tecnológicos
 
 La compra, venta, importación, exportación, distribución, representación,
 arrendamiento, comodato, instalación, configuración, mantenimiento y soporte técnico
@@ -69,17 +79,49 @@ tecnológicos, entre ellos y sin que la enumeración sea limitativa:
 - **Equipos de movilidad:** computadoras, tabletas y teléfonos inteligentes
   destinados a la operación de los sistemas de la compañía.
 
-### e) Consultoría y formación
+### f) Consultoría, acompañamiento y formación
 
-La consultoría, asesoría técnica, acompañamiento en la implantación de sistemas, y la
-capacitación y formación de usuarios, en las materias comprendidas en este objeto.
+La consultoría, asesoría técnica y acompañamiento en la implantación de sistemas; la
+**asistencia a los clientes en la preparación y tramitación de las solicitudes,
+autorizaciones, registros y declaraciones que deban presentar ante organismos
+públicos** en relación con los sistemas objeto de este contrato; y la capacitación y
+formación de usuarios en las materias comprendidas en este objeto.
 
-### f) Cláusula general
+### g) Cláusula general
 
 En general, la compañía podrá dedicarse a cualquier otra actividad de lícito comercio
 relacionada, directa o indirectamente, con el objeto antes descrito, así como celebrar
 todos los actos, contratos y operaciones que resulten necesarios o convenientes para
 su cumplimiento. **La enumeración que antecede es enunciativa y no taxativa.**
+
+---
+
+## Qué cambió en esta versión y por qué
+
+La derogatoria no obliga a tocar el objeto —lo que estaba escrito sigue siendo válido—
+pero libera espacio y abre actividades que antes no tenían sentido ofrecer.
+
+**Se agregó el literal d), custodia y conservación.** La obligación de conservar las
+facturas y registros **diez años no se derogó**: nace de la Ley de IVA y del Código
+Orgánico Tributario, no de la 000121. Es una carga real que todo emisor tiene y que
+casi ninguno resuelve solo. Guardar y devolver esos archivos es un servicio que la
+compañía ya presta de hecho al operar el sistema, y conviene que el objeto lo diga
+antes de cobrarlo aparte.
+
+**Se agregó la tramitación ante organismos al literal f).** Antes el trámite pesado
+era el de la compañía —homologarse— y hoy es el del cliente: cada emisor sigue
+necesitando su **propia autorización** (000102, Arts. 17 al 20). Acompañarlo en eso
+pasó de ser un paso previo a la venta a ser un servicio vendible. "Consultoría" a
+secas puede quedarse corta si se actúa ante el SENIAT por cuenta del cliente.
+
+**Se dejó intacto todo lo demás.** El licenciamiento a terceros ya estaba en el
+literal a) y ahora vale más: sin homologación de por medio, licenciar el sistema a
+otro desarrollador o a una firma contable dejó de tener una puerta regulatoria
+delante.
+
+**Se eliminó la sección "Por qué los equipos importan para la homologación".** Se
+apoyaba en dos artículos de la 000121 que ya no existen. El ramo de equipos se queda
+en el objeto por razones comerciales, que no dependían de esa norma.
 
 ---
 
@@ -89,7 +131,7 @@ su cumplimiento. **La enumeración que antecede es enunciativa y no taxativa.**
 SNAT/2018/0141 —que la 000102 nombra como supletoria— y es probable que distribuidores
 y centros de servicio técnico requieran autorización propia del SENIAT.
 **Tener el ramo en el objeto social no equivale a estar autorizado para ejercerlo.**
-Verificar antes de ofrecer el servicio.
+Verificar antes de ofrecer el servicio. La derogatoria de la 000121 no tocó esta norma.
 
 **2. Importación.** Se incluye aunque hoy no se importe, para no tener que reformar el
 objeto más adelante. Confirmar si exige registro adicional como importador.
@@ -100,8 +142,25 @@ que solo diga "venta" no lo cubriría.
 
 **4. Titularidad del software.** Al registrar el código en el SAPI, hacerlo con la
 **compañía como TITULAR** de los derechos patrimoniales (autor: Luis Torres, quien
-cede a la empresa). La titular del código debe ser la misma persona jurídica que
-homologa el sistema.
+cede a la empresa). Aunque ya no haya homologación, la titularidad ordenada es lo que
+permite licenciar, aportar el software a la sociedad y defenderlo frente a copias.
+
+**5. Custodia de documentos de terceros (literal d).** Guardar documentos fiscales
+ajenos por diez años acarrea responsabilidad. Conviene definir en el contrato de
+servicio —no en el objeto— quién responde por la pérdida, en qué formato se devuelven
+y qué pasa si el cliente se va. Preguntar además si esta actividad tiene algún régimen
+especial.
+
+**6. Tramitación ante organismos (literal f).** Verificar el límite: gestionar y
+preparar recaudos es una cosa, y representar al contribuyente ante la Administración
+Tributaria puede requerir la condición de abogado o de contador público según el acto.
+Redactarlo de modo que no prometa más de lo que la compañía puede hacer por sí misma.
+
+**7. Solapamiento con Torres & Asociados.** El objeto no incluye servicios contables
+ni de auditoría, a propósito: esa es la actividad de la firma contable, que es otra
+persona. Si en algún momento se quiere que la compañía preste servicios contables
+directamente, es una decisión de negocio antes que de redacción — y conviene pensarla
+por el lado de la incompatibilidad profesional, no solo del objeto.
 
 ---
 
@@ -111,30 +170,18 @@ homologa el sistema.
 1. Constituir la C.A.  (objeto social revisado por abogado)
         ↓
 2. Registrar el código en el SAPI  (con la C.A. como titular)
-        ↓
-3. ~~Solicitar la homologación ante el SENIAT (Providencia 000121)~~ — **paso
-   eliminado**: la 000121 fue derogada sin reemplazo el 12/08/2026
 ```
 
-No conviene alterar ese orden: la homologación pide el acta constitutiva, y el
-registro de autor debe estar a nombre de quien homologa.
+El paso de homologación ante el SENIAT **desapareció** con la derogatoria del
+12/08/2026. Los dos que quedan conviene mantenerlos en ese orden: el registro de autor
+debe quedar a nombre de una persona jurídica que ya exista.
 
 ---
 
-## Por qué los equipos importan para la homologación
+## Una advertencia sobre el momento
 
-Dos artículos lo conectan, y conviene tenerlo presente al conversar con el evaluador:
-
-- **000121, obligaciones del proveedor:** debe *"garantizar la imposibilidad de
-  conexión de equipos o dispositivos no fiscales o no homologados con el sistema"*.
-  Esa responsabilidad existe se vendan los equipos o no; vendiéndolos, se controla
-  cuáles se conectan.
-
-- **000121, recaudos de la solicitud:** se pide el *"manual del fabricante (hardware)
-  si aplica"*. La norma ya contempla que un sistema homologado venga acompañado de
-  equipos.
-
-- **000102, Artículo 18:** varios requisitos del **emisor** son de hardware —conexión
-  permanente a internet, infraestructura de procesamiento y almacenamiento, sistemas
-  de contingencia—. Ahí la venta de equipos no es un negocio aparte: es parte de poner
-  al cliente en condiciones de cumplir.
+Una derogatoria sin norma que la reemplace suele preceder a un régimen nuevo, y el
+Superintendente entrante viene con perfil de tecnología y medios de pago. Conviene
+redactar el objeto lo bastante ancho como para que una providencia futura sobre
+proveedores de software no obligue a otra asamblea — que es exactamente lo que hace la
+cláusula general del literal g), y la razón de enumerar tanto detalle en los demás.
