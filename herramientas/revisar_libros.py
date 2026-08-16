@@ -334,8 +334,16 @@ def recorrer_hoja(hoja):
         # hoja que sí cuadraba.
         if re.match(r'^\s*totales?\s*:?\s*$', plano(texto(fila[0]) if fila else '')):
             if not cerrada:
-                meta['totales'] = {k: (num(celda(fila, mapa, k)) or 0.0)
-                                   for k in ('total', 'exento', 'base', 'iva')}
+                crudos = {k: num(celda(fila, mapa, k))
+                          for k in ('total', 'exento', 'base', 'iva')}
+                # Vacío no es cero. Ese renglón son fórmulas =SUM(), y un
+                # archivo guardado por algo que no sea Excel no deja
+                # almacenado su resultado. Leerlo como cero haría que el
+                # revisor contrastara las filas contra nada y denunciara
+                # como descuadre todas las hojas. Sin ese dato, no se
+                # contrasta y se dice que no se pudo.
+                meta['totales'] = (None if all(v is None for v in crudos.values())
+                                   else {k: (v or 0.0) for k, v in crudos.items()})
                 cerrada = True
             continue
         # Debajo de TOTALES viene el cuadro de la Forma 30, que no son filas.
@@ -468,6 +476,9 @@ def revisar_hoja(hoja, problemas, resumen):
         'hoja': donde, 'periodo': periodo, 'quincena': meta['quincena'],
         'operaciones': operaciones, 'anuladas': anuladas, 'tardias': tardias,
         'sucursales': sucursales, 'base': suma['base'],
+        # Que no se haya podido contrastar es un dato: significa que esa
+        # hoja se revisó con una comprobación menos.
+        'sin_totales': meta['totales'] is None and operaciones > 0,
     })
 
 
@@ -535,6 +546,16 @@ def main():
             for hoja, ref, fch, per in (r.get('tardias') or []):
                 out.write('  %-24s %-12s factura del %s → se declara en %s\n'
                           % (hoja[:24], ref[:12], fch, per))
+
+    sin_tot = [r['hoja'] for r in resumen if r.get('sin_totales')]
+    if sin_tot:
+        out.write('\nEn %d hoja(s) no se pudo contrastar contra su renglón de TOTALES:\n'
+                  'son fórmulas sin resultado guardado. Ábrelas y guárdalas en Excel\n'
+                  'para que quede almacenado, y vuelve a revisar:\n' % len(sin_tot))
+        for h in sin_tot[:8]:
+            out.write('  %s\n' % h)
+        if len(sin_tot) > 8:
+            out.write('  ... y %d más\n' % (len(sin_tot) - 8))
 
     if not problemas:
         out.write('\nSin problemas. El libro se puede cargar.\n\n')
