@@ -221,6 +221,11 @@ COLUMNAS = {
     # dejan espacios entre las letras y no contienen la palabra 'rif'.
     'rif':      ['=no r i f', '=r i f', 'r i f', 'rif'],
     'operacion': ['n de oper', 'n de operacion'],
+    # Ventas por impresora fiscal: un renglón por reporte Z diario.
+    'maquina':  ['maquina fiscal'],
+    'zeta':     ['numero de zeta', 'n de zeta', 'zeta'],
+    'comp_desde': ['primer comprobante'],
+    'comp_hasta': ['ultimo comprobante'],
 }
 
 
@@ -364,6 +369,10 @@ def recorrer_hoja(hoja):
             'igtf': num(celda(fila, mapa, 'igtf')) or 0.0,
             'retenido': num(celda(fila, mapa, 'retenido')) or 0.0,
             'alicuota': num(celda(fila, mapa, 'alicuota')),
+            'maquina': texto(celda(fila, mapa, 'maquina')),
+            'zeta': texto(celda(fila, mapa, 'zeta')),
+            'comp_desde': texto(celda(fila, mapa, 'comp_desde')),
+            'comp_hasta': texto(celda(fila, mapa, 'comp_hasta')),
         }
 
         # La línea de resumen de una sucursal: NO es una operación, y
@@ -377,6 +386,19 @@ def recorrer_hoja(hoja):
         hay_monto = abs(r['total']) > TOLERANCIA or abs(r['base']) > TOLERANCIA
         if not hay_monto and not f and not r['factura']:
             continue                      # fila del formato, sin llenar
+
+        # Un renglón de reporte Z no es una factura: es el resumen del día de
+        # una impresora fiscal. No tiene tercero ni número de factura porque
+        # se vende al público, y pedírselos sería denunciar como incompleto
+        # el libro entero de quien vende así.
+        if r['maquina'] and r['zeta']:
+            # Un Z en cero es un día que abrió y no vendió, no una factura
+            # anulada. Se asienta igual: el correlativo de los Z tiene que
+            # quedar completo, y un salto parece un reporte que no se cargó.
+            r['clase'] = 'zeta'
+            r['ref'] = 'Z' + r['zeta']
+            filas.append(r)
+            continue
 
         r['ref'] = r['factura'] or (f_txt or '(sin fecha)')
         r['clase'] = 'operacion' if hay_monto else 'anulada'
@@ -392,7 +414,7 @@ def revisar_hoja(hoja, problemas, resumen):
         problemas.append((donde, '', clase, msg))
 
     suma = {'total': 0.0, 'exento': 0.0, 'base': 0.0, 'iva': 0.0}
-    operaciones, sucursales, anuladas, tardias = 0, [], [], []
+    operaciones, sucursales, anuladas, tardias, zetas = 0, [], [], [], 0
 
     for r in filas:
         if r['clase'] == 'sucursal':
@@ -401,6 +423,8 @@ def revisar_hoja(hoja, problemas, resumen):
         if r['clase'] == 'anulada':
             anuladas.append((donde, r['ref']))
             continue
+        if r['clase'] == 'zeta':
+            zetas += 1
 
         ref = r['ref']
         f, f_txt, rif, nombre, factura = r['fecha'], r['fecha_txt'], r['rif'], r['nombre'], r['factura']
@@ -448,6 +472,16 @@ def revisar_hoja(hoja, problemas, resumen):
                                   % (f.isoformat(),
                                      'anterior a' if antes else 'posterior a', periodo)))
 
+        if r['clase'] == 'zeta':
+            # A un reporte Z no se le pide cliente ni número de factura: se
+            # le pide el rango de comprobantes, que es lo que permite
+            # contrastarlo contra la cinta de la máquina.
+            if not r['comp_desde'] or not r['comp_hasta']:
+                problemas.append((donde, ref, 'zeta incompleto',
+                                  'Reporte Z sin rango de comprobantes (de "%s" a "%s")'
+                                  % (r['comp_desde'], r['comp_hasta'])))
+            continue
+
         # --- de quién es la operación ---
         if not rif or len(re.sub(r'\D', '', rif)) < 7:
             problemas.append((donde, ref, 'sin tercero',
@@ -475,7 +509,7 @@ def revisar_hoja(hoja, problemas, resumen):
     resumen.append({
         'hoja': donde, 'periodo': periodo, 'quincena': meta['quincena'],
         'operaciones': operaciones, 'anuladas': anuladas, 'tardias': tardias,
-        'sucursales': sucursales, 'base': suma['base'],
+        'sucursales': sucursales, 'base': suma['base'], 'zetas': zetas,
         # Que no se haya podido contrastar es un dato: significa que esa
         # hoja se revisó con una comprobación menos.
         'sin_totales': meta['totales'] is None and operaciones > 0,
@@ -518,11 +552,17 @@ def main():
     out.write('%d hoja(s) · %d operaciones · %d en cero · %d línea(s) de sucursal\n\n'
               % (len(resumen), tot_ops, tot_anu, tot_suc))
 
+    tot_z = sum(r.get('zetas') or 0 for r in resumen)
+    if tot_z:
+        out.write('De las operaciones, %d son reportes Z de máquina fiscal\n'
+                  '(un renglón por día, sin cliente: se vende al público).\n\n' % tot_z)
+
     for r in resumen:
         per = r['periodo'] or '?'
         q = ('Q%d' % r['quincena']) if r['quincena'] else 'mes'
-        out.write('  %-28s %s %-4s %3d oper.  base %16s\n'
-                  % (r['hoja'][:28], per, q, r['operaciones'], mm(r['base'])))
+        z = (' · %d Z' % r['zetas']) if r.get('zetas') else ''
+        out.write('  %-28s %s %-4s %3d oper.  base %16s%s\n'
+                  % (r['hoja'][:28], per, q, r['operaciones'], mm(r['base']), z))
 
     if tot_suc:
         out.write('\nLíneas de resumen de sucursal (NO se cargan: las facturas\n'

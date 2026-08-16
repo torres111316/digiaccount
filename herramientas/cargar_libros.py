@@ -97,6 +97,19 @@ def fecha_libro(f):
     return '%02d/%02d/%02d' % (f.day, f.month, f.year % 100)
 
 
+def llave_de(r):
+    """Lo que identifica a un renglón para no cargarlo dos veces.
+
+    Se lee igual de un registro de la base que de una fila del archivo,
+    para que las dos formas de mirar el mismo renglón coincidan.
+    """
+    z = str(r.get('numero_zeta') or r.get('zeta') or '').strip()
+    if z:
+        return ('Z', str(r.get('maquina_fiscal') or r.get('maquina') or '').strip(), z)
+    return ('F', str(r.get('numero_factura') or r.get('factura') or '').strip(),
+            r.get('periodo'))
+
+
 def main():
     ap = argparse.ArgumentParser(description='Carga un libro fiscal en DigiAccount.')
     ap.add_argument('archivo')
@@ -174,9 +187,16 @@ def main():
         sucursal_id, sucursal_nom = sucs[0]['id'], sucs[0]['nombre']
 
     # ---- 3) lo que ya está cargado, para no repetirlo ----
-    ya = api('libro_fiscal?empresa_id=eq.%s&tipo=eq.%s&select=numero_factura,periodo'
+    #
+    # La llave no puede ser solo el número de factura: un reporte Z no tiene
+    # ninguno, y los doscientos cuarenta de Radian quedarían con la misma
+    # llave vacía. Para esos manda el número de Z, que es del aparato, es
+    # correlativo y no se repite jamás — mejor llave todavía que un número
+    # de factura.
+    ya = api('libro_fiscal?empresa_id=eq.%s&tipo=eq.%s'
+             '&select=numero_factura,periodo,numero_zeta,maquina_fiscal'
              % (emp['id'], args.tipo), token)
-    existentes = {(str(r.get('numero_factura') or '').strip(), r.get('periodo')) for r in ya}
+    existentes = {llave_de(r) for r in ya}
 
     print('\n%s' % ('=' * 72))
     print('  %s' % emp['nombre'])
@@ -201,10 +221,15 @@ def main():
             if r['clase'] == 'sucursal':
                 continue          # resumen, no operación
 
-            ref = str(r['factura'] or '').strip()
-            if (ref, per) in existentes:
+            ref = str(r['factura'] or '').strip() or r.get('ref', '')
+            k = llave_de(dict(r, periodo=per))
+            if k in existentes:
                 repetidos.append((meta['hoja'], ref))
                 continue
+            # Se anota en el acto: dentro de una misma corrida el archivo
+            # puede traer el mismo renglón dos veces, y leer solo lo que
+            # había antes de empezar no lo detectaría.
+            existentes.add(k)
 
             f = r['fecha']
             if not f:
@@ -215,6 +240,7 @@ def main():
                 f = date(a, m, 1 if quin != 2 else 16)
 
             anulada = r['clase'] == 'anulada'
+            eszeta = r['clase'] == 'zeta'
             base = 0.0 if anulada else r['base']
             iva = 0.0 if anulada else r['iva']
             alic = r['alicuota'] or 0.16
@@ -231,7 +257,11 @@ def main():
                 'tercero_nombre': 'ANULADA' if anulada else r['nombre'],
                 'tercero_rif': (r['rif'] if not anulada and rif_utilizable(r['rif'])
                                 else ''),
-                'numero_factura': ref, 'numero_control': r['control'],
+                # Un reporte Z no tiene número de factura. Poner ahí su
+                # número de Z lo haría parecer una factura que no existe;
+                # el Z vive en su propia columna.
+                'numero_factura': str(r['factura'] or '').strip(),
+                'numero_control': r['control'],
                 'tipo_doc': 'FC' if args.tipo == 'compra' else 'FV',
                 'exento': 0.0 if anulada else r['exento'],
                 'base': base, 'alicuota': alic, 'iva': iva,
@@ -243,9 +273,16 @@ def main():
                 'base_gen': base, 'iva_gen': iva,
                 'base_red': 0.0, 'iva_red': 0.0,
                 'base_adic': 0.0, 'iva_adic': 0.0,
+                # Ventas por impresora fiscal: el renglón es el reporte Z del
+                # día, y esto es lo que permite contrastarlo contra la cinta.
+                'maquina_fiscal': r['maquina'] if eszeta else None,
+                'numero_zeta': r['zeta'] if eszeta else None,
+                'comprobante_desde': r['comp_desde'] if eszeta else None,
+                'comprobante_hasta': r['comp_hasta'] if eszeta else None,
             }
             nuevos.append((meta['hoja'], reg))
             tot['anuladas' if anulada else 'operaciones'] += 1
+            tot['zetas'] = tot.get('zetas', 0) + (1 if eszeta else 0)
             tot['base'] += base
             tot['iva'] += iva
 
@@ -266,10 +303,15 @@ def main():
         return 0
 
     print('A cargar: %d operaciones y %d anuladas' % (tot['operaciones'], tot['anuladas']))
+    if tot.get('zetas'):
+        print('          de ellas %d son reportes Z de máquina fiscal' % tot['zetas'])
     print('          base %s · IVA %s\n' % (mm(tot['base']), mm(tot['iva'])))
 
+    # Un reporte Z no tiene cliente porque se vende al público: no es algo
+    # que quede pendiente de completar.
     sin_tercero = [r for _, r in nuevos
-                   if r['tercero_nombre'] != 'ANULADA' and not r['tercero_rif']]
+                   if r['tercero_nombre'] != 'ANULADA' and not r['tercero_rif']
+                   and not r['numero_zeta']]
     if sin_tercero:
         print('%d entran SIN RIF ni nombre, para completar después:'
               % len(sin_tercero))
