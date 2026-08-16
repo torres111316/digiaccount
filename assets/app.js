@@ -9206,9 +9206,22 @@
        período NO es el mes: es la quincena. Con el mes completo, la Forma 30
        sale con el total de los treinta días y no es lo que se presenta.
        En un ordinario `q` queda nulo y todo funciona como siempre. */
-    const _esEspecial = () => /especial/i.test((window.__EMPRESA_ACTIVA || {}).cond || '');
+    /* Ser especial NO basta para declarar por quincena: también hay que ser
+       persona jurídica. Un especial persona natural —RIF con V o E— declara
+       el IVA mensual, igual que su anticipo de ISLR, y el cuadro del anticipo
+       ya distinguía así desde antes.
+
+       Se ve en los libros reales: los de GATMA (J) vienen por quincena y los
+       de Radian (V) por mes, llevados por el mismo contador. Ofrecerle
+       quincenas a Radian sería ofrecerle un período que no presenta. */
+    const _esEspecial = () => {
+      const emp = window.__EMPRESA_ACTIVA || {};
+      if (!/especial/i.test(emp.cond || '')) return false;
+      const ini = String(emp.rif || '').toUpperCase().replace(/[^A-Z]/g, '').charAt(0);
+      return ini !== 'V' && ini !== 'E';
+    };
     // Expuesto porque el formulario de registro vive en otro ámbito y necesita
-    // la misma respuesta: dos definiciones de "es especial" se separan.
+    // la misma respuesta: dos definiciones de "declara por quincena" se separan.
     window.__esEspecial = _esEspecial;
     let _fiscalPer = {
       mm: String(_hoyFis.getMonth() + 1).padStart(2, '0'),
