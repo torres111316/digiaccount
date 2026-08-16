@@ -312,6 +312,13 @@ def recorrer_hoja(hoja):
                                 'Faltan columnas en el encabezado: ' + ', '.join(faltan)))
         return meta, []
 
+    # Compras y ventas no se revisan igual: en una compra la fecha de la
+    # factura puede ser anterior a su período y en una venta no. Se deduce
+    # del encabezado, que dice 'Proveedor' o 'Nombre' según el libro.
+    i_nom = mapa.get('nombre')
+    meta['tipo'] = ('compra' if i_nom is not None
+                    and 'proveedor' in plano(hoja.filas[i_enc][i_nom]) else 'venta')
+
     filas, cerrada = [], False
     for fila in hoja.filas[i_enc + 1:]:
         crudo = ' '.join(texto(c) for c in fila)
@@ -319,10 +326,17 @@ def recorrer_hoja(hoja):
             continue
 
         # El renglón de TOTALES de la hoja, para contrastarlo después.
+        #
+        # Se toma el PRIMERO y nunca se reemplaza. Estas hojas traen un
+        # segundo TOTALES, vacío, del bloque "VIENEN" que arrastra saldos
+        # entre páginas; dejarlo pisar al primero hacía que el revisor
+        # comparara las filas contra cero y denunciara como descuadre cada
+        # hoja que sí cuadraba.
         if re.match(r'^\s*totales?\s*:?\s*$', plano(texto(fila[0]) if fila else '')):
-            meta['totales'] = {k: (num(celda(fila, mapa, k)) or 0.0)
-                               for k in ('total', 'exento', 'base', 'iva')}
-            cerrada = True
+            if not cerrada:
+                meta['totales'] = {k: (num(celda(fila, mapa, k)) or 0.0)
+                                   for k in ('total', 'exento', 'base', 'iva')}
+                cerrada = True
             continue
         # Debajo de TOTALES viene el cuadro de la Forma 30, que no son filas.
         if cerrada:
@@ -370,7 +384,7 @@ def revisar_hoja(hoja, problemas, resumen):
         problemas.append((donde, '', clase, msg))
 
     suma = {'total': 0.0, 'exento': 0.0, 'base': 0.0, 'iva': 0.0}
-    operaciones, sucursales, anuladas = 0, [], []
+    operaciones, sucursales, anuladas, tardias = 0, [], [], []
 
     for r in filas:
         if r['clase'] == 'sucursal':
@@ -408,14 +422,23 @@ def revisar_hoja(hoja, problemas, resumen):
         # --- la fecha ---
         if not f:
             problemas.append((donde, ref, 'fecha', 'Fecha ilegible o vacía: "%s"' % f_txt))
-        else:
-            if f > date.today():
+        elif f > date.today():
+            problemas.append((donde, ref, 'fecha',
+                              'Fecha en el futuro: %s' % f.isoformat()))
+        elif periodo and f.strftime('%Y-%m') != periodo:
+            antes = f.strftime('%Y-%m') < periodo
+            if meta['tipo'] == 'compra' and antes:
+                # Normal, no es un error: una factura de compra se declara
+                # cuando llega, y puede llegar meses después de emitida. Es
+                # exactamente para esto que el registro guarda el período
+                # aparte de la fecha. Se anota para que se vea, no para
+                # frenar la carga.
+                tardias.append((donde, ref, f.isoformat(), periodo))
+            else:
                 problemas.append((donde, ref, 'fecha',
-                                  'Fecha en el futuro: %s' % f.isoformat()))
-            if periodo and f.strftime('%Y-%m') != periodo:
-                problemas.append((donde, ref, 'fecha',
-                                  'Fecha %s fuera del período %s de la hoja'
-                                  % (f.isoformat(), periodo)))
+                                  'Fecha %s %s del período %s de la hoja'
+                                  % (f.isoformat(),
+                                     'anterior a' if antes else 'posterior a', periodo)))
 
         # --- de quién es la operación ---
         if not rif or len(re.sub(r'\D', '', rif)) < 7:
@@ -443,7 +466,7 @@ def revisar_hoja(hoja, problemas, resumen):
 
     resumen.append({
         'hoja': donde, 'periodo': periodo, 'quincena': meta['quincena'],
-        'operaciones': operaciones, 'anuladas': anuladas,
+        'operaciones': operaciones, 'anuladas': anuladas, 'tardias': tardias,
         'sucursales': sucursales, 'base': suma['base'],
     })
 
@@ -502,6 +525,16 @@ def main():
         for r in resumen:
             for a in r['anuladas']:
                 out.write('  %-28s  %s\n' % (a[0][:28], a[1]))
+
+    tot_tar = sum(len(r.get('tardias') or []) for r in resumen)
+    if tot_tar:
+        out.write('\nCompras declaradas después de la fecha de su factura.\n'
+                  'Es normal —el crédito se toma cuando llega la factura— y por eso\n'
+                  'el registro guarda el período aparte de la fecha:\n')
+        for r in resumen:
+            for hoja, ref, fch, per in (r.get('tardias') or []):
+                out.write('  %-24s %-12s factura del %s → se declara en %s\n'
+                          % (hoja[:24], ref[:12], fch, per))
 
     if not problemas:
         out.write('\nSin problemas. El libro se puede cargar.\n\n')

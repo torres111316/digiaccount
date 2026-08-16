@@ -11,14 +11,18 @@ Se corre así:
 python herramientas/revisar_libros.py herramientas/pruebas/libro_con_errores.md
 ```
 
-Debe reportar **8 problemas**, ni más ni menos:
+Debe reportar **7 problemas**, ni más ni menos:
 
 | Clase | Cuántos | Qué |
 |---|---|---|
 | no cuadra | 1 | Septiembre: el total supera a base+IVA en 98.781,14 |
 | sin tercero | 4 | Febrero 2da: las facturas 000091 y 000092 sin RIF ni nombre |
-| fecha | 2 | Septiembre: fecha 20/08/2026 — futura y fuera del período |
+| fecha | 1 | Septiembre: fecha 20/08/2026, futura |
 | periodo | 1 | La hoja se llama 2da quincena y su rango dice la primera |
+
+Una fecha imposible se reporta **una sola vez**. Antes esa del 20/08/2026
+salía dos veces —futura, y fuera del período de la hoja— y era el mismo
+dato equivocado contado dos veces.
 
 Y en el resumen, tres cosas más que no son problemas pero deben verse:
 

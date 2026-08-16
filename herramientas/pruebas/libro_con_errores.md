@@ -32,3 +32,5 @@
 | 2 | 2026-06-09 00:00:00 | V17320175 | ENRIQUE RAGA | NaN | 000121 | 00-000421 | NaN | NaN | NaN | NaN | 636958.3316 | NaN | 549102.01 | NaN | 0.16 | 87856.3216 | 0 | NaN | NaN |
 | 10 | NaN | SUCURSAL BARQUISIMETO | NaN | NaN | NaN | NaN | NaN | NaN | NaN | NaN | 189670.5908 | NaN | 163509.13 | NaN | 0.16 | 26161.4608 | 0 | NaN | NaN |
 | TOTALES | NaN | NaN | NaN | NaN | NaN | NaN | NaN | NaN | NaN | NaN | 1365260.9212 | 0 | 1176949.07 | 0 | NaN | 188311.8512 | 0 | NaN | NaN |
+| NaN | NaN | NaN | VIENEN | NaN | NaN | NaN | NaN | NaN | NaN | NaN | NaN | NaN | NaN | NaN | NaN | NaN | NaN | NaN | NaN |
+| TOTALES | NaN | NaN | NaN | NaN | NaN | NaN | NaN | NaN | NaN | NaN | 0 | 0 | 0 | NaN | NaN | 0 | 0 | NaN | NaN |
