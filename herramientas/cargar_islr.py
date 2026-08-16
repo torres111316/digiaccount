@@ -84,6 +84,10 @@ def main():
     ap.add_argument('ruta', help='Un archivo .xls o una carpeta donde buscarlos')
     ap.add_argument('--ut', type=float, default=43.0,
                     help='Unidad Tributaria para el sustraendo (por defecto 43)')
+    ap.add_argument('--rif', default=None,
+                    help='Carga solo los archivos de este agente de retención. '
+                         'Hace falta porque en una carpeta puede haber macros '
+                         'de otra empresa guardados ahí por comodidad.')
     ap.add_argument('--cargar', action='store_true')
     args = ap.parse_args()
 
@@ -92,8 +96,13 @@ def main():
         sys.exit('Falta el token. PowerShell:  $env:DA_TOKEN=\'...\'')
 
     if os.path.isdir(args.ruta):
-        archivos = sorted(glob.glob(os.path.join(args.ruta, '**', 'Macro_RET_ISLR*.xls'),
-                                    recursive=True))
+        archivos = glob.glob(os.path.join(args.ruta, '**', 'Macro_RET_ISLR*.xls'),
+                             recursive=True)
+        # Del más reciente al más viejo. Cuando la misma declaración aparece
+        # dos veces —se corrige y se vuelve a guardar el macro con otro
+        # nombre— gana la guardada de último, que es la corregida. Por orden
+        # alfabético ganaría "2026-02" sobre "2026-02 (2)", o sea la vieja.
+        archivos.sort(key=os.path.getmtime, reverse=True)
     else:
         archivos = [args.ruta]
     if not archivos:
@@ -104,13 +113,16 @@ def main():
 
     print('\nUnidad Tributaria para el sustraendo: Bs %s\n' % mm(args.ut))
 
-    pendientes, avisos, sin_empresa = [], [], []
+    pendientes, avisos, sin_empresa, otros = [], [], [], []
     llaves = {}
 
     for a in archivos:
         rif, per, filas = leer_macro(a)
         emp = por_rif.get(norm_rif(rif))
         nom = os.path.basename(a)
+        if args.rif and norm_rif(rif) != norm_rif(args.rif):
+            otros.append((nom, rif))
+            continue
         if not emp:
             sin_empresa.append((nom, rif))
             continue
@@ -177,6 +189,12 @@ def main():
                 'base': monto, 'pct': pct, 'sustraendo': sus, 'monto': retenido,
                 'estado': 'Registrado', 'comprobante': '',
             })
+        print('')
+
+    if otros:
+        print('Archivos de otro agente de retención (se saltan por el --rif):')
+        for nom, rif in otros:
+            print('   %-46s RIF %s' % (nom[:46], rif))
         print('')
 
     if sin_empresa:
