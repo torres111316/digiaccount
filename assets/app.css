@@ -4093,6 +4093,16 @@
     font-weight: var(--fw-semibold); background: var(--da-cyan-500);
     color: var(--da-navy-900); flex: none;
   }
+  /* "Ahora no" no compite con "Instalar": misma barra, un solo botón que
+     llama la atención. */
+  .update-bar button.ghost {
+    background: transparent; color: var(--da-white); opacity: .72;
+    font-weight: var(--fw-medium); padding: 6px 4px;
+  }
+  .update-bar button.ghost:hover { opacity: 1; }
+  /* La barra de instalar se sienta encima de la de actualizar, por si las dos
+     aparecen a la vez. */
+  .install-bar { bottom: 74px; }
 
   .topbar-burger { display: none; width: 38px; height: 38px; border: 0; background: transparent; color: var(--fg-body); border-radius: var(--radius-sm); cursor: pointer; align-items: center; justify-content: center; flex: none; margin-right: 4px; }
   .topbar-burger:hover { background: var(--bg-surface-alt); }

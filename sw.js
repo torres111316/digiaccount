@@ -7,7 +7,9 @@
    → Actualizar". Al pulsarlo, la app manda ACTIVAR_YA y recién ahí toma el
    control. Así el usuario nunca pierde lo que está haciendo, pero tampoco se
    queda atascado en una versión vieja (en el teléfono no hay Ctrl+Shift+R). */
-const CACHE = 'digiaccount-v5';
+/* Sube de número en cada cambio de estos archivos: es lo que hace que el
+   navegador se traiga la versión nueva en vez de servir la del caché. */
+const CACHE = 'digiaccount-v6';
 const ASSETS = [
   './',
   './index.html',

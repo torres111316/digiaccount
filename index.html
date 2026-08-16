@@ -249,6 +249,15 @@
     <button id="updateBarBtn">Actualizar</button>
   </div>
 
+  <!-- Instalar la app. Aparece solo si el navegador la puede instalar y todavía
+       no lo está: el ícono del navegador es diminuto y nadie lo encuentra, así
+       que se ofrece aquí. Se puede posponer y no vuelve a molestar en 30 días. -->
+  <div class="update-bar install-bar" id="installBar" hidden>
+    <span id="installBarTxt">Instala DigiAccount en tu equipo y ábrelo como una aplicación.</span>
+    <button id="installBarBtn">Instalar</button>
+    <button id="installBarNo" class="ghost">Ahora no</button>
+  </div>
+
   <main class="main">
 
     <!-- Topbar -->

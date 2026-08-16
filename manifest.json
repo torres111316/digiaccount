@@ -1,6 +1,7 @@
 {
   "name": "DigiAccount · Gestión contable y fiscal",
   "short_name": "DigiAccount",
+  "id": "/digiaccount-erp",
   "description": "ERP contable, fiscal, administrativo y de nómina para Venezuela (SENIAT, VEN-NIF, LOTTT).",
   "lang": "es-VE",
   "dir": "ltr",

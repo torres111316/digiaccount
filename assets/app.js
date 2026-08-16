@@ -13828,6 +13828,93 @@
   drawIcons();
 
   /* =========================================================
+     INSTALAR LA APP — el navegador ya la ofrece, pero a escondidas
+     =========================================================
+     Chrome y Edge ponen un ícono diminuto en la barra de direcciones y
+     nadie lo encuentra. Un cliente que llega por un enlace se queda para
+     siempre entrando por el enlace.
+
+     El navegador avisa con `beforeinstallprompt` cuando la app se puede
+     instalar; se guarda ese evento y se ofrece un botón de verdad. El
+     prompt del sistema SOLO se puede abrir desde un clic del usuario, así
+     que el evento hay que retenerlo: por eso el preventDefault.
+
+     Safari no dispara ese evento —ni en Mac ni en iPhone— así que ahí se
+     explica a mano cómo hacerlo, que es lo único que se puede hacer. */
+  (function instalarApp() {
+    const bar = document.getElementById('installBar');
+    const txt = document.getElementById('installBarTxt');
+    const btn = document.getElementById('installBarBtn');
+    const no = document.getElementById('installBarNo');
+    if (!bar || !btn) return;
+
+    const CLAVE = 'da_instalar_pospuesto';
+    const DIAS = 30;
+    let evento = null;
+
+    // Ya instalada: la app corre en su propia ventana, sin barra del navegador.
+    const yaInstalada = () =>
+      window.matchMedia('(display-mode: standalone)').matches
+      || window.matchMedia('(display-mode: window-controls-overlay)').matches
+      || window.navigator.standalone === true;
+
+    const pospuesta = () => {
+      const t = parseInt(localStorage.getItem(CLAVE) || '0', 10);
+      return t && (Date.now() - t) < DIAS * 24 * 3600 * 1000;
+    };
+
+    const mostrar = (mensaje, conBoton) => {
+      if (yaInstalada() || pospuesta()) return;
+      if (txt && mensaje) txt.textContent = mensaje;
+      btn.hidden = !conBoton;
+      bar.hidden = false;
+    };
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();          // sin esto el navegador se queda el evento
+      evento = e;
+      mostrar('Instala DigiAccount en tu equipo y ábrelo como una aplicación.', true);
+    });
+
+    btn.addEventListener('click', async () => {
+      if (!evento) return;
+      bar.hidden = true;
+      evento.prompt();
+      const res = await evento.userChoice.catch(() => ({ outcome: 'dismissed' }));
+      evento = null;               // el evento sirve UNA sola vez
+      if (res.outcome !== 'accepted') localStorage.setItem(CLAVE, String(Date.now()));
+    });
+
+    if (no) no.addEventListener('click', () => {
+      bar.hidden = true;
+      localStorage.setItem(CLAVE, String(Date.now()));
+    });
+
+    window.addEventListener('appinstalled', () => {
+      bar.hidden = true;
+      localStorage.removeItem(CLAVE);
+      if (window.toast) window.toast('DigiAccount quedó instalada en tu equipo ✓', 'success');
+    });
+
+    /* Safari no tiene `beforeinstallprompt`. En iPhone se instala con
+       Compartir → Añadir a pantalla de inicio, y en Mac con Archivo → Añadir
+       al Dock. Se dice, porque adivinarlo no lo hace nadie. */
+    const ua = navigator.userAgent;
+    const esSafari = /^((?!chrome|android|crios|fxios|edg).)*safari/i.test(ua);
+    if (esSafari) {
+      const iOS = /iphone|ipad|ipod/i.test(ua)
+        || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      setTimeout(() => mostrar(iOS
+        ? 'Para instalar: toca Compartir y luego "Añadir a pantalla de inicio".'
+        : 'Para instalar: menú Archivo → "Añadir al Dock".', false), 2500);
+    }
+
+    // Para poder ofrecerlo también desde un menú, no solo cuando el navegador avisa.
+    window.__puedeInstalar = () => !!evento && !yaInstalada();
+    window.__instalarApp = () => btn.click();
+  })();
+
+  /* =========================================================
      SERVICE WORKER — registro (PWA · instalable + offline)
      Se registra aquí (y no inline en el HTML) para cumplir la CSP.
      ========================================================= */
