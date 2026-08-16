@@ -1,0 +1,176 @@
+<title>Cotejo de Declaraciones</title>
+<style>
+  :root{
+    --paper:#F3F6F4; --card:#FFFFFF; --line:#DBE3DE; --line-soft:#EBF0ED;
+    --ink:#18211D; --ink-soft:#5A6A63;
+    --verde:#2F6B4F; --verde-soft:#E6F0EA;
+    --ambar:#8A5A12; --ambar-soft:#F8EFDD;
+    --serif:Georgia,'Iowan Old Style','Times New Roman',serif;
+    --sans:ui-sans-serif,system-ui,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    --mono:ui-monospace,'Cascadia Mono',Consolas,'Liberation Mono',monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --paper:#0E1512; --card:#151E1A; --line:#28352E; --line-soft:#1E2A24;
+      --ink:#E2EAE5; --ink-soft:#92A69C;
+      --verde:#7FC0A0; --verde-soft:#15251D;
+      --ambar:#D9A854; --ambar-soft:#2A2113;
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#0E1512; --card:#151E1A; --line:#28352E; --line-soft:#1E2A24;
+    --ink:#E2EAE5; --ink-soft:#92A69C;
+    --verde:#7FC0A0; --verde-soft:#15251D;
+    --ambar:#D9A854; --ambar-soft:#2A2113;
+  }
+
+  *{box-sizing:border-box}
+  body{background:var(--paper);color:var(--ink);font-family:var(--sans);
+       font-size:15px;line-height:1.55;margin:0;padding:0 18px 90px}
+  .wrap{max-width:1000px;margin:0 auto}
+
+  header.top{padding:50px 0 26px;border-bottom:2px solid var(--ink);margin-bottom:34px}
+  .eyebrow{font-size:11.5px;letter-spacing:.13em;text-transform:uppercase;
+           color:var(--verde);font-weight:700;margin:0 0 11px}
+  h1{font-family:var(--serif);font-weight:400;font-size:clamp(31px,5.5vw,45px);
+     line-height:1.08;margin:0 0 12px;letter-spacing:-.01em;text-wrap:balance}
+  .lede{font-size:17px;color:var(--ink-soft);margin:0;max-width:62ch}
+
+  h2{font-family:var(--serif);font-weight:400;font-size:24px;margin:44px 0 3px;
+     text-wrap:balance}
+  .sub{color:var(--ink-soft);margin:0 0 18px;font-size:14px}
+
+  .scroll{overflow-x:auto;background:var(--card);border:1px solid var(--line);
+          border-radius:3px}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:660px}
+  th{text-align:right;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;
+     color:var(--ink-soft);font-weight:700;padding:11px 12px;
+     border-bottom:1px solid var(--line);white-space:nowrap}
+  th.l{text-align:left}
+  td{padding:8px 12px;border-bottom:1px solid var(--line-soft);
+     text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  td.l{text-align:left;font-variant-numeric:normal}
+  tbody tr:last-child td{border-bottom:0}
+  td.per{font-weight:600}
+  td.cero{color:var(--ink-soft);opacity:.45}
+  tr.mensual td{background:var(--verde-soft)}
+  tr.mensual td.per::after{content:' · ISLR';font-weight:400;font-size:11px;
+                           color:var(--verde);letter-spacing:.04em}
+
+  .nota{border-left:3px solid var(--ambar);background:var(--ambar-soft);
+        padding:12px 15px;border-radius:0 3px 3px 0;margin:16px 0 0;font-size:14px}
+  .nota b{color:var(--ambar)}
+  .ok{border-left-color:var(--verde);background:var(--verde-soft)}
+  .ok b{color:var(--verde)}
+
+  ul.simple{padding-left:19px;margin:0;display:flex;flex-direction:column;gap:7px}
+  footer{margin-top:52px;padding-top:20px;border-top:1px solid var(--line);
+         font-size:13.5px;color:var(--ink-soft)}
+</style>
+
+<div class="wrap">
+
+<header class="top">
+  <p class="eyebrow">DigiAccount · agosto 2026</p>
+  <h1>Cotejo de Declaraciones</h1>
+  <p class="lede">Lo que quedó cargado en el sistema, período por período, para compararlo
+  contra lo que declaraste. Las cifras salen de la base, no de los Excel.</p>
+</header>
+
+<h2>GATMA Distribuidora y Comercializadora, C.A.</h2>
+<p class="sub">RIF J-50282611-4 · contribuyente especial, persona jurídica → <strong>IVA por quincena</strong>.
+Incluye Casa Matriz y Sucursal Barquisimeto, consolidadas.</p>
+<div class="scroll"><table>
+  <thead><tr>
+    <th class="l">Período</th><th>Ventas · base</th><th>Débito fiscal</th>
+    <th>Compras · base</th><th>Crédito fiscal</th><th>Retenc. practicada</th>
+  </tr></thead>
+  <tbody>
+    <tr><td class="l per">2025-10 · 1ª</td><td class="cero">0,00</td><td class="cero">0,00</td><td>1.212.049,83</td><td>193.927,97</td><td>193.927,97</td></tr>
+    <tr><td class="l per">2025-10 · 2ª</td><td>1.230.274,75</td><td>196.843,96</td><td class="cero">0,00</td><td class="cero">0,00</td><td class="cero">—</td></tr>
+    <tr><td class="l per">2025-11 · 1ª</td><td>121.705,67</td><td>19.472,91</td><td class="cero">0,00</td><td class="cero">0,00</td><td class="cero">—</td></tr>
+    <tr><td class="l per">2025-11 · 2ª</td><td>65.271,30</td><td>10.443,41</td><td>45.002,92</td><td>7.200,47</td><td>5.819,02</td></tr>
+    <tr><td class="l per">2025-12 · 1ª</td><td>36.046,33</td><td>5.767,41</td><td>20.891,90</td><td>3.342,70</td><td>2.507,03</td></tr>
+    <tr><td class="l per">2026-01 · 1ª</td><td>29.734,20</td><td>4.757,47</td><td class="cero">0,00</td><td class="cero">0,00</td><td class="cero">—</td></tr>
+    <tr><td class="l per">2026-01 · 2ª</td><td>2.550.595,00</td><td>408.095,20</td><td>2.526.705,61</td><td>404.272,90</td><td>404.272,90</td></tr>
+    <tr><td class="l per">2026-02 · 1ª</td><td>1.465.163,00</td><td>234.426,08</td><td>2.817.043,16</td><td>450.726,91</td><td>338.045,18</td></tr>
+    <tr><td class="l per">2026-02 · 2ª</td><td>1.390.822,44</td><td>222.531,59</td><td class="cero">0,00</td><td class="cero">0,00</td><td class="cero">—</td></tr>
+    <tr><td class="l per">2026-03 · 1ª</td><td>210.665,83</td><td>33.706,53</td><td>174.110,90</td><td>27.857,74</td><td>20.893,31</td></tr>
+    <tr><td class="l per">2026-03 · 2ª</td><td>240.821,87</td><td>38.531,50</td><td>202.723,87</td><td>32.435,82</td><td>24.326,86</td></tr>
+    <tr><td class="l per">2026-04 · 1ª</td><td>93.465,48</td><td>14.954,48</td><td class="cero">0,00</td><td class="cero">0,00</td><td class="cero">—</td></tr>
+    <tr><td class="l per">2026-04 · 2ª</td><td>369.796,38</td><td>59.167,42</td><td>322.604,10</td><td>51.616,66</td><td>38.712,49</td></tr>
+    <tr><td class="l per">2026-05 · 1ª</td><td>3.450.268,04</td><td>552.042,88</td><td>6.669.448,41</td><td>1.067.111,75</td><td>1.067.111,75</td></tr>
+    <tr><td class="l per">2026-05 · 2ª</td><td>3.264.800,00</td><td>522.368,00</td><td class="cero">0,00</td><td class="cero">0,00</td><td class="cero">—</td></tr>
+    <tr class="mensual"><td class="l per">2026-06</td><td class="cero">—</td><td class="cero">—</td><td class="cero">—</td><td class="cero">—</td><td>45.459,54</td></tr>
+    <tr><td class="l per">2026-06 · 1ª</td><td>3.575.227,67</td><td>572.036,42</td><td>6.325.518,83</td><td>1.012.083,01</td><td>968.539,93</td></tr>
+    <tr><td class="l per">2026-06 · 2ª</td><td>1.806.988,12</td><td>289.118,10</td><td>4.759.143,94</td><td>761.463,03</td><td>714.087,03</td></tr>
+    <tr><td class="l per">2026-07 · 1ª</td><td>2.980.867,97</td><td>476.938,87</td><td class="cero">0,00</td><td class="cero">0,00</td><td class="cero">—</td></tr>
+    <tr><td class="l per">2026-07 · 2ª</td><td>2.789.836,81</td><td>446.373,88</td><td class="cero">0,00</td><td class="cero">0,00</td><td class="cero">—</td></tr>
+  </tbody>
+</table></div>
+<div class="nota ok"><b>Los cuatro períodos con sucursal cuadran solos.</b> Junio y julio suman
+matriz más Barquisimeto sin ninguna línea de resumen, y dan exactamente lo que declaraste.</div>
+<div class="nota"><b>Febrero 2ª quincena:</b> sus cuatro facturas —000091 a 000094, por
+1.390.822,44 de base— están cargadas con sus montos pero <b>sin RIF ni nombre del cliente</b>.
+Cuentan para la declaración; falta identificar al cliente.</div>
+
+<h2>Rafael José Gordillo · Comercializadora Radian Gordillo, F.P.</h2>
+<p class="sub">RIF V-19265125-1 · contribuyente especial, persona natural → <strong>IVA mensual</strong>.
+Vende por máquina fiscal <span style="font-family:var(--mono);font-size:12.5px">Z7C0025982</span>.</p>
+<div class="scroll"><table>
+  <thead><tr>
+    <th class="l">Período</th><th>Ventas · base</th><th>Débito fiscal</th>
+    <th>Compras · base</th><th>Crédito fiscal</th><th>Ret. practicada</th><th>Ret. sufrida</th>
+  </tr></thead>
+  <tbody>
+    <tr><td class="l per">2025-10</td><td>1.983.078,12</td><td>317.292,50</td><td>1.918.840,12</td><td>307.014,42</td><td>230.260,82</td><td>7.977,53</td></tr>
+    <tr><td class="l per">2025-11</td><td>3.392.035,79</td><td>542.725,73</td><td>3.318.921,06</td><td>531.027,37</td><td>398.270,52</td><td>36.576,04</td></tr>
+    <tr><td class="l per">2025-12</td><td>4.337.390,67</td><td>693.982,50</td><td>4.242.574,86</td><td>678.811,99</td><td>509.108,99</td><td>78.117,60</td></tr>
+    <tr><td class="l per">2026-01</td><td>2.841.747,32</td><td>454.679,59</td><td>2.300.186,89</td><td>368.029,90</td><td>276.022,42</td><td>2.881,32</td></tr>
+    <tr><td class="l per">2026-02</td><td>11.659.839,82</td><td>1.865.574,38</td><td>10.942.801,40</td><td>1.750.848,22</td><td>1.313.136,16</td><td>7.404,81</td></tr>
+    <tr><td class="l per">2026-03</td><td>8.340.217,04</td><td>1.334.434,73</td><td>8.425.879,27</td><td>1.348.140,70</td><td>1.011.105,50</td><td>88.345,73</td></tr>
+    <tr><td class="l per">2026-04</td><td>5.407.008,81</td><td>865.121,38</td><td>4.231.871,18</td><td>677.099,39</td><td>507.824,54</td><td>60.784,22</td></tr>
+    <tr><td class="l per">2026-05</td><td>11.197.920,52</td><td>1.791.667,29</td><td>11.471.204,88</td><td>1.835.392,78</td><td>1.376.544,58</td><td class="cero">—</td></tr>
+    <tr><td class="l per">2026-06</td><td>14.703.670,22</td><td>2.352.587,25</td><td>14.234.854,31</td><td>2.277.576,70</td><td>1.708.182,51</td><td>37.053,94</td></tr>
+    <tr><td class="l per">2026-07</td><td>8.525.233,14</td><td>1.364.037,30</td><td>8.278.791,11</td><td>1.324.606,58</td><td>993.454,92</td><td>13.739,84</td></tr>
+  </tbody>
+</table></div>
+<div class="nota ok"><b>Las retenciones sufridas son descontables.</b> Son 332.881,03 en total
+y no estaban cargadas: sin ellas la autoliquidación pagaba de más.</div>
+<div class="nota"><b>Julio, reporte Z0794:</b> la factura A000011 quedó sin RIF ni nombre —en el
+libro venía solo la letra <span style="font-family:var(--mono)">V</span>—, por 131.730,88.</div>
+
+<h2>Retenciones de ISLR</h2>
+<p class="sub">Se declaran por mes, aunque el IVA de GATMA vaya por quincena.</p>
+<div class="scroll"><table>
+  <thead><tr><th class="l">Empresa</th><th class="l">Período</th><th class="l">Retenido</th>
+    <th class="l">Concepto</th><th>Monto operación</th><th>Retención</th></tr></thead>
+  <tbody>
+    <tr><td class="l">GATMA</td><td class="l per">2026-06</td><td class="l">J-30354730-3</td><td class="l">055 · Contratistas PJ 2%</td><td>1.088.577,00</td><td>21.771,54</td></tr>
+    <tr><td class="l">GATMA</td><td class="l per">2026-06</td><td class="l">J-30354730-3</td><td class="l">055 · Contratistas PJ 2%</td><td>1.184.400,00</td><td>23.688,00</td></tr>
+    <tr><td class="l">Radian</td><td class="l per">2025-11</td><td class="l">J-29901403-6</td><td class="l">072 · Fletes PJ 3%</td><td>2.591,02</td><td>77,73</td></tr>
+    <tr><td class="l">Radian</td><td class="l per">2025-11</td><td class="l">J-29901403-6</td><td class="l">072 · Fletes PJ 3%</td><td>1.480,54</td><td>44,42</td></tr>
+    <tr><td class="l">Radian</td><td class="l per">2026-02</td><td class="l">J-31518622-5</td><td class="l">072 · Fletes PJ 3%</td><td>5.229,84</td><td>156,90</td></tr>
+    <tr><td class="l">Radian</td><td class="l per">2026-05</td><td class="l">V-14749194-4</td><td class="l">071 · Fletes PN 1%</td><td>732.453,84</td><td>7.288,71</td></tr>
+  </tbody>
+</table></div>
+<div class="nota"><b>El sustraendo usa UT = Bs 43</b> (Providencia SNAT/2025/000048, Gaceta 43.140).
+Solo afecta la de mayo: 732.453,84 × 1% − 35,83 = 7.288,71.</div>
+
+<h2>Lo que queda abierto</h2>
+<ul class="simple">
+  <li><b>Los 5 clientes sin identificar</b> — 000091 a 000094 de GATMA y A000011 de Radian.</li>
+  <li><b>El comprobante <span style="font-family:var(--mono)">2026040000009</span></b> aparece en dos
+  retenciones de Radian, Z0716 y Z0717, y tiene 13 dígitos donde los demás llevan 14.</li>
+  <li><b>El macro de ISLR de GATMA</b> declara el período 202606 con operaciones fechadas
+  09/07/2026. Se cargó tal como está declarado.</li>
+  <li><b>Septiembre 2025 de GATMA</b> quedó fuera: su única compra tenía el total descuadrado
+  de la base en 98.781,14. Las actividades arrancan en octubre.</li>
+</ul>
+
+<footer>
+  Cifras tomadas de la base el 16/08/2026. Las ventas y compras excluyen las anuladas,
+  que conservan su número pero no suman. Falta cargar la primera quincena de agosto.
+</footer>
+
+</div>
