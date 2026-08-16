@@ -39,6 +39,7 @@ import json
 import os
 import sys
 import urllib.error
+import re
 import urllib.request
 from datetime import date
 
@@ -78,6 +79,17 @@ def norm_rif(v):
     """J-50282611-4 y J501289670 son el mismo RIF escrito distinto."""
     t = ''.join(c for c in str(v or '').upper() if c.isalnum())
     return t
+
+
+def rif_utilizable(v):
+    """Un RIF a medio escribir no es un RIF.
+
+    En el libro de Barquisimeto hay una factura cuyo RIF es la letra 'V'
+    sola. Guardarla así es peor que dejarla vacía: vacío dice que no se
+    sabe, y 'V' parece un dato. Además nadie la buscaría después, porque
+    las que quedan por completar se listan por su RIF vacío.
+    """
+    return len(re.sub(r'\D', '', str(v or ''))) >= 7
 
 
 def fecha_libro(f):
@@ -217,7 +229,8 @@ def main():
                 # Una anulada conserva su número para que no se pierda el
                 # salto en la serie, pero no lleva tercero ni montos.
                 'tercero_nombre': 'ANULADA' if anulada else r['nombre'],
-                'tercero_rif': '' if anulada else r['rif'],
+                'tercero_rif': (r['rif'] if not anulada and rif_utilizable(r['rif'])
+                                else ''),
                 'numero_factura': ref, 'numero_control': r['control'],
                 'tipo_doc': 'FC' if args.tipo == 'compra' else 'FV',
                 'exento': 0.0 if anulada else r['exento'],
