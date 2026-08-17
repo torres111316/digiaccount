@@ -18,3 +18,7 @@ desktop.ini
 
 # === Logs ===
 *.log
+
+# Cache de Python de las herramientas
+__pycache__/
+*.pyc
