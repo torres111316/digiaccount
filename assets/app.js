@@ -1024,6 +1024,23 @@
       if (per && per.mm && per.aa) {
         const perDecl = '20' + per.aa + '-' + per.mm, suf = '/' + per.mm + '/' + per.aa;
         arr = arr.filter((r) => r.periodo ? r.periodo === perDecl : String(r.fecha || '').endsWith(suf));
+        /* Las retenciones de IVA PRACTICADAS se enteran por quincena en todo
+           contribuyente especial, sea C.A. o firma personal. Sin este filtro
+           la de la primera quincena seguía apareciendo en la segunda, y el
+           cuadro sumaba dos veces algo que ya se enteró.
+
+           Las SUFRIDAS no se separan: se descuentan con la declaración de
+           IVA, que en una firma personal es mensual.
+
+           Una retención sin quincena registrada no se esconde: quedaría
+           invisible en las dos, y una retención que no se ve es una que no
+           se entera. Se muestra, y se nota que le falta el dato. */
+        const porQ = window.__retencionesPorQuincena && window.__retencionesPorQuincena();
+        if (porQ && per.q) {
+          arr = arr.filter((r) => r.direccion !== 'practicada'
+            || !(r.quincena === 1 || r.quincena === 2)
+            || r.quincena === per.q);
+        }
       }
       _retData = arr;
       pintar('practicadas', arr.filter((r) => r.direccion === 'practicada'));
@@ -8582,14 +8599,36 @@
     async function calcularArrastres() {
       const emp = window.__EMPRESA_ACTIVA;
       if (!window.sb || !emp || !emp.id) { _excedAnt = 0; _retAcumAnt = 0; return; }
-      const perActual = '20' + _fiscalPer.aa + '-' + _fiscalPer.mm;
+      /* La clave del período lleva la QUINCENA cuando la empresa declara así.
+         Sin ella, las dos quincenas de un mes comparten clave —'2025-10'— y
+         el filtro de "solo períodos anteriores" descarta el mes entero: el
+         excedente de la primera quincena nunca llegaba a la segunda. Con
+         GATMA en octubre eran 193.927,97 que se perdían.
+
+         El orden alfabético sigue siendo el cronológico:
+             2025-10-1 < 2025-10-2 < 2025-11-1
+         Y una fila vieja sin quincena ('2025-10') queda antes que la primera
+         del mismo mes, que es lo prudente: se cuenta como anterior. */
+      const porQuincena = _ivaPorQuincena();
+      const perMes = '20' + _fiscalPer.aa + '-' + _fiscalPer.mm;
+      const perActual = perMes + (porQuincena && _fiscalPer.q ? '-' + _fiscalPer.q : '');
       const clave = emp.id + '|' + perActual;
       if (_arrClave === clave) return; // ya calculado para este empresa+período
       const r2 = (x) => Math.round((x + 1e-9) * 100) / 100;
-      const perDe = (row) => row.periodo || (String(row.fecha || '').split('/').length === 3 ? ('20' + row.fecha.split('/')[2] + '-' + String(row.fecha.split('/')[1]).padStart(2, '0')) : '');
+      const mesDe = (row) => row.periodo || (String(row.fecha || '').split('/').length === 3 ? ('20' + row.fecha.split('/')[2] + '-' + String(row.fecha.split('/')[1]).padStart(2, '0')) : '');
+      const perDe = (row) => {
+        const m = mesDe(row);
+        if (!m || !porQuincena) return m;
+        const q = row.quincena;
+        // Sin quincena registrada se deduce del día, que para una VENTA es
+        // exacto. Es solo un respaldo para las filas anteriores a la columna.
+        if (q === 1 || q === 2) return m + '-' + q;
+        const d = parseInt(String(row.fecha || '').split('/')[0], 10);
+        return d ? m + '-' + (d > 15 ? 2 : 1) : m;
+      };
       const [libRes, retRes] = await Promise.all([
-        window.__sbAll((q) => q.eq('empresa_id', emp.id), 'libro_fiscal', 'tipo,periodo,fecha,base,exento,alicuota,tercero_nombre'),
-        window.__sbAll((q) => q.eq('empresa_id', emp.id).eq('direccion', 'sufrida').eq('tipo', 'iva'), 'retenciones', 'periodo,fecha,monto'),
+        window.__sbAll((q) => q.eq('empresa_id', emp.id), 'libro_fiscal', 'tipo,periodo,quincena,fecha,base,exento,alicuota,tercero_nombre'),
+        window.__sbAll((q) => q.eq('empresa_id', emp.id).eq('direccion', 'sufrida').eq('tipo', 'iva'), 'retenciones', 'periodo,quincena,fecha,monto'),
       ]);
       const M = {}; // período → {vb16,vb8,cb16,cb8,ret}
       const g = (k) => { if (!M[k]) M[k] = { vb16: 0, vb8: 0, cb16: 0, cb8: 0, ret: 0 }; return M[k]; };
