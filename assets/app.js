@@ -8573,7 +8573,22 @@
     saveBtn.addEventListener('click', () => {
       if (!onSaveCb) return close();
       const stayOpen = currentCfg && currentCfg.autoClose === false;
-      const res = onSaveCb(collect());
+      /* Si `onSave` lanza, el formulario NO se puede quedar pegado.
+         Antes se llamaba pelado: cualquier error dentro —un refresco que
+         falla, una función que todavía no existe— saltaba por encima del
+         `close()` y el cuadro quedaba en pantalla sin decir nada, como si
+         el botón no sirviera. El usuario no tenía forma de saber qué pasó
+         ni de cerrarlo salvo con Escape. Ahora el error se muestra donde
+         se muestran los demás, y queda en la consola con su traza. */
+      let res;
+      try {
+        res = onSaveCb(collect());
+      } catch (err) {
+        console.error('[openFormModal] onSave falló:', err);
+        msgEl.textContent = 'No se pudo completar: ' + (err && err.message ? err.message : err);
+        msgEl.classList.add('error');
+        return;
+      }
       if (typeof res === 'string') { msgEl.textContent = res; msgEl.classList.add('error'); return; }
       msgEl.textContent = ''; msgEl.classList.remove('error');
       if (!stayOpen) close();
@@ -8939,6 +8954,91 @@
       const p = window.__fiscalPer;
       return k + '·' + ((p && p.q) ? p.q : (new Date().getDate() <= 15 ? 1 : 2));
     }
+    /* El campo de proveedor/cliente, con todo lo que sabe hacer.
+
+       Lo usan los DOS formularios del libro, registrar y editar. Estaba
+       escrito solo en el de registrar, así que al editar una factura el
+       campo no autocompletaba el RIF y F2 no hacía nada: tocaba salirse del
+       módulo Fiscal, ir a Terceros, crear el cliente y volver. Y completar
+       el cliente de una factura ya cargada es justo lo que más se hace.
+
+       Hace tres cosas:
+       · del nombre saca el RIF, y del RIF saca el nombre (una factura a
+         veces se lee bien por un lado y mal por el otro);
+       · F2 crea el tercero que falta sin salir del formulario, con el rol
+         que corresponde —cliente en ventas, proveedor en compras—;
+       · y lo dice en pantalla, porque un atajo que nadie ve no existe. */
+    function montarCampoTercero(body, opciones) {
+      const o = opciones || {};
+      const lista = o.lista || [];
+      const esCompra = !!o.esCompra;
+      const nom = body.querySelector('[data-name="nombre"]');
+      const rif = body.querySelector('[data-name="rif"]');
+      if (!nom) return;
+      const rotulo = esCompra ? 'proveedor' : 'cliente';
+      const alSiguiente = () => {
+        const nf = body.querySelector('[data-name="numFactura"]');
+        if (nf) nf.focus();
+      };
+
+      const porNombre = () => {
+        const t = lista.find((x) => (x.nombre || '').toLowerCase() === nom.value.trim().toLowerCase());
+        if (!t) return;
+        if (rif && t.rif) rif.value = normRif(t.rif);
+        if (o.moverFoco !== false) alSiguiente();
+      };
+      nom.addEventListener('change', porNombre);
+      nom.addEventListener('input', porNombre);
+
+      if (rif) {
+        const porRif = () => {
+          const t = lista.find((x) => normRif(x.rif) === normRif(rif.value));
+          if (t && (!nom.value || nom.value.trim().toLowerCase() !== (t.nombre || '').toLowerCase())) {
+            nom.value = t.nombre;
+            if (o.moverFoco !== false) alSiguiente();
+          }
+        };
+        rif.addEventListener('change', porRif);
+        rif.addEventListener('input', porRif);
+      }
+
+      const wrap = nom.closest('.fm-field');
+      if (wrap && !wrap.querySelector('.fm-hint-f2')) {
+        const hint = document.createElement('div');
+        hint.className = 'fm-hint-f2';
+        hint.style.cssText = 'font-size:10.5px;color:var(--fg-muted);margin-top:3px;';
+        hint.textContent = '¿No está en la lista? Presiona F2 para crear el ' + rotulo + ' sin salir de aquí.';
+        wrap.appendChild(hint);
+      }
+
+      nom.addEventListener('keydown', (e) => {
+        if (e.key !== 'F2') return;
+        e.preventDefault();
+        const val = nom.value.trim();
+        if (!val) { if (window.toast) window.toast('Escribe el nombre antes de crearlo con F2', 'error'); return; }
+        if (lista.some((t) => (t.nombre || '').toLowerCase() === val.toLowerCase())) {
+          if (window.toast) window.toast('Ese ' + rotulo + ' ya existe — selecciónalo de la lista', 'info');
+          return;
+        }
+        if (!window.openNuevoTercero) {
+          if (window.toast) window.toast('No se pudo abrir "Nuevo tercero" desde aquí', 'error');
+          return;
+        }
+        window.openNuevoTercero({
+          nombre: val, cliente: !esCompra, proveedor: esCompra,
+          onSaved: (t) => {
+            nom.value = t.nombre;
+            if (rif) rif.value = normRif(t.rif);
+            // El recién creado entra a la lista de esta sesión del formulario:
+            // sin esto, volver a escribir su nombre lo daría por desconocido.
+            lista.push({ nombre: t.nombre, rif: t.rif, cli: !esCompra, prov: esCompra });
+            if (o.moverFoco !== false) alSiguiente();
+            if (window.toast) window.toast((esCompra ? 'Proveedor' : 'Cliente') + ' "' + t.nombre + '" creado y seleccionado', 'success');
+          },
+        });
+      });
+    }
+
     /* Las alícuotas del IVA, en un solo sitio.
 
        · General 16% y reducida 8%: Ley de IVA, alícuotas ordinarias.
@@ -9313,60 +9413,8 @@
               setTimeout(() => toast('💡 Factura de ' + CONCEPTO_ISLR[d.concepto] + ': recuerda generar también la RETENCIÓN DE ISLR (además de la de IVA) en Fiscal → Retenciones ISLR', 'info'), 1200);
             }
           });
-          const autollenar = () => {
-            const t = terceros.find((x) => x.nombre.toLowerCase() === prov.value.trim().toLowerCase());
-            if (t) {
-              if (rif) rif.value = normRif(t.rif);
-              // foco al siguiente dato faltante: N° de factura
-              const nf = body.querySelector('[data-name="numFactura"]');
-              if (nf) nf.focus();
-            }
-          };
-          prov.addEventListener('change', autollenar);
-          prov.addEventListener('input', autollenar);
-          // Búsqueda por RIF (al revés de lo anterior): si en la factura no se lee bien el
-          // nombre pero el RIF sí, al escribirlo/elegirlo de la lista se completa el nombre.
-          if (rif) {
-            const autollenarPorRif = () => {
-              const t = terceros.find((x) => normRif(x.rif) === normRif(rif.value));
-              if (t && (!prov.value || prov.value.trim().toLowerCase() !== t.nombre.toLowerCase())) {
-                prov.value = t.nombre;
-                const nf = body.querySelector('[data-name="numFactura"]');
-                if (nf) nf.focus();
-              }
-            };
-            rif.addEventListener('change', autollenarPorRif);
-            rif.addEventListener('input', autollenarPorRif);
-          }
-          // Atajo F2: si el nombre escrito no está registrado, abre "Nuevo tercero" sin salir
-          // de este formulario (con el nombre y el rol —cliente/proveedor— ya listos) y, al
-          // guardarlo, vuelve aquí con el RIF autocompletado y el foco en N° de Factura.
-          const provWrap = prov.closest('.fm-field');
-          if (provWrap) {
-            const hint = document.createElement('div');
-            hint.style.cssText = 'font-size:10.5px;color:var(--fg-muted);margin-top:3px;';
-            hint.textContent = '¿No está en la lista? Presiona F2 para crear el ' + (esCompra ? 'proveedor' : 'cliente') + ' sin salir de aquí.';
-            provWrap.appendChild(hint);
-          }
-          prov.addEventListener('keydown', (e) => {
-            if (e.key !== 'F2') return;
-            e.preventDefault();
-            const val = prov.value.trim();
-            if (!val) { toast('Escribe el nombre antes de crearlo con F2', 'error'); return; }
-            const existe = terceros.some((t) => t.nombre.toLowerCase() === val.toLowerCase());
-            if (existe) { toast('Ese ' + (esCompra ? 'proveedor' : 'cliente') + ' ya existe — selecciónalo de la lista', 'info'); return; }
-            if (!window.openNuevoTercero) return;
-            window.openNuevoTercero({
-              nombre: val, cliente: !esCompra, proveedor: esCompra,
-              onSaved: (t) => {
-                prov.value = t.nombre;
-                if (rif) rif.value = normRif(t.rif);
-                const nf = body.querySelector('[data-name="numFactura"]');
-                if (nf) nf.focus();
-                toast((esCompra ? 'Proveedor' : 'Cliente') + ' "' + t.nombre + '" creado y seleccionado', 'success');
-              },
-            });
-          });
+          // Autocompletado en los dos sentidos + F2 para crear el que falta.
+          montarCampoTercero(body, { lista: terceros, esCompra: esCompra });
           /* Renglones por alícuota → IVA y total en vivo.
 
              Una factura real trae varias alícuotas a la vez: una panadería
@@ -9989,21 +10037,13 @@
           // alícuota única en vez de quedar en cero.
           editMontos = montarMontos(body, r);
 
-          /* Al elegir un tercero del directorio se llena su RIF, igual que
-             en el formulario de registrar. Sin esto había que copiarlo a
-             mano y bastaba un dígito para que la factura quedara a nombre
-             de un RIF que no existe. */
-          const tNom = body.querySelector('[data-name="nombre"]');
-          const tRif = body.querySelector('[data-name="rif"]');
-          if (tNom && tRif) {
-            const autollenar = () => {
-              const t = tercerosEd.find((x) =>
-                (x.nombre || '').toLowerCase() === tNom.value.trim().toLowerCase());
-              if (t && t.rif) tRif.value = normRif(t.rif);
-            };
-            tNom.addEventListener('change', autollenar);
-            tNom.addEventListener('input', autollenar);
-          }
+          /* El mismo campo que en registrar: elegir del directorio llena el
+             RIF, el RIF llena el nombre, y F2 crea el que falta sin salir.
+
+             Aquí NO se mueve el foco al N° de factura: al editar se viene a
+             cambiar un dato puntual —casi siempre el cliente que faltaba—,
+             y saltar a otro campo le quita el sitio al que está corrigiendo. */
+          montarCampoTercero(body, { lista: tercerosEd, esCompra: esCompra, moverFoco: false });
 
           /* Si esta factura ya tiene retenciones, se dice AQUÍ, junto al
              botón, antes de que nadie llene nada. */
@@ -10242,12 +10282,22 @@
             _fiscalPer = { mm: String(idx + 1).padStart(2, '0'), aa: p[1].slice(2), q: q };
             window.__fiscalPer = _fiscalPer;
             if (mainBtn) mainBtn.textContent = _perLabel();
-            cargarLibroFiscal('compra');
-            cargarLibroFiscal('venta');
-            if (window.cargarRetenciones) window.cargarRetenciones(); // retenciones del mismo período
-            if (window.__syncFiscalHeader) window.__syncFiscalHeader(); // membrete con el nuevo período
-            if (window.__pintarCierreBtn) window.__pintarCierreBtn();
-            toast('Período fiscal: ' + _perLabel() + ' · libros recargados');
+            /* Cada refresco va por su cuenta. El período YA cambió cuando se
+               llega aquí, así que si uno falla no puede arrastrar a los
+               demás ni impedir que el formulario se cierre: el usuario
+               vería el cuadro pegado y pensaría que el botón no sirve.
+               Lo que falle se dice, y lo demás se refresca igual. */
+            const fallaron = [];
+            [['libro de compras', () => cargarLibroFiscal('compra')],
+              ['libro de ventas', () => cargarLibroFiscal('venta')],
+              ['retenciones', () => window.cargarRetenciones && window.cargarRetenciones()],
+              ['membrete', () => window.__syncFiscalHeader && window.__syncFiscalHeader()],
+              ['botón de cierre', () => window.__pintarCierreBtn && window.__pintarCierreBtn()],
+            ].forEach(([que, fn]) => {
+              try { fn(); } catch (err) { fallaron.push(que); console.error('[período fiscal] ' + que + ':', err); }
+            });
+            if (fallaron.length) toast('Período: ' + _perLabel() + ' — no se pudo refrescar ' + fallaron.join(', '), 'error');
+            else toast('Período fiscal: ' + _perLabel() + ' · libros recargados');
           },
         });
       };
