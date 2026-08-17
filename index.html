@@ -263,6 +263,10 @@
     <!-- Topbar -->
     <div class="topbar">
       <button class="topbar-burger" id="navToggle" aria-label="Abrir menú"><i data-lucide="menu"></i></button>
+      <!-- Volver. Aparece SOLO en la app instalada: ahí la ventana no tiene
+           barra del navegador y no hay botón atrás por ningún lado. En el
+           navegador sobra, porque ya está el suyo. -->
+      <button class="topbar-burger topbar-atras" id="btnAtras" aria-label="Volver" title="Volver (Alt + ←)" hidden><i data-lucide="arrow-left"></i></button>
       <div class="breadcrumb">
         <i data-lucide="home" style="width:14px;height:14px;"></i>
         <span>Inicio</span>

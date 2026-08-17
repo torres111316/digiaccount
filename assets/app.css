@@ -4104,6 +4104,12 @@
      aparecen a la vez. */
   .install-bar { bottom: 74px; }
 
+  /* El botón de volver comparte el aspecto del de menú, pero su visibilidad
+     la manda el JS —solo en la app instalada— y no el ancho de la ventana.
+     Por eso lleva su propia regla en vez de heredar el `display:none` que
+     la consulta de medios de abajo le levanta al burger en móvil. */
+  .topbar-atras { display: none !important; }
+  .topbar-atras:not([hidden]) { display: inline-flex !important; }
   .topbar-burger { display: none; width: 38px; height: 38px; border: 0; background: transparent; color: var(--fg-body); border-radius: var(--radius-sm); cursor: pointer; align-items: center; justify-content: center; flex: none; margin-right: 4px; }
   .topbar-burger:hover { background: var(--bg-surface-alt); }
   .topbar-burger svg { width: 21px; height: 21px; }

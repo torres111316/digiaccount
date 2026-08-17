@@ -433,6 +433,27 @@
   // Atrás y adelante del navegador, y cualquier cambio de dirección.
   window.addEventListener('hashchange', () => { _abrirDesdeRuta(); });
 
+  /* VOLVER, dentro de la app.
+
+     En la ventana instalada no hay barra del navegador: ni botón atrás, ni
+     dirección, nada. El historial sigue ahí —Alt+← funciona— pero invisible,
+     que es como no tenerlo. En el navegador, en cambio, el botón propio
+     sobra: ya está el suyo justo al lado.
+
+     Así que se muestra solo cuando la app corre en su propia ventana. */
+  (function botonVolver() {
+    const btn = document.getElementById('btnAtras');
+    if (!btn) return;
+    const instalada = () =>
+      window.matchMedia('(display-mode: standalone)').matches
+      || window.matchMedia('(display-mode: window-controls-overlay)').matches
+      || window.matchMedia('(display-mode: minimal-ui)').matches
+      || window.navigator.standalone === true;
+    if (!instalada()) return;
+    btn.hidden = false;
+    btn.addEventListener('click', () => window.history.back());
+  })();
+
   /* La llama el arranque de sesión, cuando ya se conoce el rol. Si la
      dirección no trae vista —o trae una que no existe— no hace nada y queda
      la que el HTML marcó como activa. */
