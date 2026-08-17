@@ -9943,6 +9943,12 @@
       const esCompra = tipo === 'compra';
       const tdMap = { FC: 'FC (Factura)', FV: 'FV (Factura de venta)', NC: 'NC (Nota de crédito)', ND: 'ND (Nota de débito)' };
       let editMontos = null; // la caja de renglones, montada en afterRender
+      /* Los mismos terceros que ofrece el formulario de REGISTRAR. Al editar
+         el campo era texto pelado, así que completar el cliente de una
+         factura ya cargada obligaba a escribirlo entero a mano —y sin que
+         casara con el del directorio—. */
+      const tercerosEd = (window.__getTerceros ? window.__getTerceros() : [])
+        .filter((t) => (esCompra ? t.prov : t.cli) && t.nombre);
       window.openFormModal && window.openFormModal({
         title: esCompra ? 'Editar compra (Libro de Compras)' : 'Editar venta (Libro de Ventas)',
         saveLabel: 'Guardar cambios',
@@ -9952,7 +9958,7 @@
           { name: 'periodo', label: 'Período de declaración', type: 'select', options: _opcionesPeriodo(), value: r.periodo || _periodoActualKey() },
         ] : []).concat([
           { name: 'tipoDoc', label: 'Tipo de documento', type: 'select', options: esCompra ? ['FC (Factura)', 'NC (Nota de crédito)', 'ND (Nota de débito)'] : ['FV (Factura de venta)', 'NC (Nota de crédito)', 'ND (Nota de débito)'], value: tdMap[r.tipo_doc] || (esCompra ? 'FC (Factura)' : 'FV (Factura de venta)') },
-          { name: 'nombre', label: esCompra ? 'Proveedor' : 'Cliente', col: 2, value: r.tercero_nombre || '' },
+          { name: 'nombre', label: (esCompra ? 'Proveedor' : 'Cliente') + ' (escribe las iniciales y elige)', col: 2, type: 'datalist', options: tercerosEd.map((t) => t.nombre), value: r.tercero_nombre || '' },
           { name: 'rif', label: 'RIF', upper: true, value: r.tercero_rif || '' },
           { name: 'numFactura', label: 'N° de Factura', value: r.numero_factura || '' },
           { name: 'numControl', label: 'N° de Control', value: r.numero_control || '' },
@@ -9982,6 +9988,22 @@
           // sus renglones, y si es anterior al desglose se reparte por su
           // alícuota única en vez de quedar en cero.
           editMontos = montarMontos(body, r);
+
+          /* Al elegir un tercero del directorio se llena su RIF, igual que
+             en el formulario de registrar. Sin esto había que copiarlo a
+             mano y bastaba un dígito para que la factura quedara a nombre
+             de un RIF que no existe. */
+          const tNom = body.querySelector('[data-name="nombre"]');
+          const tRif = body.querySelector('[data-name="rif"]');
+          if (tNom && tRif) {
+            const autollenar = () => {
+              const t = tercerosEd.find((x) =>
+                (x.nombre || '').toLowerCase() === tNom.value.trim().toLowerCase());
+              if (t && t.rif) tRif.value = normRif(t.rif);
+            };
+            tNom.addEventListener('change', autollenar);
+            tNom.addEventListener('input', autollenar);
+          }
 
           /* Si esta factura ya tiene retenciones, se dice AQUÍ, junto al
              botón, antes de que nadie llene nada. */
