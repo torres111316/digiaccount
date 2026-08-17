@@ -694,9 +694,12 @@
       <!-- Sub-tabs -->
       <div class="subtabs" id="fiscalTabs">
         <button data-active="true" data-tab="agenda"><i data-lucide="calendar"></i> Calendario fiscal</button>
-        <button data-tab="compras"><i data-lucide="shopping-cart"></i> Libro de Compras <span class="count">142</span></button>
-        <button data-tab="ventas"><i data-lucide="receipt"></i> Libro de Ventas <span class="count">218</span></button>
-        <button data-tab="retenciones"><i data-lucide="percent"></i> Retenciones <span class="count">46</span></button>
+        <!-- Los contadores los llena el JS con las operaciones del período.
+             Traían 142, 218 y 46 escritos a mano desde la maqueta: números
+             que no eran de ninguna empresa y no cambiaban nunca. -->
+        <button data-tab="compras"><i data-lucide="shopping-cart"></i> Libro de Compras <span class="count" data-count="compras">0</span></button>
+        <button data-tab="ventas"><i data-lucide="receipt"></i> Libro de Ventas <span class="count" data-count="ventas">0</span></button>
+        <button data-tab="retenciones"><i data-lucide="percent"></i> Retenciones <span class="count" data-count="retenciones">0</span></button>
         <button data-tab="comprobantes"><i data-lucide="file-badge"></i> Comprobantes</button>
         <button data-tab="pensiones"><i data-lucide="shield-check"></i> Protección Pensiones</button>
         <button data-tab="patrimonios"><i data-lucide="gem"></i> Grandes Patrimonios</button>
@@ -1368,21 +1371,28 @@
                   <button data-type="islr">ISLR</button>
                 </div>
               </div>
+              <!-- Selectores REALES: se llenan con las retenciones ya
+                   registradas del período. Antes eran divs con texto fijo
+                   —"Selecciona un proveedor", "2da quincena · May 2026"— que
+                   no abrían nada. -->
               <div class="comp-field">
                 <span class="lbl">Proveedor / Sujeto retenido</span>
-                <div class="select-box">Selecciona un proveedor <i data-lucide="chevron-down"></i></div>
+                <select class="select-box" id="compTercero"><option value="">Sin retenciones en el período</option></select>
               </div>
               <div class="comp-field">
                 <span class="lbl">Factura asociada</span>
-                <div class="select-box">Selecciona una factura <i data-lucide="chevron-down"></i></div>
+                <select class="select-box" id="compFactura"><option value="">Elige primero un proveedor</option></select>
               </div>
               <div class="comp-field">
                 <span class="lbl">Período fiscal</span>
-                <div class="select-box">2da quincena · May 2026 <i data-lucide="chevron-down"></i></div>
+                <div class="select-box" id="compPeriodo">—</div>
               </div>
             </div>
             <div class="comp-controls-foot">
-              <button class="btn btn-primary" style="width:100%;justify-content:center;" id="compEmitirBtn"><i data-lucide="check"></i> Emitir y registrar</button>
+              <!-- La retención se registra en la pestaña Retenciones; aquí se
+                   emite su comprobante. El botón decía "Emitir y registrar" y
+                   solo mostraba un aviso: no registraba nada. -->
+              <a href="#" class="btn btn-ghost" data-goto-fiscaltab="retenciones" style="width:100%;justify-content:center;text-decoration:none;"><i data-lucide="plus"></i> Registrar una retención</a>
               <button class="btn btn-ghost" style="width:100%;justify-content:center;" id="compPrintBtn"><i data-lucide="printer"></i> Imprimir</button>
               <button class="btn btn-ghost" style="width:100%;justify-content:center;" id="compPdfBtn"><i data-lucide="download"></i> Descargar PDF</button>
               <div style="border-top:1px dashed var(--border-default);margin-top:4px;padding-top:10px;">
@@ -1736,7 +1746,11 @@
                 </div>
                 <div class="txt-select">
                   <div class="label">Período</div>
-                  <div class="val">2da Quincena · May 2026 <i data-lucide="chevron-down"></i></div>
+                  <!-- El período no se elige aquí: el TXT sale del que esté
+                       seleccionado en el módulo. Decía "2da Quincena · May
+                       2026" fijo, o sea que anunciaba un período distinto del
+                       que iba a exportar. -->
+                  <div class="val" id="txtPeriodoLbl">—</div>
                 </div>
               </div>
 

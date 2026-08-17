@@ -2576,6 +2576,16 @@
     cursor: pointer;
   }
   .comp-field .select-box svg { width: 13px; height: 13px; color: var(--fg-muted); }
+  /* Dos de los tres pasaron de <div> a <select> de verdad: el navegador dibuja
+     su propia flecha, así que se le quita el aire que ocupaba la de antes. */
+  select.select-box {
+    width: 100%; font-family: inherit; appearance: auto;
+    display: block; cursor: pointer;
+  }
+  select.select-box:disabled { opacity: .55; cursor: default; }
+  /* El período no se elige aquí: lo manda el módulo Fiscal. Se muestra como
+     dato, no como control, para que nadie lo intente cambiar desde acá. */
+  #compPeriodo { cursor: default; background: var(--bg-subtle); color: var(--fg-muted); }
   .comp-controls-foot { padding: 14px 16px; border-top: 1px solid var(--border-default); display: flex; flex-direction: column; gap: 8px; }
 
   /* The document itself */

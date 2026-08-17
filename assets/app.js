@@ -1080,6 +1080,9 @@
       pintar('sufridas', arr.filter((r) => r.direccion === 'sufrida'));
       refreshSummary(); applyFilter();
       aplicarAForma30(arr);
+      // Los selectores de Comprobantes salen de estas mismas retenciones.
+      if (window.__syncComprobantes) window.__syncComprobantes();
+      if (window.__setTabCount) window.__setTabCount('retenciones', arr.length);
     }
     window.cargarRetenciones = cargarRetenciones;
     window.__getRetenciones = () => _retData.slice(); // para el generador XML de ISLR
@@ -1650,7 +1653,13 @@
 
     // Comprobante de retención: clona el template OFICIAL completo (#compIva/#compIslr)
     // y lo llena con datos reales (firmas, partes, base legal SNAT/2025/000054 o Decreto 1.808).
-    async function imprimirComprobante(r) {
+    /* Con `destino` llena ESE comprobante y no imprime; sin él, clona la
+       plantilla e imprime. Es la misma función porque llenar un comprobante
+       de retención tiene demasiada regla —bases, alícuotas, sustraendo,
+       quién es agente y quién retenido— como para tener dos versiones que
+       se separen con el tiempo. La vista previa y lo que sale impreso
+       tienen que decir lo mismo. */
+    async function imprimirComprobante(r, destino) {
       const emp = window.__EMPRESA_ACTIVA || {};
       const esIslr = r.tipo === 'islr';
       const esPract = r.direccion === 'practicada';
@@ -1674,8 +1683,8 @@
       }
       const tmpl = document.getElementById(esIslr ? 'compIslr' : 'compIva');
       if (!tmpl) return;
-      const node = tmpl.cloneNode(true);
-      node.removeAttribute('id'); node.style.display = '';
+      const node = destino || tmpl.cloneNode(true);
+      if (!destino) { node.removeAttribute('id'); node.style.display = ''; }
       const set = (sel, val) => { const el = node.querySelector(sel); if (el != null) el.textContent = val; };
       const setN = (sel, i, val) => { const els = node.querySelectorAll(sel); if (els[i]) els[i].textContent = val; };
       const pctTxt = Number.isInteger(Number(r.pct)) ? String(Number(r.pct)) : Number(r.pct).toFixed(2);
@@ -1734,6 +1743,8 @@
         if (tf) tf.innerHTML = '<tr><td colspan="5" style="text-align:right;">Totales</td><td class="num">' + fmt(tTotal) + '</td><td class="num">0,00</td><td class="num">' + fmt(tBase) + '</td><td></td><td class="num">' + fmt(tIva) + '</td><td></td><td class="num highlight">' + fmt(tMonto) + '</td></tr>';
         if (words) words.innerHTML = 'Total IVA retenido: <strong>Bs ' + fmt(tMonto) + '</strong> · ' + grupo.length + ' factura(s) en este comprobante. Monto neto a cancelar: <strong>Bs ' + fmt(Math.max(0, tTotal - tMonto)) + '</strong>.';
       }
+      // Solo pintar la vista previa: no hay nada que imprimir todavía.
+      if (destino) { if (window.lucide) window.lucide.createIcons(); return; }
       let portal = document.getElementById('printPortal');
       if (!portal) { portal = document.createElement('div'); portal.id = 'printPortal'; document.body.appendChild(portal); }
       portal.innerHTML = '';
@@ -1742,6 +1753,14 @@
       if (window.lucide) window.lucide.createIcons();
       window.print();
     }
+    /* Llena el comprobante que se ve en la pestaña Comprobantes — que es el
+       mismo que clona el botón de imprimir, así que lo que se ve es lo que
+       sale. Antes mostraba la plantilla vacía y se podía imprimir en blanco. */
+    window.__pintarComprobante = (r) => {
+      const el = document.getElementById(r.tipo === 'islr' ? 'compIslr' : 'compIva');
+      if (el) imprimirComprobante(r, el);
+    };
+    window.__perLabelRetPub = _perLabelRet;
 
     // Editar / eliminar: clic en cualquier fila de retención
     function editRetencion(id) {
@@ -3010,6 +3029,92 @@
         });
       });
     }
+    /* =========================================================
+       EMITIR COMPROBANTE — los selectores, con datos reales
+       =========================================================
+       Los tres eran <div> con texto fijo: "Selecciona un proveedor",
+       "Selecciona una factura" y "2da quincena · May 2026". No abrían nada,
+       y la vista previa de al lado mostraba la plantilla vacía. Peor: el
+       botón de imprimir clona lo que se ve, así que imprimía un comprobante
+       en blanco con pinta de bueno.
+
+       Ahora se listan las retenciones YA REGISTRADAS del período: se elige
+       el proveedor, luego su factura, y la vista previa se llena con esa.
+       Registrar una retención nueva sigue siendo cosa de su pestaña. */
+    (function selectoresComprobante() {
+      const selT = document.getElementById('compTercero');
+      const selF = document.getElementById('compFactura');
+      const perEl = document.getElementById('compPeriodo');
+      if (!selT || !selF) return;
+      let _delTipo = [];
+
+      const tipoActivo = () => {
+        const b = document.querySelector('#compToggle button[data-active="true"]');
+        return (b && b.dataset.type) || 'iva';
+      };
+
+      window.__syncComprobantes = function () {
+        const todas = (window.__getRetenciones ? window.__getRetenciones() : []);
+        _delTipo = todas.filter((r) => r.tipo === tipoActivo() && r.direccion === 'practicada');
+        const etq = (window.__perLabelRetPub && window.__perLabelRetPub()) || '—';
+        if (perEl) perEl.textContent = etq;
+        // El generador de TXT anuncia el mismo período que va a exportar.
+        const txtPer = document.getElementById('txtPeriodoLbl');
+        if (txtPer) txtPer.textContent = etq;
+
+        // Un proveedor por RIF, aunque tenga varias retenciones en el período.
+        const vistos = {};
+        _delTipo.forEach((r) => {
+          const k = (r.tercero_rif || '').trim() || '(sin RIF)';
+          if (!vistos[k]) vistos[k] = r.tercero_nombre || k;
+        });
+        const rifs = Object.keys(vistos);
+        selT.innerHTML = rifs.length
+          ? '<option value="">Selecciona un proveedor</option>'
+            + rifs.map((k) => '<option value="' + esc(k) + '">' + esc(vistos[k]) + ' · ' + esc(k) + '</option>').join('')
+          : '<option value="">Sin retenciones de ' + tipoActivo().toUpperCase() + ' en el período</option>';
+        selT.disabled = !rifs.length;
+        selF.innerHTML = '<option value="">Elige primero un proveedor</option>';
+        selF.disabled = true;
+      };
+
+      selT.addEventListener('change', () => {
+        const rif = selT.value;
+        const suyas = _delTipo.filter((r) => ((r.tercero_rif || '').trim() || '(sin RIF)') === rif);
+        selF.innerHTML = suyas.length
+          ? '<option value="">Selecciona una factura</option>'
+            + suyas.map((r) => '<option value="' + esc(r.id) + '">'
+              + esc(r.factura || '(sin número)') + ' · Bs ' + fmt(Number(r.monto) || 0)
+              + (r.comprobante ? ' · ' + esc(r.comprobante) : '') + '</option>').join('')
+          : '<option value="">Este proveedor no tiene facturas en el período</option>';
+        selF.disabled = !suyas.length;
+      });
+
+      selF.addEventListener('change', () => {
+        const r = _delTipo.find((x) => String(x.id) === selF.value);
+        // Se llena la vista previa que está a la vista, que es la misma que
+        // clona el botón de imprimir. Así lo que se ve es lo que sale.
+        if (r && window.__pintarComprobante) window.__pintarComprobante(r);
+      });
+
+      // Al cambiar de IVA a ISLR cambia la lista y la plantilla visible.
+      const tg = document.getElementById('compToggle');
+      if (tg) tg.querySelectorAll('button').forEach((b) =>
+        b.addEventListener('click', () => window.__syncComprobantes()));
+
+      // El enlace a Retenciones usa el mecanismo que ya existe
+      // (data-goto-fiscaltab), no uno propio.
+    })();
+
+    /* Los contadores de las pestañas del módulo Fiscal. Traían 142, 218 y 46
+       escritos a mano: números de la maqueta que no eran de ninguna empresa
+       y no se movían al cambiar de período. Un contador que miente es peor
+       que ninguno, porque se lee de reojo y se cree. */
+    window.__setTabCount = function (tab, n) {
+      const el = document.querySelector('#fiscalTabs [data-count="' + tab + '"]');
+      if (el) el.textContent = String(n || 0);
+    };
+
     // Imprimir / PDF del comprobante: se clona el comprobante visible a un
     // portal aislado y se oculta toda la app, garantizando UNA sola hoja.
     function printComprobante() {
@@ -9626,6 +9731,7 @@
         if (tbody) tbody.innerHTML = '<tr><td colspan="' + (esCompra ? 12 : 13) + '" style="text-align:center;color:var(--fg-muted);padding:14px;">' + (txt || ('Sin registros. Usa "Registrar ' + tipo + '".')) + '</td></tr>';
         if (tfoot) tfoot.innerHTML = totRow(0, 0, 0, 0, 0);
         if (esCompra) { _credF = 0; resetF30c(); } else { _debF = 0; resetF30v(); pintarMaquina([]); }
+        if (window.__setTabCount) window.__setTabCount(esCompra ? 'compras' : 'ventas', 0);
         _libroData[tipo] = [];
         actualizarAutoliquidacion();
         calcularArrastres(); // el período puede no tener operaciones propias pero SÍ arrastre del mes anterior
@@ -9688,6 +9794,8 @@
       const arrZeta = esCompra ? [] : arr.filter((r) => r.numero_zeta);
       const arrFact = esCompra ? arr : arr.filter((r) => !r.numero_zeta);
       if (!esCompra) pintarMaquina(arrZeta);
+      // El contador de la pestaña cuenta TODO el período, reportes Z incluidos.
+      if (window.__setTabCount) window.__setTabCount(esCompra ? 'compras' : 'ventas', arr.length);
 
       // Paginación: lotes de 20 operaciones por página
       const PAG_FILAS = 20;
@@ -10009,10 +10117,10 @@
     cargarLibroFiscal('compra');
     cargarLibroFiscal('venta');
 
-    // Comprobante de retención: emitir y registrar
-    const emitir = document.getElementById('compEmitirBtn');
-    if (emitir) emitir.addEventListener('click', () =>
-      toast('Comprobante de retención emitido y registrado · incluido en el TXT del período'));
+    /* El botón "Emitir y registrar" se quitó: solo mostraba un aviso diciendo
+       que había emitido y registrado un comprobante, sin tocar nada. En su
+       lugar hay un enlace a la pestaña Retenciones, que es donde se registra
+       de verdad, y los botones de imprimir y PDF que sí emiten el documento. */
 
     // Selector de período fiscal del módulo: cambia el mes y recarga los libros filtrados
     const periodo = document.getElementById('fiscalPeriodo');
@@ -10225,18 +10333,33 @@
 
     // Selectores de los paneles de control (Comprobantes, Pensiones, IGP)
     const opciones = {
-      'Proveedor / Sujeto retenido': ['Suministros Lara, C.A.', 'Tecnología Andes, S.A.', 'Importadora Zulia', 'Papelería Central', 'Insumos Agrícolas Aragua'],
-      'Factura asociada': ['F-00284716', 'F-00045128', 'F-00731122', 'F-00018744', 'F-00045621'],
-      'Período fiscal': ['1ra quincena · May 2026', '2da quincena · May 2026', 'Junio 2026'],
+      /* Se quitaron 'Proveedor / Sujeto retenido', 'Factura asociada' y
+         'Período fiscal': eran cinco proveedores y cinco facturas
+         inventados —Suministros Lara, F-00284716— ofrecidos como si fueran
+         los de la empresa. Esos tres campos ahora salen de las retenciones
+         reales del período. */
       'Período de declaración': ['Marzo 2026 (01–31)', 'Abril 2026 (01–30)', 'Mayo 2026 (01–31)', 'Junio 2026 (01–30)'],
       'Tipo de declaración': ['Originaria', 'Sustitutiva', 'Complementaria'],
       'Alícuota vigente': ['9% (sector privado)', '15% (tope de ley)'],
       'Ejercicio fiscal': ['Al 30/09/2025', 'Al 30/09/2026', 'Al 30/09/2027'],
       'Condición del sujeto': ['Contribuyente Especial', 'Contribuyente Ordinario', 'Persona Natural'],
     };
+    /* Esto le pone un modal de opciones a cada `.select-box` de los paneles
+       de control. Las listas son de MAQUETA —proveedores y facturas
+       inventados— y al elegir solo se escribe el texto en el div: no cambia
+       ningún dato.
+
+       Ya NO alcanza a los de Comprobantes: el proveedor y la factura pasaron
+       a ser <select> de verdad, con las retenciones registradas del período,
+       y el período es un dato que manda el módulo. Si este bloque los
+       alcanzara, les pondría encima el modal falso.
+
+       Los demás paneles (Pensiones, IGP) siguen con la maqueta. */
     view.querySelectorAll('.fiscal-tab .comp-controls .comp-field').forEach((field) => {
       const sb = field.querySelector('.select-box');
       if (!sb) return;
+      // Un <select> de verdad se maneja solo; y un div con id ya lo llena el JS.
+      if (sb.tagName === 'SELECT' || sb.id) return;
       const lbl = ((field.querySelector('.lbl') || {}).textContent || '').trim();
       const isRecalc = /base imponible|patrimonio/i.test(lbl);
       sb.style.cursor = 'pointer';
@@ -14318,7 +14441,10 @@
     const view = document.querySelector('.view[data-active="true"]');
     const viewId = view && view.id;
     if (viewId === 'view-fiscal') {
-      const map = { ventas: 'regVentaBtn', compras: 'regCompraBtn', retenciones: 'retAddBtn', comprobantes: 'compEmitirBtn', pensiones: 'pensionRegistrarBtn', patrimonios: 'igpRegistrarBtn', igtf: 'igtfRegistrarBtn' };
+      // 'comprobantes' salió del mapa: esa pestaña no crea nada, emite el
+      // comprobante de una retención que ya existe. Apuntaba al botón
+      // "Emitir y registrar", que se quitó por no registrar nada.
+      const map = { ventas: 'regVentaBtn', compras: 'regCompraBtn', retenciones: 'retAddBtn', pensiones: 'pensionRegistrarBtn', patrimonios: 'igpRegistrarBtn', igtf: 'igtfRegistrarBtn' };
       const btn = map[tabActivo('.fiscal-tab[data-active="true"]')];
       if (btn) clic(btn);
     } else if (viewId === 'view-ventas') {
