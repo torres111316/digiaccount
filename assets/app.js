@@ -365,16 +365,85 @@
     // El Dashboard SIEMPRE se refresca con datos reales al abrirlo
     if (viewId === 'dashboard' && window.cargarDashboard) { try { window.cargarDashboard(); } catch (e) {} }
     drawIcons();
+    /* La dirección se sincroniza con la vista que REALMENTE se abrió, no con
+       la que se pidió: si las defensas de arriba desviaron al Dashboard, la
+       barra tiene que decir Dashboard. Una dirección que miente es peor que
+       ninguna. */
+    _sincronizarRuta(viewId);
   }
   window.showView = showView;
+
+  /* =========================================================
+     LA DIRECCIÓN SIGUE A LA VISTA
+     =========================================================
+     Sin esto no hay historial que recorrer, y en la app instalada el gesto
+     de volver CIERRA la aplicación en vez de regresar a la pantalla
+     anterior. Le pasa a cada usuario varias veces al día y se siente como
+     si la app se hubiera caído.
+
+     Va con almohadilla (#fiscal) y no con ruta (/fiscal) a propósito: la
+     ruta obliga a configurar el servidor para que un refresco no devuelva
+     404, y eso es una pieza más que se puede romper en un despliegue.
+
+     La dirección lleva SOLO la vista. Ni la empresa activa ni el período:
+     un enlace que le cambie a alguien la empresa en la que está trabajando
+     —o un marcador de "julio 1ra quincena" abierto en noviembre— es un
+     accidente esperando en un sistema donde se declaran impuestos. El
+     enlace dice "abre Fiscal"; Fiscal se abre con lo que el usuario tenía. */
+  const _titulos = {};
+  navItems.forEach((n) => { _titulos[n.dataset.view] = n.dataset.title || ''; });
+
+  function _sincronizarRuta(viewId) {
+    const nueva = '#' + viewId;
+    if (window.location.hash === nueva) return;   // corta el ida y vuelta
+    try {
+      // replaceState: la entrada de historial la crea el clic del menú. Aquí
+      // solo se corrige la dirección, sin agregar un paso de más que
+      // obligaría a pulsar atrás dos veces.
+      window.history.replaceState({ v: viewId }, '', nueva);
+    } catch (e) {
+      window.location.hash = nueva;               // respaldo si el historial falla
+    }
+  }
+
+  function _abrirDesdeRuta() {
+    const v = (window.location.hash || '').replace(/^#\/?/, '').trim();
+    if (!v) return false;
+    // Solo vistas que existen. Un enlace viejo o mal escrito no debe dejar la
+    // pantalla en blanco: se ignora y queda lo que ya estaba.
+    if (!document.getElementById('view-' + v)) return false;
+    showView(v, _titulos[v] || '');
+    return true;
+  }
 
   navItems.forEach((item) => {
     item.addEventListener('click', (e) => {
       e.preventDefault();
       if (item.classList.contains('locked')) { if (window.__mostrarUpgrade) window.__mostrarUpgrade(item); return; }
-      showView(item.dataset.view, item.dataset.title);
+      const v = item.dataset.view;
+      /* El clic SÍ agrega una entrada al historial: es lo que hace que el
+         botón atrás devuelva a la vista anterior. Si la vista ya está
+         abierta no se agrega nada, para no llenar el historial de repetidos
+         cuando alguien pulsa dos veces el mismo menú. */
+      if (window.location.hash === '#' + v) return;
+      window.location.hash = '#' + v;   // dispara hashchange, que pinta
     });
   });
+
+  // Atrás y adelante del navegador, y cualquier cambio de dirección.
+  window.addEventListener('hashchange', () => { _abrirDesdeRuta(); });
+
+  /* La llama el arranque de sesión, cuando ya se conoce el rol. Si la
+     dirección no trae vista —o trae una que no existe— no hace nada y queda
+     la que el HTML marcó como activa. */
+  window.__abrirRutaInicial = function () {
+    if (!_abrirDesdeRuta()) {
+      // Sin vista en la dirección: se anota la que está abierta, para que el
+      // primer clic del menú tenga a dónde volver con el botón atrás.
+      const act = document.querySelector('.nav-item[data-active="true"][data-view]');
+      if (act) _sincronizarRuta(act.dataset.view);
+    }
+  };
 
   // El nombre del usuario lleva a Usuarios y Roles (si su rol lo permite)
   const sbUser = document.getElementById('sidebarUser');
@@ -10780,6 +10849,12 @@
       try { if (window.aplicarPlan) window.aplicarPlan(planNombre || undefined, pruebaArg); } catch (e) { console.warn('[DigiAccount] aplicarPlan:', e); }
       // Gating por ROL (después del plan: el rol recorta sobre lo que el plan permite)
       try { if (window.aplicarRol) window.aplicarRol(); } catch (e) { console.warn('[DigiAccount] aplicarRol:', e); }
+      /* Recién AQUÍ se abre la vista que pedía la dirección. Antes de este
+         punto no se sabe el rol del usuario ni si es el fundador, y la
+         defensa de `showView` —que devuelve al Dashboard lo que no le
+         corresponde— dejaría pasar cualquier cosa por no tener con qué
+         comparar. Un enlace no puede abrir una vista que el rol no permite. */
+      try { if (window.__abrirRutaInicial) window.__abrirRutaInicial(); } catch (e) { console.warn('[DigiAccount] ruta inicial:', e); }
       try { if (window.__renderSuscripcion) window.__renderSuscripcion(); } catch (e) { console.warn('[DigiAccount] renderSuscripcion:', e); }
       // El fundador carga el listado real de cuentas del SaaS y sus contactos (CRM)
       if (window.__ES_FUNDADOR && window.cargarCuentasFundador) window.cargarCuentasFundador();
