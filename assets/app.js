@@ -150,6 +150,9 @@
         if (window.__renderIGP) window.__renderIGP();
         if (window.cargarBoveda) window.cargarBoveda();
         if (window.cargarTesoreria) window.cargarTesoreria();
+        // Antes de recargar: la empresa nueva puede no enterar por quincena,
+        // y quedarse en "1ra" le escondería la mitad de sus retenciones.
+        if (window.__syncRetQuincena) window.__syncRetQuincena();
         if (window.cargarRetenciones) window.cargarRetenciones();
         if (window.cargarGuias) window.cargarGuias();           // guías de despacho de la empresa
         if (window.__aplicarModoDoc) window.__aplicarModoDoc(); // letrero de modo (recibos/homologado) + RIF en Ventas
@@ -932,6 +935,33 @@
     });
     let _retData = []; // últimas retenciones cargadas (para editar/eliminar por id)
 
+    /* Quincena que se está mirando en ESTE módulo. 0 = el mes completo.
+       Vive aparte del período de Fiscal porque las dos obligaciones no van
+       al mismo ritmo: una firma personal especial declara el IVA mensual y
+       entera las retenciones cada quincena. */
+    let _retQuincena = 0;
+    (function selectorQuincenaRet() {
+      const nav = document.getElementById('retQuincenaNav');
+      if (!nav) return;
+      const btns = nav.querySelectorAll('button');
+      // Solo se ofrece a quien entera por quincena; a los demás les sobra.
+      window.__syncRetQuincena = function () {
+        const aplica = window.__retencionesPorQuincena && window.__retencionesPorQuincena();
+        nav.hidden = !aplica;
+        if (!aplica && _retQuincena !== 0) {
+          // Al cambiar a una empresa que no separa, se vuelve al mes completo:
+          // dejarla en "1ra" le escondería la mitad de sus retenciones.
+          _retQuincena = 0;
+          btns.forEach((b) => (b.dataset.active = b.dataset.retq === '0' ? 'true' : 'false'));
+        }
+      };
+      btns.forEach((b) => b.addEventListener('click', () => {
+        _retQuincena = parseInt(b.dataset.retq, 10) || 0;
+        btns.forEach((x) => (x.dataset.active = x === b ? 'true' : 'false'));
+        if (window.cargarRetenciones) window.cargarRetenciones();
+      }));
+    })();
+
     // El período que se está mirando ahora mismo en el módulo Fiscal.
     const _MESES_RET = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
       'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
@@ -947,8 +977,8 @@
       const p = window.__fiscalPer;
       if (!p || !p.mm || !p.aa) return 'del período';
       const mes = _MESES_RET[parseInt(p.mm, 10) - 1] + ' 20' + p.aa;
-      const esp = window.__retencionesPorQuincena && window.__retencionesPorQuincena();
-      return (esp && p.q) ? (p.q === 1 ? '1ra' : '2da') + ' quincena ' + mes : mes;
+      // La quincena es la del selector de ESTE módulo, no la de Fiscal.
+      return _retQuincena ? (_retQuincena === 1 ? '1ra' : '2da') + ' quincena ' + mes : mes;
     }
     function _opcionesPeriodoRet() {
       const out = [];
@@ -1025,9 +1055,13 @@
         const perDecl = '20' + per.aa + '-' + per.mm, suf = '/' + per.mm + '/' + per.aa;
         arr = arr.filter((r) => r.periodo ? r.periodo === perDecl : String(r.fecha || '').endsWith(suf));
         /* Las retenciones de IVA PRACTICADAS se enteran por quincena en todo
-           contribuyente especial, sea C.A. o firma personal. Sin este filtro
-           la de la primera quincena seguía apareciendo en la segunda, y el
-           cuadro sumaba dos veces algo que ya se enteró.
+           contribuyente especial, sea C.A. o firma personal. Sin filtro, la de
+           la primera quincena seguía apareciendo en la segunda y el cuadro
+           sumaba dos veces algo que ya se enteró.
+
+           La quincena sale del selector PROPIO de este módulo, no del de
+           Fiscal: una firma personal declara el IVA mensual pero entera las
+           retenciones cada quincena, así que allá no hay quincena que elegir.
 
            Las SUFRIDAS no se separan: se descuentan con la declaración de
            IVA, que en una firma personal es mensual.
@@ -1035,11 +1069,10 @@
            Una retención sin quincena registrada no se esconde: quedaría
            invisible en las dos, y una retención que no se ve es una que no
            se entera. Se muestra, y se nota que le falta el dato. */
-        const porQ = window.__retencionesPorQuincena && window.__retencionesPorQuincena();
-        if (porQ && per.q) {
+        if (_retQuincena === 1 || _retQuincena === 2) {
           arr = arr.filter((r) => r.direccion !== 'practicada'
             || !(r.quincena === 1 || r.quincena === 2)
-            || r.quincena === per.q);
+            || r.quincena === _retQuincena);
         }
       }
       _retData = arr;
@@ -1050,6 +1083,8 @@
     }
     window.cargarRetenciones = cargarRetenciones;
     window.__getRetenciones = () => _retData.slice(); // para el generador XML de ISLR
+    // La quincena que se está mirando, para que el TXT la ponga en su nombre.
+    window.__retQuincenaActual = () => _retQuincena;
 
     // El % de retención depende del impuesto: IVA = dropdown estricto 0/75/100;
     // ISLR = entrada libre con sugerencias comunes (varía por concepto del Decreto 1.808).
@@ -4378,12 +4413,22 @@
       }
       const facMap = {};
       facturas.forEach((f) => { facMap[(f.numero_factura || '').trim() + '|' + norm(f.tercero_rif)] = f; });
-      // Por período: exporta el más reciente
-      const grupos = {};
-      iva.forEach((r) => { const per = periodoDe(r.fecha); (grupos[per] = grupos[per] || []).push(r); });
-      const periodos = Object.keys(grupos).filter(Boolean).sort();
-      const periodo = periodos[periodos.length - 1] || '';
-      const rows = grupos[periodo] || [];
+      /* Se exporta lo que se está viendo, tal cual: `__getRetenciones` ya
+         devuelve el período —y la quincena— que eligió el usuario.
+
+         Antes se reagrupaba por la FECHA de cada renglón y se exportaba el
+         grupo más reciente. Eso partía el archivo: la primera quincena de
+         enero de Radian trae operaciones de diciembre, y esas se iban a un
+         grupo "2025-12" que quedaba fuera. Se enteraba media declaración.
+
+         El período de la cabecera sale del selector, no de las fechas, que
+         es justamente la diferencia entre cuándo ocurrió algo y cuándo se
+         declara. */
+      const rows = iva;
+      const pf = window.__fiscalPer || {};
+      const periodo = (pf.aa && pf.mm) ? ('20' + pf.aa + pf.mm)
+        : (periodoDe(rows[0] && rows[0].fecha) || '').replace('-', '');
+      const quin = window.__retQuincenaActual ? window.__retQuincenaActual() : 0;
       const lineas = rows.map((r) => {
         const f = facMap[(r.factura || '').trim() + '|' + norm(r.tercero_rif)] || null;
         const ivaDoc = Number(r.base) || 0;   // en IVA, r.base guarda el IVA del documento
@@ -4406,7 +4451,10 @@
         ].join('\t');
       });
       const txt = lineas.join('\r\n') + '\r\n';
-      const fname = (esPract ? 'RET_IVA_' : 'INF_IVA_PROV_') + rifEmp + '_' + periodo + '.txt';
+      // La quincena va en el nombre: dos archivos del mismo mes no se pisan
+      // en la carpeta de descargas, y se sabe cuál es cuál sin abrirlos.
+      const fname = (esPract ? 'RET_IVA_' : 'INF_IVA_PROV_') + rifEmp + '_' + periodo
+        + (quin ? '_Q' + quin : '') + '.txt';
       const blob = new Blob([txt], { type: 'text/plain;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -4422,7 +4470,7 @@
       btn.innerHTML = '<i data-lucide="check"></i> Archivo descargado';
       btn.setAttribute('disabled', '');
       drawIcons();
-      if (window.toast) window.toast('TXT IVA ' + (esPract ? '(agente, practicadas)' : '(informativa proveedor, sufridas)') + ' · período ' + periodo + ' · ' + rows.length + ' registro(s)' + (periodos.length > 1 ? ' (hay otros períodos sin exportar)' : ''), 'success');
+      if (window.toast) window.toast('TXT IVA ' + (esPract ? '(agente, practicadas)' : '(informativa proveedor, sufridas)') + ' · período ' + periodo + (quin ? ' · ' + quin + 'ª quincena' : '') + ' · ' + rows.length + ' registro(s)', 'success');
       setTimeout(() => { btn.innerHTML = orig; btn.removeAttribute('disabled'); drawIcons(); }, 2400);
     }
     if (btnP) btnP.addEventListener('click', () => generar(btnP, true));
@@ -4452,12 +4500,18 @@
       const todas = (window.__getRetenciones ? window.__getRetenciones() : []);
       const islr = todas.filter((r) => r.tipo === 'islr' && r.direccion === 'practicada');
       if (!islr.length) { if (window.toast) window.toast('No hay retenciones de ISLR practicadas para exportar.', 'error'); return; }
-      // La Relación Informativa es mensual: agrupa por período y exporta el más reciente
-      const grupos = {};
-      islr.forEach((r) => { const per = periodoDe(r.fecha); (grupos[per] = grupos[per] || []).push(r); });
-      const periodos = Object.keys(grupos).filter(Boolean).sort();
-      const periodo = periodos[periodos.length - 1] || '';
-      const rows = grupos[periodo] || [];
+      /* La Relación Informativa de ISLR es mensual, y aquí NO hay quincena
+         que separar. Se exporta lo que se está viendo, igual que el TXT de
+         IVA: `__getRetenciones` ya entrega el período elegido.
+
+         Reagrupar por la FECHA de cada renglón y quedarse con el grupo más
+         reciente dejaba fuera las retenciones cuya operación es de un mes
+         anterior al que se declara — que es lo normal cuando la factura
+         llega tarde. Se enteraba de menos y nada lo avisaba. */
+      const rows = islr;
+      const pf = window.__fiscalPer || {};
+      const periodo = (pf.aa && pf.mm) ? ('20' + pf.aa + pf.mm)
+        : (periodoDe(rows[0] && rows[0].fecha) || '').replace('-', '');
       // Esquema OFICIAL (Manual Técnico TRI.GR.03.0013): RifAgente/Periodo como atributos
       let xml = '<?xml version="1.0" encoding="utf-8" ?>\r\n';
       xml += '<RelacionRetencionesISLR RifAgente="' + rifAgente + '" Periodo="' + periodo + '">\r\n';
@@ -4489,7 +4543,7 @@
       btn.innerHTML = '<i data-lucide="check"></i> Archivo XML descargado';
       btn.setAttribute('disabled', '');
       drawIcons();
-      if (window.toast) window.toast('XML Relación Informativa ISLR · período ' + periodo + ' · ' + rows.length + ' registro(s)' + (periodos.length > 1 ? ' (hay otros períodos sin exportar)' : ''), 'success');
+      if (window.toast) window.toast('XML Relación Informativa ISLR · período ' + periodo + ' · ' + rows.length + ' registro(s)', 'success');
       setTimeout(() => { btn.innerHTML = orig; btn.removeAttribute('disabled'); drawIcons(); }, 2400);
     });
   })();

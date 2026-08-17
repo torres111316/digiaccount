@@ -5571,6 +5571,30 @@
     border-radius: var(--radius-md);
     padding: 4px; margin-bottom: 16px;
   }
+  /* Selector de quincena: más liviano que el de dirección, porque acompaña
+     y no compite con él. Se esconde solo cuando la empresa no entera
+     retenciones por quincena. */
+  .ret-quincena {
+    display: inline-flex; align-items: center; gap: 4px;
+    margin: 0 0 16px 12px; vertical-align: top;
+  }
+  .ret-quincena[hidden] { display: none; }
+  .ret-quincena .l {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
+    color: var(--fg-muted); margin-right: 6px; font-weight: var(--fw-semibold);
+  }
+  .ret-quincena button {
+    padding: 6px 12px; border: 1px solid var(--border-default);
+    background: var(--bg-surface); color: var(--fg-muted);
+    border-radius: var(--radius-pill); cursor: pointer;
+    font-family: inherit; font-size: 12px; font-weight: var(--fw-semibold);
+    transition: all .15s ease;
+  }
+  .ret-quincena button:hover { color: var(--fg-body); }
+  .ret-quincena button[data-active="true"] {
+    background: var(--da-navy-800); border-color: var(--da-navy-800);
+    color: var(--da-white);
+  }
   .ret-dir-nav button {
     display: inline-flex; align-items: center; gap: 9px;
     padding: 8px 18px; border: 0; background: transparent;

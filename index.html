@@ -1194,6 +1194,18 @@
           </button>
         </div>
 
+        <!-- Quincena de las retenciones PRACTICADAS. Tiene su propio selector
+             porque no sigue a la declaración de IVA: una firma personal
+             especial declara el IVA mensual pero entera las retenciones cada
+             quincena, así que en el módulo Fiscal no hay quincena que elegir
+             y aquí sí hace falta. Solo aparece en contribuyentes especiales. -->
+        <div class="ret-quincena" id="retQuincenaNav" hidden>
+          <span class="l">Quincena a enterar</span>
+          <button data-retq="1">1ra</button>
+          <button data-retq="2">2da</button>
+          <button data-retq="0" data-active="true">Mes completo</button>
+        </div>
+
         <!-- Resumen de retenciones del período -->
         <div class="ret-summary" id="retSummary">
           <div class="ret-card iva">
