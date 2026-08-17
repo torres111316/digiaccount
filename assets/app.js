@@ -3115,6 +3115,35 @@
       if (el) el.textContent = String(n || 0);
     };
 
+    /* ARCHIVOS DEL SENIAT — el conmutador entre el TXT de IVA y el XML de
+       ISLR, que antes eran dos pestañas del módulo.
+
+       No son el mismo documento: el TXT es de IVA y va por quincena, el XML
+       es de ISLR y va por mes. Comparten el sitio y el momento —se generan
+       desde las mismas retenciones, al cerrar el período— no el contenido. */
+    (function archivosSeniat() {
+      const nav = document.getElementById('raNav');
+      if (!nav) return;
+      const paneles = document.querySelectorAll('[data-ra-panel]');
+      const mostrar = (cual) => {
+        nav.querySelectorAll('button').forEach((b) =>
+          (b.dataset.active = b.dataset.ra === cual ? 'true' : 'false'));
+        paneles.forEach((p) => (p.hidden = p.dataset.raPanel !== cual));
+        drawIcons();
+      };
+      nav.querySelectorAll('button').forEach((b) =>
+        b.addEventListener('click', () => mostrar(b.dataset.ra)));
+
+      // Los botones que antes cambiaban de pestaña ahora bajan hasta aquí.
+      document.querySelectorAll('[data-ra-goto]').forEach((el) =>
+        el.addEventListener('click', (e) => {
+          e.preventDefault();
+          mostrar(el.dataset.raGoto);
+          const cont = document.getElementById('retArchivos');
+          if (cont) cont.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }));
+    })();
+
     /* Los períodos que se muestran por todo el módulo — Pensiones, IGP, IGTF,
        el TXT y el XML de ISLR— venían escritos a mano: "Mayo 2026 (01–31)",
        "Al 30/09/2026", "Junio 2026 · 1ra Quincena". Cada pestaña anunciaba un

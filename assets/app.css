@@ -5581,6 +5581,43 @@
     border-radius: var(--radius-md);
     padding: 4px; margin-bottom: 16px;
   }
+  /* ARCHIVOS DEL SENIAT — el TXT de IVA y el XML de ISLR, que antes eran dos
+     pestañas. Se presentan como una sección aparte dentro de Retenciones,
+     con su propio borde, para que se lea como "lo que se genera" y no como
+     más contenido de la lista. */
+  .ret-archivos {
+    margin-top: 22px; border: 1px solid var(--border-default);
+    border-radius: var(--radius-md); background: var(--bg-surface);
+    overflow: hidden;
+  }
+  .ra-head {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 14px; flex-wrap: wrap;
+    padding: 12px 16px; border-bottom: 1px solid var(--border-default);
+    background: var(--bg-subtle);
+  }
+  .ra-title {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-family: var(--font-display); font-weight: var(--fw-bold);
+    font-size: 13.5px; color: var(--fg-primary);
+  }
+  .ra-title svg { width: 16px; height: 16px; color: var(--da-cyan-600); }
+  .ra-nav { display: inline-flex; gap: 4px; }
+  .ra-nav button {
+    padding: 6px 14px; border: 1px solid var(--border-default);
+    background: var(--bg-surface); color: var(--fg-muted);
+    border-radius: var(--radius-pill); cursor: pointer;
+    font-family: inherit; font-size: 12px; font-weight: var(--fw-semibold);
+    transition: all .15s ease;
+  }
+  .ra-nav button:hover { color: var(--fg-body); }
+  .ra-nav button[data-active="true"] {
+    background: var(--da-navy-800); border-color: var(--da-navy-800);
+    color: var(--da-white);
+  }
+  .ra-panel { padding: 16px; }
+  .ra-panel[hidden] { display: none; }
+
   /* Selector de quincena: más liviano que el de dirección, porque acompaña
      y no compite con él. Se esconde solo cuando la empresa no entera
      retenciones por quincena. */

@@ -700,11 +700,8 @@
         <button data-tab="compras"><i data-lucide="shopping-cart"></i> Libro de Compras <span class="count" data-count="compras">0</span></button>
         <button data-tab="ventas"><i data-lucide="receipt"></i> Libro de Ventas <span class="count" data-count="ventas">0</span></button>
         <button data-tab="retenciones"><i data-lucide="percent"></i> Retenciones <span class="count" data-count="retenciones">0</span></button>
-        <button data-tab="comprobantes"><i data-lucide="file-badge"></i> Comprobantes</button>
         <button data-tab="pensiones"><i data-lucide="shield-check"></i> Protección Pensiones</button>
         <button data-tab="patrimonios"><i data-lucide="gem"></i> Grandes Patrimonios</button>
-        <button data-tab="txt"><i data-lucide="file-down"></i> Retención IVA (TXT)</button>
-        <button data-tab="islr"><i data-lucide="file-code-2"></i> Retención ISLR (XML)</button>
         <button data-tab="igtf"><i data-lucide="coins"></i> IGTF (Forma 21)</button>
         <button data-tab="islranual"><i data-lucide="trending-up"></i> ISLR del ejercicio</button>
         <button data-tab="boveda"><i data-lucide="archive"></i> Bóveda Fiscal</button>
@@ -1240,7 +1237,9 @@
             <div class="right">
               <button class="btn btn-primary" style="height:32px;font-size:12px;" id="retAddBtn"><i data-lucide="plus"></i> Registrar retención</button>
               <button class="btn btn-ghost" style="height:32px;font-size:12px;" id="retReciboBtn"><i data-lucide="receipt-text"></i> Generar recibo del período</button>
-              <button class="btn btn-ghost" style="height:32px;font-size:12px;" data-goto-fiscaltab="txt"><i data-lucide="file-down"></i> Generar TXT SENIAT</button>
+              <!-- Ya no cambia de pestaña: los archivos del SENIAT viven más
+                   abajo, en esta misma. El botón lleva hasta ellos. -->
+              <button class="btn btn-ghost" style="height:32px;font-size:12px;" data-ra-goto="txt"><i data-lucide="file-down"></i> Archivos del SENIAT</button>
             </div>
           </div>
 
@@ -1304,7 +1303,213 @@
             </div>
           </div>
         </div>
-      </div>
+      
+          <!-- ARCHIVOS DEL SENIAT
+               Estaban en dos pestanas aparte. No son el mismo documento —el
+               TXT es de IVA y quincenal, el XML es de ISLR y mensual— pero se
+               generan en el mismo momento y desde las mismas retenciones, asi
+               que comparten sitio y se elige cual. -->
+          <div class="ret-archivos" id="retArchivos">
+            <div class="ra-head">
+              <div class="ra-title"><i data-lucide="file-down"></i> Archivos para el SENIAT</div>
+              <div class="ra-nav" id="raNav">
+                <button data-ra="txt" data-active="true">Retención de IVA · TXT</button>
+                <button data-ra="islr">Retención de ISLR · XML</button>
+              </div>
+            </div>
+            <div class="ra-panel" data-ra-panel="txt">
+<section class="grid-2-3">
+          <div class="panel">
+            <div class="panel-head">
+              <div class="panel-title-block">
+                <div class="title">Generación de archivo TXT</div>
+                <div class="sub">Formato SENIAT · Listo para subir al portal fiscal</div>
+              </div>
+            </div>
+            <div class="txt-gen">
+              <div style="background:var(--da-cyan-50);border:1px solid var(--da-cyan-100);border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:14px;font-size:12px;color:var(--da-cyan-700);display:flex;gap:8px;align-items:flex-start;">
+                <i data-lucide="link" style="width:14px;height:14px;flex-shrink:0;margin-top:2px;"></i>
+                <span>El archivo se arma automáticamente con los <strong><span id="ivaResumenNota">0</span> comprobantes de retención de IVA</strong> practicados (solo IVA; el ISLR se entera por otra vía). Cada línea = un comprobante. <a href="#" data-goto-fiscaltab="comprobantes" style="color:var(--da-cyan-700);font-weight:600;text-decoration:underline;">Ver comprobantes →</a></span>
+              </div>
+              <div class="txt-gen-row">
+                <div class="txt-select">
+                  <div class="label">Tipo de retención</div>
+                  <div class="val">Retención de IVA</div>
+                </div>
+                <div class="txt-select">
+                  <div class="label">Período</div>
+                  <!-- El período no se elige aquí: el TXT sale del que esté
+                       seleccionado en el módulo. Decía "2da Quincena · May
+                       2026" fijo, o sea que anunciaba un período distinto del
+                       que iba a exportar. -->
+                  <div class="val" id="txtPeriodoLbl">—</div>
+                </div>
+              </div>
+
+              <!-- Estructura del registro -->
+              <div class="txt-fields">
+                <div class="txt-fields-title">Estructura del registro · 16 columnas A–P separadas por TAB (guía oficial SENIAT)</div>
+                <div class="txt-fields-grid">
+                  <span><b>A</b> RIF Agente</span>
+                  <span><b>B</b> Período (AAAAMM)</span>
+                  <span><b>C</b> Fecha Factura (AAAA-MM-DD)</span>
+                  <span><b>D</b> Tipo Operación (C/V)</span>
+                  <span><b>E</b> Tipo Doc. (01)</span>
+                  <span><b>F</b> RIF Proveedor</span>
+                  <span><b>G</b> N° Documento</span>
+                  <span><b>H</b> N° Control</span>
+                  <span><b>I</b> Monto Total</span>
+                  <span><b>J</b> Base Imponible</span>
+                  <span><b>K</b> Monto IVA Retenido</span>
+                  <span><b>L</b> N° Doc. Afectado (0)</span>
+                  <span><b>M</b> N° Comprobante (14)</span>
+                  <span><b>N</b> Monto Exento (0.00)</span>
+                  <span><b>O</b> Alícuota</span>
+                  <span><b>P</b> N° Expediente (0)</span>
+                </div>
+              </div>
+
+              <div class="txt-preview">
+                <div class="lh" id="txtPreviewLh">Vista previa · 16 columnas (A–P) separadas por tabulación</div>
+                <pre id="txtPreviewPre">Presiona "Generar y descargar TXT" para ver aquí la vista previa con tus retenciones de IVA reales del período.</pre>
+              </div>
+
+              <button class="btn btn-primary" style="width:100%;justify-content:center;" id="txtGenBtn"><i data-lucide="file-down"></i> Generar TXT · Retenciones practicadas (027 · agente)</button>
+              <button class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:8px;" id="txtGen028Btn"><i data-lucide="file-down"></i> Generar TXT · Informativa por proveedor (028 · sufridas)</button>
+
+              <div class="txt-history">
+                <div class="lbl">Archivos generados recientemente</div>
+                <div id="txtHist"><div class="txt-empty" style="font-size:12px;color:var(--fg-muted);padding:8px;">Aún no has generado archivos en esta sesión.</div></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <div class="panel-title-block">
+                <div class="title">Resumen del período · Retenciones IVA</div>
+                <div class="sub" data-perfiscal="etiqueta">—</div>
+              </div>
+            </div>
+            <div style="padding:8px 20px 18px;">
+              <div class="salary-row" style="border-bottom:1px dashed var(--border-default);padding:12px 0;">
+                <span class="lbl">Comprobantes de IVA</span>
+                <span class="val" id="ivaResumenCount">0</span>
+              </div>
+              <div class="salary-row" style="border-bottom:1px dashed var(--border-default);padding:12px 0;">
+                <span class="lbl">IVA causado (base de retención)</span>
+                <span class="val">Bs <span id="ivaResumenBase">0,00</span></span>
+              </div>
+              <div class="salary-row" style="border-bottom:1px dashed var(--border-default);padding:12px 0;">
+                <span class="lbl">Alícuota de retención</span>
+                <span class="val">75% / 100%</span>
+              </div>
+              <div class="salary-row total" style="background:var(--da-navy-700);color:var(--da-white);margin:12px -20px -18px;padding:14px 20px;">
+                <span class="lbl" style="color:var(--fg-on-dark-muted);text-transform:uppercase;letter-spacing:var(--tracking-overline);font-size:11px;font-weight:600;">IVA retenido a enterar</span>
+                <span class="val" style="color:var(--da-cyan-500);font-size:20px;">Bs <span id="ivaResumenRet">0,00</span></span>
+              </div>
+            </div>
+          </div>
+        </section>
+            </div>
+            <div class="ra-panel" data-ra-panel="islr" hidden>
+<section class="grid-2-3">
+          <div class="panel">
+            <div class="panel-head">
+              <div class="panel-title-block">
+                <div class="title">Declaración de Retención de ISLR</div>
+                <div class="sub">Mensual · Providencia 0095 · archivo XML para el portal SENIAT</div>
+              </div>
+            </div>
+            <div class="txt-gen">
+              <div style="background:var(--da-cyan-50);border:1px solid var(--da-cyan-100);border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:14px;font-size:12px;color:var(--da-cyan-700);display:flex;gap:8px;align-items:flex-start;">
+                <i data-lucide="info" style="width:14px;height:14px;flex-shrink:0;margin-top:2px;"></i>
+                <span>A diferencia del IVA, el ISLR se entera <strong>mensualmente</strong> mediante un <strong>archivo XML</strong>. El portal calcula el impuesto a enterar (con sustraendo donde aplica). Debe presentarse <strong>aún sin retenciones</strong>.</span>
+              </div>
+              <div class="txt-gen-row">
+                <div class="txt-select" id="islrTipoSel">
+                  <div class="label">Tipo de retención</div>
+                  <div class="val">Salarios y otras (Forma 99074) <i data-lucide="chevron-down"></i></div>
+                </div>
+                <div class="txt-select" id="islrPerSel">
+                  <div class="label">Período (mensual)</div>
+                  <div class="val" data-perfiscal="mes">—</div>
+                </div>
+              </div>
+
+              <div class="txt-fields">
+                <div class="txt-fields-title">Estructura del XML · atributos raíz + campos por retención (esquema oficial)</div>
+                <div class="txt-fields-grid">
+                  <span><b>raíz</b> RifAgente</span>
+                  <span><b>raíz</b> Periodo (AAAAMM)</span>
+                  <span><b>1</b> RifRetenido</span>
+                  <span><b>2</b> NumeroFactura</span>
+                  <span><b>3</b> NumeroControl</span>
+                  <span><b>4</b> CodigoConcepto</span>
+                  <span><b>5</b> MontoOperacion</span>
+                  <span><b>6</b> PorcentajeRetencion</span>
+                </div>
+              </div>
+
+              <div class="txt-preview">
+                <div class="lh" id="xmlPreviewLh">Vista previa · XML Relación Informativa (esquema oficial TRI.GR.03.0013)</div>
+                <pre id="xmlPreviewPre">Presiona "Generar y descargar XML" para ver aquí la vista previa con tus retenciones de ISLR reales del período.</pre>
+              </div>
+
+              <button class="btn btn-primary" style="width:100%;justify-content:center;" id="xmlGenBtn"><i data-lucide="file-code-2"></i> Generar y descargar XML · Retenciones ISLR</button>
+
+              <div class="txt-history">
+                <div class="lbl">Archivos generados recientemente</div>
+                <div id="xmlHist"><div class="txt-empty" style="font-size:12px;color:var(--fg-muted);padding:8px;">Aún no has generado archivos en esta sesión.</div></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <div class="panel-title-block">
+                <div class="title">Retenciones de ISLR · <span data-perfiscal="mes">—</span></div>
+                <div class="sub">Datos que arma el archivo XML · Salarios y otras (99074)</div>
+              </div>
+              <div class="panel-actions"><span class="contrib-badge" style="font-size:10px;"><i data-lucide="hash"></i> <span id="islrResumenCount">0</span> registros</span></div>
+            </div>
+            <div class="table-scroll" style="padding:0 4px 4px;">
+              <table class="data-table" id="islrResumenTable" style="min-width:880px;">
+                <thead>
+                  <tr>
+                    <th class="ctr">N° Sec.</th>
+                    <th>RIF Retenido</th>
+                    <th>Beneficiario</th>
+                    <th>N° Factura</th>
+                    <th>N° Control</th>
+                    <th>Fecha Oper.</th>
+                    <th class="ctr">Cód.</th>
+                    <th class="num">Monto Operación</th>
+                    <th class="ctr">% Ret.</th>
+                    <th class="num">Monto Retenido</th>
+                  </tr>
+                </thead>
+                <tbody id="islrResumenBody">
+                  <tr><td colspan="10" style="text-align:center;color:var(--fg-muted);padding:14px;">Sin retenciones de ISLR practicadas. Regístralas en la pestaña Retenciones.</td></tr>
+                </tbody>
+                <tfoot>
+                  <tr class="libro-tot">
+                    <td colspan="7" style="text-align:right;">TOTAL RETENIDO DEL PERÍODO</td>
+                    <td class="num" id="islrResumenOp">0,00</td>
+                    <td></td>
+                    <td class="num" id="islrResumenRet">0,00</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+            <div style="padding:12px 18px;font-size:11px;color:var(--fg-muted);border-top:1px solid var(--border-default);">
+              <i data-lucide="info" style="width:12px;height:12px;"></i> Códigos de concepto: <strong>002</strong> Honorarios profesionales (3%) · <strong>071</strong> Fletes/transporte (1%) · <strong>057</strong> Arrendamiento de inmuebles (3%). El monto a retener de personas naturales aplica el sustraendo (UT × % × 83,3334).
+            </div>
+          </div>
+        </section>
+            </div>
+          </div>
+</div>
 
       <!-- Modal: Recibo / Reporte de retenciones del período -->
       <div class="ret-recibo-overlay" id="retReciboOverlay" hidden>
@@ -1358,6 +1563,9 @@
       </div>
 
       <!-- TAB: Comprobantes de Retención -->
+      <!-- Sin pestana: su funcion es el boton de comprobante de cada fila de
+     Retenciones. Se conserva en el DOM porque aqui viven las PLANTILLAS
+     #compIva y #compIslr que se clonan al imprimir. -->
       <div class="fiscal-tab" data-tab="comprobantes">
         <div class="comprobante-layout">
           <!-- Control panel -->
@@ -1725,199 +1933,10 @@
       </div>
 
       <!-- TAB: TXT Generator -->
-      <div class="fiscal-tab" data-tab="txt">
-        <section class="grid-2-3">
-          <div class="panel">
-            <div class="panel-head">
-              <div class="panel-title-block">
-                <div class="title">Generación de archivo TXT</div>
-                <div class="sub">Formato SENIAT · Listo para subir al portal fiscal</div>
-              </div>
-            </div>
-            <div class="txt-gen">
-              <div style="background:var(--da-cyan-50);border:1px solid var(--da-cyan-100);border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:14px;font-size:12px;color:var(--da-cyan-700);display:flex;gap:8px;align-items:flex-start;">
-                <i data-lucide="link" style="width:14px;height:14px;flex-shrink:0;margin-top:2px;"></i>
-                <span>El archivo se arma automáticamente con los <strong><span id="ivaResumenNota">0</span> comprobantes de retención de IVA</strong> practicados (solo IVA; el ISLR se entera por otra vía). Cada línea = un comprobante. <a href="#" data-goto-fiscaltab="comprobantes" style="color:var(--da-cyan-700);font-weight:600;text-decoration:underline;">Ver comprobantes →</a></span>
-              </div>
-              <div class="txt-gen-row">
-                <div class="txt-select">
-                  <div class="label">Tipo de retención</div>
-                  <div class="val">Retención de IVA</div>
-                </div>
-                <div class="txt-select">
-                  <div class="label">Período</div>
-                  <!-- El período no se elige aquí: el TXT sale del que esté
-                       seleccionado en el módulo. Decía "2da Quincena · May
-                       2026" fijo, o sea que anunciaba un período distinto del
-                       que iba a exportar. -->
-                  <div class="val" id="txtPeriodoLbl">—</div>
-                </div>
-              </div>
-
-              <!-- Estructura del registro -->
-              <div class="txt-fields">
-                <div class="txt-fields-title">Estructura del registro · 16 columnas A–P separadas por TAB (guía oficial SENIAT)</div>
-                <div class="txt-fields-grid">
-                  <span><b>A</b> RIF Agente</span>
-                  <span><b>B</b> Período (AAAAMM)</span>
-                  <span><b>C</b> Fecha Factura (AAAA-MM-DD)</span>
-                  <span><b>D</b> Tipo Operación (C/V)</span>
-                  <span><b>E</b> Tipo Doc. (01)</span>
-                  <span><b>F</b> RIF Proveedor</span>
-                  <span><b>G</b> N° Documento</span>
-                  <span><b>H</b> N° Control</span>
-                  <span><b>I</b> Monto Total</span>
-                  <span><b>J</b> Base Imponible</span>
-                  <span><b>K</b> Monto IVA Retenido</span>
-                  <span><b>L</b> N° Doc. Afectado (0)</span>
-                  <span><b>M</b> N° Comprobante (14)</span>
-                  <span><b>N</b> Monto Exento (0.00)</span>
-                  <span><b>O</b> Alícuota</span>
-                  <span><b>P</b> N° Expediente (0)</span>
-                </div>
-              </div>
-
-              <div class="txt-preview">
-                <div class="lh" id="txtPreviewLh">Vista previa · 16 columnas (A–P) separadas por tabulación</div>
-                <pre id="txtPreviewPre">Presiona "Generar y descargar TXT" para ver aquí la vista previa con tus retenciones de IVA reales del período.</pre>
-              </div>
-
-              <button class="btn btn-primary" style="width:100%;justify-content:center;" id="txtGenBtn"><i data-lucide="file-down"></i> Generar TXT · Retenciones practicadas (027 · agente)</button>
-              <button class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:8px;" id="txtGen028Btn"><i data-lucide="file-down"></i> Generar TXT · Informativa por proveedor (028 · sufridas)</button>
-
-              <div class="txt-history">
-                <div class="lbl">Archivos generados recientemente</div>
-                <div id="txtHist"><div class="txt-empty" style="font-size:12px;color:var(--fg-muted);padding:8px;">Aún no has generado archivos en esta sesión.</div></div>
-              </div>
-            </div>
-          </div>
-
-          <div class="panel">
-            <div class="panel-head">
-              <div class="panel-title-block">
-                <div class="title">Resumen del período · Retenciones IVA</div>
-                <div class="sub" data-perfiscal="etiqueta">—</div>
-              </div>
-            </div>
-            <div style="padding:8px 20px 18px;">
-              <div class="salary-row" style="border-bottom:1px dashed var(--border-default);padding:12px 0;">
-                <span class="lbl">Comprobantes de IVA</span>
-                <span class="val" id="ivaResumenCount">0</span>
-              </div>
-              <div class="salary-row" style="border-bottom:1px dashed var(--border-default);padding:12px 0;">
-                <span class="lbl">IVA causado (base de retención)</span>
-                <span class="val">Bs <span id="ivaResumenBase">0,00</span></span>
-              </div>
-              <div class="salary-row" style="border-bottom:1px dashed var(--border-default);padding:12px 0;">
-                <span class="lbl">Alícuota de retención</span>
-                <span class="val">75% / 100%</span>
-              </div>
-              <div class="salary-row total" style="background:var(--da-navy-700);color:var(--da-white);margin:12px -20px -18px;padding:14px 20px;">
-                <span class="lbl" style="color:var(--fg-on-dark-muted);text-transform:uppercase;letter-spacing:var(--tracking-overline);font-size:11px;font-weight:600;">IVA retenido a enterar</span>
-                <span class="val" style="color:var(--da-cyan-500);font-size:20px;">Bs <span id="ivaResumenRet">0,00</span></span>
-              </div>
-            </div>
-          </div>
-        </section>
-      </div>
+      
 
       <!-- TAB: Declaración de Retención de ISLR (archivo XML) -->
-      <div class="fiscal-tab" data-tab="islr">
-        <section class="grid-2-3">
-          <div class="panel">
-            <div class="panel-head">
-              <div class="panel-title-block">
-                <div class="title">Declaración de Retención de ISLR</div>
-                <div class="sub">Mensual · Providencia 0095 · archivo XML para el portal SENIAT</div>
-              </div>
-            </div>
-            <div class="txt-gen">
-              <div style="background:var(--da-cyan-50);border:1px solid var(--da-cyan-100);border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:14px;font-size:12px;color:var(--da-cyan-700);display:flex;gap:8px;align-items:flex-start;">
-                <i data-lucide="info" style="width:14px;height:14px;flex-shrink:0;margin-top:2px;"></i>
-                <span>A diferencia del IVA, el ISLR se entera <strong>mensualmente</strong> mediante un <strong>archivo XML</strong>. El portal calcula el impuesto a enterar (con sustraendo donde aplica). Debe presentarse <strong>aún sin retenciones</strong>.</span>
-              </div>
-              <div class="txt-gen-row">
-                <div class="txt-select" id="islrTipoSel">
-                  <div class="label">Tipo de retención</div>
-                  <div class="val">Salarios y otras (Forma 99074) <i data-lucide="chevron-down"></i></div>
-                </div>
-                <div class="txt-select" id="islrPerSel">
-                  <div class="label">Período (mensual)</div>
-                  <div class="val" data-perfiscal="mes">—</div>
-                </div>
-              </div>
-
-              <div class="txt-fields">
-                <div class="txt-fields-title">Estructura del XML · atributos raíz + campos por retención (esquema oficial)</div>
-                <div class="txt-fields-grid">
-                  <span><b>raíz</b> RifAgente</span>
-                  <span><b>raíz</b> Periodo (AAAAMM)</span>
-                  <span><b>1</b> RifRetenido</span>
-                  <span><b>2</b> NumeroFactura</span>
-                  <span><b>3</b> NumeroControl</span>
-                  <span><b>4</b> CodigoConcepto</span>
-                  <span><b>5</b> MontoOperacion</span>
-                  <span><b>6</b> PorcentajeRetencion</span>
-                </div>
-              </div>
-
-              <div class="txt-preview">
-                <div class="lh" id="xmlPreviewLh">Vista previa · XML Relación Informativa (esquema oficial TRI.GR.03.0013)</div>
-                <pre id="xmlPreviewPre">Presiona "Generar y descargar XML" para ver aquí la vista previa con tus retenciones de ISLR reales del período.</pre>
-              </div>
-
-              <button class="btn btn-primary" style="width:100%;justify-content:center;" id="xmlGenBtn"><i data-lucide="file-code-2"></i> Generar y descargar XML · Retenciones ISLR</button>
-
-              <div class="txt-history">
-                <div class="lbl">Archivos generados recientemente</div>
-                <div id="xmlHist"><div class="txt-empty" style="font-size:12px;color:var(--fg-muted);padding:8px;">Aún no has generado archivos en esta sesión.</div></div>
-              </div>
-            </div>
-          </div>
-
-          <div class="panel">
-            <div class="panel-head">
-              <div class="panel-title-block">
-                <div class="title">Retenciones de ISLR · <span data-perfiscal="mes">—</span></div>
-                <div class="sub">Datos que arma el archivo XML · Salarios y otras (99074)</div>
-              </div>
-              <div class="panel-actions"><span class="contrib-badge" style="font-size:10px;"><i data-lucide="hash"></i> <span id="islrResumenCount">0</span> registros</span></div>
-            </div>
-            <div class="table-scroll" style="padding:0 4px 4px;">
-              <table class="data-table" id="islrResumenTable" style="min-width:880px;">
-                <thead>
-                  <tr>
-                    <th class="ctr">N° Sec.</th>
-                    <th>RIF Retenido</th>
-                    <th>Beneficiario</th>
-                    <th>N° Factura</th>
-                    <th>N° Control</th>
-                    <th>Fecha Oper.</th>
-                    <th class="ctr">Cód.</th>
-                    <th class="num">Monto Operación</th>
-                    <th class="ctr">% Ret.</th>
-                    <th class="num">Monto Retenido</th>
-                  </tr>
-                </thead>
-                <tbody id="islrResumenBody">
-                  <tr><td colspan="10" style="text-align:center;color:var(--fg-muted);padding:14px;">Sin retenciones de ISLR practicadas. Regístralas en la pestaña Retenciones.</td></tr>
-                </tbody>
-                <tfoot>
-                  <tr class="libro-tot">
-                    <td colspan="7" style="text-align:right;">TOTAL RETENIDO DEL PERÍODO</td>
-                    <td class="num" id="islrResumenOp">0,00</td>
-                    <td></td>
-                    <td class="num" id="islrResumenRet">0,00</td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-            <div style="padding:12px 18px;font-size:11px;color:var(--fg-muted);border-top:1px solid var(--border-default);">
-              <i data-lucide="info" style="width:12px;height:12px;"></i> Códigos de concepto: <strong>002</strong> Honorarios profesionales (3%) · <strong>071</strong> Fletes/transporte (1%) · <strong>057</strong> Arrendamiento de inmuebles (3%). El monto a retener de personas naturales aplica el sustraendo (UT × % × 83,3334).
-            </div>
-          </div>
-        </section>
-      </div>
+      
 
       <!-- TAB: IGTF (Forma 21) -->
       <div class="fiscal-tab" data-tab="igtf">
