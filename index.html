@@ -649,7 +649,7 @@
         </div>
         <div class="dash-actions">
           <div class="date-range" id="fiscalPeriodo" title="Período fiscal del módulo">
-            <button data-active="true">Mayo 2026</button>
+            <button data-active="true">—</button>
             <button class="custom-date"><i data-lucide="calendar"></i> Cambiar período</button>
           </div>
         </div>
@@ -1550,7 +1550,7 @@
             </div>
 
             <div class="comp-amount-words">
-              Total ISLR retenido: <strong>Bs 7.200,00</strong> — siete mil doscientos bolívares con 00/100.
+              Total ISLR retenido: <strong>Bs 0,00</strong> con 00/100.
             </div>
 
             <div class="comp-footer">
@@ -1573,7 +1573,7 @@
             <div class="comp-controls-body">
               <div class="comp-field">
                 <span class="lbl">Período de declaración</span>
-                <div class="select-box">Mayo 2026 (01–31) <i data-lucide="chevron-down"></i></div>
+                <div class="select-box" data-perfiscal="mes">—</div>
               </div>
               <div class="comp-field">
                 <span class="lbl">Tipo de declaración</span>
@@ -1648,7 +1648,7 @@
             <div class="comp-controls-body">
               <div class="comp-field">
                 <span class="lbl">Ejercicio fiscal</span>
-                <div class="select-box">Al 30/09/2026 <i data-lucide="chevron-down"></i></div>
+                <div class="select-box" data-perfiscal="ejercicio">—</div>
               </div>
               <div class="comp-field">
                 <span class="lbl">Tipo de declaración</span>
@@ -1742,7 +1742,7 @@
               <div class="txt-gen-row">
                 <div class="txt-select">
                   <div class="label">Tipo de retención</div>
-                  <div class="val">Retención IVA <i data-lucide="chevron-down"></i></div>
+                  <div class="val">Retención de IVA</div>
                 </div>
                 <div class="txt-select">
                   <div class="label">Período</div>
@@ -1796,7 +1796,7 @@
             <div class="panel-head">
               <div class="panel-title-block">
                 <div class="title">Resumen del período · Retenciones IVA</div>
-                <div class="sub">2da Quincena · Mayo 2026</div>
+                <div class="sub" data-perfiscal="etiqueta">—</div>
               </div>
             </div>
             <div style="padding:8px 20px 18px;">
@@ -1843,7 +1843,7 @@
                 </div>
                 <div class="txt-select" id="islrPerSel">
                   <div class="label">Período (mensual)</div>
-                  <div class="val">Mayo 2026 <i data-lucide="chevron-down"></i></div>
+                  <div class="val" data-perfiscal="mes">—</div>
                 </div>
               </div>
 
@@ -1878,7 +1878,7 @@
           <div class="panel">
             <div class="panel-head">
               <div class="panel-title-block">
-                <div class="title">Retenciones de ISLR · Mayo 2026</div>
+                <div class="title">Retenciones de ISLR · <span data-perfiscal="mes">—</span></div>
                 <div class="sub">Datos que arma el archivo XML · Salarios y otras (99074)</div>
               </div>
               <div class="panel-actions"><span class="contrib-badge" style="font-size:10px;"><i data-lucide="hash"></i> <span id="islrResumenCount">0</span> registros</span></div>
@@ -1927,7 +1927,7 @@
             <div class="comp-controls-body">
               <div class="comp-field">
                 <span class="lbl">Período / Quincena</span>
-                <div class="select-box" id="igtfPerSel">Junio 2026 · 1ra Quincena <i data-lucide="chevron-down"></i></div>
+                <div class="select-box" id="igtfPerSel" data-perfiscal="quincena">—</div>
               </div>
               <div class="comp-field">
                 <span class="lbl">Tipo de declaración</span>
@@ -3388,7 +3388,7 @@
         </div>
         <div class="dash-actions">
           <div class="date-range">
-            <button data-active="true">Mayo 2026</button>
+            <button data-active="true">—</button>
             <button class="custom-date"><i data-lucide="calendar"></i> Cambiar período</button>
           </div>
           <button class="btn btn-ghost" id="contaExportBtn"><i data-lucide="download"></i> Exportar</button>

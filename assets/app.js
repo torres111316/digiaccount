@@ -3115,6 +3115,33 @@
       if (el) el.textContent = String(n || 0);
     };
 
+    /* Los períodos que se muestran por todo el módulo — Pensiones, IGP, IGTF,
+       el TXT y el XML de ISLR— venían escritos a mano: "Mayo 2026 (01–31)",
+       "Al 30/09/2026", "Junio 2026 · 1ra Quincena". Cada pestaña anunciaba un
+       mes distinto, y ninguno era el que estabas mirando.
+
+       Ahora los tres formatos salen del período real, marcados con
+       data-perfiscal para no tener que buscarlos por su texto. */
+    window.__syncPeriodosFiscal = function () {
+      const p = window.__fiscalPer;
+      if (!p || !p.mm || !p.aa) return;
+      const anio = '20' + p.aa, mm = parseInt(p.mm, 10);
+      const mes = _MESES_PER[mm - 1] + ' ' + anio;
+      const ultimo = new Date(parseInt(anio, 10), mm, 0).getDate();
+      const q = _ivaPorQuincena() && p.q;
+      const valores = {
+        mes: mes + ' (01–' + ultimo + ')',
+        // El ejercicio del IGP cierra el 30/09 del año que se está mirando.
+        ejercicio: 'Al 30/09/' + anio,
+        quincena: mes + (q ? ' · ' + (p.q === 1 ? '1ra' : '2da') + ' Quincena' : ''),
+        etiqueta: _perLabel(),
+      };
+      document.querySelectorAll('[data-perfiscal]').forEach((el) => {
+        const v = valores[el.dataset.perfiscal];
+        if (v) el.textContent = v;
+      });
+    };
+
     // Imprimir / PDF del comprobante: se clona el comprobante visible a un
     // portal aislado y se oculta toda la app, garantizando UNA sola hoja.
     function printComprobante() {
@@ -8829,6 +8856,8 @@
       if (txt) txt.textContent = cond;
       if (badge) badge.className = 'contrib-badge' + (/especial/i.test(cond) ? ' especial' : '');
       // Membrete de los libros (compras y ventas): empresa, RIF, condición y período reales
+      // Los períodos regados por el módulo siguen al mismo selector.
+      if (window.__syncPeriodosFiscal) window.__syncPeriodosFiscal();
       const perTxt = (typeof _perLabel === 'function') ? _perLabel() : '';
       document.querySelectorAll('.fiscal-tab[data-tab="compras"] .libro-head, .fiscal-tab[data-tab="ventas"] .libro-head').forEach((h) => {
         const coEl = h.querySelector('.lh-co'); if (coEl) coEl.textContent = emp.n || '—';
