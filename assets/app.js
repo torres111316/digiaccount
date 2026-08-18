@@ -1203,10 +1203,24 @@
         wrap.appendChild(pista);
       }
 
+      const rotulo = wrap ? wrap.querySelector('.fm-lbl') : null;
       const aplicar = () => {
         const esIslr = /islr/i.test(tipoSel.value);
         const quiero = esIslr ? pre.baseIslr : pre.baseIva;
         if (quiero != null) baseEl.value = Number(quiero).toFixed(2);
+        /* El rótulo dice QUÉ monto es, y cambia con el impuesto.
+
+           Decía «Base imponible» para los dos, y en una retención de IVA eso
+           engaña: aquí va el IVA, mientras que en la factura la base
+           imponible es justo lo OTRO, el monto del que sale ese IVA. Con el
+           mismo nombre para las dos cosas es fácil escribir una donde va la
+           otra, y la retención sale mal por un factor de seis. En ISLR sí se
+           retiene sobre el pago, y ahí el nombre se mantiene. */
+        if (rotulo) {
+          rotulo.textContent = esIslr
+            ? 'Monto del pago sobre el que se retiene (Bs)'
+            : 'IVA de la factura (Bs) — la retención se calcula sobre esto';
+        }
         if (pista) {
           pista.innerHTML = esIslr
             ? 'De la factura: base imponible <strong>Bs ' + fmt(Number(pre.baseIslr) || 0) + '</strong>. '
@@ -1388,7 +1402,7 @@
           { name: 'factura', label: 'Factura afectada (elige una registrada)', type: 'datalist', options: [], placeholder: 'Primero elige el tercero…', value: pre.factura || '' },
           { name: 'numControl', label: 'N° de Control (se llena de la factura)', placeholder: '00-00000000', value: pre.numControl || '' },
           { name: 'comprobante', label: 'N° de comprobante (obligatorio en IVA · en ISLR déjalo vacío si no lo hay)', type: 'datalist', options: [], placeholder: 'Tal como viene en el documento' },
-          { name: 'base', label: 'Base imponible / monto del pago (Bs)', type: 'number', step: '0.01', placeholder: '0.00', value: pre.base != null ? String(pre.base) : '' },
+          { name: 'base', label: 'Monto sobre el que se retiene (Bs)', type: 'number', step: '0.01', placeholder: '0.00', value: pre.base != null ? String(pre.base) : '' },
           { name: 'pct', label: '% de retención', type: 'number', step: '0.01', placeholder: '75' },
           { name: 'sustraendo', label: 'Sustraendo (ISLR, automático)', type: 'number', step: '0.01', placeholder: '0.00' },
           /* Lo que de verdad se está reteniendo, calculado a la vista.
@@ -1796,7 +1810,7 @@
           { name: 'factura', label: 'Factura afectada', value: r.factura || '' },
           { name: 'numControl', label: 'N° de Control', value: r.numero_control || '' },
           { name: 'comprobante', label: 'N° Comprobante', value: r.comprobante || '' },
-          { name: 'base', label: 'Base imponible / monto del pago (Bs)', type: 'number', step: '0.01', value: r.base != null ? String(r.base) : '' },
+          { name: 'base', label: 'Monto sobre el que se retiene (Bs)', type: 'number', step: '0.01', value: r.base != null ? String(r.base) : '' },
           { name: 'pct', label: '% de retención', type: 'number', step: '0.01', value: r.pct != null ? String(r.pct) : '' },
           { name: 'sustraendo', label: 'Sustraendo (ISLR)', type: 'number', step: '0.01', value: r.sustraendo != null ? String(r.sustraendo) : '0' },
         ],
