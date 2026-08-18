@@ -7387,3 +7387,37 @@
   .ra-item.total span { color: var(--da-white); font-weight: var(--fw-bold); }
   .ra-item.total .mono { color: var(--da-white); font-family: var(--font-display); font-weight: var(--fw-extrabold); font-size: 14px; }
   @media (max-width: 720px) { .ra-grid { grid-template-columns: 1fr; } }
+
+/* ---------- Buscador de terceros (proveedor / cliente) ----------
+   Va pegado al <body> y en posición fija, no dentro del formulario: el
+   modal tiene scroll propio y una lista absoluta adentro queda recortada
+   justo cuando hay muchas opciones, que es cuando más se necesita. */
+.ter-pick {
+  position: fixed;
+  z-index: 4000;
+  max-height: 264px;
+  overflow-y: auto;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .22);
+}
+.ter-pick-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  padding: 7px 11px;
+  cursor: pointer;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border);
+}
+.ter-pick-row:last-child { border-bottom: 0; }
+.ter-pick-row[data-activo="true"] { background: var(--bg-hover, rgba(127, 127, 127, .14)); }
+.ter-pick-row .tp-n { font-weight: 600; }
+.ter-pick-row .tp-r {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-size: 11.5px;
+  color: var(--fg-muted);
+  white-space: nowrap;
+}

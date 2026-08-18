@@ -9065,6 +9065,134 @@
        · F2 crea el tercero que falta sin salir del formulario, con el rol
          que corresponde —cliente en ventas, proveedor en compras—;
        · y lo dice en pantalla, porque un atajo que nadie ve no existe. */
+    /* Cuántas veces ha elegido Luis a cada tercero, guardado en el navegador.
+
+       Es lo que hace que «el más común» aparezca de primero. El dato no
+       existe en la base —el libro dice cuántas facturas tiene un proveedor,
+       no cuántas veces se le buscó— y de todos modos lo que importa aquí es
+       la costumbre de quien escribe, que es personal y del día a día. */
+    const USO_LLAVE = 'da_uso_terceros';
+    function usos() {
+      try { return JSON.parse(localStorage.getItem(USO_LLAVE) || '{}') || {}; } catch (e) { return {}; }
+    }
+    function anotarUso(rif) {
+      const k = normRif(rif);
+      if (!k) return;
+      try {
+        const u = usos();
+        u[k] = (u[k] || 0) + 1;
+        localStorage.setItem(USO_LLAVE, JSON.stringify(u));
+      } catch (e) { /* modo privado o cuota llena: el buscador sigue sirviendo */ }
+    }
+
+    /* Texto comparable: sin acentos y en mayúsculas. 'JOSÉ' y 'jose' tienen
+       que encontrarse, que es como se escriben los nombres en la práctica. */
+    function llano(s) {
+      return String(s || '').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    }
+
+    /* Qué tan bien calza un tercero con lo escrito. Menor es mejor; -1 = no.
+
+       El orden no es capricho: quien escribe 'INV' quiere ver primero a los
+       que EMPIEZAN por INV, no a los que la llevan en el medio. Y quien
+       escribe dígitos está tecleando un RIF, no un nombre. */
+    function calce(t, q, qDig) {
+      const n = llano(t.nombre), r = normRif(t.rif);
+      if (qDig.length >= 3 && r.indexOf(qDig) === 0) return 0;   // el RIF, desde el principio
+      if (n.indexOf(q) === 0) return 1;                          // el nombre, desde el principio
+      if (q && n.split(/[\s,.]+/).some((p) => p.indexOf(q) === 0)) return 2;  // una palabra suelta
+      if (q && n.indexOf(q) >= 0) return 3;                      // en el medio del nombre
+      if (qDig.length >= 3 && r.indexOf(qDig) >= 0) return 4;    // en el medio del RIF
+      return -1;
+    }
+
+    function montarBuscador(nom, rif, lista, elegir) {
+      // El desplegable nativo estorbaría al propio: se le quita la lista.
+      nom.removeAttribute('list');
+      nom.setAttribute('autocomplete', 'off');
+
+      const caja = document.createElement('div');
+      caja.className = 'ter-pick';
+      caja.hidden = true;
+      document.body.appendChild(caja);   // al body, o el modal lo recorta al hacer scroll
+
+      let opciones = [], activo = -1;
+
+      const colocar = () => {
+        const r = nom.getBoundingClientRect();
+        caja.style.left = r.left + 'px';
+        caja.style.top = (r.bottom + 2) + 'px';
+        caja.style.width = r.width + 'px';
+      };
+      const cerrar = () => { caja.hidden = true; activo = -1; };
+
+      const marcar = () => {
+        [...caja.children].forEach((el, i) => el.dataset.activo = i === activo ? 'true' : 'false');
+        const el = caja.children[activo];
+        if (el) el.scrollIntoView({ block: 'nearest' });
+      };
+
+      const pintar = () => {
+        const q = llano(nom.value.trim());
+        const qDig = normRif(nom.value);
+        const u = usos();
+        opciones = (q
+          ? lista.map((t) => [calce(t, q, qDig), t]).filter((p) => p[0] >= 0)
+          // Con el campo vacío se ofrecen los de siempre: los más elegidos.
+          : lista.map((t) => [1, t]).filter((p) => u[normRif(p[1].rif)])
+        ).sort((a, b) =>
+          a[0] - b[0]
+          || (u[normRif(b[1].rif)] || 0) - (u[normRif(a[1].rif)] || 0)
+          || llano(a[1].nombre).localeCompare(llano(b[1].nombre))
+        ).slice(0, 8).map((p) => p[1]);
+
+        if (!opciones.length) return cerrar();
+        caja.innerHTML = '';
+        opciones.forEach((t, i) => {
+          const fila = document.createElement('div');
+          fila.className = 'ter-pick-row';
+          fila.dataset.activo = i === 0 ? 'true' : 'false';
+          fila.innerHTML = '<span class="tp-n"></span><span class="tp-r"></span>';
+          fila.querySelector('.tp-n').textContent = t.nombre;
+          fila.querySelector('.tp-r').textContent = normRif(t.rif) || 'sin RIF';
+          // `mousedown` y no `click`: el clic llega después del blur, y para
+          // entonces la caja ya se cerró y no se elige nada.
+          fila.addEventListener('mousedown', (e) => { e.preventDefault(); tomar(t); });
+          caja.appendChild(fila);
+        });
+        activo = 0;
+        colocar();
+        caja.hidden = false;
+      };
+
+      const tomar = (t) => {
+        nom.value = t.nombre;
+        if (rif && t.rif) rif.value = normRif(t.rif);
+        anotarUso(t.rif);
+        cerrar();
+        elegir && elegir(t);
+      };
+
+      nom.addEventListener('input', pintar);
+      nom.addEventListener('focus', pintar);
+      nom.addEventListener('blur', () => setTimeout(cerrar, 120));
+      window.addEventListener('scroll', () => { if (!caja.hidden) colocar(); }, true);
+      nom.addEventListener('keydown', (e) => {
+        if (caja.hidden) return;
+        if (e.key === 'ArrowDown') { e.preventDefault(); activo = Math.min(activo + 1, opciones.length - 1); marcar(); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); activo = Math.max(activo - 1, 0); marcar(); }
+        else if (e.key === 'Enter' && opciones[activo]) { e.preventDefault(); tomar(opciones[activo]); }
+        else if (e.key === 'Escape') { e.preventDefault(); cerrar(); }
+      });
+      // El campo del RIF busca al revés: se teclea el RIF y aparece el nombre.
+      if (rif) {
+        rif.addEventListener('blur', () => {
+          const t = lista.find((x) => normRif(x.rif) === normRif(rif.value));
+          if (t) { nom.value = t.nombre; anotarUso(t.rif); }
+        });
+      }
+    }
+
     function montarCampoTercero(body, opciones) {
       const o = opciones || {};
       const lista = o.lista || [];
@@ -9078,33 +9206,21 @@
         if (nf) nf.focus();
       };
 
-      const porNombre = () => {
-        const t = lista.find((x) => (x.nombre || '').toLowerCase() === nom.value.trim().toLowerCase());
-        if (!t) return;
-        if (rif && t.rif) rif.value = normRif(t.rif);
+      /* El buscador se encarga de rellenar el RIF y de mover el foco. El
+         autocompletado anterior escuchaba `input` y solo reaccionaba cuando
+         el nombre coincidía ENTERO: había que escribir «INVERSIONES MADERERA
+         ALIBETZ, C.A.» letra por letra, con su coma y sus puntos, para que
+         apareciera el RIF. Dejarlo puesto además pelearía con este. */
+      montarBuscador(nom, rif, lista, () => {
         if (o.moverFoco !== false) alSiguiente();
-      };
-      nom.addEventListener('change', porNombre);
-      nom.addEventListener('input', porNombre);
-
-      if (rif) {
-        const porRif = () => {
-          const t = lista.find((x) => normRif(x.rif) === normRif(rif.value));
-          if (t && (!nom.value || nom.value.trim().toLowerCase() !== (t.nombre || '').toLowerCase())) {
-            nom.value = t.nombre;
-            if (o.moverFoco !== false) alSiguiente();
-          }
-        };
-        rif.addEventListener('change', porRif);
-        rif.addEventListener('input', porRif);
-      }
+      });
 
       const wrap = nom.closest('.fm-field');
       if (wrap && !wrap.querySelector('.fm-hint-f2')) {
         const hint = document.createElement('div');
         hint.className = 'fm-hint-f2';
         hint.style.cssText = 'font-size:10.5px;color:var(--fg-muted);margin-top:3px;';
-        hint.textContent = '¿No está en la lista? Presiona F2 para crear el ' + rotulo + ' sin salir de aquí.';
+        hint.textContent = 'Escribe las primeras letras del nombre o los primeros números del RIF y elige con ↑↓ y Enter. ¿No está? F2 crea el ' + rotulo + ' sin salir de aquí.';
         wrap.appendChild(hint);
       }
 
@@ -11617,12 +11733,72 @@
           + '<td class="mono">' + esc(t.rif) + '</td><td>' + tipoCell(t.tipo) + '</td>'
           + '<td>' + rolBadges(t) + '</td><td>' + esc(t.fiscal) + '</td><td class="mono">' + esc(t.tel || '—') + '</td>'
           + '<td class="num">' + saldoCell(t) + '</td>'
-          + '<td><button class="btn btn-ghost" data-ver-tercero="' + idx + '" style="height:26px;font-size:11px;padding:0 9px;white-space:nowrap;"><i data-lucide="eye"></i> Ficha</button></td></tr>';
+          + '<td style="white-space:nowrap;"><button class="btn btn-ghost" data-ver-tercero="' + idx + '" style="height:26px;font-size:11px;padding:0 9px;white-space:nowrap;"><i data-lucide="eye"></i> Ficha</button>'
+          + '<button class="icon-btn" data-borrar-tercero="' + idx + '" title="Eliminar del directorio" style="width:26px;height:26px;margin-left:4px;"><i data-lucide="trash-2" style="width:13px;height:13px;"></i></button></td></tr>';
       }).join('');
       const shown = document.getElementById('tercerosShown'); if (shown) shown.textContent = vis.length;
       const totalEl = document.getElementById('tercerosTotal'); if (totalEl) totalEl.textContent = DB.length;
       tbody.querySelectorAll('[data-ver-tercero]').forEach((b) => b.addEventListener('click', () => openFicha(DB[parseInt(b.dataset.verTercero, 10)])));
+      tbody.querySelectorAll('[data-borrar-tercero]').forEach((b) =>
+        b.addEventListener('click', () => borrarTercero(DB[parseInt(b.dataset.borrarTercero, 10)])));
       if (window.lucide) window.lucide.createIcons();
+    }
+
+    /* Eliminar del directorio.
+
+       No se borra a quien tenga movimiento. Las facturas guardan el tercero
+       como texto, así que borrarlo NO las rompe —seguirían mostrando su
+       nombre y su RIF— pero desaparecería del desplegable y la próxima
+       factura de ese mismo proveedor se escribiría a mano, con otra grafía.
+       El duplicado vuelve por donde se fue.
+
+       Así que se cuenta primero, y si tiene movimiento se dice cuánto y no
+       se borra. Para lo que sí se puede borrar —una ficha recién creada por
+       equivocación, o un duplicado— se pide confirmación con el nombre
+       delante, porque el botón está al lado de "Ficha". */
+    async function borrarTercero(t) {
+      if (!t || !t._id) return;
+      if (!window.sb) { toast('No hay sesión activa.', 'error'); return; }
+      const rif = normRif(t.rif);
+      let usos = 0;
+      if (rif) {
+        for (const tabla of ['libro_fiscal', 'retenciones', 'movimientos_tesoreria']) {
+          const { count } = await window.sb.from(tabla)
+            .select('id', { count: 'exact', head: true }).eq('tercero_rif', rif);
+          usos += count || 0;
+        }
+      }
+      if (usos) {
+        window.openFormModal && window.openFormModal({
+          title: 'No se puede eliminar', saveLabel: 'Entendido', fields: [],
+          afterRender: (b) => {
+            b.innerHTML = '<div style="font-size:13px;line-height:1.6;">'
+              + '<strong>' + esc(t.nombre) + '</strong> aparece en <strong>' + usos
+              + '</strong> registro' + (usos === 1 ? '' : 's') + ' (libros, retenciones o tesorería).<br><br>'
+              + 'Si lo eliminas del directorio esos registros no se pierden —guardan el nombre y el RIF por su cuenta— '
+              + 'pero dejaría de aparecer al registrar una factura, y la próxima se escribiría a mano con otra grafía. '
+              + 'Si lo que quieres es que no se ofrezca más, quítale los roles de cliente y proveedor en su ficha.</div>';
+          },
+          onSave: () => {},
+        });
+        return;
+      }
+      window.openFormModal && window.openFormModal({
+        title: 'Eliminar del directorio', saveLabel: 'Sí, eliminar',
+        fields: [],
+        afterRender: (b) => {
+          b.innerHTML = '<div style="font-size:13px;line-height:1.6;">Se va a eliminar <strong>'
+            + esc(t.nombre) + '</strong> (' + esc(rif || 'sin RIF') + ').<br><br>'
+            + 'No tiene ningún movimiento registrado, así que no se pierde nada. No se puede deshacer.</div>';
+        },
+        onSave: () => {
+          window.sb.from('terceros').delete().eq('id', t._id).then(({ error }) => {
+            if (error) { toast('No se pudo eliminar: ' + error.message, 'error'); return; }
+            toast('"' + t.nombre + '" eliminado del directorio');
+            if (window.cargarTerceros) window.cargarTerceros();
+          });
+        },
+      });
     }
     function updateKPIs() {
       const set = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
@@ -11805,11 +11981,42 @@
         domicilio: get('dom').value.trim().toUpperCase(),
         contactos: cont,
       };
+      /* Un solo guardado a la vez.
+
+         La comprobación de duplicados de arriba mira `DB`, la lista que ya
+         está en memoria, y el segundo clic llega ANTES de que esa lista se
+         refresque: los dos pasan la comprobación y entran los dos. Así quedó
+         "INVERSIONES MADERERA ALIBETZ, C.A." dos veces, con el mismo RIF y
+         creada en el mismo segundo.
+
+         El índice único de la base es lo que de verdad lo impide —hay más
+         caminos que esta pantalla—; esto evita el viaje de ida y el mensaje
+         de error feo. */
+      const btn = document.getElementById('terSave');
+      if (btn.dataset.guardando === 'true') return;
+      btn.dataset.guardando = 'true';
+      btn.disabled = true;
+      const rotuloBtn = btn.textContent;
+      btn.textContent = 'Guardando…';
+      const soltar = () => {
+        btn.dataset.guardando = 'false';
+        btn.disabled = false;
+        btn.textContent = rotuloBtn;
+      };
       const accion = (editIdx != null && DB[editIdx] && DB[editIdx]._id)
         ? window.sb.from('terceros').update(fila).eq('id', DB[editIdx]._id)
         : window.sb.from('terceros').insert(fila);
       accion.then(({ error }) => {
-        if (error) { setMsg('No se pudo guardar: ' + error.message); return; }
+        soltar();
+        if (error) {
+          // 23505 = el índice único de la base. Pasa cuando el tercero se
+          // creó desde otra pestaña o por la carga masiva mientras esta
+          // ficha estaba abierta: el mensaje tiene que decir qué hacer.
+          setMsg(error.code === '23505'
+            ? 'Ya existe un tercero con el RIF ' + rif + ' en esta cuenta. Ciérralo, búscalo en la lista y añádele el rol que falte.'
+            : 'No se pudo guardar: ' + error.message);
+          return;
+        }
         toast('Tercero "' + nombre + '" ' + (editIdx != null ? 'actualizado' : 'registrado'));
         if (window.cargarTerceros) window.cargarTerceros();
         const cb = window.__terOnSavedOnce;
