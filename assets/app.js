@@ -155,8 +155,8 @@
           ['activos fijos', () => window.cargarActivosFijos && window.cargarActivosFijos()],
           ['criptoactivos', () => window.cargarCriptoactivos && window.cargarCriptoactivos()],
           ['encabezado fiscal', () => window.__syncFiscalHeader && window.__syncFiscalHeader()],
-          ['libros', () => window.cargarLibroFiscal && (window.cargarLibroFiscal('compra'), window.cargarLibroFiscal('venta'))],
           ['sucursales', () => window.cargarSucursales && window.cargarSucursales()],
+          ['libros', () => window.cargarLibroFiscal && (window.cargarLibroFiscal('compra'), window.cargarLibroFiscal('venta'))],
           ['cierres', () => window.cargarCierres && window.cargarCierres()],
           ['calendario', () => window.cargarCalendarioFiscal && window.cargarCalendarioFiscal()],
           ['métodos de cobro', () => window.__cargarCobrosEmp && window.__cargarCobrosEmp(opt.dataset.empresaId)],
@@ -10104,6 +10104,61 @@
       if (window.lucide) window.lucide.createIcons();
     }
 
+    /* Qué establecimiento se está mirando en cada libro. Vacío = todos.
+       Va por tipo: uno puede estar viendo las compras de la matriz y las
+       ventas consolidadas sin que una cosa mueva a la otra. */
+    const _sucFiltro = { compra: '', venta: '' };
+
+    /* La barra para elegir establecimiento, encima del libro.
+
+       Solo aparece con dos o más: en una empresa de un solo local sería un
+       desplegable de una sola opción ocupando sitio. Y dice, cuando hay un
+       establecimiento elegido, que la Forma 30 NO cambia — si no, se presta a
+       creer que se está declarando por separado, que es justo lo contrario
+       de lo que manda la norma. */
+    function pintarFiltroSucursal(tabName, tipo, todas, visibles) {
+      const pane = view.querySelector('.fiscal-tab[data-tab="' + tabName + '"]');
+      if (!pane) return;
+      let bar = pane.querySelector('.suc-bar');
+      if ((window.__SUCURSALES || []).length < 2) { if (bar) bar.remove(); return; }
+      const tabla = pane.querySelector('table.libro-compras, table.libro-ventas:not(.libro-maquina)');
+      const anclaje = tabla ? (tabla.closest('.data-table-wrap') || tabla) : null;
+      if (!anclaje) return;
+      if (!bar) {
+        bar = document.createElement('div');
+        bar.className = 'suc-bar';
+        bar.style.cssText = 'display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 8px;font-size:12.5px;';
+        bar.innerHTML = '<span style="color:var(--fg-muted);">Establecimiento</span>'
+          + '<select class="suc-sel" style="height:30px;border:1px solid var(--border-strong);border-radius:8px;'
+          + 'padding:0 8px;font:inherit;background:var(--bg-surface);color:inherit;"></select>'
+          + '<span class="suc-nota" style="color:var(--fg-muted);"></span>';
+        anclaje.parentNode.insertBefore(bar, anclaje);
+        bar.querySelector('.suc-sel').addEventListener('change', (e) => {
+          _sucFiltro[tipo] = e.target.value;
+          cargarLibroFiscal(tipo, 1);   // desde la primera página: el lote cambió
+        });
+      }
+      const sel = bar.querySelector('.suc-sel');
+      const opts = [{ id: '', nombre: 'Todos (consolidado)' }].concat(window.__SUCURSALES);
+      const html = opts.map((s) => '<option value="' + esc(s.id) + '">'
+        + esc(s.codigo ? s.codigo + ' · ' + s.nombre : s.nombre) + '</option>').join('');
+      if (sel.innerHTML !== html) sel.innerHTML = html;
+      sel.value = _sucFiltro[tipo];
+      /* El membrete del libro dice de qué establecimiento es. Sin esto los
+         dos auxiliares salen impresos idénticos y no hay forma de saber cuál
+         es cuál cuando están sobre la mesa. */
+      const suc = (window.__SUCURSALES || []).find((s) => s.id === _sucFiltro[tipo]);
+      const cab = pane.querySelector('.libro-head .lh-data');
+      if (cab) {
+        const previo = cab.innerHTML.split(' · Establecimiento:')[0];
+        cab.innerHTML = previo + (suc ? ' · Establecimiento: <strong>' + esc(suc.codigo + ' · ' + suc.nombre) + '</strong>' : '');
+      }
+      const nota = bar.querySelector('.suc-nota');
+      nota.textContent = _sucFiltro[tipo]
+        ? visibles.length + ' de ' + todas.length + ' operaciones del período · lo que se imprime y se exporta es este libro; la Forma 30 sigue consolidada'
+        : todas.length + ' operaciones del período, de todos los establecimientos';
+    }
+
     async function cargarLibroFiscal(tipo, page) {
       const tabName = tipo === 'compra' ? 'compras' : 'ventas';
       const sel = tipo === 'compra' ? 'table.libro-compras' : 'table.libro-ventas:not(.libro-maquina)';
@@ -10151,6 +10206,8 @@
       });
       _libroData[tipo] = arr;
       window.__libroData = _libroData; // expuesto para la impresión (printLibro está en otro IIFE)
+      // (más abajo se reemplaza por lo visible, para que imprimir y exportar
+      //  saquen el libro del establecimiento elegido y no el consolidado)
       if (!arr.length) { vacio('Sin registros en ' + _perLabel() + '. Cambia el período arriba o usa "Registrar ' + tipo + '".'); return; }
       // Totales y Forma 30: SIEMPRE sobre el mes completo (la paginación es solo visual)
       let tTot = 0, tEx = 0, tBase = 0, tIva = 0, tIgtf = 0;
@@ -10179,8 +10236,17 @@
          arriba ya se calcularon sobre `arr` completo, porque un reporte Z es
          una venta del período como cualquier otra. Sacarlo de ahí le quitaría
          al libro de Radian el 99% de sus ventas. */
-      const arrZeta = esCompra ? [] : arr.filter((r) => r.numero_zeta);
-      const arrFact = esCompra ? arr : arr.filter((r) => !r.numero_zeta);
+      /* El establecimiento filtra el LIBRO, no la declaración.
+
+         La Forma 30 es una sola y sale consolidada: sus casillas se
+         calcularon arriba sobre `arr` completo y no se tocan aquí. Lo que se
+         filtra es el libro que se ve y se imprime, que es el auxiliar por
+         establecimiento — el que se coteja contra lo que reporta cada uno. */
+      const arrVis = _sucFiltro[tipo]
+        ? arr.filter((r) => r.sucursal_id === _sucFiltro[tipo]) : arr;
+      pintarFiltroSucursal(tabName, tipo, arr, arrVis);
+      const arrZeta = esCompra ? [] : arrVis.filter((r) => r.numero_zeta);
+      const arrFact = esCompra ? arrVis : arrVis.filter((r) => !r.numero_zeta);
       if (!esCompra) pintarMaquina(arrZeta);
       // El contador de la pestaña cuenta TODO el período, reportes Z incluidos.
       if (window.__setTabCount) window.__setTabCount(esCompra ? 'compras' : 'ventas', arr.length);
@@ -10227,6 +10293,7 @@
          reportes Z en su propia tabla, un pie que los incluyera diría un
          total que no sale de las filas que se están viendo. El período
          completo —factura y máquina juntas— es lo que traslada la Forma 30. */
+      _libroData[tipo] = arrVis;   // imprimir/exportar siguen al establecimiento elegido
       const sF = sumarFilas(arrFact);
       if (tfoot) tfoot.innerHTML = totRow(sF.tot, sF.ex, sF.base, sF.iva, sF.igtf) + pagerRow;
       // Traslado a la Forma 30: el IVA se declara sobre la BASE TOTAL por alícuota × la tasa
