@@ -137,28 +137,44 @@
           else { badge.className = 'contrib-badge'; lbl.textContent = 'Contribuyente Ordinario'; }
         }
         dd.dataset.open = 'false';
-        if (window.cargarAsientos) window.cargarAsientos();   // recarga los asientos de la empresa elegida
-        if (window.cargarCuentasContables) window.cargarCuentasContables();
-        if (window.cargarActivosFijos) window.cargarActivosFijos();
-        if (window.cargarCriptoactivos) window.cargarCriptoactivos();
-        if (window.__syncFiscalHeader) window.__syncFiscalHeader(); // RIF y condición del módulo Fiscal
-        if (window.cargarLibroFiscal) { window.cargarLibroFiscal('compra'); window.cargarLibroFiscal('venta'); }
-        if (window.cargarCierres) window.cargarCierres(); // meses cerrados (bloqueados) de esta empresa
-        if (window.cargarCalendarioFiscal) window.cargarCalendarioFiscal(); // vencimientos reales de esta empresa
-        if (window.__cargarCobrosEmp) window.__cargarCobrosEmp(opt.dataset.empresaId); // métodos de cobro guardados
-        if (window.__renderDPP) window.__renderDPP();
-        if (window.__renderIGP) window.__renderIGP();
-        if (window.cargarBoveda) window.cargarBoveda();
-        if (window.cargarTesoreria) window.cargarTesoreria();
-        // Antes de recargar: la empresa nueva puede no enterar por quincena,
-        // y quedarse en "1ra" le escondería la mitad de sus retenciones.
-        if (window.__syncRetQuincena) window.__syncRetQuincena();
-        if (window.cargarRetenciones) window.cargarRetenciones();
-        if (window.cargarGuias) window.cargarGuias();           // guías de despacho de la empresa
-        if (window.__aplicarModoDoc) window.__aplicarModoDoc(); // letrero de modo (recibos/homologado) + RIF en Ventas
-        if (window.cargarParametros) window.cargarParametros();
-        if (window.cargarEmpleados) window.cargarEmpleados();
-        if (window.cargarDashboard) window.cargarDashboard();
+        /* Cada módulo se recarga POR SU CUENTA.
+
+           Iban seguidos, uno tras otro. `__syncFiscalHeader` lanzaba un
+           ReferenceError —usaba `_MESES_PER`, declarado en otro bloque— y
+           con eso moría el resto de la lista: el calendario, los cierres, la
+           bóveda, la tesorería, las retenciones y la nómina no se enteraban
+           nunca de que había cambiado la empresa. El calendario se quedaba
+           con el resultado de su primera pasada, cuando todavía no había
+           empresa elegida: vacío. Y no se veía nada en pantalla, porque una
+           excepción dentro de un manejador de clic no deja rastro visible.
+
+           Un módulo roto puede fallar; lo que no puede es apagar a los
+           demás. Lo que falle se nombra en la consola y se sigue. */
+        [['asientos', () => window.cargarAsientos && window.cargarAsientos()],
+          ['cuentas contables', () => window.cargarCuentasContables && window.cargarCuentasContables()],
+          ['activos fijos', () => window.cargarActivosFijos && window.cargarActivosFijos()],
+          ['criptoactivos', () => window.cargarCriptoactivos && window.cargarCriptoactivos()],
+          ['encabezado fiscal', () => window.__syncFiscalHeader && window.__syncFiscalHeader()],
+          ['libros', () => window.cargarLibroFiscal && (window.cargarLibroFiscal('compra'), window.cargarLibroFiscal('venta'))],
+          ['cierres', () => window.cargarCierres && window.cargarCierres()],
+          ['calendario', () => window.cargarCalendarioFiscal && window.cargarCalendarioFiscal()],
+          ['métodos de cobro', () => window.__cargarCobrosEmp && window.__cargarCobrosEmp(opt.dataset.empresaId)],
+          ['DPP', () => window.__renderDPP && window.__renderDPP()],
+          ['IGP', () => window.__renderIGP && window.__renderIGP()],
+          ['bóveda', () => window.cargarBoveda && window.cargarBoveda()],
+          ['tesorería', () => window.cargarTesoreria && window.cargarTesoreria()],
+          // Antes de recargar las retenciones: la empresa nueva puede no
+          // enterar por quincena, y quedarse en "1ra" le escondería la mitad.
+          ['quincena de retenciones', () => window.__syncRetQuincena && window.__syncRetQuincena()],
+          ['retenciones', () => window.cargarRetenciones && window.cargarRetenciones()],
+          ['guías de despacho', () => window.cargarGuias && window.cargarGuias()],
+          ['modo de documento', () => window.__aplicarModoDoc && window.__aplicarModoDoc()],
+          ['parámetros', () => window.cargarParametros && window.cargarParametros()],
+          ['empleados', () => window.cargarEmpleados && window.cargarEmpleados()],
+          ['panel de inicio', () => window.cargarDashboard && window.cargarDashboard()],
+        ].forEach(function (par) {
+          try { par[1](); } catch (err) { console.error('[cambio de empresa] falló ' + par[0] + ':', err); }
+        });
       });
     }
     document.querySelectorAll('.entity-option[data-name]').forEach(bindEntityOption);
@@ -3151,19 +3167,29 @@
 
        Ahora los tres formatos salen del período real, marcados con
        data-perfiscal para no tener que buscarlos por su texto. */
+    /* OJO con el alcance: esta función vive en `compToggle`, y `_MESES_PER`,
+       `_ivaPorQuincena` y `_perLabel` están declarados dentro de
+       `fiscalActions`, que es otro bloque. Referirlas aquí lanzaba
+       ReferenceError en cuanto se elegía una empresa —y como esta función se
+       llama desde `__syncFiscalHeader`, que a su vez se llama tres líneas
+       antes de recargar el calendario, se llevaba por delante el calendario,
+       los cierres y todo lo que venía después—. Aquí solo se usa lo propio o
+       lo que está publicado en `window`. */
+    const MESES_PF = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+      'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
     window.__syncPeriodosFiscal = function () {
       const p = window.__fiscalPer;
       if (!p || !p.mm || !p.aa) return;
       const anio = '20' + p.aa, mm = parseInt(p.mm, 10);
-      const mes = _MESES_PER[mm - 1] + ' ' + anio;
+      const mes = MESES_PF[mm - 1] + ' ' + anio;
       const ultimo = new Date(parseInt(anio, 10), mm, 0).getDate();
-      const q = _ivaPorQuincena() && p.q;
+      const q = (window.__ivaPorQuincena ? window.__ivaPorQuincena() : false) && p.q;
       const valores = {
         mes: mes + ' (01–' + ultimo + ')',
         // El ejercicio del IGP cierra el 30/09 del año que se está mirando.
         ejercicio: 'Al 30/09/' + anio,
         quincena: mes + (q ? ' · ' + (p.q === 1 ? '1ra' : '2da') + ' Quincena' : ''),
-        etiqueta: _perLabel(),
+        etiqueta: window.__perLabelFiscal ? window.__perLabelFiscal() : mes,
       };
       document.querySelectorAll('[data-perfiscal]').forEach((el) => {
         const v = valores[el.dataset.perfiscal];
@@ -9741,6 +9767,10 @@
     window.__fiscalPer = _fiscalPer; // expuesto para que las retenciones filtren por el mismo período
     const _perLabel = () => MESES_FIS[parseInt(_fiscalPer.mm, 10) - 1] + ' 20' + _fiscalPer.aa
       + (_ivaPorQuincena() && _fiscalPer.q ? ' · ' + _fiscalPer.q + (_fiscalPer.q === 1 ? 'ra' : 'da') + ' quincena' : '');
+    // Publicado porque lo necesitan bloques de otro alcance (los rótulos de
+    // período de las demás pestañas). Sin esto había que repetirlo allá, y
+    // dos definiciones del mismo rótulo se separan con el tiempo.
+    window.__perLabelFiscal = _perLabel;
     /* En qué quincena se declaró una operación.
 
        Se prefiere lo REGISTRADO sobre lo deducible: una compra recibida
