@@ -9770,42 +9770,65 @@
               ln.push({ cta: '2.1.1.01 · Cuentas por pagar comerciales', debe: 0, haber: total });
               window.__postAsiento('Compra s/factura ' + v.numFactura + ' · ' + v.nombre, v.numFactura, ln, 'auto').then((r) => { if (r && r.error) console.warn('[DigiAccount] No se pudo contabilizar la compra:', r.error.message); });
             }
+            /* El inventario va dentro de un try, y NO por miedo a este bloque en
+               concreto: por lo que hay DESPUÉS. Aquí abajo se registra la
+               retención de IVA, que es una obligación fiscal, mientras que
+               reponer el stock es una comodidad. Cuando esto lanzó un
+               TypeError, la factura quedó guardada y la retención no se
+               registró nunca, sin un solo aviso en pantalla. Lo accesorio no
+               puede impedir lo obligatorio. */
+            try {
             // Reponer inventario: suma las cantidades compradas al stock de cada producto
-            if (esCompra && invBox && window.sb) {
-              const lineasInv = [];
-              invBox.querySelectorAll('#invCompraRows > div').forEach((r) => {
-                const nombre = (r.querySelector('.ic-prod').value || '').trim();
-                const cant = parseFloat(r.querySelector('.ic-cant').value) || 0;
-                const costo = parseFloat(r.querySelector('.ic-costo').value) || 0;
-                if (nombre && cant > 0) lineasInv.push({ nombre: nombre, cant: cant, costo: costo });
-              });
-              if (lineasInv.length) {
-                const prods = window.__getProductos ? window.__getProductos() : [];
-                const creados = [];
-                const ups = lineasInv.map((li) => {
-                  const pr = prods.find((x) => (x.nombre || '').toLowerCase() === li.nombre.toLowerCase());
-                  if (!pr) {
-                    // El producto NO existe: se CREA automáticamente con esta compra
-                    // (stock = lo comprado, costo = el de la factura; el precio de venta se fija luego)
-                    creados.push(li.nombre);
-                    return window.sb.from('productos').insert({
-                      cuenta_id: window.__CUENTA_ID,
-                      nombre: li.nombre, sku: 'SKU-' + String(Date.now()).slice(-5) + '-' + Math.floor(Math.random() * 90 + 10),
-                      categoria: 'Otros', alicuota: '16%',
-                      stock: li.cant, stock_min: 0, costo: li.costo || 0, precio: 0,
-                    });
-                  }
-                  const patch = { stock: (Number(pr.stock) || 0) + li.cant };
-                  if (li.costo > 0) patch.costo = li.costo;
-                  return window.sb.from('productos').update(patch).eq('id', pr.id);
+              if (esCompra && invBox && window.sb) {
+                const lineasInv = [];
+                /* `.ic-row` y no `#invCompraRows > div`.
+
+                   Cuando no se agrega ningún producto, el contenedor lleva
+                   dentro el aviso `<div class="ic-empty">Agrega los productos…`,
+                   que TAMBIÉN es un div: entraba en el bucle, `.ic-prod` salía
+                   nulo y reventaba con TypeError. Y como esto corre dentro de
+                   un `.then`, no se veía nada: la factura quedaba guardada y
+                   todo lo que venía después —la retención de IVA, entre otras
+                   cosas— no llegaba a ejecutarse. */
+                invBox.querySelectorAll('.ic-row').forEach((r) => {
+                  const cProd = r.querySelector('.ic-prod'), cCant = r.querySelector('.ic-cant'), cCosto = r.querySelector('.ic-costo');
+                  if (!cProd || !cCant) return;
+                  const nombre = (cProd.value || '').trim();
+                  const cant = parseFloat(cCant.value) || 0;
+                  const costo = cCosto ? (parseFloat(cCosto.value) || 0) : 0;
+                  if (nombre && cant > 0) lineasInv.push({ nombre: nombre, cant: cant, costo: costo });
                 });
-                Promise.all(ups).then((rs) => {
-                  const errs = rs.filter((r) => r && r.error);
-                  if (errs.length) { toast('Inventario: ' + errs[0].error.message, 'error'); return; }
-                  if (window.cargarProductos) window.cargarProductos();
-                  toast(lineasInv.length + ' producto(s) al inventario' + (creados.length ? ' · NUEVOS: ' + creados.join(', ') + ' (ponles su precio de venta en Inventario)' : ''), 'success');
-                });
+                if (lineasInv.length) {
+                  const prods = window.__getProductos ? window.__getProductos() : [];
+                  const creados = [];
+                  const ups = lineasInv.map((li) => {
+                    const pr = prods.find((x) => (x.nombre || '').toLowerCase() === li.nombre.toLowerCase());
+                    if (!pr) {
+                      // El producto NO existe: se CREA automáticamente con esta compra
+                      // (stock = lo comprado, costo = el de la factura; el precio de venta se fija luego)
+                      creados.push(li.nombre);
+                      return window.sb.from('productos').insert({
+                        cuenta_id: window.__CUENTA_ID,
+                        nombre: li.nombre, sku: 'SKU-' + String(Date.now()).slice(-5) + '-' + Math.floor(Math.random() * 90 + 10),
+                        categoria: 'Otros', alicuota: '16%',
+                        stock: li.cant, stock_min: 0, costo: li.costo || 0, precio: 0,
+                      });
+                    }
+                    const patch = { stock: (Number(pr.stock) || 0) + li.cant };
+                    if (li.costo > 0) patch.costo = li.costo;
+                    return window.sb.from('productos').update(patch).eq('id', pr.id);
+                  });
+                  Promise.all(ups).then((rs) => {
+                    const errs = rs.filter((r) => r && r.error);
+                    if (errs.length) { toast('Inventario: ' + errs[0].error.message, 'error'); return; }
+                    if (window.cargarProductos) window.cargarProductos();
+                    toast(lineasInv.length + ' producto(s) al inventario' + (creados.length ? ' · NUEVOS: ' + creados.join(', ') + ' (ponles su precio de venta en Inventario)' : ''), 'success');
+                  });
+                }
               }
+            } catch (err) {
+              console.error('[compra] no se pudo reponer inventario:', err);
+              toast('La factura se guardó. El inventario no se actualizó: ' + err.message, 'error');
             }
             // VENTA en el Libro: solo contabiliza si la empresa está en modo "libro" (contador).
             // En modo "recibos" la venta la contabiliza el recibo, no el libro (este es solo para declarar).
