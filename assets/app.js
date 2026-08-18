@@ -4416,12 +4416,18 @@
     };
     const etiqueta = (imp) => IMP[imp] || imp;
 
+    /* Devuelve `true` solo si de verdad se pudo consultar. Quien llama usa
+       eso para decidir si marca el año como cargado: si se marca cuando la
+       consulta ni siquiera se intentó —todavía no hay empresa, o `window.sb`
+       aún no existe— el calendario se queda vacío PARA SIEMPRE, porque la
+       siguiente llamada lo ve como «ya cargado» y no vuelve a intentar.
+       Eso es lo que dejaba el calendario en blanco. */
     async function cargarEventos() {
       const emp = window.__EMPRESA_ACTIVA;
-      if (!window.sb || !emp || !emp.id) { EVENTOS = []; return; }
+      if (!window.sb || !emp || !emp.id) { EVENTOS = []; return false; }
       const digitos = String(emp.rif || '').replace(/\D/g, '');
       const terminal = digitos.slice(-1);
-      if (!terminal) { EVENTOS = []; return; }
+      if (!terminal) { EVENTOS = []; return false; }
       const esEspecial = /especial/i.test(emp.cond || '');
       const esOrdinario = /ordinario/i.test(emp.cond || '');
       // DPP (Protección de Pensiones): SOLO personas jurídicas privadas (RIF J).
@@ -4432,7 +4438,7 @@
       const { data, error } = await window.sb.from('calendario_fiscal')
         .select('fecha, impuesto, descripcion, ambito, terminales')
         .gte('fecha', y + '-01-01').lte('fecha', y + '-12-31');
-      if (error) { console.warn('[Calendario] ', error.message); EVENTOS = []; return; }
+      if (error) { console.warn('[Calendario] ', error.message); EVENTOS = []; return false; }
       // Aplica SOLO lo que le toca a esta empresa: su terminal de RIF, lo 'especial'
       // únicamente si es sujeto pasivo especial, y el DPP solo si es persona jurídica.
       // DPP: además de ser jurídica, la empresa debe DECLARAR DPP (emprendimientos exentos = declaraDpp false)
@@ -4451,6 +4457,12 @@
         }
       }
       EVENTOS.sort((a, b) => a.fecha.localeCompare(b.fecha));
+      if (!EVENTOS.length) {
+        console.warn('[Calendario] la tabla respondió ' + (data || []).length
+          + ' fechas del ' + y + ', pero ninguna es de esta empresa'
+          + ' (terminal de RIF ' + terminal + ', ' + (emp.cond || 'sin condición') + ')');
+      }
+      return true;
     }
 
     function eventosDe(fechaISO) { return EVENTOS.filter((e) => e.fecha === fechaISO); }
@@ -4476,6 +4488,30 @@
       }
       calGrid.innerHTML = html;
       if (titleEl) titleEl.textContent = 'Calendario fiscal · ' + meses[m] + ' ' + y;
+      /* Un calendario vacío tiene que decir POR QUÉ está vacío.
+
+         Sin esto no se distingue «este mes no vence nada» de «no cargó», y
+         lo segundo asusta con razón: parece que se perdió el calendario. */
+      let nota = document.getElementById('calNota');
+      if (!nota) {
+        nota = document.createElement('div');
+        nota.id = 'calNota';
+        nota.style.cssText = 'font-size:11.5px;color:var(--fg-muted);padding:8px 2px 0;line-height:1.45;';
+        calGrid.parentNode.insertBefore(nota, calGrid.nextSibling);
+      }
+      const empN = window.__EMPRESA_ACTIVA;
+      if (!empN || !empN.id) {
+        nota.textContent = 'Elige una empresa para ver sus vencimientos: el calendario depende del terminal de su RIF y de su condición fiscal.';
+      } else if (!EVENTOS.length) {
+        nota.textContent = 'No se cargó ninguna fecha del ' + y + ' para ' + (empN.n || 'esta empresa')
+          + ' (terminal de RIF ' + String(empN.rif || '').replace(/\D/g, '').slice(-1)
+          + ' · ' + (empN.cond || 'sin condición') + '). Si esto no es lo esperado, avísame: queda el detalle en la consola.';
+      } else {
+        const delMes = EVENTOS.filter((e) => e.fecha.slice(0, 7) === y + '-' + String(m + 1).padStart(2, '0')).length;
+        nota.textContent = delMes
+          ? delMes + ' vencimiento' + (delMes === 1 ? '' : 's') + ' en ' + meses[m] + ' · ' + EVENTOS.length + ' en todo el ' + y
+          : 'Sin vencimientos en ' + meses[m] + ' — ' + EVENTOS.length + ' en el resto del ' + y + '.';
+      }
       renderProximos();
       if (window.lucide) window.lucide.createIcons();
     }
@@ -4511,7 +4547,13 @@
     async function refrescar() {
       const emp = window.__EMPRESA_ACTIVA;
       const clave = (emp && emp.id ? emp.id : 'sin') + '|' + y;
-      if (clave !== cargadoPara) { cargadoPara = clave; await cargarEventos(); }
+      if (clave !== cargadoPara) {
+        // El año se marca como cargado DESPUÉS, y solo si se pudo consultar.
+        // Marcarlo antes era lo que dejaba el calendario vacío para siempre
+        // cuando la primera pasada ocurría sin empresa todavía elegida.
+        const ok = await cargarEventos();
+        cargadoPara = ok ? clave : '';
+      }
       render();
     }
     window.cargarCalendarioFiscal = refrescar;   // lo llama el cambio de empresa
