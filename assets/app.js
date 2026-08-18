@@ -4508,9 +4508,10 @@
           + ' · ' + (empN.cond || 'sin condición') + '). Si esto no es lo esperado, avísame: queda el detalle en la consola.';
       } else {
         const delMes = EVENTOS.filter((e) => e.fecha.slice(0, 7) === y + '-' + String(m + 1).padStart(2, '0')).length;
-        nota.textContent = delMes
+        nota.textContent = (delMes
           ? delMes + ' vencimiento' + (delMes === 1 ? '' : 's') + ' en ' + meses[m] + ' · ' + EVENTOS.length + ' en todo el ' + y
-          : 'Sin vencimientos en ' + meses[m] + ' — ' + EVENTOS.length + ' en el resto del ' + y + '.';
+          : 'Sin vencimientos en ' + meses[m] + ' — ' + EVENTOS.length + ' en el resto del ' + y + '.')
+          + (VERSION ? ' · versión ' + VERSION : '');
       }
       renderProximos();
       if (window.lucide) window.lucide.createIcons();
@@ -4544,17 +4545,45 @@
       }).join('');
     }
 
+    /* La versión que está corriendo AHORA, según el caché que el service
+       worker tiene activo. No es un número escrito a mano en el código —eso
+       miente en cuanto uno se olvida de subirlo—: es el que de verdad está
+       sirviendo los archivos. Se muestra en la nota del calendario porque
+       la duda «¿esto ya tiene el arreglo?» no se puede responder de otro
+       modo desde la app instalada, que se queda en la versión vieja hasta
+       que se pulsa «Actualizar». */
+    let VERSION = '';
+    if (window.caches && caches.keys) {
+      caches.keys().then((ks) => {
+        const k = ks.filter((x) => x.indexOf('digiaccount-') === 0).sort().pop();
+        if (k) { VERSION = k.replace('digiaccount-', ''); }
+      }).catch(() => {});
+    }
+
     async function refrescar() {
       const emp = window.__EMPRESA_ACTIVA;
       const clave = (emp && emp.id ? emp.id : 'sin') + '|' + y;
-      if (clave !== cargadoPara) {
-        // El año se marca como cargado DESPUÉS, y solo si se pudo consultar.
-        // Marcarlo antes era lo que dejaba el calendario vacío para siempre
-        // cuando la primera pasada ocurría sin empresa todavía elegida.
-        const ok = await cargarEventos();
-        cargadoPara = ok ? clave : '';
+      /* Si algo falla aquí NO se puede perder en silencio: un calendario en
+         blanco sin explicación es indistinguible de uno sin vencimientos, y
+         hace perder el tiempo de los dos buscando en el lugar equivocado. */
+      try {
+        if (clave !== cargadoPara) {
+          // El año se marca como cargado DESPUÉS, y solo si se pudo consultar.
+          // Marcarlo antes era lo que dejaba el calendario vacío para siempre
+          // cuando la primera pasada ocurría sin empresa todavía elegida.
+          const ok = await cargarEventos();
+          cargadoPara = ok ? clave : '';
+        }
+        render();
+      } catch (err) {
+        console.error('[Calendario] falló:', err);
+        cargadoPara = '';
+        const n = document.getElementById('calNota') || calGrid.parentNode.appendChild(
+          Object.assign(document.createElement('div'), { id: 'calNota' }));
+        n.style.cssText = 'font-size:11.5px;color:#c0392b;padding:8px 2px 0;line-height:1.45;';
+        n.textContent = 'El calendario falló al dibujarse: '
+          + (err && err.message ? err.message : err) + (VERSION ? ' · versión ' + VERSION : '');
       }
-      render();
     }
     window.cargarCalendarioFiscal = refrescar;   // lo llama el cambio de empresa
 
