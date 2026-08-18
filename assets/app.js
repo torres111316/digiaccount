@@ -156,6 +156,7 @@
           ['criptoactivos', () => window.cargarCriptoactivos && window.cargarCriptoactivos()],
           ['encabezado fiscal', () => window.__syncFiscalHeader && window.__syncFiscalHeader()],
           ['libros', () => window.cargarLibroFiscal && (window.cargarLibroFiscal('compra'), window.cargarLibroFiscal('venta'))],
+          ['sucursales', () => window.cargarSucursales && window.cargarSucursales()],
           ['cierres', () => window.cargarCierres && window.cargarCierres()],
           ['calendario', () => window.cargarCalendarioFiscal && window.cargarCalendarioFiscal()],
           ['métodos de cobro', () => window.__cargarCobrosEmp && window.__cargarCobrosEmp(opt.dataset.empresaId)],
@@ -9584,7 +9585,7 @@
           { name: 'retComp', label: 'N° comprobante de retención' + (esCompra ? ' (el de tu comprobante)' : ' (el que te dio el cliente)'), placeholder: 'Ej. 20260600000123 · déjalo vacío si aún no lo tienes' },
         ]).concat(esCompra ? [] : [
           { name: 'anularVenta', label: '¿Este número es una factura ANULADA? (solo reserva el correlativo, sin monto)', col: 2, type: 'select', options: ['No', 'Sí — Anulada'] },
-        ])),
+        ]).concat(campoSucursal())),
         afterRender: (body) => {
           bodyRef = body;
           pintarUltimo();
@@ -9742,6 +9743,7 @@
           if (saveBtnEl) saveBtnEl.disabled = true; // evita doble registro mientras el modal sigue abierto
           window.sb.from('libro_fiscal').insert({
             cuenta_id: window.__CUENTA_ID, empresa_id: window.__EMPRESA_ACTIVA.id, tipo: tipo, fecha: fecha, periodo: periodo, quincena: quincena,
+            sucursal_id: sucursalDe(v.sucursal),
             tercero_nombre: v.nombre, tercero_rif: normRif(v.rif), numero_factura: v.numFactura, numero_control: v.numControl,
             tipo_doc: (v.tipoDoc || (esCompra ? 'FC' : 'FV')).slice(0, 2), exento: exento, base: base, alicuota: alic, iva: iva, igtf: igtf, total: total,
             // Desglose por renglón de la Forma 30. 'base' e 'iva' siguen siendo
@@ -9752,6 +9754,7 @@
           }).select('id').then(({ data: guardado, error }) => {
             if (saveBtnEl) saveBtnEl.disabled = false;
             if (error) { toast('No se pudo guardar: ' + error.message, 'error'); return; }
+            recordarSucursal(sucursalDe(v.sucursal));
             /* Se recuerda lo último que se registró para poder volver a
                corregirlo sin cerrar el formulario. Al cargar cincuenta
                facturas seguidas uno nota el error en la siguiente, no en la
@@ -10309,7 +10312,7 @@
         ].concat(esCompra ? [] : [
           { name: 'igtfAplica', label: '¿Aplica IGTF? (3%)', type: 'select', options: ['No', 'Sí (3%)'], value: (Number(r.igtf) > 0 ? 'Sí (3%)' : 'No') },
           { name: 'igtfShow', label: 'IGTF 3% (calculado del total con IVA)', type: 'static', html: '<span class="mono" id="igtfShowVal">Bs ' + fmtF(Number(r.igtf) || 0) + '</span>' },
-        ])),
+        ]).concat(campoSucursal(r.sucursal_id))),
         afterRender: (body) => {
           // Se monta con la fila ya cargada: si trae varias alícuotas salen
           // sus renglones, y si es anterior al desglose se reparte por su
@@ -10396,6 +10399,7 @@
           const igtf = /s[ií]/i.test(v.igtfAplica || '') ? total * 0.03 : 0; // IGTF sobre el total de la factura
           window.sb.from('libro_fiscal').update({
             fecha: v.fecha, periodo: perNuevo, tipo_doc: (v.tipoDoc || '').slice(0, 2), tercero_nombre: v.nombre,
+            sucursal_id: sucursalDe(v.sucursal),
             tercero_rif: (v.rif || '').toUpperCase().replace(/[\s.\-]/g, ''), numero_factura: v.numFactura, numero_control: v.numControl,
             exento: exento, base: base, alicuota: alic, iva: iva, igtf: igtf, total: total,
             base_gen: M.base_gen, iva_gen: M.iva_gen,
@@ -10611,6 +10615,70 @@
       pintarCierreBtn();
     }
     window.cargarCierres = cargarCierres;
+
+    /* Sucursales de la empresa activa.
+
+       GATMA tiene Casa Matriz y Barquisimeto. El libro es UNO y la Forma 30
+       sale consolidada —el establecimiento no parte la declaración—, pero
+       cada factura tiene que decir de cuál salió: es lo que permite sacar el
+       auxiliar por establecimiento y cuadrar contra lo que reporta cada uno.
+
+       Las sucursales estaban en la base y los 110 registros históricos ya
+       repartidos, pero no había DÓNDE elegirla al registrar: las facturas
+       nuevas entraban sin establecimiento y no se notaba.
+
+       Con una sola sucursal no se pregunta nada: se asigna la matriz sola y
+       el formulario no crece con un campo de una sola opción. */
+    let _sucursales = [];
+    window.__SUCURSALES = _sucursales;
+    async function cargarSucursales() {
+      _sucursales = [];
+      if (window.sb && window.__EMPRESA_ACTIVA && window.__EMPRESA_ACTIVA.id) {
+        const { data, error } = await window.sb.from('sucursales')
+          .select('id, nombre, codigo, es_matriz')
+          .eq('empresa_id', window.__EMPRESA_ACTIVA.id).eq('activa', true)
+          .order('codigo');
+        if (error) console.warn('[Sucursales]', error.message);
+        _sucursales = data || [];
+      }
+      window.__SUCURSALES = _sucursales;
+    }
+    window.cargarSucursales = cargarSucursales;
+
+    // La última elegida, para no repetir la misma respuesta cincuenta veces
+    // seguidas al cargar un lote de facturas del mismo establecimiento.
+    const _sucLlave = () => 'da_suc_' + ((window.__EMPRESA_ACTIVA || {}).id || '');
+    function sucursalPorDefecto() {
+      let ult = '';
+      try { ult = localStorage.getItem(_sucLlave()) || ''; } catch (e) { /* sin localStorage */ }
+      const hallada = _sucursales.find((s) => s.id === ult);
+      return hallada || _sucursales.find((s) => s.es_matriz) || _sucursales[0] || null;
+    }
+    function recordarSucursal(id) {
+      try { localStorage.setItem(_sucLlave(), id || ''); } catch (e) { /* da igual */ }
+    }
+    const sucEtiqueta = (s) => s.codigo + ' · ' + s.nombre;
+    /* El campo, o nada. Devuelve un arreglo para poder concatenarlo tal cual
+       en la lista de campos del formulario. */
+    function campoSucursal(valorId) {
+      if (_sucursales.length < 2) return [];
+      const act = _sucursales.find((s) => s.id === valorId) || sucursalPorDefecto();
+      return [{
+        name: 'sucursal', label: 'Establecimiento que emite / recibe',
+        type: 'select', options: _sucursales.map(sucEtiqueta),
+        value: act ? sucEtiqueta(act) : '',
+      }];
+    }
+    // Del rótulo elegido de vuelta al id que se guarda en el libro.
+    function sucursalDe(valor) {
+      if (_sucursales.length < 2) {
+        const u = _sucursales[0];
+        return u ? u.id : null;
+      }
+      const s = _sucursales.find((x) => sucEtiqueta(x) === valor);
+      return s ? s.id : (sucursalPorDefecto() || {}).id || null;
+    }
+
     let btnCierre = null;
     function pintarCierreBtn() {
       if (!periodo) return;
