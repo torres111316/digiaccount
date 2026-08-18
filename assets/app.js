@@ -10373,6 +10373,12 @@
         });
       };
       periodo.querySelectorAll('button').forEach((b) => b.addEventListener('click', abrirSelector));
+      /* El mismo selector lo usan los cuadros de período de las otras
+         pestañas (DPP, IGP). Antes cada uno abría su propia lista escrita a
+         mano en el código —el del DPP ofrecía marzo a junio de 2026 y nada
+         más— y al elegir solo cambiaba el texto del recuadro: no movía el
+         período de nada. */
+      window.__abrirPeriodoFiscal = abrirSelector;
     }
 
     // ===== CIERRE MENSUAL: al declarar el mes se cierran los libros y quedan =====
@@ -10539,11 +10545,14 @@
          inventados —Suministros Lara, F-00284716— ofrecidos como si fueran
          los de la empresa. Esos tres campos ahora salen de las retenciones
          reales del período. */
-      'Período de declaración': ['Marzo 2026 (01–31)', 'Abril 2026 (01–30)', 'Mayo 2026 (01–31)', 'Junio 2026 (01–30)'],
+      /* Se quitaron también 'Período de declaración' y 'Ejercicio fiscal':
+         eran cuatro meses de 2026 y tres ejercicios escritos a mano. El del
+         DPP ofrecía «Marzo 2026» a «Junio 2026» y nada más, aunque se
+         estuviera mirando agosto, y al elegir uno solo cambiaba el texto del
+         recuadro. Esos cuadros ahora abren el selector de período REAL del
+         módulo, que sí mueve los libros y las retenciones con él. */
       'Tipo de declaración': ['Originaria', 'Sustitutiva', 'Complementaria'],
       'Alícuota vigente': ['9% (sector privado)', '15% (tope de ley)'],
-      'Ejercicio fiscal': ['Al 30/09/2025', 'Al 30/09/2026', 'Al 30/09/2027'],
-      'Condición del sujeto': ['Contribuyente Especial', 'Contribuyente Ordinario', 'Persona Natural'],
     };
     /* Esto le pone un modal de opciones a cada `.select-box` de los paneles
        de control. Las listas son de MAQUETA —proveedores y facturas
@@ -10561,6 +10570,16 @@
       if (!sb) return;
       // Un <select> de verdad se maneja solo; y un div con id ya lo llena el JS.
       if (sb.tagName === 'SELECT' || sb.id) return;
+      /* Los cuadros marcados con data-perfiscal muestran el período que se
+         está mirando. Al pulsarlos se abre el selector REAL del módulo, no
+         una lista de maqueta: si no, se elige un mes y no se mueve nada. */
+      if (sb.dataset.perfiscal) {
+        sb.style.cursor = 'pointer';
+        sb.addEventListener('click', () => {
+          if (window.__abrirPeriodoFiscal) window.__abrirPeriodoFiscal();
+        });
+        return;
+      }
       const lbl = ((field.querySelector('.lbl') || {}).textContent || '').trim();
       const isRecalc = /base imponible|patrimonio/i.test(lbl);
       sb.style.cursor = 'pointer';
