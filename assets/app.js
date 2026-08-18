@@ -9071,6 +9071,20 @@
        existe en la base —el libro dice cuántas facturas tiene un proveedor,
        no cuántas veces se le buscó— y de todos modos lo que importa aquí es
        la costumbre de quien escribe, que es personal y del día a día. */
+    /* OJO: había un `normRif` DENTRO de `registrarMov`, y estas funciones
+       viven un nivel más afuera, así que no lo veían — lanzaban
+       ReferenceError en la primera tecla. Se rompió al sacar el campo de
+       tercero a una función compartida, y no se notó porque el desplegable
+       nativo del navegador seguía respondiendo; al quitarlo quedó a la vista.
+       Aquí se declara en el alcance donde de verdad se usa. El de
+       `registrarMov` sigue en su sitio y lo tapa dentro de esa función, así
+       que lo que ya funcionaba no cambia.
+
+       Se quita TODO lo que no sea letra o número, igual que el directorio de
+       terceros y que las herramientas de carga: 'J-40297936-3' y
+       'J402979363' tienen que ser el mismo RIF o la búsqueda no encuentra. */
+    const normRif = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+
     const USO_LLAVE = 'da_uso_terceros';
     function usos() {
       try { return JSON.parse(localStorage.getItem(USO_LLAVE) || '{}') || {}; } catch (e) { return {}; }
@@ -9098,17 +9112,19 @@
        escribe dígitos está tecleando un RIF, no un nombre. */
     function calce(t, q, qDig) {
       const n = llano(t.nombre), r = normRif(t.rif);
-      if (qDig.length >= 3 && r.indexOf(qDig) === 0) return 0;   // el RIF, desde el principio
-      if (n.indexOf(q) === 0) return 1;                          // el nombre, desde el principio
+      // Los dígitos del RIF sin su letra: quien escribe '4029' está tecleando
+      // el número, no la J. Comparar contra 'J402979363' lo dejaría fuera del
+      // primer puesto por culpa de una letra que nadie escribe.
+      const rDig = r.replace(/\D/g, '');
+      if (qDig.length >= 3 && (r.indexOf(qDig) === 0 || rDig.indexOf(qDig) === 0)) return 0;
+      if (q && n.indexOf(q) === 0) return 1;                     // el nombre, desde el principio
       if (q && n.split(/[\s,.]+/).some((p) => p.indexOf(q) === 0)) return 2;  // una palabra suelta
       if (q && n.indexOf(q) >= 0) return 3;                      // en el medio del nombre
-      if (qDig.length >= 3 && r.indexOf(qDig) >= 0) return 4;    // en el medio del RIF
+      if (qDig.length >= 3 && rDig.indexOf(qDig) >= 0) return 4; // en el medio del RIF
       return -1;
     }
 
     function montarBuscador(nom, rif, lista, elegir) {
-      // El desplegable nativo estorbaría al propio: se le quita la lista.
-      nom.removeAttribute('list');
       nom.setAttribute('autocomplete', 'off');
 
       const caja = document.createElement('div');
@@ -9133,6 +9149,9 @@
       };
 
       const pintar = () => {
+        try { dibujar(); } catch (err) { console.error('[buscador de terceros]', err); cerrar(); }
+      };
+      const dibujar = () => {
         const q = llano(nom.value.trim());
         const qDig = normRif(nom.value);
         const u = usos();
@@ -9191,6 +9210,12 @@
           if (t) { nom.value = t.nombre; anotarUso(t.rif); }
         });
       }
+
+      /* El desplegable del navegador se quita AL FINAL, y solo si todo lo de
+         arriba se montó. Quitarlo primero fue lo que dejó el campo sin nada:
+         si el buscador propio fallaba, ya no quedaba a qué recurrir. No se
+         desconecta lo que funciona hasta que el reemplazo esté puesto. */
+      nom.removeAttribute('list');
     }
 
     function montarCampoTercero(body, opciones) {
