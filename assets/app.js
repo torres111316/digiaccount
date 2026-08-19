@@ -9494,6 +9494,35 @@
       // VENTAS: sugiere el siguiente N° de factura/control consultando el máximo real en la BD.
       // forzar=true (tras guardar, para la siguiente factura) sobreescribe aunque el campo tenga valor;
       // si no, solo rellena si está vacío (apertura inicial del formulario).
+      /* El siguiente de una serie, copiando el formato del último usado.
+
+         Dos cosas que no se pueden dar por sabidas:
+
+         · El N° DE CONTROL LLEVA SU PROPIA SERIE. No sale de la factura. En
+           la matriz de GATMA iban parejos hasta que estrenaron talonario y el
+           control se adelantó 300: la factura 148 lleva el control 448.
+           Derivarlo de la factura le habría puesto 149 a un talonario que va
+           por el 449.
+
+         · EL PREFIJO ES PARTE DEL NÚMERO. Barquisimeto numera A000001,
+           A000002… Quedarse solo con los dígitos devolvía '000018' y le
+           borraba la A, que es lo que distingue su serie de la de la matriz.
+
+         Por eso no se inventa el formato: se toma el del número más alto que
+         ya existe en ese establecimiento —su prefijo y su cantidad de
+         dígitos— y se le suma uno. Si mañana el talonario cambia de forma, el
+         sistema la aprende de la primera factura que se cargue a mano. */
+      function siguienteDe(valores) {
+        let mejor = null, maxN = -1;
+        (valores || []).forEach((s) => {
+          const m = String(s || '').trim().match(/^(.*?)(\d+)$/);
+          if (!m) return;
+          const n = parseInt(m[2], 10);
+          if (!isNaN(n) && n > maxN) { maxN = n; mejor = m; }
+        });
+        return mejor ? mejor[1] + String(maxN + 1).padStart(mejor[2].length, '0') : '';
+      }
+
       /* El correlativo es de CADA ESTABLECIMIENTO, no de la empresa.
 
          Casa Matriz va por la factura 148 y Barquisimeto por la 17: son dos
@@ -9514,13 +9543,11 @@
           let c = q.eq('empresa_id', window.__EMPRESA_ACTIVA.id).eq('tipo', 'venta');
           if (idSuc) c = c.eq('sucursal_id', idSuc);
           return c;
-        }, 'libro_fiscal', 'numero_factura').then(({ data }) => {
-          let maxN = 0;
-          (data || []).forEach((r) => { const n = parseInt(String(r.numero_factura || '').replace(/\D/g, ''), 10); if (!isNaN(n) && n > maxN) maxN = n; });
-          if (!maxN) return;
-          const pad = String(maxN + 1).padStart(6, '0');
-          if (nfEl && (forzar || !nfEl.value)) nfEl.value = pad;
-          if (ncEl && (forzar || !ncEl.value)) ncEl.value = '00-' + pad;
+        }, 'libro_fiscal', 'numero_factura, numero_control').then(({ data }) => {
+          const fac = siguienteDe((data || []).map((r) => r.numero_factura));
+          const ctl = siguienteDe((data || []).map((r) => r.numero_control));
+          if (nfEl && fac && (forzar || !nfEl.value)) nfEl.value = fac;
+          if (ncEl && ctl && (forzar || !ncEl.value)) ncEl.value = ctl;
         });
       }
       /* ¿El N° de control es de talonario (00-12345678) o de máquina fiscal?
