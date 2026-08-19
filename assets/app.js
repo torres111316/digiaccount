@@ -4793,6 +4793,32 @@
       const todas = (window.__getRetenciones ? window.__getRetenciones() : []);
       const iva = todas.filter((r) => r.tipo === 'iva' && r.direccion === (esPract ? 'practicada' : 'sufrida'));
       if (!iva.length) { if (window.toast) window.toast('No hay retenciones de IVA ' + (esPract ? 'practicadas' : 'sufridas') + ' para exportar.', 'error'); return; }
+
+      /* Una retención sin quincena aparece en las DOS.
+
+         Es deliberado: esconderla la volvería invisible en ambas, y una
+         retención que no se ve es una que no se entera. Pero al exportar hay
+         que decirlo, porque si se presentan los dos archivos esa retención se
+         entera dos veces.
+
+         No se le puede deducir la quincena de la fecha. La de una retención
+         es la del período en que se ENTERA, no la del día de la factura: en
+         Radian hay nueve de octubre fechadas en septiembre —compras recibidas
+         tarde— y por el día se irían a la quincena que no es. Por eso se
+         avisa y lo completa quien tiene el comprobante delante. */
+      const quinAct = window.__retQuincenaActual ? window.__retQuincenaActual() : 0;
+      if (quinAct === 1 || quinAct === 2) {
+        const sinQ = iva.filter((r) => r.quincena !== 1 && r.quincena !== 2);
+        if (sinQ.length) {
+          const suma = sinQ.reduce((s, r) => s + (Number(r.monto) || 0), 0);
+          if (window.toast) {
+            window.toast('⚠️ ' + sinQ.length + ' retencion' + (sinQ.length === 1 ? '' : 'es')
+              + ' sin quincena (Bs ' + Number(suma).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ') van en ESTE archivo y también en el de la otra quincena. '
+              + 'Asígnales la quincena en Retenciones antes de presentar, o se enterarían dos veces.', 'error');
+          }
+        }
+      }
+
       // Lookup de la factura: compras (practicadas) o ventas (sufridas)
       let facturas = [];
       if (window.sb && emp.id) {
