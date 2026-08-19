@@ -9032,6 +9032,10 @@
       // Membrete de los libros (compras y ventas): empresa, RIF, condición y período reales
       // Los períodos regados por el módulo siguen al mismo selector.
       if (window.__syncPeriodosFiscal) window.__syncPeriodosFiscal();
+      /* El rótulo del período se recalcula aquí porque esta función corre en
+         cada cambio de empresa, y la quincena solo se nombra si la empresa
+         nueva declara por quincena. */
+      if (_perBtn && typeof _perLabel === 'function') _perBtn.textContent = _perLabel();
       const perTxt = (typeof _perLabel === 'function') ? _perLabel() : '';
       document.querySelectorAll('.fiscal-tab[data-tab="compras"] .libro-head, .fiscal-tab[data-tab="ventas"] .libro-head').forEach((h) => {
         const coEl = h.querySelector('.lh-co'); if (coEl) coEl.textContent = emp.n || '—';
@@ -10021,6 +10025,15 @@
     window.__fiscalPer = _fiscalPer; // expuesto para que las retenciones filtren por el mismo período
     const _perLabel = () => MESES_FIS[parseInt(_fiscalPer.mm, 10) - 1] + ' 20' + _fiscalPer.aa
       + (_ivaPorQuincena() && _fiscalPer.q ? ' · ' + _fiscalPer.q + (_fiscalPer.q === 1 ? 'ra' : 'da') + ' quincena' : '');
+    /* El botón del período, para poder repintarlo desde fuera de su bloque.
+
+       Solo se escribía al arrancar y al cambiar de período, nunca al cambiar
+       de empresa: viniendo de GATMA —que declara por quincena— el botón se
+       quedaba diciendo «Agosto 2026 · 1ra quincena» en una empresa ordinaria,
+       que declara el mes completo. El período de trabajo estaba bien por
+       dentro; lo que engañaba era el rótulo, que es lo que uno mira antes de
+       registrar una factura. */
+    let _perBtn = null;
     // Publicado porque lo necesitan bloques de otro alcance (los rótulos de
     // período de las demás pestañas). Sin esto había que repetirlo allá, y
     // dos definiciones del mismo rótulo se separan con el tiempo.
@@ -10669,6 +10682,7 @@
     const periodo = document.getElementById('fiscalPeriodo');
     if (periodo) {
       const mainBtn = periodo.querySelector('button:not(.custom-date)');
+      _perBtn = mainBtn;
       if (mainBtn) mainBtn.textContent = _perLabel();
       /* Las opciones se arman al ABRIR el selector, no una sola vez al
          cargar: al cambiar de empresa cambia la condición, y una lista
