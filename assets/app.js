@@ -1291,6 +1291,56 @@
       };
     }
 
+    /* El correlativo del comprobante de retención de ISLR.
+
+       El de IVA lo fija la Providencia 000102: catorce dígitos con año, mes
+       y correlativo. El de ISLR no tiene forma obligatoria, pero SÍ tiene que
+       llevar número: es lo que identifica al comprobante que se le entrega al
+       proveedor y lo que después se relaciona en el ARC del ejercicio. Sin
+       número quedan veinte comprobantes indistinguibles entre sí.
+
+       Se propone AAAAMM + cuatro dígitos (2026080001), que se lee igual que
+       el de IVA pero más corto, y reinicia cada mes.
+
+       PERO NO SE IMPONE: si la empresa ya viene numerando de otra manera, se
+       sigue SU formato —su prefijo y su cantidad de dígitos— tomando el más
+       alto del mismo mes. Basta con escribir a mano el primero para que el
+       sistema siga esa serie. El sistema no le cambia la numeración a nadie.
+
+       SOLO EN LAS PRACTICADAS. En una retención sufrida el comprobante lo
+       emite el agente que retuvo: ese número se copia del documento que él
+       entregó, y generarlo aquí sería inventarse un dato ajeno. */
+    async function siguienteCompIslr(empresaId, fechaISO) {
+      if (!window.sb || !empresaId) return '';
+      const p = String(fechaISO || '').split('-');
+      const aaaamm = (p.length === 3) ? (p[0] + p[1])
+        : (function () {
+          const d = new Date();
+          return String(d.getFullYear()) + String(d.getMonth() + 1).padStart(2, '0');
+        })();
+      const { data, error } = await window.sb.from('retenciones')
+        .select('comprobante')
+        .eq('empresa_id', empresaId).eq('tipo', 'islr').eq('direccion', 'practicada');
+      if (error) { console.warn('[Comprobante ISLR]', error.message); return ''; }
+      const usados = (data || []).map((r) => String(r.comprobante || '').trim()).filter(Boolean);
+      // Los de ESTE mes mandan: de ahí sale el correlativo y el formato.
+      const delMes = usados.filter((c) => c.replace(/\D/g, '').indexOf(aaaamm) === 0);
+      if (delMes.length) {
+        let mejor = null, maxN = -1;
+        delMes.forEach((c) => {
+          const m = c.match(/^(.*?)(\d+)$/);
+          if (!m) return;
+          const n = parseInt(m[2], 10);
+          if (!isNaN(n) && n > maxN) { maxN = n; mejor = m; }
+        });
+        if (mejor) return mejor[1] + String(maxN + 1).padStart(mejor[2].length, '0');
+      }
+      // Primero del mes: se conserva el LARGO que ya usa la empresa.
+      const largo = usados.length ? usados[0].replace(/\D/g, '').length : 10;
+      const correl = Math.max(1, largo - aaaamm.length);
+      return aaaamm + String(1).padStart(correl, '0');
+    }
+
     function setupPctField(body) {
       const tipoSel = body.querySelector('[data-name="tipo"]');
       const pctEl = body.querySelector('[data-name="pct"]');
@@ -1440,6 +1490,28 @@
           const baseInput = body.querySelector('[data-name="base"]');
           const dl = document.getElementById('fm-dl-factura');
           if (!prov) return;
+          /* En ISLR practicada se propone el correlativo, si el campo está
+             vacío. Nunca se pisa lo escrito: si el comprobante ya viene del
+             documento —o el usuario lo corrigió— manda ese. */
+          const compEl = body.querySelector('[data-name="comprobante"]');
+          const fechaComp = body.querySelector('[data-name="fecha"]');
+          const proponerComp = () => {
+            if (!compEl || compEl.value.trim()) return;
+            const esIslr = tipoSel && /islr/i.test(tipoSel.value);
+            const esPract = dirSel && /^practicada/i.test(dirSel.value);
+            const emp = window.__EMPRESA_ACTIVA || {};
+            if (!esIslr || !esPract || !emp.id) return;
+            siguienteCompIslr(emp.id, fechaComp ? fechaComp.value : '').then((n) => {
+              if (n && compEl && !compEl.value.trim()) {
+                compEl.value = n;
+                compEl.placeholder = 'Correlativo propuesto — cámbialo si tu numeración es otra';
+              }
+            });
+          };
+          if (tipoSel) tipoSel.addEventListener('change', proponerComp);
+          if (dirSel) dirSel.addEventListener('change', proponerComp);
+          if (fechaComp) fechaComp.addEventListener('change', proponerComp);
+          proponerComp();
           // Limitar terceros por dirección: practicada → solo proveedores; sufrida → solo clientes
           const tercDl = document.getElementById('fm-dl-nombre');
           const refrescarTerceros = () => {
