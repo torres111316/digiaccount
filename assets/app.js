@@ -3385,6 +3385,33 @@
       const emp = window.__EMPRESA_ACTIVA || {};
       set('igtfDocCo', emp.n || 'Empresa'); set('igtfDocRif', 'RIF ' + (emp.rif || '—'));
       const perEl = $('igtfPerSel'); if (perEl) set('igtfDocPeriodo', (perEl.textContent || '').trim());
+
+      /* La Forma 21 se presenta DOS VECES AL MES, aunque el IVA de la
+         empresa sea mensual. Mostrar solo el total del mes obliga a partirlo
+         a mano contra el libro justo cuando se está declarando, que es
+         cuando peor se cuenta. Aquí sale ya partido. */
+      const doc = $('igtfDoc');
+      if (doc && doc.parentNode) {
+        let caja = $('igtfPorQuincena');
+        if (!caja) {
+          caja = document.createElement('div');
+          caja.id = 'igtfPorQuincena';
+          caja.style.cssText = 'margin:0 0 12px;border:1px solid var(--border-strong);border-radius:10px;overflow:hidden;font-size:12.5px;';
+          doc.parentNode.insertBefore(caja, doc);
+        }
+        const fila = (rot, d, dias) => '<div style="display:flex;justify-content:space-between;gap:10px;padding:8px 12px;border-top:1px solid var(--border);">'
+          + '<span><strong>' + rot + '</strong> <span style="color:var(--fg-muted);">' + dias + '</span></span>'
+          + '<span style="color:var(--fg-muted);">' + (d.ops || 0) + ' oper. · base ' + fmt(d.base) + '</span>'
+          + '<span class="mono"><strong>' + fmt(d.monto) + '</strong></span></div>';
+        const q1 = v.q1 || { ops: 0, monto: 0, base: 0 };
+        const q2 = v.q2 || { ops: 0, monto: 0, base: 0 };
+        caja.innerHTML = '<div style="padding:8px 12px;background:var(--bg-subtle,var(--bg-surface));font-weight:600;">'
+          + 'IGTF 3% por quincena <span style="font-weight:400;color:var(--fg-muted);">— la Forma 21 se presenta una por quincena</span></div>'
+          + fila('1ra quincena', q1, '(01–15)')
+          + fila('2da quincena', q2, '(16 al último día)')
+          + (Number(v.monto) > 0 ? '' : '<div style="padding:8px 12px;border-top:1px solid var(--border);color:var(--fg-muted);">'
+            + 'Sin cobros en divisas ni cripto en el período: las dos declaraciones van en cero.</div>');
+      }
     }
     window.__renderIGTF = render;
     ['igtf2BaseInput', 'igtf2OpsInput'].forEach((id) => { const e = $(id); if (e) e.addEventListener('input', render); });
@@ -10327,7 +10354,7 @@
       const totRow = (tot, ex, base, iva, igtf) => '<tr class="libro-tot"><td colspan="7" style="text-align:right;">TOTALES DEL PERÍODO</td><td class="num">' + fmtF(tot) + '</td><td class="num">' + fmtF(ex) + '</td><td class="num">' + fmtF(base) + '</td><td></td><td class="num">' + fmtF(iva) + '</td>' + (esCompra ? '' : '<td class="num">' + fmtF(igtf) + '</td>') + '</tr>';
       const setN = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = fmtF(v); };
       const resetF30c = () => { ['f30c-ex', 'f30c-base16', 'f30c-iva16', 'f30c-base8', 'f30c-iva8', 'f30c-baseAd', 'f30c-ivaAd', 'f30c-baseTot', 'f30c-ivaTot', 'f30c-ded', 'f30c-dedTot', 'f30c-credTot'].forEach((id) => setN(id, 0)); };
-      const resetF30v = () => { ['f30v-ex', 'f30v-base16', 'f30v-iva16', 'f30v-base8', 'f30v-iva8', 'f30v-baseAd', 'f30v-ivaAd', 'f30v-baseTot', 'f30v-ivaTot', 'f30v-debTot', 'f30v-igtf', 'f30v-igtfBase'].forEach((id) => setN(id, 0)); renderIslrBox(0); window.__IGTF_VENTAS = { base: 0, ops: 0, monto: 0 }; if (window.__renderIGTF) window.__renderIGTF(); };
+      const resetF30v = () => { ['f30v-ex', 'f30v-base16', 'f30v-iva16', 'f30v-base8', 'f30v-iva8', 'f30v-baseAd', 'f30v-ivaAd', 'f30v-baseTot', 'f30v-ivaTot', 'f30v-debTot', 'f30v-igtf', 'f30v-igtfBase'].forEach((id) => setN(id, 0)); renderIslrBox(0); window.__IGTF_VENTAS = { base: 0, ops: 0, monto: 0, q1: { ops: 0, monto: 0, base: 0 }, q2: { ops: 0, monto: 0, base: 0 } }; if (window.__renderIGTF) window.__renderIGTF(); };
       const vacio = (txt) => {
         if (tbody) tbody.innerHTML = '<tr><td colspan="' + (esCompra ? 12 : 13) + '" style="text-align:center;color:var(--fg-muted);padding:14px;">' + (txt || ('Sin registros. Usa "Registrar ' + tipo + '".')) + '</td></tr>';
         if (tfoot) tfoot.innerHTML = totRow(0, 0, 0, 0, 0);
@@ -10482,7 +10509,27 @@
         setN('f30v-baseTot', base16 + base8 + tEx); setN('f30v-ivaTot', ivaTotD);
         setN('f30v-debTot', ivaTotD);
         setN('f30v-igtf', tIgtf); setN('f30v-igtfBase', tIgtf > 0 ? tIgtf / 0.03 : 0);
-        window.__IGTF_VENTAS = { base: tIgtf > 0 ? tIgtf / 0.03 : 0, ops: arr.filter((r) => Number(r.igtf) > 0).length, monto: tIgtf };
+        /* El IGTF se declara POR QUINCENA (Forma 21), aunque el IVA de esta
+           empresa sea mensual. Son dos obligaciones con ritmos distintos: una
+           firma personal especial como Radian presenta el IVA del mes completo
+           pero la Forma 21 dos veces al mes.
+
+           La quincena NO se guarda en el libro para estas filas, y está bien:
+           `libro_fiscal.quincena` significa «quincena de la declaración de
+           IVA», que aquí es nula por ser mensual. Escribirla partiría en dos
+           el libro de IVA, que es justo lo que no debe pasar. Se deduce del
+           DÍA, que para una venta propia es dato firme: la empresa emite la
+           factura el día que la emite. */
+        const conIgtf = arr.filter((r) => Number(r.igtf) > 0);
+        const porQ = (q) => {
+          const f = conIgtf.filter((r) => _quincenaDe(r) === q);
+          const m = f.reduce((s, r) => s + (Number(r.igtf) || 0), 0);
+          return { ops: f.length, monto: m, base: m > 0 ? m / 0.03 : 0 };
+        };
+        window.__IGTF_VENTAS = {
+          base: tIgtf > 0 ? tIgtf / 0.03 : 0, ops: conIgtf.length, monto: tIgtf,
+          q1: porQ(1), q2: porQ(2),
+        };
         if (window.__renderIGTF) window.__renderIGTF();
         renderIslrBox(tBase + tEx);
       }
