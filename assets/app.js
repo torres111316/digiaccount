@@ -272,7 +272,20 @@
     // Al iniciar sesión: si hay UNA empresa se activa sola; si hay VARIAS se abre el
     // selector para que el usuario elija con cuál trabajar (evita empezar en la equivocada).
     if (first) {
-      if ((data || []).length > 1 && !window.__EMP_YA_ELEGIDA) {
+      /* Si ya se estaba trabajando con una empresa, se vuelve a ELLA.
+
+         Esta función no solo corre al iniciar sesión: la llaman el guardado
+         de Configuración, el alta de empresas y el panel de fundador. En esos
+         casos caía en el `else` y hacía `first.click()`, o sea activaba la
+         PRIMERA de la lista alfabéticamente. Luis guardó la dirección de una
+         sucursal de GATMA, pulsó "Guardar cambios" y el sistema lo mandó a
+         Carnicería Anyelin sin avisar — y lo siguiente que registrara habría
+         ido a parar a la empresa equivocada. */
+      const idActiva = (window.__EMPRESA_ACTIVA || {}).id;
+      const activa = idActiva && dd.querySelector('.entity-option[data-empresa-id="' + idActiva + '"]');
+      if (activa) {
+        activa.click();
+      } else if ((data || []).length > 1 && !window.__EMP_YA_ELEGIDA) {
         if (window.__abrirSelectorEmpresa) window.__abrirSelectorEmpresa(data);
         else first.click();
       } else {
