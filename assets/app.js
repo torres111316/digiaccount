@@ -156,6 +156,7 @@
           ['criptoactivos', () => window.cargarCriptoactivos && window.cargarCriptoactivos()],
           ['encabezado fiscal', () => window.__syncFiscalHeader && window.__syncFiscalHeader()],
           ['sucursales', () => window.cargarSucursales && window.cargarSucursales()],
+          ['establecimientos (configuración)', () => window.__renderSucursalesConfig && window.__renderSucursalesConfig()],
           ['libros', () => window.cargarLibroFiscal && (window.cargarLibroFiscal('compra'), window.cargarLibroFiscal('venta'))],
           ['cierres', () => window.cargarCierres && window.cargarCierres()],
           ['calendario', () => window.cargarCalendarioFiscal && window.cargarCalendarioFiscal()],
@@ -15140,3 +15141,112 @@
   });
 })();
 
+  /* =========================================================
+     ESTABLECIMIENTOS (sucursales) — alta, edición y baja
+     ========================================================= */
+  (function sucursalesConfig() {
+    const lista = document.getElementById('cfgSucLista');
+    const btnNuevo = document.getElementById('cfgSucNuevo');
+    if (!lista || !btnNuevo) return;
+    const toast = (m, t) => { if (window.toast) window.toast(m, t); };
+    const emp = () => window.__EMPRESA_ACTIVA || {};
+    /* Este bloque vive FUERA del envoltorio principal, así que `esc` —que se
+       declara dentro— no se ve desde aquí. Se toma de `window`, donde está
+       publicada. Es el mismo tropiezo que dejó el buscador de terceros sin
+       responder: una función de otro alcance que revienta en silencio. */
+    const esc = (s) => (window.esc ? window.esc(s) : String(s == null ? '' : s));
+
+    /* Una empresa sin establecimientos declarados NO cambia en nada: no se
+       le pregunta el establecimiento al facturar, sus libros no llevan barra
+       de filtro y este cuadro le dice justamente eso. La primera sucursal
+       que se registra es la que enciende todo, y solo para esa empresa: los
+       establecimientos se llavean por empresa_id y se recargan cada vez que
+       se cambia de empresa. */
+    async function render() {
+      if (!window.sb || !emp().id) {
+        lista.innerHTML = '<div style="font-size:12.5px;color:var(--fg-muted);">Elige una empresa para ver sus establecimientos.</div>';
+        return;
+      }
+      const { data, error } = await window.sb.from('sucursales')
+        .select('id, nombre, codigo, direccion, telefono, es_matriz, activa')
+        .eq('empresa_id', emp().id).order('codigo');
+      if (error) {
+        lista.innerHTML = '<div style="font-size:12.5px;color:var(--fg-muted);">No se pudieron cargar (¿corriste sql/sucursales.sql?).</div>';
+        console.warn('[Establecimientos]', error.message);
+        return;
+      }
+      const filas = data || [];
+      if (!filas.length) {
+        lista.innerHTML = '<div style="font-size:12.5px;color:var(--fg-muted);line-height:1.6;">'
+          + 'Esta empresa no tiene establecimientos registrados, y así funciona perfectamente: '
+          + 'no se le pregunta el establecimiento al registrar una factura y sus libros salen como siempre.<br>'
+          + 'Solo hace falta registrarlos si opera en <strong>más de una dirección</strong> y necesitas el libro de cada una.</div>';
+        return;
+      }
+      lista.innerHTML = '<table class="data-table" style="width:100%;font-size:12.5px;"><thead><tr>'
+        + '<th style="width:60px;">Código</th><th>Nombre</th><th>Dirección</th><th style="width:120px;">Teléfono</th><th style="width:70px;">Matriz</th><th style="width:90px;"></th>'
+        + '</tr></thead><tbody>'
+        + filas.map((s) => '<tr' + (s.activa ? '' : ' style="opacity:.5;"') + '>'
+          + '<td class="mono">' + esc(s.codigo || '') + '</td>'
+          + '<td>' + esc(s.nombre || '') + (s.activa ? '' : ' <em>(inactiva)</em>') + '</td>'
+          + '<td>' + esc(s.direccion || '—') + '</td>'
+          + '<td class="mono">' + esc(s.telefono || '—') + '</td>'
+          + '<td>' + (s.es_matriz ? '<i data-lucide="check"></i>' : '') + '</td>'
+          + '<td><button class="btn btn-ghost" data-suc-edit="' + esc(s.id) + '" style="height:26px;font-size:11px;padding:0 9px;"><i data-lucide="pencil"></i> Editar</button></td>'
+          + '</tr>').join('')
+        + '</tbody></table>'
+        + (filas.length === 1
+          ? '<div style="font-size:11.5px;color:var(--fg-muted);margin-top:6px;">Con un solo establecimiento no se pregunta nada al facturar: se asigna este. El selector aparece al registrar el segundo.</div>'
+          : '');
+      lista.querySelectorAll('[data-suc-edit]').forEach((b) =>
+        b.addEventListener('click', () => ficha(filas.find((x) => x.id === b.dataset.sucEdit))));
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    function ficha(s) {
+      if (!emp().id) { toast('Elige una empresa primero.', 'error'); return; }
+      const nuevo = !s;
+      window.openFormModal && window.openFormModal({
+        title: nuevo ? 'Nuevo establecimiento' : 'Editar establecimiento',
+        saveLabel: nuevo ? 'Registrar' : 'Guardar cambios',
+        fields: [
+          { name: 'codigo', label: 'Código (el que le asigna el SENIAT)', placeholder: '02', value: (s && s.codigo) || '' },
+          { name: 'nombre', label: 'Nombre', col: 2, placeholder: 'Ej. Sucursal Barquisimeto', value: (s && s.nombre) || '' },
+          { name: 'direccion', label: 'Dirección', col: 2, placeholder: 'Tal como aparece en el RIF', value: (s && s.direccion) || '' },
+          { name: 'telefono', label: 'Teléfono', placeholder: '0000-0000000', value: (s && s.telefono) || '' },
+          { name: 'esMatriz', label: '¿Es la casa matriz?', type: 'select', options: ['No', 'Sí'], value: (s && s.es_matriz) ? 'Sí' : 'No' },
+          { name: 'activa', label: 'Estado', type: 'select', options: ['Activa', 'Inactiva'], value: (s && !s.activa) ? 'Inactiva' : 'Activa' },
+        ],
+        onSave: (v) => {
+          if (!(v.nombre || '').trim()) return 'Indica el nombre del establecimiento.';
+          if (!(v.codigo || '').trim()) return 'Indica el código: es el que distingue un establecimiento de otro en el libro.';
+          const fila = {
+            empresa_id: emp().id,
+            codigo: v.codigo.trim(), nombre: v.nombre.trim().toUpperCase(),
+            direccion: (v.direccion || '').trim().toUpperCase() || null,
+            telefono: (v.telefono || '').trim() || null,
+            es_matriz: /^s/i.test(v.esMatriz || ''),
+            activa: !/inactiva/i.test(v.activa || ''),
+          };
+          const q = nuevo
+            ? window.sb.from('sucursales').insert(fila)
+            : window.sb.from('sucursales').update(fila).eq('id', s.id);
+          q.then(({ error }) => {
+            if (error) { toast('No se pudo guardar: ' + error.message, 'error'); return; }
+            toast('Establecimiento "' + fila.nombre + '" ' + (nuevo ? 'registrado' : 'actualizado'), 'success');
+            render();
+            /* Los libros se recargan porque su selector nace de esta lista:
+               al registrar el segundo establecimiento tiene que aparecer sin
+               que haya que recargar la página. */
+            if (window.cargarSucursales) window.cargarSucursales().then(() => {
+              if (window.cargarLibroFiscal) { window.cargarLibroFiscal('compra'); window.cargarLibroFiscal('venta'); }
+            });
+          });
+        },
+      });
+    }
+
+    btnNuevo.addEventListener('click', () => ficha(null));
+    window.__renderSucursalesConfig = render;
+    render();
+  })();
