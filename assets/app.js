@@ -9494,11 +9494,27 @@
       // VENTAS: sugiere el siguiente N° de factura/control consultando el máximo real en la BD.
       // forzar=true (tras guardar, para la siguiente factura) sobreescribe aunque el campo tenga valor;
       // si no, solo rellena si está vacío (apertura inicial del formulario).
+      /* El correlativo es de CADA ESTABLECIMIENTO, no de la empresa.
+
+         Casa Matriz va por la factura 148 y Barquisimeto por la 17: son dos
+         talonarios distintos, cada uno con su serie. Tomando el máximo de
+         toda la empresa se le proponía la 149 a una venta de Barquisimeto,
+         que ya es un salto de 131 números en su talonario — y el N° de
+         control salía con el mismo error detrás.
+
+         Con menos de dos establecimientos no se filtra nada y se comporta
+         como siempre. */
       function autonumerar(forzar) {
         if (esCompra || !window.__sbAll || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id || !bodyRef) return;
         const nfEl = bodyRef.querySelector('[data-name="numFactura"]');
         const ncEl = bodyRef.querySelector('[data-name="numControl"]');
-        window.__sbAll((q) => q.eq('empresa_id', window.__EMPRESA_ACTIVA.id).eq('tipo', 'venta'), 'libro_fiscal', 'numero_factura').then(({ data }) => {
+        const selSuc = bodyRef.querySelector('[data-name="sucursal"]');
+        const idSuc = selSuc ? sucursalDe(selSuc.value) : null;
+        window.__sbAll((q) => {
+          let c = q.eq('empresa_id', window.__EMPRESA_ACTIVA.id).eq('tipo', 'venta');
+          if (idSuc) c = c.eq('sucursal_id', idSuc);
+          return c;
+        }, 'libro_fiscal', 'numero_factura').then(({ data }) => {
           let maxN = 0;
           (data || []).forEach((r) => { const n = parseInt(String(r.numero_factura || '').replace(/\D/g, ''), 10); if (!isNaN(n) && n > maxN) maxN = n; });
           if (!maxN) return;
@@ -9574,6 +9590,7 @@
           { name: 'facturaFile', label: '🤖 Factura del proveedor (PDF o foto) — el Agente IA la lee y llena el formulario', col: 2, type: 'file' },
         ] : []).concat([
           { name: 'volverUltimo', col: 2, type: 'static', label: '', html: '<div id="lfUltimo"></div>' },
+        ]).concat(campoSucursal()).concat([
           { name: 'fecha', label: 'Fecha de la factura', type: 'date', value: window.__hoyISO() },
         ]).concat(esCompra ? [
           // Solo COMPRAS: el crédito se declara en el período en que llega la factura (puede diferir de su fecha).
@@ -9599,7 +9616,7 @@
           { name: 'retComp', label: 'N° comprobante de retención' + (esCompra ? ' (el de tu comprobante)' : ' (el que te dio el cliente)'), placeholder: 'Ej. 20260600000123 · déjalo vacío si aún no lo tienes' },
         ]).concat(esCompra ? [] : [
           { name: 'anularVenta', label: '¿Este número es una factura ANULADA? (solo reserva el correlativo, sin monto)', col: 2, type: 'select', options: ['No', 'Sí — Anulada'] },
-        ]).concat(campoSucursal())),
+        ])),
         afterRender: (body) => {
           bodyRef = body;
           pintarUltimo();
@@ -9609,6 +9626,17 @@
           // VENTAS: el N° de factura y de control son correlativos (uno detrás del otro) →
           // se sugiere el siguiente automáticamente, pero queda editable por si hace falta ajustarlo.
           autonumerar();
+          /* Al cambiar de establecimiento se vuelve a numerar, con `forzar`:
+             el número que estaba puesto es el del talonario del otro local y
+             dejarlo sería peor que no proponer ninguno. También se recuerda,
+             para que la siguiente factura abra en el mismo establecimiento. */
+          const selSucForm = body.querySelector('[data-name="sucursal"]');
+          if (selSucForm) {
+            selSucForm.addEventListener('change', () => {
+              recordarSucursal(sucursalDe(selSucForm.value));
+              autonumerar(true);
+            });
+          }
           // COMPRAS: se avisa qué se borra y qué no al pasar a la siguiente factura, para que
           // nadie descubra por accidente que el código de la máquina fiscal se quedó puesto.
           if (esCompra) {
