@@ -7421,3 +7421,48 @@
   color: var(--fg-muted);
   white-space: nowrap;
 }
+
+/* ---------- Establecimientos, en Configuración ----------
+   No usa .data-table a propósito: esa lleva min-width:900px y nowrap, que
+   sirven para las rejillas anchas de los módulos pero dentro de una tarjeta
+   de configuración desbordan — una dirección larga empujaba teléfono, matriz
+   y el botón fuera del cuadro. Aquí la dirección envuelve y el ancho lo
+   manda la tarjeta. */
+table.suc-tabla {
+  width: 100%;
+  min-width: 0;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  table-layout: fixed;
+}
+table.suc-tabla th,
+table.suc-tabla td {
+  text-align: left;
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+  white-space: normal;
+  overflow-wrap: anywhere;   /* una dirección sin espacios no rompe la tabla */
+}
+table.suc-tabla th {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  color: var(--fg-muted);
+  font-weight: 600;
+}
+table.suc-tabla tbody tr:last-child td { border-bottom: 0; }
+table.suc-tabla .c-cod { width: 4.5rem; }
+table.suc-tabla .c-nom { width: 11rem; }
+table.suc-tabla .c-tel { width: 8rem; }
+table.suc-tabla .c-mat { width: 4.5rem; text-align: center; }
+table.suc-tabla .c-act { width: 6rem; }
+table.suc-tabla td.c-mat { text-align: center; }
+
+/* En pantalla angosta la dirección se lleva casi todo: se ocultan las dos
+   columnas que se pueden consultar abriendo la ficha. */
+@media (max-width: 720px) {
+  table.suc-tabla .c-tel,
+  table.suc-tabla .c-mat { display: none; }
+  table.suc-tabla .c-nom { width: 8rem; }
+}

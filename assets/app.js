@@ -15183,16 +15183,21 @@
           + 'Solo hace falta registrarlos si opera en <strong>más de una dirección</strong> y necesitas el libro de cada una.</div>';
         return;
       }
-      lista.innerHTML = '<table class="data-table" style="width:100%;font-size:12.5px;"><thead><tr>'
-        + '<th style="width:60px;">Código</th><th>Nombre</th><th>Dirección</th><th style="width:120px;">Teléfono</th><th style="width:70px;">Matriz</th><th style="width:90px;"></th>'
+      /* Tabla propia y NO `.data-table`: esa lleva `min-width: 900px` y
+         `white-space: nowrap`, pensada para las rejillas anchas de los
+         módulos. Dentro de una tarjeta de configuración, una dirección larga
+         en una sola línea empujaba teléfono, matriz y editar fuera del
+         cuadro. Aquí la dirección envuelve y el ancho manda la tarjeta. */
+      lista.innerHTML = '<table class="suc-tabla"><thead><tr>'
+        + '<th class="c-cod">Código</th><th class="c-nom">Nombre</th><th>Dirección</th><th class="c-tel">Teléfono</th><th class="c-mat">Matriz</th><th class="c-act"></th>'
         + '</tr></thead><tbody>'
         + filas.map((s) => '<tr' + (s.activa ? '' : ' style="opacity:.5;"') + '>'
-          + '<td class="mono">' + esc(s.codigo || '') + '</td>'
-          + '<td>' + esc(s.nombre || '') + (s.activa ? '' : ' <em>(inactiva)</em>') + '</td>'
-          + '<td>' + esc(s.direccion || '—') + '</td>'
-          + '<td class="mono">' + esc(s.telefono || '—') + '</td>'
-          + '<td>' + (s.es_matriz ? '<i data-lucide="check"></i>' : '') + '</td>'
-          + '<td><button class="btn btn-ghost" data-suc-edit="' + esc(s.id) + '" style="height:26px;font-size:11px;padding:0 9px;"><i data-lucide="pencil"></i> Editar</button></td>'
+          + '<td class="mono c-cod">' + esc(s.codigo || '') + '</td>'
+          + '<td class="c-nom"><strong>' + esc(s.nombre || '') + '</strong>' + (s.activa ? '' : ' <em>(inactiva)</em>') + '</td>'
+          + '<td>' + esc(s.direccion || '— sin dirección —') + '</td>'
+          + '<td class="mono c-tel">' + esc(s.telefono || '—') + '</td>'
+          + '<td class="c-mat">' + (s.es_matriz ? '<i data-lucide="check" style="width:15px;height:15px;"></i>' : '') + '</td>'
+          + '<td class="c-act"><button class="btn btn-ghost" data-suc-edit="' + esc(s.id) + '" style="height:26px;font-size:11px;padding:0 9px;"><i data-lucide="pencil"></i> Editar</button></td>'
           + '</tr>').join('')
         + '</tbody></table>'
         + (filas.length === 1
