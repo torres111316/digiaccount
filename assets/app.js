@@ -155,9 +155,13 @@
           ['activos fijos', () => window.cargarActivosFijos && window.cargarActivosFijos()],
           ['criptoactivos', () => window.cargarCriptoactivos && window.cargarCriptoactivos()],
           ['encabezado fiscal', () => window.__syncFiscalHeader && window.__syncFiscalHeader()],
-          ['sucursales', () => window.cargarSucursales && window.cargarSucursales()],
           ['establecimientos (configuración)', () => window.__renderSucursalesConfig && window.__renderSucursalesConfig()],
-          ['libros', () => window.cargarLibroFiscal && (window.cargarLibroFiscal('compra'), window.cargarLibroFiscal('venta'))],
+          /* Los libros ESPERAN a las sucursales. Iban por separado y los
+             libros ganaban la carrera: pintaban la barra con los
+             establecimientos de la empresa anterior. */
+          ['sucursales y libros', () => Promise.resolve(window.cargarSucursales && window.cargarSucursales())
+            .then(() => { if (window.cargarLibroFiscal) { window.cargarLibroFiscal('compra'); window.cargarLibroFiscal('venta'); } })
+            .catch((err) => console.error('[cambio de empresa] sucursales y libros:', err))],
           ['cierres', () => window.cargarCierres && window.cargarCierres()],
           ['calendario', () => window.cargarCalendarioFiscal && window.cargarCalendarioFiscal()],
           ['métodos de cobro', () => window.__cargarCobrosEmp && window.__cargarCobrosEmp(opt.dataset.empresaId)],
@@ -10768,7 +10772,23 @@
     let _sucursales = [];
     window.__SUCURSALES = _sucursales;
     async function cargarSucursales() {
+      /* Lo primero es OLVIDAR las de la empresa anterior.
+
+         Antes `window.__SUCURSALES` seguía apuntando al arreglo de la empresa
+         de la que se venía hasta que terminaba la consulta. Como los libros
+         se cargan enseguida, alcanzaban a pintar la barra de establecimientos
+         con los de GATMA estando ya en otra empresa — y cuando la consulta
+         terminaba vacía, nadie volvía a pintar y la barra se quedaba ahí. Ver
+         "Casa Matriz / Sucursal Barquisimeto" en una empresa que no las tiene
+         invita a registrar una factura en el establecimiento de otra.
+
+         Se vacía ANTES de la consulta, no después. */
       _sucursales = [];
+      window.__SUCURSALES = _sucursales;
+      /* Y el filtro también, que era de la otra empresa: su `sucursal_id` no
+         existe aquí y dejaría el libro en blanco sin decir por qué. */
+      _sucFiltro.compra = '';
+      _sucFiltro.venta = '';
       if (window.sb && window.__EMPRESA_ACTIVA && window.__EMPRESA_ACTIVA.id) {
         const { data, error } = await window.sb.from('sucursales')
           .select('id, nombre, codigo, es_matriz')
@@ -10778,6 +10798,11 @@
         _sucursales = data || [];
       }
       window.__SUCURSALES = _sucursales;
+      // Con cero o una, la barra sobra: se quita de las dos pestañas aunque
+      // el libro no se vuelva a cargar.
+      if (_sucursales.length < 2) {
+        view.querySelectorAll('.suc-bar').forEach((b) => b.remove());
+      }
     }
     window.cargarSucursales = cargarSucursales;
 
@@ -15235,6 +15260,11 @@
         lista.innerHTML = '<div style="font-size:12.5px;color:var(--fg-muted);">Elige una empresa para ver sus establecimientos.</div>';
         return;
       }
+      /* Se limpia ANTES de consultar. Si no, mientras llega la respuesta
+         siguen en pantalla los establecimientos de la empresa anterior, y
+         una lista con datos de otra empresa es peor que una vacía. */
+      const deQuien = emp().id;
+      lista.innerHTML = '<div style="font-size:12.5px;color:var(--fg-muted);">Cargando…</div>';
       const { data, error } = await window.sb.from('sucursales')
         .select('id, nombre, codigo, direccion, telefono, es_matriz, activa')
         .eq('empresa_id', emp().id).order('codigo');
@@ -15243,6 +15273,9 @@
         console.warn('[Establecimientos]', error.message);
         return;
       }
+      // Si mientras se consultaba se cambió otra vez de empresa, esta
+      // respuesta ya no vale: la pinta la consulta de la empresa nueva.
+      if (deQuien !== emp().id) return;
       const filas = data || [];
       if (!filas.length) {
         lista.innerHTML = '<div style="font-size:12.5px;color:var(--fg-muted);line-height:1.6;">'
