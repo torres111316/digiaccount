@@ -975,6 +975,8 @@
        al mismo ritmo: una firma personal especial declara el IVA mensual y
        entera las retenciones cada quincena. */
     let _retQuincena = 0;
+    // Las retenciones del MES completo, sin partir por quincena.
+    let _retMes = [];
     (function selectorQuincenaRet() {
       const nav = document.getElementById('retQuincenaNav');
       if (!nav) return;
@@ -1044,6 +1046,56 @@
       setFoot('t-iva', ivaT); setFoot('t-islr', islrT); setFoot('t-tot', ivaT + islrT);
     }
 
+    /* El desglose por quincena de las retenciones de IVA practicadas.
+
+       El período de trabajo sigue siendo el MES —el libro, la Forma 30 y el
+       IVA son mensuales en una firma personal especial— pero las retenciones
+       de IVA se enteran dos veces al mes. Esto no parte nada: es el mismo
+       total del mes, dicho en sus dos mitades, para saber qué monto va en
+       cada declaración quincenal sin tener que contarlo a mano contra el
+       libro.
+
+       SOLO EL IVA. El ISLR retenido se entera mensual, así que sumarlo aquí
+       daría un número que no corresponde a ninguna declaración quincenal.
+
+       Y solo en quien entera por quincena: a un ordinario le sobra. */
+    function pintarQuincenasRet(practicadas) {
+      const panel = document.querySelector('.fiscal-tab[data-tab="compras"] table.ret-mini');
+      if (!panel || !panel.parentNode) return;
+      const aplica = window.__retencionesPorQuincena && window.__retencionesPorQuincena();
+      let caja = document.getElementById('retQuincenaResumen');
+      if (!aplica) { if (caja) caja.remove(); return; }
+      if (!caja) {
+        caja = document.createElement('div');
+        caja.id = 'retQuincenaResumen';
+        caja.style.cssText = 'margin-top:8px;border:1px solid var(--border-strong);border-radius:9px;overflow:hidden;font-size:12px;';
+        panel.parentNode.insertBefore(caja, panel.nextSibling);
+      }
+      const iva = (practicadas || []).filter((r) => r.tipo === 'iva');
+      const de = (q) => {
+        const f = iva.filter((r) => r.quincena === q);
+        return { ops: f.length, monto: f.reduce((s, r) => s + (Number(r.monto) || 0), 0) };
+      };
+      const q1 = de(1), q2 = de(2);
+      const sinQ = iva.filter((r) => r.quincena !== 1 && r.quincena !== 2);
+      const sumaSinQ = sinQ.reduce((s, r) => s + (Number(r.monto) || 0), 0);
+      const fila = (rot, d, dias) => '<div style="display:flex;justify-content:space-between;gap:10px;padding:7px 11px;border-top:1px solid var(--border);">'
+        + '<span><strong>' + rot + '</strong> <span style="color:var(--fg-muted);">' + dias + '</span></span>'
+        + '<span style="color:var(--fg-muted);">' + d.ops + ' retenc.</span>'
+        + '<span class="mono"><strong>' + fmt(d.monto) + '</strong></span></div>';
+      caja.innerHTML = '<div style="padding:7px 11px;background:var(--bg-subtle,var(--bg-surface));font-weight:600;">'
+        + 'IVA retenido por quincena <span style="font-weight:400;color:var(--fg-muted);">— se entera una declaración por quincena</span></div>'
+        + fila('1ra quincena', q1, '(01–15)')
+        + fila('2da quincena', q2, '(16 al último día)')
+        + (sinQ.length
+          ? '<div style="padding:7px 11px;border-top:1px solid var(--border);background:var(--da-amber-50,rgba(200,140,0,.09));">'
+            + '<strong>' + sinQ.length + ' sin quincena · ' + fmt(sumaSinQ) + '</strong> — salen en las DOS y se enterarían dos veces. '
+            + 'Asígnales la quincena en Retenciones antes de presentar.</div>'
+          : '')
+        + '<div style="padding:6px 11px;border-top:1px solid var(--border);color:var(--fg-muted);">'
+        + 'El ISLR retenido se entera <strong>mensual</strong>, por eso no se reparte aquí.</div>';
+    }
+
     // Traslada las retenciones de IVA SUFRIDAS (las que nos retienen los clientes) a la
     // autoliquidación de la Forma 30 Ventas (ítem 66/38 → reduce el Total a Pagar) y
     // refleja el detalle en los mini-cuadros de cada Forma 30.
@@ -1052,7 +1104,10 @@
       const ivaSuf = arr.filter((r) => r.direccion === 'sufrida' && r.tipo === 'iva').reduce((s, r) => s + (Number(r.monto) || 0), 0);
       window.__RET_IVA_SUFRIDA = ivaSuf;
       if (window.__recalcAutoliq) window.__recalcAutoliq();
-      renderMini(document.querySelector('.fiscal-tab[data-tab="compras"] table.ret-mini'), arr.filter((r) => r.direccion === 'practicada'));
+      const practicadas = arr.filter((r) => r.direccion === 'practicada');
+      renderMini(document.querySelector('.fiscal-tab[data-tab="compras"] table.ret-mini'), practicadas);
+      // El desglose ve el MES entero, aunque arriba se este mirando una quincena.
+      pintarQuincenasRet((_retMes.length ? _retMes : arr).filter((r) => r.direccion === 'practicada'));
       /* Se busca en la PESTAÑA, no dentro de la vista de facturas.
 
          La tablita vive junto a la Forma 30, y esa salió de las dos vistas
@@ -1091,7 +1146,7 @@
       setT2('ivaResumenRet', fmt(ivaRet));
     }
     async function cargarRetenciones() {
-      const vacio = () => { _retData = []; pintar('practicadas', []); pintar('sufridas', []); refreshSummary(); applyFilter(); aplicarAForma30([]); };
+      const vacio = () => { _retData = []; _retMes = []; pintar('practicadas', []); pintar('sufridas', []); refreshSummary(); applyFilter(); aplicarAForma30([]); };
       if (!window.sb || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) return vacio();
       const { data, error } = await window.__sbAll((q) => q.eq('empresa_id', window.__EMPRESA_ACTIVA.id).order('fecha', { ascending: false }), 'retenciones', '*');
       if (error) { console.warn('[DigiAccount] No se pudieron cargar retenciones:', error.message); return vacio(); }
@@ -1116,6 +1171,10 @@
            Una retención sin quincena registrada no se esconde: quedaría
            invisible en las dos, y una retención que no se ve es una que no
            se entera. Se muestra, y se nota que le falta el dato. */
+        /* El mes completo, ANTES de partirlo por quincena. El desglose
+           «IVA retenido por quincena» tiene que ver las dos mitades a la vez;
+           si leyera lo ya filtrado mostraria una sola y la otra en cero. */
+        _retMes = arr.slice();
         if (_retQuincena === 1 || _retQuincena === 2) {
           arr = arr.filter((r) => r.direccion !== 'practicada'
             || !(r.quincena === 1 || r.quincena === 2)
