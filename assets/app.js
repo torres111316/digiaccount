@@ -8604,7 +8604,16 @@
       const titulo = (tab.querySelector('.lh-title') || {}).textContent ? tab.querySelector('.lh-title').textContent.trim() : 'Libro';
       const co = (tab.querySelector('.lh-co') || {}).textContent || '';
       const data = (tab.querySelector('.lh-data') || {}).textContent || '';
-      const arr = (window.__libroData && window.__libroData[tipo]) || [];   // TODAS las filas del período
+      /* Igual que al imprimir: se exporta la seccion que se esta viendo. Un
+         CSV del libro de ventas con los 240 reportes Z metidos entre las
+         facturas, y con las columnas de la maquina en ninguna parte, no sirve
+         para cotejar contra nada. */
+      const modoV = scope && scope.dataset ? scope.dataset.ventasmode : '';
+      const esMaquina = modoV === 'maquina';
+      const arr = esCompra
+        ? ((window.__libroData && window.__libroData[tipo]) || [])
+        : ((window.__libroData && window.__libroData[tipo]) || [])
+          .filter((r) => (!!String(r.numero_zeta || '').trim()) === esMaquina);
       const rows = [[titulo], [co.trim()], [data.replace(/\s+/g, ' ').trim()], []];
       rows.push(['N°', 'Fecha', 'RIF', esCompra ? 'Proveedor' : 'Cliente', 'Factura', 'Control', 'Doc', 'Total', 'Exento', 'Base', 'Alíc.', 'IVA'].concat(esCompra ? [] : ['IGTF']));
       let tTot = 0, tEx = 0, tBase = 0, tIva = 0, tIgtf = 0;
@@ -8642,8 +8651,20 @@
       cont.className = 'libro-print';
       const head = tab.querySelector('.libro-head');
       if (head) cont.appendChild(head.cloneNode(true));
-      // Tabla LIMPIA con TODAS las filas del período (sin paginación ni botones), compacta
-      const arr = (window.__libroData && window.__libroData[tipo]) || [];
+      /* Se imprime LO QUE SE ESTÁ VIENDO, no todo el período.
+
+         El libro de ventas tiene dos secciones porque son dos formatos
+         distintos de asiento: las facturas de talonario van con cliente, RIF
+         y número de factura; los reportes Z van con la máquina, el número de
+         Z y el rango de comprobantes. Radian tiene 240 reportes Z y dos
+         facturas de contingencia, y al imprimir salían las 242 mezcladas en
+         el formato de talonario — los Z con las columnas de cliente vacías y
+         sus datos propios en ninguna parte. */
+      const modoV = scope && scope.dataset ? scope.dataset.ventasmode : '';
+      const esMaquina = modoV === 'maquina';
+      const todasFilas = (window.__libroData && window.__libroData[tipo]) || [];
+      const arr = esCompra ? todasFilas
+        : todasFilas.filter((r) => (!!String(r.numero_zeta || '').trim()) === esMaquina);
       let tTot = 0, tEx = 0, tBase = 0, tIva = 0, tIgtf = 0;
       const filas = arr.map((r, i) => {
         const anulada = /anulada/i.test(r.tercero_nombre || '');
@@ -8659,8 +8680,24 @@
           + (esCompra ? '' : '<td class="num">' + fmtF(igtf) + '</td>') + '</tr>';
       }).join('');
       const th = '<tr><th>N°</th><th>Fecha</th><th>RIF</th><th>' + (esCompra ? 'Proveedor' : 'Cliente') + '</th><th>Factura</th><th>Control</th><th>Doc</th><th>Total</th><th>Exento</th><th>Base</th><th>Alíc.</th><th>IVA</th>' + (esCompra ? '' : '<th>IGTF</th>') + '</tr>';
+      // Las mismas columnas que la tabla de máquina fiscal en pantalla.
+      const thZ = '<tr><th>N° Op.</th><th>Fecha</th><th>Máquina Fiscal</th><th>N° Zeta</th><th>Primer Comprob.</th><th>Último Comprob.</th>'
+        + '<th>Total Ventas (con IVA)</th><th>Ventas No Gravadas</th><th>Base Imponible</th><th>IVA</th><th>IGTF (3%)</th></tr>';
+      const filasZ = arr.map((r, i) => {
+        const tot = Number(r.total) || 0, ex = Number(r.exento) || 0, base = Number(r.base) || 0, iva = Number(r.iva) || 0, igtf = Number(r.igtf) || 0;
+        return '<tr><td>' + (i + 1) + '</td><td>' + (r.fecha || '') + '</td><td>' + (r.maquina_fiscal || '') + '</td>'
+          + '<td>' + (r.numero_zeta || '') + '</td><td>' + (r.comprobante_desde || '') + '</td><td>' + (r.comprobante_hasta || '') + '</td>'
+          + '<td class="num">' + fmtF(tot) + '</td><td class="num">' + fmtF(ex) + '</td><td class="num">' + fmtF(base) + '</td>'
+          + '<td class="num">' + fmtF(iva) + '</td><td class="num">' + fmtF(igtf) + '</td></tr>';
+      }).join('');
+      const footZ = '<tr class="libro-tot"><td colspan="6" style="text-align:right;">TOTALES DEL PERÍODO (' + arr.length + ' reportes Z)</td>'
+        + '<td class="num">' + fmtF(tTot) + '</td><td class="num">' + fmtF(tEx) + '</td><td class="num">' + fmtF(tBase) + '</td>'
+        + '<td class="num">' + fmtF(tIva) + '</td><td class="num">' + fmtF(tIgtf) + '</td></tr>';
       const foot = '<tr class="libro-tot"><td colspan="7" style="text-align:right;">TOTALES DEL PERÍODO (' + arr.length + ' operaciones)</td><td class="num">' + fmtF(tTot) + '</td><td class="num">' + fmtF(tEx) + '</td><td class="num">' + fmtF(tBase) + '</td><td></td><td class="num">' + fmtF(tIva) + '</td>' + (esCompra ? '' : '<td class="num">' + fmtF(tIgtf) + '</td>') + '</tr>';
-      cont.insertAdjacentHTML('beforeend', '<table class="libro-table libro-print-table" style="width:100%;border-collapse:collapse;font-size:9px;"><thead>' + th + '</thead><tbody>' + (filas || '<tr><td colspan="13">Sin operaciones en el período.</td></tr>') + '</tbody><tfoot>' + foot + '</tfoot></table>');
+      cont.insertAdjacentHTML('beforeend', '<table class="libro-table libro-print-table" style="width:100%;border-collapse:collapse;font-size:9px;"><thead>'
+        + (esMaquina ? thZ : th) + '</thead><tbody>'
+        + ((esMaquina ? filasZ : filas) || '<tr><td colspan="13">Sin operaciones en el período.</td></tr>')
+        + '</tbody><tfoot>' + (esMaquina ? footZ : foot) + '</tfoot></table>');
       portal.appendChild(cont);
       document.body.classList.add('printing-comp');
       window.print();

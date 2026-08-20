@@ -953,6 +953,74 @@
         </div>
 
         <!-- Cuadro de traslado a la Declaración de IVA (Forma 30) -->
+        </div><!-- /ventas-view facturas -->
+
+        <!-- VISTA: Por máquina fiscal (Reportes Z) -->
+        <div class="ventas-view" data-ventasmode="maquina" hidden>
+        <div class="data-table-wrap">
+          <div class="table-toolbar">
+            <label class="quick-search">
+              <i data-lucide="search"></i>
+              <input type="text" placeholder="Buscar por N° de Zeta o comprobante…">
+            </label>
+            <button class="filter-chip"><i data-lucide="cpu"></i> Máquina: Z7C0025982</button>
+            <div class="right">
+              <button class="btn btn-ghost" style="height:32px;font-size:12px;" data-libro-action="print"><i data-lucide="printer"></i> Imprimir</button>
+              <button class="btn btn-ghost" style="height:32px;font-size:12px;" data-libro-action="export"><i data-lucide="download"></i> Exportar</button>
+            </div>
+          </div>
+          <div class="table-scroll">
+            <table class="data-table libro-table libro-ventas libro-maquina" style="min-width:1360px;">
+              <thead>
+                <tr>
+                  <th class="ctr">N° Op.</th>
+                  <th>Fecha</th>
+                  <th>Máquina Fiscal</th>
+                  <th class="ctr">N° Zeta</th>
+                  <th>Primer Comprob.</th>
+                  <th>Último Comprob.</th>
+                  <th class="ctr">N° N.D.</th>
+                  <th class="ctr">N° N.C.</th>
+                  <th class="num">Total Ventas (con IVA)</th>
+                  <th class="num">Ventas No Gravadas</th>
+                  <th class="num">Base Imponible</th>
+                  <th class="num">IGTF (3%)</th>
+                  <th class="ctr">Alíc.</th>
+                  <th class="num">Débito Fiscal (IVA)</th>
+                </tr>
+              </thead>
+              <tbody>
+              </tbody>
+              <tfoot>
+                <tr class="libro-tot">
+                  <td colspan="8" style="text-align:right;">TOTALES DEL PERÍODO</td>
+                  <td class="num">0,00</td>
+                  <td class="num">0,00</td>
+                  <td class="num">0,00</td>
+                  <td class="num">0,00</td>
+                  <td></td>
+                  <td class="num">0,00</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+          <div class="table-footer">
+            <div class="count">Mostrando <strong>0</strong> Reportes Z</div>
+            <div class="pager">
+              <button><i data-lucide="chevron-left"></i></button>
+              <button data-active="true">1</button>
+              <button><i data-lucide="chevron-right"></i></button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Cuadro de traslado a la Declaración de IVA (Forma 30) — igual al modo facturas -->
+        </div><!-- /ventas-view maquina -->
+        <!-- La Forma 30 de ventas es UNA y va fuera de las dos vistas: la
+             declaracion no se parte por el medio de emision. Estaba dentro de
+             la vista "facturas", asi que al pasar a maquina fiscal se ocultaba
+             y quedaba a la vista una copia de maqueta con ceros escritos a
+             mano, que nunca se llenaba. -->
         <div class="libro-resumen">
           <div class="lr-title"><i data-lucide="clipboard-list"></i> Traslado a la Declaración de IVA · Forma 30 (Sección Ventas / Débitos)</div>
           <div class="libro-resumen-grid">
@@ -1043,139 +1111,6 @@
           </div>
           </div><!-- /libro-resumen-grid -->
         </div>
-        </div><!-- /ventas-view facturas -->
-
-        <!-- VISTA: Por máquina fiscal (Reportes Z) -->
-        <div class="ventas-view" data-ventasmode="maquina" hidden>
-        <div class="data-table-wrap">
-          <div class="table-toolbar">
-            <label class="quick-search">
-              <i data-lucide="search"></i>
-              <input type="text" placeholder="Buscar por N° de Zeta o comprobante…">
-            </label>
-            <button class="filter-chip"><i data-lucide="cpu"></i> Máquina: Z7C0025982</button>
-            <div class="right">
-              <button class="btn btn-ghost" style="height:32px;font-size:12px;" data-libro-action="print"><i data-lucide="printer"></i> Imprimir</button>
-              <button class="btn btn-ghost" style="height:32px;font-size:12px;" data-libro-action="export"><i data-lucide="download"></i> Exportar</button>
-            </div>
-          </div>
-          <div class="table-scroll">
-            <table class="data-table libro-table libro-ventas libro-maquina" style="min-width:1360px;">
-              <thead>
-                <tr>
-                  <th class="ctr">N° Op.</th>
-                  <th>Fecha</th>
-                  <th>Máquina Fiscal</th>
-                  <th class="ctr">N° Zeta</th>
-                  <th>Primer Comprob.</th>
-                  <th>Último Comprob.</th>
-                  <th class="ctr">N° N.D.</th>
-                  <th class="ctr">N° N.C.</th>
-                  <th class="num">Total Ventas (con IVA)</th>
-                  <th class="num">Ventas No Gravadas</th>
-                  <th class="num">Base Imponible</th>
-                  <th class="num">IGTF (3%)</th>
-                  <th class="ctr">Alíc.</th>
-                  <th class="num">Débito Fiscal (IVA)</th>
-                </tr>
-              </thead>
-              <tbody>
-              </tbody>
-              <tfoot>
-                <tr class="libro-tot">
-                  <td colspan="8" style="text-align:right;">TOTALES DEL PERÍODO</td>
-                  <td class="num">0,00</td>
-                  <td class="num">0,00</td>
-                  <td class="num">0,00</td>
-                  <td class="num">0,00</td>
-                  <td></td>
-                  <td class="num">0,00</td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-          <div class="table-footer">
-            <div class="count">Mostrando <strong>0</strong> Reportes Z</div>
-            <div class="pager">
-              <button><i data-lucide="chevron-left"></i></button>
-              <button data-active="true">1</button>
-              <button><i data-lucide="chevron-right"></i></button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Cuadro de traslado a la Declaración de IVA (Forma 30) — igual al modo facturas -->
-        <div class="libro-resumen">
-          <div class="lr-title"><i data-lucide="clipboard-list"></i> Traslado a la Declaración de IVA · Forma 30 (Sección Ventas / Débitos)</div>
-          <div class="libro-resumen-grid">
-          <div class="decl-iva">
-            <table class="decl-iva-table">
-              <thead>
-                <tr><th class="item">N°</th><th class="concepto"></th><th class="grp" colspan="2">Base Imponible</th><th class="grp" colspan="2">Débito Fiscal</th></tr>
-              </thead>
-              <tbody>
-                <tr><td class="item">1</td><td class="concepto">Ventas Internas no Gravadas</td><td class="cod">40</td><td class="num">0,00</td><td class="cod"></td><td class="num"></td></tr>
-                <tr><td class="item">2</td><td class="concepto">Ventas de Exportación</td><td class="cod">41</td><td class="num">0,00</td><td class="cod"></td><td class="num"></td></tr>
-                <tr><td class="item">3</td><td class="concepto">Ventas Internas Gravadas por Alícuota General</td><td class="cod">42</td><td class="num">0,00</td><td class="cod">43</td><td class="num">0,00</td></tr>
-                <tr><td class="item">4</td><td class="concepto">Ventas Internas Gravadas por Alícuota General más Alícuota Adicional</td><td class="cod">442</td><td class="num">0,00</td><td class="cod">452</td><td class="num">0,00</td></tr>
-                <tr><td class="item">5</td><td class="concepto">Ventas Internas Gravadas por Alícuota Reducida</td><td class="cod">443</td><td class="num">0,00</td><td class="cod">453</td><td class="num">0,00</td></tr>
-                <tr class="subtot"><td class="item">6</td><td class="concepto">Total Ventas y Débitos Fiscal para efectos de Determinación</td><td class="cod">46</td><td class="num">0,00</td><td class="cod">47</td><td class="num">0,00</td></tr>
-                <tr><td class="item">7</td><td class="concepto">Ajustes a los Débitos Fiscales de períodos anteriores</td><td class="cod"></td><td class="num"></td><td class="cod">48</td><td class="num">0,00</td></tr>
-                <tr><td class="item">8</td><td class="concepto">Certificados de Débitos Fiscales Exonerados (recibos de entes exonerados)</td><td class="cod"></td><td class="num"></td><td class="cod">80</td><td class="num">0,00</td></tr>
-                <tr class="total"><td class="item">9</td><td class="concepto">Total Débitos Fiscales</td><td class="cod"></td><td class="num"></td><td class="cod">49</td><td class="num">0,00</td></tr>
-                <tr class="sec"><td colspan="6">Autoliquidación del IVA del Período</td></tr>
-                <tr><td class="item">27</td><td class="concepto">Total Cuota Tributaria del Período (Débitos 49 − Créditos 39)</td><td class="cod"></td><td class="num"></td><td class="cod">53</td><td class="num">0,00</td></tr>
-                <tr><td class="item">28</td><td class="concepto">Excedente de Crédito Fiscal para el mes siguiente</td><td class="cod"></td><td class="num"></td><td class="cod">60</td><td class="num">0,00</td></tr>
-                <tr><td class="item">34</td><td class="concepto">Retenciones del Período (IVA retenido por los clientes)</td><td class="cod"></td><td class="num"></td><td class="cod">66</td><td class="num">0,00</td></tr>
-                <tr><td class="item">37</td><td class="concepto">Total Retenciones</td><td class="cod"></td><td class="num"></td><td class="cod">74</td><td class="num">0,00</td></tr>
-                <tr><td class="item">38</td><td class="concepto">Retenciones Soportadas y Descontadas en esta Declaración</td><td class="cod"></td><td class="num"></td><td class="cod">55</td><td class="num">0,00</td></tr>
-                <tr class="excedente"><td class="item">39</td><td class="concepto">Saldo de Retenciones de IVA no aplicado (al mes siguiente)</td><td class="cod"></td><td class="num"></td><td class="cod">67</td><td class="num">0,00</td></tr>
-                <tr class="total"><td class="item">48</td><td class="concepto">Total a Pagar</td><td class="cod"></td><td class="num"></td><td class="cod">90</td><td class="num">0,00</td></tr>
-              </tbody>
-            </table>
-          </div>
-
-          <!-- Otras obligaciones del período (igual al modo facturas) -->
-          <div class="oblig-panel">
-            <div class="op-title"><i data-lucide="receipt-text"></i> Otras obligaciones del período</div>
-
-            <div class="op-section">Retenciones sufridas en el período <span>· las que los clientes nos practican</span></div>
-            <table class="ret-mini">
-              <thead>
-                <tr>
-                  <th>N° Comprobante</th><th>Factura</th><th>Tipo</th>
-                  <th class="num">Base</th><th class="num">%</th><th class="num">Retenido</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr><td colspan="6" style="text-align:center;color:var(--fg-muted);padding:14px;">Sin retenciones registradas en el período</td></tr>
-              </tbody>
-              <tfoot>
-                <tr class="t-iva"><td colspan="5">IVA retenido por clientes · Forma 30 (casilla 66)</td><td class="num">0,00</td></tr>
-                <tr class="t-islr"><td colspan="5">ISLR retenido por clientes · comprobante AR-CV</td><td class="num">0,00</td></tr>
-                <tr class="t-tot"><td colspan="5">Total retenido por clientes</td><td class="num">0,00</td></tr>
-              </tfoot>
-            </table>
-
-            <div class="op-section">Tributos sobre ventas / ingresos</div>
-            <div class="op-list">
-              <div class="op-item igtf">
-                <div class="op-head"><span class="op-tag amber">IGTF</span> Débito de transacciones financieras</div>
-                <div class="op-row"><span>Base (cobros en divisas / cripto)</span><span class="mono">0,00</span></div>
-                <div class="op-row"><span>Alícuota</span><span class="mono">3%</span></div>
-                <div class="op-row total"><span>IGTF cobrado</span><span class="mono">0,00</span></div>
-                <div class="op-foot">Ley de IGTF (G.O. 6.687/2022) · declaración quincenal (Forma 21)</div>
-              </div>
-              <div class="op-item anticipo" id="islrEstimBox2">
-                <div class="op-head"><span class="op-tag teal">ISLR</span> Según la condición fiscal</div>
-                <div class="op-row"><span>Cargando…</span><span class="mono">0,00</span></div>
-              </div>
-            </div>
-            <a href="#" class="op-link" data-goto-fiscaltab="retenciones">Ver detalle y generar recibo en Retenciones <i data-lucide="arrow-right"></i></a>
-          </div>
-          </div><!-- /libro-resumen-grid -->
-        </div>
-        </div><!-- /ventas-view maquina -->
       </div>
 
       <!-- TAB: Retenciones -->
