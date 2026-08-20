@@ -1053,7 +1053,19 @@
       window.__RET_IVA_SUFRIDA = ivaSuf;
       if (window.__recalcAutoliq) window.__recalcAutoliq();
       renderMini(document.querySelector('.fiscal-tab[data-tab="compras"] table.ret-mini'), arr.filter((r) => r.direccion === 'practicada'));
-      renderMini(document.querySelector('.ventas-view[data-ventasmode="facturas"] table.ret-mini'), arr.filter((r) => r.direccion === 'sufrida'));
+      /* Se busca en la PESTAÑA, no dentro de la vista de facturas.
+
+         La tablita vive junto a la Forma 30, y esa salió de las dos vistas
+         porque la declaración es una sola. El selector se quedó apuntando a
+         `.ventas-view[data-ventasmode="facturas"]`, donde ya no está: no la
+         encontraba y no la pintaba nunca. Se veía el IVA retenido en la
+         casilla 66 de la Forma 30 y no había manera de ver de qué retención
+         venía.
+
+         Buscarla en la pestaña la deja además visible en las dos secciones,
+         que es lo correcto: al cliente que paga con tique de máquina también
+         se le puede retener. */
+      renderMini(document.querySelector('.fiscal-tab[data-tab="ventas"] table.ret-mini'), arr.filter((r) => r.direccion === 'sufrida'));
       // Resumen de retenciones ISLR practicadas (panel del generador XML)
       const islrBody = document.getElementById('islrResumenBody');
       if (islrBody) {
