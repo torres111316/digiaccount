@@ -3477,17 +3477,36 @@
       // Emprendimientos NO declaran Protección a las Pensiones (aunque su RIF sea J):
       // sin cálculos, sin planilla y sin avisos para la empresa exenta.
       const eAct = window.__EMPRESA_ACTIVA || {};
-      const exenta = eAct.declaraDpp === false;
+      /* Una PERSONA NATURAL no declara Protección a las Pensiones, aunque sea
+         contribuyente especial: la PA SNAT/2025/000093 art.1 habla de «las
+         personas jurídicas... de carácter privado», y el manual del SENIAT
+         (TRI.GR.03.031) dice «dirigido a las personas Jurídicas (J)». Radian
+         es una firma personal con RIF V.
+
+         El calendario ya lo excluía —filtra por la letra del RIF— pero este
+         panel miraba solo la casilla `declara_dpp`, que en Radian está en sí.
+         Los dos decían cosas distintas del mismo contribuyente: no le avisaba
+         del vencimiento, pero le pintaba la planilla para presentarlo. */
+      const esNatural = /^\s*[VE]/i.test(String(eAct.rif || ''));
+      const exenta = eAct.declaraDpp === false || esNatural;
       const doc = $('pensionDoc');
       let banner = $('dppExentoBanner');
       if (!banner && doc && doc.parentElement) {
         banner = document.createElement('div');
         banner.id = 'dppExentoBanner';
         banner.style.cssText = 'display:none;margin:10px 0;padding:12px 14px;border:1px solid var(--border-strong);border-radius:10px;font-size:13px;color:var(--fg-muted);';
-        banner.innerHTML = '✅ <strong>Esta empresa no declara Protección a las Pensiones</strong> — emprendimiento exento. Cálculo, planilla y avisos de DPP desactivados para ella.';
+        banner.innerHTML = '✅ <strong>Esta empresa no declara Protección a las Pensiones.</strong> <span id="dppMotivo"></span> Cálculo, planilla y avisos de DPP desactivados para ella.';
         doc.parentElement.insertBefore(banner, doc);
       }
-      if (banner) banner.style.display = exenta ? 'block' : 'none';
+      if (banner) {
+        banner.style.display = exenta ? 'block' : 'none';
+        const motivo = document.getElementById('dppMotivo');
+        if (motivo) {
+          motivo.textContent = esNatural
+            ? 'Es una persona natural, y el DPP es de las personas jurídicas privadas (PA SNAT/2025/000093, art. 1).'
+            : 'Emprendimiento exento.';
+        }
+      }
       if (doc) doc.style.display = exenta ? 'none' : '';
       if (exenta) return;
       const emp = parseInt(($('dppEmpInput') || {}).value, 10) || 0;
