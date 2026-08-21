@@ -41,7 +41,53 @@ PARES = [
      'de_id': 'b7372671-e475-49d4-8934-75398feb25a3',
      'a_nombre': 'REISON ADAN RODRIGUEZ LEAL', 'a_cedula': 'V24154402',
      'a_id': '73b0cc39-9aaf-448c-a8d3-537cd4e27bb8'},
+
+    # MARIANNYS entró casi un mes después, el 16/08/2025, así que no le
+    # tocan las 53 semanas: se recortan las que son anteriores a su ingreso.
+
+    # El molde vuelve a ser ÁNGEL porque comparten el paquete —53,71 $ a la
+    # semana— aunque el cargo sea distinto (pastelera y panadero): lo que
+    # tiene que coincidir para copiar los importes es el paquete, no el
+    # nombre del puesto. El cargo se cambia como el nombre y la cédula.
+
+    # Se cuenta desde la primera semana COMPLETA posterior al ingreso. El
+    # 16/08 cayó sábado, así que la semana del 11 al 17 la trabajó apenas dos
+    # días: copiarle ahí el recibo de una semana entera le pagaría cinco días
+    # que no trabajó. Ese pago parcial, si corresponde, se calcula aparte. 
+    {'molde': 'Recibos semanales - ANGEL GABRIEL MENDOZA ESCOBAR.html',
+     'de_nombre': 'ANGEL GABRIEL MENDOZA ESCOBAR', 'de_cedula': 'V16822677',
+     'de_id': 'b7372671-e475-49d4-8934-75398feb25a3',
+     'de_cargo': 'PANADERO', 'de_ingreso': '19/07/2025',
+     'a_nombre': 'MARIANNYS CAROLINA RIVERO MORENO', 'a_cedula': 'V20241119',
+     'a_id': 'b4bca898-8e0b-4386-83a5-52e0aacef65f',
+     'a_cargo': 'PASTELERA', 'a_ingreso': '16/08/2025',
+     'desde': '2025-08-18', 'semanas_esperadas': 49},
 ]
+
+
+def recortar(html, desde_iso):
+    """Deja solo los recibos de semanas que EMPIEZAN en o después de `desde_iso`.
+
+    Cada recibo es un `<div class="recibo-doc">`, y el documento trae uno tras
+    otro después de un `<style>` común. Se parte por ese div, se descartan los
+    anteriores y se vuelve a armar: así el encabezado, los estilos y el cierre
+    quedan intactos y solo cambia cuántos recibos hay en medio.
+    """
+    marca = '<div class="recibo-doc">'
+    trozos = html.split(marca)
+    cabeza, recibos = trozos[0], trozos[1:]
+    quedan, fuera = [], 0
+    for r in recibos:
+        m = re.search(r'Semana\s+(\d{2})/(\d{2})/(\d{4})\s*al', r)
+        if not m:
+            quedan.append(r)          # sin fecha legible no se descarta nada
+            continue
+        ini = '%s-%s-%s' % (m.group(3), m.group(2), m.group(1))
+        if ini >= desde_iso:
+            quedan.append(r)
+        else:
+            fuera += 1
+    return cabeza + marca + marca.join(quedan), fuera
 
 
 def montos(html):
@@ -61,10 +107,21 @@ def main():
             continue
 
         h = open(ruta, encoding='utf-8').read()
+        if p.get('desde'):
+            h, quitadas = recortar(h, p['desde'])
+            print('')
+            print('  se quitan %d semanas anteriores al %s' % (quitadas, p['desde']))
         antes = montos(h)
         semanas = len(re.findall(r'Semana\s+\d{2}/\d{2}/\d{4}\s*al\s*\d{2}/\d{2}/\d{4}', h))
 
         nuevo = h
+        # El cargo y la fecha de ingreso también cambian cuando el molde es de
+        # otro puesto. Se hacen ANTES del nombre para que el reemplazo del
+        # cargo no toque un nombre que lo contenga.
+        if p.get('de_cargo'):
+            nuevo = nuevo.replace('>' + p['de_cargo'] + '<', '>' + p['a_cargo'] + '<')
+        if p.get('de_ingreso'):
+            nuevo = nuevo.replace('>' + p['de_ingreso'] + '<', '>' + p['a_ingreso'] + '<')
         # El identificador va en mayúsculas dentro del número de recibo y en
         # minúsculas en cualquier otro sitio: se cambian las dos formas.
         nuevo = nuevo.replace(p['de_id'].upper(), p['a_id'].upper())
@@ -93,7 +150,8 @@ def main():
         print('  cédula nueva aparece    : %d veces' % nuevo.count(p['a_cedula']))
         print('  rastro del compañero    : %s' % (', '.join(sorted(set(rastro))) or 'ninguno'))
 
-        if semanas != 53 or antes != despues or rastro:
+        esperadas = p.get('semanas_esperadas', 53)
+        if semanas != esperadas or antes != despues or rastro:
             print('  >>> NO SE ESCRIBE: algo no cuadra.')
             problemas += 1
             continue

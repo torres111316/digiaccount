@@ -6700,13 +6700,27 @@
       });
       const btnReal = host.querySelector('#basePrestReal');
       if (btnReal) btnReal.addEventListener('click', () => {
-        // Sueldo real mensual = (salario base del período + bono de contingencia) × períodos por mes.
-        // OJO: usar la frecuencia PROPIA del trabajador, no el selector global (que puede estar en otra).
-        const p = calcPago(emp, emp.frecHabitual || payFreq);
+        /* Sueldo real mensual = (salario base del período + bono de
+           contingencia) × períodos por mes. Se usa la frecuencia PROPIA del
+           trabajador, no el selector global, que puede estar en otra.
+
+           SE CALCULA COMO SI NO ESTUVIERA DE VACACIONES, y es la clave: en
+           `calcPago`, quien está de vacaciones no devenga salario ni
+           contingencia —correcto para su recibo de la semana— así que el
+           «sueldo real» daba CERO y el aviso concluía «no tiene paquete/bono
+           configurado». Le pasó a Mariannys el día después de empezar las
+           suyas, teniendo la ficha idéntica a la de un compañero al que sí le
+           funcionó porque las suyas ya habían terminado.
+
+           Y es al revés de lo que hace falta: la base para pagar las
+           vacaciones es justamente el sueldo que ganaría si NO estuviera de
+           vacaciones. */
+        const empBase = Object.assign({}, emp, { vacacionesDesde: null, vacacionesHasta: null });
+        const p = calcPago(empBase, emp.frecHabitual || payFreq);
         const div = (p.f && p.f.div) ? p.f.div : 1;
         const baseReal = (p.sueldo + p.bonoContingencia) * div;
         if (baseReal > 0) { aplicarBase(baseReal); if (window.toast) window.toast('Base = sueldo real (base + bono de contingencia): Bs ' + fmt(baseReal), 'success'); }
-        else if (window.toast) window.toast('Este trabajador no tiene paquete/bono configurado.', 'info');
+        else if (window.toast) window.toast('No pude calcular el sueldo real: ' + (emp.nombre || 'este trabajador') + ' no tiene salario ni bono de contingencia cargados en su ficha.', 'error');
       });
       const vacIni = host.querySelector('#vacInicioInput');
       if (vacIni) vacIni.addEventListener('change', () => { if (vacIni.value) { _vacInicio[emp.id] = vacIni.value; renderCalc(tab); } });
