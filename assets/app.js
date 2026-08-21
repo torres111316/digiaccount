@@ -1975,7 +1975,25 @@
           { name: 'base', label: 'Monto sobre el que se retiene (Bs)', type: 'number', step: '0.01', value: r.base != null ? String(r.base) : '' },
           { name: 'pct', label: '% de retención', type: 'number', step: '0.01', value: r.pct != null ? String(r.pct) : '' },
           { name: 'sustraendo', label: 'Sustraendo (ISLR)', type: 'number', step: '0.01', value: r.sustraendo != null ? String(r.sustraendo) : '0' },
-        ],
+        ].concat((window.__retencionesPorQuincena && window.__retencionesPorQuincena()) ? [
+          /* La quincena se ELIGE, no se deduce.
+
+             Es la del período en que la retención se ENTERA, no la del día de
+             la factura: en Radian hay nueve de octubre fechadas en septiembre
+             —compras recibidas tarde— y por el día se irían a la quincena que
+             no es. Por eso hay un desplegable y no un cálculo.
+
+             Sin quincena la retención no se esconde: sale en las dos, y por
+             eso el TXT avisa de que se enteraría dos veces. Aquí es donde se
+             arregla. */
+          { name: 'quincena', col: 2,
+            label: 'Quincena en que se entera' + (r.quincena === 1 || r.quincena === 2 ? '' : ' — SIN ASIGNAR: hoy sale en las dos'),
+            type: 'select',
+            options: [{ value: '', label: 'Sin asignar todavía' },
+                      { value: '1', label: '1ra quincena (se entera del 1 al 15)' },
+                      { value: '2', label: '2da quincena (se entera del 16 al último día)' }],
+            value: r.quincena === 1 ? '1' : r.quincena === 2 ? '2' : '' },
+        ] : []),
         afterRender: (body) => { setupPctField(body); setupIslrFields(body); },
         extraLabel: 'Comprobante',
         onExtra: () => imprimirComprobante(r),
@@ -2000,6 +2018,9 @@
             comprobante: v.comprobante, tercero_nombre: v.nombre, tercero_rif: normRif(v.rif),
             factura: v.factura, numero_control: v.numControl || null, base: base, pct: pct, monto: monto,
             concepto: esIslr ? v.concepto : null, concepto_codigo: esIslr ? cod : null, sujeto: esIslr ? suj : null, sustraendo: sust,
+            // El campo solo existe en quien entera por quincena; si no está,
+            // se deja como estaba en vez de borrarlo con un nulo.
+            ...(v.quincena === undefined ? {} : { quincena: v.quincena === '1' ? 1 : v.quincena === '2' ? 2 : null }),
           }).eq('id', id).then(({ error }) => {
             if (error) { if (window.toast) window.toast('No se pudo actualizar: ' + error.message, 'error'); return; }
             if (window.cargarRetenciones) window.cargarRetenciones();
@@ -4089,7 +4110,19 @@
       const terceros = (window.__getTerceros ? window.__getTerceros() : []);
       const facturas = _facturas;
       window.openFormModal && window.openFormModal({
-        title: pre.factura ? 'Registrar cobro · ' + pre.factura : 'Registrar movimiento',
+        /* El título tiene que decir de qué lado está el dinero.
+
+           Decía «Registrar cobro» SIEMPRE, aunque se abriera desde una
+           factura de COMPRA con tipo 'egreso'. El movimiento se guardaba
+           bien —el egreso era egreso— pero el cartel decía lo contrario, y
+           ver «Registrar cobro» encima de una compra que uno acaba de
+           cargar hace dudar de si el sistema entendió algo al revés.
+
+           Los demás rótulos (proveedor, factura de compra) ya se adaptaban
+           en `refrescarTerceros`; faltaba este, que es el que más se lee. */
+        title: pre.factura
+          ? (/egreso/i.test(pre.tipo || '') ? 'Registrar pago · ' : 'Registrar cobro · ') + pre.factura
+          : 'Registrar movimiento',
         saveLabel: 'Registrar',
         fields: [
           { name: 'cuenta', label: 'Cuenta / Caja (banco o efectivo)', col: 2, type: 'select', options: cuentaOpts },
@@ -4139,10 +4172,16 @@
             if (montoEl && !montoEl.value) montoEl.value = (Number(f.total) || 0).toFixed(2);
             if (concEl) concEl.value = (esIng() ? 'Cobro · ' : 'Pago · ') + (terc.value || '') + (esIng() ? ' · Recibo ' : ' · Factura ') + (f.ref || '');
           };
-          tipoSel.addEventListener('change', () => { refrescarTerceros(); refrescarFacturas(); });
+          // Si se cambia el tipo a mano, el título sigue al cambio.
+          const tituloEl = document.getElementById('fmTitle');
+          const refrescarTitulo = () => {
+            if (!tituloEl || !pre.factura) return;
+            tituloEl.textContent = (esIng() ? 'Registrar cobro · ' : 'Registrar pago · ') + pre.factura;
+          };
+          tipoSel.addEventListener('change', () => { refrescarTerceros(); refrescarFacturas(); refrescarTitulo(); });
           terc.addEventListener('change', refrescarFacturas); terc.addEventListener('input', refrescarFacturas);
           fact.addEventListener('change', autollenar); fact.addEventListener('input', autollenar);
-          refrescarTerceros(); refrescarFacturas(); autollenar();
+          refrescarTerceros(); refrescarFacturas(); refrescarTitulo(); autollenar();
           // 🤖 OCR del comprobante (Agente IA): al adjuntar la foto del pago, la lee y
           // rellena referencia/monto/fecha solos. El usuario revisa y corrige antes de guardar.
           const refEl = body.querySelector('[data-name="referencia"]');
@@ -9833,6 +9872,41 @@
         caja.innerHTML = '<button type="button" class="btn btn-ghost" id="btnVolverUltimo" style="height:30px;font-size:12px;">'
           + '<i data-lucide="corner-up-left" style="width:14px;height:14px;"></i> Volver a la anterior · '
           + esc(u.num) + (u.nombre ? ' · ' + esc(u.nombre) : '') + '</button>';
+        /* Y el atajo a la retención, el MISMO que ofrece el formulario de
+           editar. Antes solo estaba allá, así que para cargarle el ISLR a una
+           compra recién registrada —o el IVA con su concepto y su
+           sustraendo— había que guardar, buscar la factura en el libro,
+           abrirla y recién ahí pulsar el botón. Los dos campos de arriba
+           resuelven la retención de IVA sencilla; esto abre el formulario
+           completo, que es lo que hace falta cuando hay ISLR de por medio. */
+        if (Number(u.iva) > 0 && !u.yaRetuvo) {
+          const br = document.createElement('button');
+          br.type = 'button';
+          br.className = 'btn btn-ghost';
+          br.id = 'btnRetUltimo';
+          br.style.cssText = 'height:30px;font-size:12px;margin-left:6px;';
+          br.innerHTML = '<i data-lucide="percent" style="width:14px;height:14px;"></i> Registrar su retención';
+          br.title = 'Abre el formulario completo (IVA o ISLR) con los datos de ' + u.num + ' ya puestos';
+          caja.appendChild(br);
+          br.addEventListener('click', () => {
+            if (!window.__registrarRetencion) {
+              if (window.toast) window.toast('Ve a Fiscal → Retenciones y regístrala desde ahí.', 'error');
+              return;
+            }
+            const cancelar = document.getElementById('fmCancel');
+            if (cancelar) cancelar.click();
+            setTimeout(() => window.__registrarRetencion({
+              direccion: esCompra ? 'Practicada (yo retengo a un proveedor)' : 'Sufrida (un cliente me retiene)',
+              nombre: u.nombre || '', rif: u.rif || '',
+              factura: u.num === '(sin N°)' ? '' : u.num,
+              numControl: u.numControl || '',
+              // La de IVA se calcula sobre el IVA; la de ISLR, sobre la base.
+              base: Number(u.iva) || 0,
+              baseIva: Number(u.iva) || 0,
+              baseIslr: Number(u.base) || 0,
+            }), 150);
+          });
+        }
         const b = caja.querySelector('#btnVolverUltimo');
         if (b) b.addEventListener('click', () => {
           /* Se cierra este formulario y se abre el de edición de esa factura.
@@ -10068,6 +10142,9 @@
           const igtf = /s[ií]/i.test(v.igtfAplica || '') ? total * 0.03 : 0; // IGTF sobre el total de la factura
           const p = (v.fecha || '').split('-');
           const fecha = p.length === 3 ? (p[2] + '/' + p[1] + '/' + p[0].slice(2)) : '';
+          // Se necesita ANTES de guardar, para saber si la retención ya quedó
+          // cargada con los dos campos de arriba o si hay que ofrecerla después.
+          const retPctNumPrevio = v.retPct === '100%' ? 100 : v.retPct === '75%' ? 75 : 0;
           const saveBtnEl = document.getElementById('fmSave');
           if (saveBtnEl) saveBtnEl.disabled = true; // evita doble registro mientras el modal sigue abierto
           window.sb.from('libro_fiscal').insert({
@@ -10089,7 +10166,9 @@
                facturas seguidas uno nota el error en la siguiente, no en la
                que está llenando. */
             if (guardado && guardado[0]) {
-              _ultimoRegistro[tipo] = { id: guardado[0].id, num: v.numFactura || '(sin N°)', nombre: v.nombre };
+              _ultimoRegistro[tipo] = { id: guardado[0].id, num: v.numFactura || '(sin N°)', nombre: v.nombre,
+                rif: normRif(v.rif), numControl: v.numControl || '', iva: iva, base: base,
+                yaRetuvo: !!(retPctNumPrevio && (v.retComp || '').trim()) };
               pintarUltimo();
             }
             if (window.__invalidarArrastres) window.__invalidarArrastres(); // el nuevo registro puede cambiar los arrastres
