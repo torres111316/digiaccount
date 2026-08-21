@@ -9890,7 +9890,7 @@
       function limpiarParaSiguiente() {
         if (!bodyRef) return;
         const setV = (n, val) => { const el = bodyRef.querySelector('[data-name="' + n + '"]'); if (el) el.value = val; };
-        setV('nombre', ''); setV('rif', ''); setV('retComp', '');
+        setV('nombre', ''); setV('rif', '');
         if (bodyRef.__montos) bodyRef.__montos.reiniciar();
         /* COMPRAS: los números venían quedándose de la factura anterior porque
            autonumerar() se sale de una en compras (no hay correlativo propio:
@@ -9900,7 +9900,6 @@
           const ncEl = bodyRef.querySelector('[data-name="numControl"]');
           if (ncEl && !ES_MAQUINA_FISCAL(ncEl.value)) ncEl.value = '';
         }
-        const retSel = bodyRef.querySelector('[data-name="retPct"]'); if (retSel) retSel.value = 'Sin retención';
         const anularSel = bodyRef.querySelector('[data-name="anularVenta"]');
         if (anularSel) { anularSel.value = 'No'; anularSel.dispatchEvent(new Event('change')); }
         if (invBox) { const rows = invBox.querySelector('#invCompraRows'); if (rows) rows.innerHTML = '<div class="ic-empty">Agrega los productos que llegaron con esta compra.</div>'; }
@@ -9938,18 +9937,18 @@
             value: (window.__EMPRESA_PREFS || {}).igtf ? 'Sí (3%)' : 'No' },
           { name: 'igtfShow', label: 'IGTF 3% (calculado del total con IVA)', type: 'static', html: '<span class="mono" id="igtfShowVal">Bs 0,00</span>' },
         ]).concat([
-          { name: 'retPct', label: (esCompra ? 'IVA que le retienes al proveedor' : 'IVA que te retuvo el cliente') + ' (opcional)', type: 'select', options: ['Sin retención', '75%', '100%'] },
-          { name: 'retComp', label: 'N° comprobante de retención' + (esCompra ? ' (el de tu comprobante)' : ' (el que te dio el cliente)'), placeholder: 'Ej. 20260600000123 · déjalo vacío si aún no lo tienes' },
-          /* El mismo atajo que ofrece el formulario de EDITAR.
+          /* La retención se registra por UN SOLO CAMINO: este botón.
 
-             Los dos campos de arriba resuelven una retención de IVA sencilla,
-             pero no llegan al ISLR con su concepto y su sustraendo. Antes eso
-             obligaba a guardar la factura, buscarla en el libro, abrirla y
-             recién ahí pulsar el botón — con la factura delante y ya cargada.
+             Antes había además dos campos aquí —% y N° de comprobante— que
+             creaban la retención de IVA al vuelo. Servían para el caso
+             sencillo, pero no llegaban al ISLR con su concepto y su
+             sustraendo, así que convivían dos formas de registrar lo mismo
+             con distinto alcance. Dos caminos para un mismo dato terminan
+             discrepando: uno valida cosas que el otro no, y el día que se
+             cambia una regla hay que acordarse de los dos.
 
-             Va aquí, en el cuerpo del formulario, y no solo en el recuadro de
-             «último registrado»: es donde se le busca, porque es donde está
-             en el de editar. */
+             El botón abre el formulario completo de retenciones, que es el
+             que ya se usa desde el libro y desde la pestaña de Retenciones. */
           { name: 'atajoRetReg', col: 2, type: 'static', label: '', html:
             '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;border-top:1px solid var(--border-default);padding-top:10px;">'
             + '<button type="button" class="btn btn-ghost" id="btnRetDeEsta" style="height:32px;font-size:12px;">'
@@ -9994,7 +9993,7 @@
           // de poner "ANULADA" como cliente y dejar los montos a mano, propenso a error).
           const anularSel = body.querySelector('[data-name="anularVenta"]');
           if (anularSel) {
-            const camposReales = ['nombre', 'rif', 'igtfAplica', 'retPct', 'retComp'];
+            const camposReales = ['nombre', 'rif', 'igtfAplica'];
             const aplicarAnular = () => {
               const on = /^s[ií]/i.test(anularSel.value || '');
               camposReales.forEach((n) => {
@@ -10154,9 +10153,6 @@
           const igtf = /s[ií]/i.test(v.igtfAplica || '') ? total * 0.03 : 0; // IGTF sobre el total de la factura
           const p = (v.fecha || '').split('-');
           const fecha = p.length === 3 ? (p[2] + '/' + p[1] + '/' + p[0].slice(2)) : '';
-          // Se necesita ANTES de guardar, para saber si la retención ya quedó
-          // cargada con los dos campos de arriba o si hay que ofrecerla después.
-          const retPctNumPrevio = v.retPct === '100%' ? 100 : v.retPct === '75%' ? 75 : 0;
           const saveBtnEl = document.getElementById('fmSave');
           if (saveBtnEl) saveBtnEl.disabled = true; // evita doble registro mientras el modal sigue abierto
           window.sb.from('libro_fiscal').insert({
@@ -10179,8 +10175,7 @@
                que está llenando. */
             if (guardado && guardado[0]) {
               _ultimoRegistro[tipo] = { id: guardado[0].id, num: v.numFactura || '(sin N°)', nombre: v.nombre,
-                rif: normRif(v.rif), numControl: v.numControl || '', iva: iva, base: base,
-                yaRetuvo: !!(retPctNumPrevio && (v.retComp || '').trim()) };
+                rif: normRif(v.rif), numControl: v.numControl || '', iva: iva, base: base };
               pintarUltimo();
             }
             if (window.__invalidarArrastres) window.__invalidarArrastres(); // el nuevo registro puede cambiar los arrastres
@@ -10280,35 +10275,6 @@
             // Compra de CONTADO: abre el pago prefilleado para registrar de qué cuenta/Caja salió el dinero
             if (esCompra && /contado/i.test(v.cond || '') && window.__registrarCobro) {
               setTimeout(() => window.__registrarCobro({ tipo: 'egreso', tercero: v.nombre, factura: v.numFactura, monto: total }), 200);
-            }
-            // Si se indicó retención de IVA, registra el comprobante de retención asociado a esta factura
-            const retPctNum = v.retPct === '100%' ? 100 : v.retPct === '75%' ? 75 : 0;
-            if (retPctNum && iva > 0 && !(v.retComp || '').trim()) {
-              toast('Se registró la factura, pero la retención NO: falta el N° de comprobante. Ábrela y usa "Registrar la retención de esta factura" cuando lo tengas.', 'error');
-            }
-            if (retPctNum && iva > 0 && (v.retComp || '').trim()) {
-              const retMonto = iva * retPctNum / 100;
-              /* Tampoco aquí se inventa el número. Si no se escribió, la
-                 retención NO se registra junto con la factura: se avisa y se
-                 carga después desde el botón de la propia factura, que es
-                 cuando de verdad llega el comprobante. */
-              const comp = (v.retComp || '').trim();
-              window.sb.from('retenciones').insert({
-                cuenta_id: window.__CUENTA_ID, empresa_id: window.__EMPRESA_ACTIVA.id,
-                // La retención sigue a la factura que la origina, también en la quincena.
-                direccion: esCompra ? 'practicada' : 'sufrida', tipo: 'iva', fecha: fecha, periodo: periodo, quincena: quincena, comprobante: comp,
-                tercero_nombre: v.nombre, tercero_rif: normRif(v.rif), factura: v.numFactura, numero_control: v.numControl,
-                base: iva, pct: retPctNum, monto: retMonto, estado: 'Registrado',
-              }).then(({ error: e2 }) => {
-                if (e2) {
-                  toast(e2.code === '23505'
-                    ? 'La factura se guardó. La retención NO: esa factura ya tenía una de IVA registrada.'
-                    : 'Factura ok, pero la retención no se guardó: ' + e2.message, 'error');
-                  return;
-                }
-                if (window.cargarRetenciones) window.cargarRetenciones();
-                toast('Retención de IVA ' + (esCompra ? 'practicada' : 'sufrida') + ' registrada · Bs ' + fmtF(retMonto), 'success');
-              });
             }
           });
         },
