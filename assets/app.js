@@ -1087,13 +1087,40 @@
         + 'IVA retenido por quincena <span style="font-weight:400;color:var(--fg-muted);">— se entera una declaración por quincena</span></div>'
         + fila('1ra quincena', q1, '(01–15)')
         + fila('2da quincena', q2, '(16 al último día)')
+        /* Se NOMBRAN, no solo se cuentan.
+
+           Decir «3 sin quincena» obliga a ir a Retenciones y buscarlas una
+           por una entre todas las del período. Aquí salen con su comprobante,
+           su factura y su proveedor, y cada una abre su ficha de un clic —
+           que es donde está el desplegable para asignarle la quincena. */
         + (sinQ.length
           ? '<div style="padding:7px 11px;border-top:1px solid var(--border);background:var(--da-amber-50,rgba(200,140,0,.09));">'
-            + '<strong>' + sinQ.length + ' sin quincena · ' + fmt(sumaSinQ) + '</strong> — salen en las DOS y se enterarían dos veces. '
-            + 'Asígnales la quincena en Retenciones antes de presentar.</div>'
+            + '<div><strong>' + sinQ.length + ' sin quincena · ' + fmt(sumaSinQ) + '</strong> — salen en las DOS y se enterarían dos veces.</div>'
+            + '<div style="margin-top:5px;">' + sinQ.map((r) => '<button type="button" class="ret-sinq" data-ret-sinq="' + esc(r.id || '') + '"'
+              + ' style="display:block;width:100%;text-align:left;background:none;border:0;border-top:1px dotted var(--border);'
+              + 'padding:5px 0 4px;cursor:pointer;color:inherit;font:inherit;font-size:11.5px;">'
+              + '<span class="mono">' + esc(r.comprobante || '(sin comprobante)') + '</span>'
+              + ' · ' + esc((r.tercero_nombre || 'sin tercero').slice(0, 26))
+              + (r.factura ? ' · factura ' + esc(r.factura) : '')
+              + ' · <strong>' + fmt(Number(r.monto) || 0) + '</strong>'
+              + ' <span style="color:var(--fg-muted);">— asignar quincena</span></button>').join('')
+            + '</div></div>'
           : '')
         + '<div style="padding:6px 11px;border-top:1px solid var(--border);color:var(--fg-muted);">'
         + 'El ISLR retenido se entera <strong>mensual</strong>, por eso no se reparte aquí.</div>';
+
+      caja.querySelectorAll('[data-ret-sinq]').forEach((b) => {
+        b.addEventListener('mouseenter', () => { b.style.background = 'rgba(0,0,0,.05)'; });
+        b.addEventListener('mouseleave', () => { b.style.background = 'none'; });
+        b.addEventListener('click', () => {
+          const id = b.dataset.retSinq;
+          if (!id || !window.__editRetencion) {
+            if (window.toast) window.toast('Ábrela en Fiscal → Retenciones para asignarle la quincena.', 'info');
+            return;
+          }
+          window.__editRetencion(id);
+        });
+      });
     }
 
     // Traslada las retenciones de IVA SUFRIDAS (las que nos retienen los clientes) a la
@@ -1194,6 +1221,7 @@
     window.__getRetenciones = () => _retData.slice(); // para el generador XML de ISLR
     // La quincena que se está mirando, para que el TXT la ponga en su nombre.
     window.__retQuincenaActual = () => _retQuincena;
+    window.__editRetencion = editRetencion;
 
     // El % de retención depende del impuesto: IVA = dropdown estricto 0/75/100;
     // ISLR = entrada libre con sugerencias comunes (varía por concepto del Decreto 1.808).
@@ -1537,6 +1565,24 @@
              del período al que pertenece. */
           { name: 'periodo', label: 'Período en que se declara (sigue a la factura, no al comprobante)', type: 'select',
             options: _opcionesPeriodoRet(), value: _periodoVigente() },
+        ].concat((window.__retencionesPorQuincena && window.__retencionesPorQuincena()) ? [
+          /* La quincena se pregunta AL NACER.
+
+             Faltaba, así que toda retención nueva nacía sin ella y el cuadro
+             del libro avisaba después de que se enterarían dos veces. Tres de
+             las de Radian llegaron así el mismo día que se cargaron.
+
+             Se propone la del selector de Retenciones si hay una elegida —que
+             es la que se está mirando y casi siempre la correcta— pero se
+             puede cambiar: la quincena es la del período en que se ENTERA, no
+             la del día de la factura. */
+          { name: 'quincena', col: 2, label: 'Quincena en que se entera',
+            type: 'select',
+            options: [{ value: '1', label: '1ra quincena (se entera del 1 al 15)' },
+                      { value: '2', label: '2da quincena (se entera del 16 al último día)' },
+                      { value: '', label: 'No sé todavía — la asigno después' }],
+            value: String((window.__retQuincenaActual && window.__retQuincenaActual()) || '') },
+        ] : []).concat([
           { name: 'nombre', label: 'Tercero (escribe iniciales y elige)', col: 2, type: 'datalist', options: terceros.map((t) => t.nombre), placeholder: 'Proveedor o cliente…', value: pre.nombre || '' },
           { name: 'rif', label: 'RIF (mayúscula, sin guiones)', upper: true, placeholder: 'J123456789', value: pre.rif || '' },
           { name: 'factura', label: 'Factura afectada (elige una registrada)', type: 'datalist', options: [], placeholder: 'Primero elige el tercero…', value: pre.factura || '' },
@@ -1551,7 +1597,7 @@
              dato — es lo que va al comprobante y lo que el tercero descuenta. */
           { name: 'resumenRet', col: 2, type: 'static', label: '', html:
             '<div class="ret-calc" id="retCalc"></div>' },
-        ],
+        ]),
         afterRender: (body) => {
           const dirSel = body.querySelector('[data-name="direccion"]');
           const tipoSel = body.querySelector('[data-name="tipo"]');
@@ -1803,6 +1849,9 @@
             tercero_nombre: v.nombre, tercero_rif: normRif(v.rif), factura: v.factura, numero_control: v.numControl || null,
             base: base, pct: pct, monto: monto, estado: 'Registrado',
             concepto: esIslr ? v.concepto : null, concepto_codigo: esIslr ? cod : null, sujeto: esIslr ? suj : null, sustraendo: sust,
+            // Solo en quien entera por quincena existe el campo; en los demás
+            // ni se pregunta y la retención es del mes, como debe ser.
+            ...(v.quincena === undefined ? {} : { quincena: v.quincena === '1' ? 1 : v.quincena === '2' ? 2 : null }),
           }).then(({ error }) => {
             if (error) {
               // 23505 = llave duplicada. Aquí solo puede ser la que impide dos
@@ -1955,6 +2004,8 @@
     window.__perLabelRetPub = _perLabelRet;
 
     // Editar / eliminar: clic en cualquier fila de retención
+    /* Publicada porque el cuadro del libro de compras necesita abrir una
+       retención concreta —la que le falta la quincena— desde otro alcance. */
     function editRetencion(id) {
       const r = _retData.find((x) => String(x.id) === String(id));
       if (!r) return;
