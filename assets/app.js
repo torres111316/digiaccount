@@ -8876,16 +8876,18 @@
         const copia = panelRet.cloneNode(true);
         // El enlace a otra pestaña no significa nada en un papel.
         copia.querySelectorAll('.op-link, button').forEach((x) => x.remove());
+        /* Y se le quitan los identificadores a la copia. Dos elementos con el
+           mismo id en el documento hacen que `getElementById` devuelva el que
+           no es, y a partir de ahí se actualiza el clon del portal en vez del
+           cuadro que se está viendo. */
+        if (copia.id) copia.removeAttribute('id');
+        copia.querySelectorAll('[id]').forEach((x) => x.removeAttribute('id'));
         cont.appendChild(copia);
       }
-      // Y el reparto por quincena, cuando la empresa entera así: es el número
-      // que se lleva cada una de las dos declaraciones del mes.
-      const cajaQ = document.getElementById('retQuincenaResumen');
-      if (cajaQ && tab.contains(cajaQ)) {
-        const cq = cajaQ.cloneNode(true);
-        cq.querySelectorAll('[data-ret-sinq]').forEach((x) => { x.style.cursor = 'default'; });
-        cont.appendChild(cq);
-      }
+      /* El reparto por quincena NO se clona aparte: vive DENTRO de ese panel
+         —se inserta justo debajo de la tablita— así que la copia de arriba ya
+         lo trae. Clonarlo otra vez lo imprimía dos veces, uno dentro del
+         panel y otro suelto al pie. */
       portal.appendChild(cont);
       document.body.classList.add('printing-comp');
       window.print();
