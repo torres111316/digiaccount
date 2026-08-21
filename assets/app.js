@@ -10055,29 +10055,66 @@
              formulario ya se limpió tras guardar, cae en la última factura
              registrada, que es de la que uno quiere la retención en ese
              momento. Así un solo botón sirve para los dos instantes. */
+          /* PRIMERO SE GUARDA LA FACTURA, y solo entonces se abre la retención.
+
+             La primera versión de esto hacía `cancelar.click()` y abría el
+             formulario de retención. En el de EDITAR eso es inofensivo —la
+             factura ya existe—, pero en el de REGISTRAR cancelar significa
+             DESCARTAR: la factura de MAXCAM se llenó, se pulsó el botón y se
+             perdió, mientras su retención sí quedó guardada. Una retención
+             sin su factura es peor que ninguna de las dos.
+
+             Ahora se pulsa Guardar por dentro y se espera a que la factura
+             quede registrada. Si la validación falla, el formulario se queda
+             abierto con su mensaje y no se abre nada: no se pierde lo escrito. */
           const btnRetEsta = body.querySelector('#btnRetDeEsta');
-          if (btnRetEsta) btnRetEsta.addEventListener('click', () => {
+          if (btnRetEsta) btnRetEsta.addEventListener('click', async () => {
             if (!window.__registrarRetencion) {
               toast('Ve a Fiscal → Retenciones y regístrala desde ahí.', 'error');
               return;
             }
             const leer = (n) => { const e = body.querySelector('[data-name="' + n + '"]'); return e ? e.value.trim() : ''; };
-            const M = bodyRef && bodyRef.__montos ? bodyRef.__montos.leer() : null;
+            const hayEscrito = !!(leer('numFactura') || leer('nombre'));
+
+            if (hayEscrito) {
+              const antes = (_ultimoRegistro[tipo] || {}).id || null;
+              const guardar = document.getElementById('fmSave');
+              if (!guardar) { toast('No pude guardar la factura. Regístrala y usa el botón después.', 'error'); return; }
+              btnRetEsta.disabled = true;
+              const rotulo = btnRetEsta.innerHTML;
+              btnRetEsta.textContent = 'Guardando la factura…';
+              guardar.click();
+              // Se espera a que la factura quede registrada (hasta 8 segundos).
+              const listo = await new Promise((resolve) => {
+                let n = 0;
+                const t0 = setInterval(() => {
+                  const ahora = (_ultimoRegistro[tipo] || {}).id || null;
+                  if (ahora && ahora !== antes) { clearInterval(t0); resolve(true); }
+                  else if (++n > 40) { clearInterval(t0); resolve(false); }
+                }, 200);
+              });
+              btnRetEsta.disabled = false;
+              btnRetEsta.innerHTML = rotulo;
+              if (window.lucide) window.lucide.createIcons();
+              if (!listo) {
+                toast('La factura no se guardó, así que no abro la retención. Revisa el aviso del formulario — lo que escribiste sigue aquí.', 'error');
+                return;
+              }
+            }
+
             const u = _ultimoRegistro[tipo];
-            const escrito = leer('numFactura') || leer('nombre');
-            const datos = escrito
-              ? { nombre: leer('nombre'), rif: normRif(leer('rif')), factura: leer('numFactura'),
-                  numControl: leer('numControl'),
-                  base: M ? M.iva : 0, baseIva: M ? M.iva : 0, baseIslr: M ? M.base : 0 }
-              : (u ? { nombre: u.nombre || '', rif: u.rif || '',
-                       factura: u.num === '(sin N°)' ? '' : u.num, numControl: u.numControl || '',
-                       base: Number(u.iva) || 0, baseIva: Number(u.iva) || 0, baseIslr: Number(u.base) || 0 }
-                   : null);
-            if (!datos || !(Number(datos.baseIva) > 0 || Number(datos.baseIslr) > 0)) {
+            if (!u || !(Number(u.iva) > 0 || Number(u.base) > 0)) {
               toast('Completa primero el ' + (esCompra ? 'proveedor' : 'cliente') + ', el N° de factura y los montos: de ahí salen la base y el IVA de la retención.', 'error');
               return;
             }
-            datos.direccion = esCompra ? 'Practicada (yo retengo a un proveedor)' : 'Sufrida (un cliente me retiene)';
+            const datos = {
+              direccion: esCompra ? 'Practicada (yo retengo a un proveedor)' : 'Sufrida (un cliente me retiene)',
+              nombre: u.nombre || '', rif: u.rif || '',
+              factura: u.num === '(sin N°)' ? '' : u.num,
+              numControl: u.numControl || '',
+              // La de IVA se calcula sobre el IVA; la de ISLR, sobre la base.
+              base: Number(u.iva) || 0, baseIva: Number(u.iva) || 0, baseIslr: Number(u.base) || 0,
+            };
             const cancelar = document.getElementById('fmCancel');
             if (cancelar) cancelar.click();
             setTimeout(() => window.__registrarRetencion(datos), 150);
