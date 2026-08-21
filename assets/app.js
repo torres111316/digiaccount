@@ -8859,6 +8859,33 @@
         + (esMaquina ? thZ : th) + '</thead><tbody>'
         + ((esMaquina ? filasZ : filas) || '<tr><td colspan="13">Sin operaciones en el período.</td></tr>')
         + '</tbody><tfoot>' + (esMaquina ? footZ : foot) + '</tfoot></table>');
+      /* Debajo del libro, las retenciones del período.
+
+         El libro dice qué se compró; las retenciones, cuánto se le retuvo a
+         cada proveedor y con qué comprobante. Al fiscalizar se piden juntos, y
+         hasta ahora había que imprimir el libro por un lado y buscar las
+         retenciones por otro. El CSS de impresión ya tenía estilos para este
+         panel: estaba previsto y faltaba incluirlo.
+
+         Se clona el panel que contiene la tablita, no el bloque entero, para
+         no arrastrar la Forma 30 al pie del libro. Y se clona en vez de
+         rehacerlo, así lo impreso es exactamente lo que se está viendo. */
+      const panelRet = [...tab.querySelectorAll('.oblig-panel')]
+        .find((x) => x.querySelector('table.ret-mini'));
+      if (panelRet) {
+        const copia = panelRet.cloneNode(true);
+        // El enlace a otra pestaña no significa nada en un papel.
+        copia.querySelectorAll('.op-link, button').forEach((x) => x.remove());
+        cont.appendChild(copia);
+      }
+      // Y el reparto por quincena, cuando la empresa entera así: es el número
+      // que se lleva cada una de las dos declaraciones del mes.
+      const cajaQ = document.getElementById('retQuincenaResumen');
+      if (cajaQ && tab.contains(cajaQ)) {
+        const cq = cajaQ.cloneNode(true);
+        cq.querySelectorAll('[data-ret-sinq]').forEach((x) => { x.style.cursor = 'default'; });
+        cont.appendChild(cq);
+      }
       portal.appendChild(cont);
       document.body.classList.add('printing-comp');
       window.print();

@@ -5226,6 +5226,12 @@
     #printPortal .libro-print .oblig-panel {
       break-inside: avoid; page-break-inside: avoid;
     }
+    /* El panel de retenciones va DEBAJO del libro impreso, separado de la
+       tabla para que se lea como lo que es: un anexo del período, no una
+       continuación de las facturas. */
+    #printPortal .libro-print .oblig-panel { margin-top: 10px; }
+    #printPortal .libro-print #retQuincenaResumen { margin-top: 8px; font-size: 7.5px; }
+    #printPortal .libro-print #retQuincenaResumen button { font-size: 7px; }
   }
 
   /* =========================================================
