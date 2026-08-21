@@ -9872,41 +9872,6 @@
         caja.innerHTML = '<button type="button" class="btn btn-ghost" id="btnVolverUltimo" style="height:30px;font-size:12px;">'
           + '<i data-lucide="corner-up-left" style="width:14px;height:14px;"></i> Volver a la anterior · '
           + esc(u.num) + (u.nombre ? ' · ' + esc(u.nombre) : '') + '</button>';
-        /* Y el atajo a la retención, el MISMO que ofrece el formulario de
-           editar. Antes solo estaba allá, así que para cargarle el ISLR a una
-           compra recién registrada —o el IVA con su concepto y su
-           sustraendo— había que guardar, buscar la factura en el libro,
-           abrirla y recién ahí pulsar el botón. Los dos campos de arriba
-           resuelven la retención de IVA sencilla; esto abre el formulario
-           completo, que es lo que hace falta cuando hay ISLR de por medio. */
-        if (Number(u.iva) > 0 && !u.yaRetuvo) {
-          const br = document.createElement('button');
-          br.type = 'button';
-          br.className = 'btn btn-ghost';
-          br.id = 'btnRetUltimo';
-          br.style.cssText = 'height:30px;font-size:12px;margin-left:6px;';
-          br.innerHTML = '<i data-lucide="percent" style="width:14px;height:14px;"></i> Registrar su retención';
-          br.title = 'Abre el formulario completo (IVA o ISLR) con los datos de ' + u.num + ' ya puestos';
-          caja.appendChild(br);
-          br.addEventListener('click', () => {
-            if (!window.__registrarRetencion) {
-              if (window.toast) window.toast('Ve a Fiscal → Retenciones y regístrala desde ahí.', 'error');
-              return;
-            }
-            const cancelar = document.getElementById('fmCancel');
-            if (cancelar) cancelar.click();
-            setTimeout(() => window.__registrarRetencion({
-              direccion: esCompra ? 'Practicada (yo retengo a un proveedor)' : 'Sufrida (un cliente me retiene)',
-              nombre: u.nombre || '', rif: u.rif || '',
-              factura: u.num === '(sin N°)' ? '' : u.num,
-              numControl: u.numControl || '',
-              // La de IVA se calcula sobre el IVA; la de ISLR, sobre la base.
-              base: Number(u.iva) || 0,
-              baseIva: Number(u.iva) || 0,
-              baseIslr: Number(u.base) || 0,
-            }), 150);
-          });
-        }
         const b = caja.querySelector('#btnVolverUltimo');
         if (b) b.addEventListener('click', () => {
           /* Se cierra este formulario y se abre el de edición de esa factura.
@@ -9975,6 +9940,21 @@
         ]).concat([
           { name: 'retPct', label: (esCompra ? 'IVA que le retienes al proveedor' : 'IVA que te retuvo el cliente') + ' (opcional)', type: 'select', options: ['Sin retención', '75%', '100%'] },
           { name: 'retComp', label: 'N° comprobante de retención' + (esCompra ? ' (el de tu comprobante)' : ' (el que te dio el cliente)'), placeholder: 'Ej. 20260600000123 · déjalo vacío si aún no lo tienes' },
+          /* El mismo atajo que ofrece el formulario de EDITAR.
+
+             Los dos campos de arriba resuelven una retención de IVA sencilla,
+             pero no llegan al ISLR con su concepto y su sustraendo. Antes eso
+             obligaba a guardar la factura, buscarla en el libro, abrirla y
+             recién ahí pulsar el botón — con la factura delante y ya cargada.
+
+             Va aquí, en el cuerpo del formulario, y no solo en el recuadro de
+             «último registrado»: es donde se le busca, porque es donde está
+             en el de editar. */
+          { name: 'atajoRetReg', col: 2, type: 'static', label: '', html:
+            '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;border-top:1px solid var(--border-default);padding-top:10px;">'
+            + '<button type="button" class="btn btn-ghost" id="btnRetDeEsta" style="height:32px;font-size:12px;">'
+            + '<i data-lucide="percent"></i> Registrar la retención de esta factura</button>'
+            + '<span style="font-size:11px;color:var(--fg-muted);">Abre el formulario completo — IVA o ISLR, con concepto y sustraendo.</span></div>' },
         ]).concat(esCompra ? [] : [
           { name: 'anularVenta', label: '¿Este número es una factura ANULADA? (solo reserva el correlativo, sin monto)', col: 2, type: 'select', options: ['No', 'Sí — Anulada'] },
         ])),
@@ -10071,6 +10051,38 @@
           });
           // Autocompletado en los dos sentidos + F2 para crear el que falta.
           montarCampoTercero(body, { lista: terceros, esCompra: esCompra });
+
+          /* El atajo a la retención trabaja con lo que HAY EN PANTALLA. Si el
+             formulario ya se limpió tras guardar, cae en la última factura
+             registrada, que es de la que uno quiere la retención en ese
+             momento. Así un solo botón sirve para los dos instantes. */
+          const btnRetEsta = body.querySelector('#btnRetDeEsta');
+          if (btnRetEsta) btnRetEsta.addEventListener('click', () => {
+            if (!window.__registrarRetencion) {
+              toast('Ve a Fiscal → Retenciones y regístrala desde ahí.', 'error');
+              return;
+            }
+            const leer = (n) => { const e = body.querySelector('[data-name="' + n + '"]'); return e ? e.value.trim() : ''; };
+            const M = bodyRef && bodyRef.__montos ? bodyRef.__montos.leer() : null;
+            const u = _ultimoRegistro[tipo];
+            const escrito = leer('numFactura') || leer('nombre');
+            const datos = escrito
+              ? { nombre: leer('nombre'), rif: normRif(leer('rif')), factura: leer('numFactura'),
+                  numControl: leer('numControl'),
+                  base: M ? M.iva : 0, baseIva: M ? M.iva : 0, baseIslr: M ? M.base : 0 }
+              : (u ? { nombre: u.nombre || '', rif: u.rif || '',
+                       factura: u.num === '(sin N°)' ? '' : u.num, numControl: u.numControl || '',
+                       base: Number(u.iva) || 0, baseIva: Number(u.iva) || 0, baseIslr: Number(u.base) || 0 }
+                   : null);
+            if (!datos || !(Number(datos.baseIva) > 0 || Number(datos.baseIslr) > 0)) {
+              toast('Completa primero el ' + (esCompra ? 'proveedor' : 'cliente') + ', el N° de factura y los montos: de ahí salen la base y el IVA de la retención.', 'error');
+              return;
+            }
+            datos.direccion = esCompra ? 'Practicada (yo retengo a un proveedor)' : 'Sufrida (un cliente me retiene)';
+            const cancelar = document.getElementById('fmCancel');
+            if (cancelar) cancelar.click();
+            setTimeout(() => window.__registrarRetencion(datos), 150);
+          });
           /* Renglones por alícuota → IVA y total en vivo.
 
              Una factura real trae varias alícuotas a la vez: una panadería
