@@ -9981,7 +9981,8 @@
             name: 'numResumen', col: 2, type: 'static', label: '', html: montosHTML(),
           },
         ].concat(esCompra ? [
-          { name: 'cond', label: 'Condición de pago', type: 'select', options: ['Contado', 'Crédito 15 días', 'Crédito 30 días', 'Crédito 60 días'] },
+          // La condición de pago se quitó: solo servía para abrir el cuadro de
+          // pago, y esa decisión pertenece a Tesorería, no al libro fiscal.
         ] : [
           // El valor que se propone sale de la preferencia de la empresa.
           { name: 'igtfAplica', label: '¿Aplica IGTF? (cobro en divisas/cripto)', type: 'select', options: ['No', 'Sí (3%)'],
@@ -10360,10 +10361,19 @@
             }
             // Refresca Compras y CxP (y CxC) con la nueva factura
             if (window.cargarTesoreria) window.cargarTesoreria();
-            // Compra de CONTADO: abre el pago prefilleado para registrar de qué cuenta/Caja salió el dinero
-            if (esCompra && /contado/i.test(v.cond || '') && window.__registrarCobro) {
-              setTimeout(() => window.__registrarCobro({ tipo: 'egreso', tercero: v.nombre, factura: v.numFactura, monto: total }), 200);
-            }
+            /* Al registrar en el LIBRO no se pregunta por el pago.
+
+               Son dos materias distintas: el libro de compras es fiscal —lo
+               que se declara— y la forma de pago es de Tesorería. Para el
+               libro la compra se presume de contado; si fue a crédito, con
+               abonos o con saldo pendiente, eso se registra en Tesorería, que
+               es donde vive esa información.
+
+               Y había un efecto peor que la pregunta de más: el formulario
+               modal es UNO SOLO y compartido, así que abrir el cuadro de pago
+               REEMPLAZABA el de la factura. Registrar una compra cerraba el
+               formulario, y quien está cargando cincuenta seguidas tenía que
+               volver a abrirlo cada vez. */
           });
         },
       });
