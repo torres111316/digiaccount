@@ -9990,14 +9990,31 @@
             if (window.__invalidarArrastres) window.__invalidarArrastres();
             cargarLibroFiscal('venta');
             toast('Reporte Z ' + v.numeroZ + ' registrado · Bs ' + fmtF(M.total), 'success');
-            /* Se limpia para el día siguiente y se propone el Z que sigue: son
-               treinta reportes por mes y se cargan de corrido. */
+            /* Y se deja listo el reporte del día siguiente. Son treinta al mes
+               y se cargan de corrido: el que carga no debería escribir ni la
+               fecha ni el número, solo los montos.
+
+               El siguiente se calcula de lo que ACABA de guardarse, no
+               volviendo a preguntarle a la base. Preguntar significa esperar
+               un viaje de ida y vuelta que puede resolverse antes de que la
+               fila nueva esté visible — y entonces propondría otra vez el
+               número que se acaba de usar. De aquí sale al instante y no puede
+               equivocarse. */
             if (bodyRef && bodyRef.__montos) bodyRef.__montos.reiniciar();
-            ['compDesde', 'compHasta'].forEach((n) => {
+            const poner = (n, val) => {
               const e = bodyRef && bodyRef.querySelector('[data-name="' + n + '"]');
-              if (e) e.value = '';
-            });
-            autonumerarZ(true);
+              if (e) e.value = val;
+            };
+            poner('numeroZ', siguienteDe([(v.numeroZ || '').trim()]));
+            // El primer comprobante de mañana es el siguiente al último de hoy.
+            poner('compDesde', siguienteDe([(v.compHasta || '').trim()]));
+            poner('compHasta', '');
+            // La fecha avanza un día: un reporte Z es de una jornada.
+            const d = new Date(fp[0] + '-' + fp[1] + '-' + fp[2] + 'T12:00:00');
+            d.setDate(d.getDate() + 1);
+            poner('fecha', d.toISOString().slice(0, 10));
+            const nzEl = bodyRef && bodyRef.querySelector('[data-name="numeroZ"]');
+            if (nzEl) nzEl.focus();
           });
         },
       });
