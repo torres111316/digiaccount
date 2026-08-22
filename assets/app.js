@@ -9964,9 +9964,18 @@
           { name: 'compDesde', label: 'Primer comprobante del día', placeholder: '00000000' },
           { name: 'compHasta', label: 'Último comprobante del día', placeholder: '00000000' },
           { name: 'numResumen', col: 2, type: 'static', label: '', html: montosHTML() },
-          { name: 'igtfAplica', label: 'Hubo cobros en divisas o cripto (IGTF 3%)', type: 'select', options: ['No', 'Sí (3%)'],
-            value: (window.__EMPRESA_PREFS || {}).igtf ? 'Sí (3%)' : 'No' },
-          { name: 'igtfShow', label: 'IGTF 3% (calculado del total con IVA)', type: 'static', html: '<span class="mono" id="igtfShowVal">Bs 0,00</span>' },
+          /* EL IGTF DE UN REPORTE Z NO SALE DEL TOTAL DEL DÍA.
+
+             El Z es la suma de todas las facturas de la jornada, y el IGTF lo
+             generan solo las que se cobraron en divisas o cripto. Calcularlo
+             como el 3% del total infla el impuesto: en los reportes de Radian
+             el IGTF real va del 0,11% al 1,68% del total facturado, no del 3%.
+
+             Por eso se pregunta CUÁNTO se cobró en divisas, y de ahí sale el
+             3%. El monto queda editable porque el que manda es el que imprime
+             la máquina: si el Z dice otra cifra, esa es la que va al libro. */
+          { name: 'igtfBase', label: 'Del total del día, cuánto se cobró en divisas o cripto (Bs)', type: 'number', step: '0.01', placeholder: '0.00' },
+          { name: 'igtfMonto', label: 'IGTF del reporte (Bs) — 3% de lo anterior, ajústalo si el Z dice otra cosa', type: 'number', step: '0.01', placeholder: '0.00' },
         ].concat(campoSucursal()),
         afterRender: (body) => {
           bodyRef = body;
@@ -9974,6 +9983,15 @@
           autonumerarZ();
           const maq = body.querySelector('[data-name="maquina"]');
           if (maq) maq.addEventListener('change', () => autonumerarZ(true));
+          // Al escribir la base en divisas se propone su 3%; queda editable.
+          const igB = body.querySelector('[data-name="igtfBase"]');
+          const igM = body.querySelector('[data-name="igtfMonto"]');
+          if (igB && igM) {
+            igB.addEventListener('input', () => {
+              const b = parseFloat(igB.value) || 0;
+              igM.value = b > 0 ? (b * 0.03).toFixed(2) : '';
+            });
+          }
         },
         onSave: (v) => {
           if (!window.sb || !window.__CUENTA_ID || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) return 'No hay una empresa activa seleccionada.';
@@ -9991,7 +10009,12 @@
           const M = bodyRef && bodyRef.__montos ? bodyRef.__montos.leer()
             : { exento: 0, base_gen: 0, iva_gen: 0, base_red: 0, iva_red: 0, base_adic: 0, iva_adic: 0, base: 0, iva: 0, total: 0 };
           if (!(M.total > 0)) return 'Un reporte Z sin monto no dice nada. Carga las ventas del día; si el día cerró en cero, déjalo sin registrar.';
-          const igtf = /s[ií]/i.test(v.igtfAplica || '') ? M.total * 0.03 : 0;
+          /* Se guarda el MONTO, no un porcentaje del total. Si quedó vacío
+             pero se escribió la base, se calcula; si no hay ninguno de los
+             dos, el día no tuvo cobros en divisas y el IGTF es cero. */
+          const igtfBase = parseFloat(v.igtfBase) || 0;
+          const igtf = parseFloat(v.igtfMonto) || (igtfBase > 0 ? igtfBase * 0.03 : 0);
+          if (igtf > M.total) return 'El IGTF (' + fmtF(igtf) + ') no puede ser mayor que el total del día (' + fmtF(M.total) + '). Revisa el monto.';
           const alic = M.base_adic > 0 ? ALICUOTAS.adic.pct
             : M.base_gen >= M.base_red ? (M.base_gen > 0 ? 0.16 : 0) : 0.08;
           const saveBtnEl = document.getElementById('fmSave');
@@ -10043,6 +10066,9 @@
             // El primer comprobante de mañana es el siguiente al último de hoy.
             poner('compDesde', siguienteDe([(v.compHasta || '').trim()]));
             poner('compHasta', '');
+            // El IGTF es de la jornada: no se arrastra al día siguiente.
+            poner('igtfBase', '');
+            poner('igtfMonto', '');
             // La fecha avanza un día: un reporte Z es de una jornada.
             const d = new Date(fp[0] + '-' + fp[1] + '-' + fp[2] + 'T12:00:00');
             d.setDate(d.getDate() + 1);
