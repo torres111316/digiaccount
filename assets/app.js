@@ -9888,6 +9888,40 @@
 
        Radian lleva 240 reportes Z y ninguno se podía cargar desde la pantalla:
        el botón de registrar existía solo en la sección de facturas. */
+    /* Vive al nivel del MÓDULO y no dentro de un formulario: la usan el de
+       facturas y el de reportes Z. Estaba dentro de `registrarMov`, así que
+       el de reportes Z no la veía y lanzaba ReferenceError dentro de un
+       `.then` — sin rastro: el reporte se guardaba y el número siguiente
+       no aparecía nunca. */
+/* El siguiente de una serie, copiando el formato del último usado.
+
+       Dos cosas que no se pueden dar por sabidas:
+
+       · El N° DE CONTROL LLEVA SU PROPIA SERIE. No sale de la factura. En
+         la matriz de GATMA iban parejos hasta que estrenaron talonario y el
+         control se adelantó 300: la factura 148 lleva el control 448.
+         Derivarlo de la factura le habría puesto 149 a un talonario que va
+         por el 449.
+
+       · EL PREFIJO ES PARTE DEL NÚMERO. Barquisimeto numera A000001,
+         A000002… Quedarse solo con los dígitos devolvía '000018' y le
+         borraba la A, que es lo que distingue su serie de la de la matriz.
+
+       Por eso no se inventa el formato: se toma el del número más alto que
+       ya existe en ese establecimiento —su prefijo y su cantidad de
+       dígitos— y se le suma uno. Si mañana el talonario cambia de forma, el
+       sistema la aprende de la primera factura que se cargue a mano. */
+    function siguienteDe(valores) {
+      let mejor = null, maxN = -1;
+      (valores || []).forEach((s) => {
+        const m = String(s || '').trim().match(/^(.*?)(\d+)$/);
+        if (!m) return;
+        const n = parseInt(m[2], 10);
+        if (!isNaN(n) && n > maxN) { maxN = n; mejor = m; }
+      });
+      return mejor ? mejor[1] + String(maxN + 1).padStart(mejor[2].length, '0') : '';
+    }
+
     function registrarZeta() {
       let bodyRef = null;
 
@@ -10031,35 +10065,6 @@
       // VENTAS: sugiere el siguiente N° de factura/control consultando el máximo real en la BD.
       // forzar=true (tras guardar, para la siguiente factura) sobreescribe aunque el campo tenga valor;
       // si no, solo rellena si está vacío (apertura inicial del formulario).
-      /* El siguiente de una serie, copiando el formato del último usado.
-
-         Dos cosas que no se pueden dar por sabidas:
-
-         · El N° DE CONTROL LLEVA SU PROPIA SERIE. No sale de la factura. En
-           la matriz de GATMA iban parejos hasta que estrenaron talonario y el
-           control se adelantó 300: la factura 148 lleva el control 448.
-           Derivarlo de la factura le habría puesto 149 a un talonario que va
-           por el 449.
-
-         · EL PREFIJO ES PARTE DEL NÚMERO. Barquisimeto numera A000001,
-           A000002… Quedarse solo con los dígitos devolvía '000018' y le
-           borraba la A, que es lo que distingue su serie de la de la matriz.
-
-         Por eso no se inventa el formato: se toma el del número más alto que
-         ya existe en ese establecimiento —su prefijo y su cantidad de
-         dígitos— y se le suma uno. Si mañana el talonario cambia de forma, el
-         sistema la aprende de la primera factura que se cargue a mano. */
-      function siguienteDe(valores) {
-        let mejor = null, maxN = -1;
-        (valores || []).forEach((s) => {
-          const m = String(s || '').trim().match(/^(.*?)(\d+)$/);
-          if (!m) return;
-          const n = parseInt(m[2], 10);
-          if (!isNaN(n) && n > maxN) { maxN = n; mejor = m; }
-        });
-        return mejor ? mejor[1] + String(maxN + 1).padStart(mejor[2].length, '0') : '';
-      }
-
       /* El correlativo es de CADA ESTABLECIMIENTO, no de la empresa.
 
          Casa Matriz va por la factura 148 y Barquisimeto por la 17: son dos
