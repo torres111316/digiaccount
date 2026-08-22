@@ -156,6 +156,7 @@
           ['criptoactivos', () => window.cargarCriptoactivos && window.cargarCriptoactivos()],
           ['encabezado fiscal', () => window.__syncFiscalHeader && window.__syncFiscalHeader()],
           ['establecimientos (configuración)', () => window.__renderSucursalesConfig && window.__renderSucursalesConfig()],
+          ['¿usa máquina fiscal?', () => window.__revisarUsaMaquina && window.__revisarUsaMaquina()],
           /* Los libros ESPERAN a las sucursales. Iban por separado y los
              libros ganaban la carrera: pintaban la barra con los
              establecimientos de la empresa anterior. */
@@ -9876,6 +9877,132 @@
       return { leer: leer, agregar: agregar, reiniciar: reiniciar, recalcular: recalcular };
     }
 
+    /* Registrar un REPORTE Z de máquina fiscal.
+
+       Una venta por máquina fiscal no es una factura: es el resumen de un día
+       entero de ventas al detal. No tiene cliente ni RIF —nadie anota los
+       datos de quien compra un pan— y en su lugar lleva el serial de la
+       máquina, el número del reporte Z y el rango de comprobantes que emitió
+       ese día. Por eso tiene formulario propio y no un cliente vacío en el de
+       facturas.
+
+       Radian lleva 240 reportes Z y ninguno se podía cargar desde la pantalla:
+       el botón de registrar existía solo en la sección de facturas. */
+    function registrarZeta() {
+      let bodyRef = null;
+
+      /* El siguiente Z y el siguiente comprobante salen de lo ya cargado en
+         esa MÁQUINA. El Z es correlativo del equipo, y el primer comprobante
+         del día es el siguiente al último del día anterior: si queda un salto,
+         es que falta un reporte por cargar y conviene verlo antes de seguir. */
+      function autonumerarZ(forzar) {
+        if (!window.__sbAll || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id || !bodyRef) return;
+        const maq = bodyRef.querySelector('[data-name="maquina"]');
+        const nz = bodyRef.querySelector('[data-name="numeroZ"]');
+        const cd = bodyRef.querySelector('[data-name="compDesde"]');
+        const serial = maq ? maq.value.trim() : '';
+        window.__sbAll((q) => {
+          let c = q.eq('empresa_id', window.__EMPRESA_ACTIVA.id).eq('tipo', 'venta');
+          if (serial) c = c.eq('maquina_fiscal', serial);
+          return c;
+        }, 'libro_fiscal', 'maquina_fiscal, numero_zeta, comprobante_hasta').then(({ data }) => {
+          const filas = (data || []).filter((r) => String(r.numero_zeta || '').trim());
+          if (!filas.length) return;
+          if (maq && !maq.value) {
+            const seriales = [...new Set(filas.map((r) => r.maquina_fiscal).filter(Boolean))];
+            if (seriales.length === 1) { maq.value = seriales[0]; autonumerarZ(true); return; }
+          }
+          const sigZ = siguienteDe(filas.map((r) => r.numero_zeta));
+          const sigC = siguienteDe(filas.map((r) => r.comprobante_hasta));
+          if (nz && sigZ && (forzar || !nz.value)) nz.value = sigZ;
+          if (cd && sigC && (forzar || !cd.value)) cd.value = sigC;
+        });
+      }
+
+      window.openFormModal && window.openFormModal({
+        title: 'Registrar reporte Z (máquina fiscal)',
+        saveLabel: 'Registrar y seguir con el siguiente',
+        autoClose: false,
+        fields: [
+          { name: 'fecha', label: 'Fecha del reporte Z', type: 'date', value: window.__hoyISO() },
+          { name: 'maquina', label: 'Serial de la máquina fiscal', upper: true, placeholder: 'Z7C0000000' },
+          { name: 'numeroZ', label: 'N° de reporte Z', placeholder: '0000' },
+          { name: 'compDesde', label: 'Primer comprobante del día', placeholder: '00000000' },
+          { name: 'compHasta', label: 'Último comprobante del día', placeholder: '00000000' },
+          { name: 'numResumen', col: 2, type: 'static', label: '', html: montosHTML() },
+          { name: 'igtfAplica', label: 'Hubo cobros en divisas o cripto (IGTF 3%)', type: 'select', options: ['No', 'Sí (3%)'],
+            value: (window.__EMPRESA_PREFS || {}).igtf ? 'Sí (3%)' : 'No' },
+          { name: 'igtfShow', label: 'IGTF 3% (calculado del total con IVA)', type: 'static', html: '<span class="mono" id="igtfShowVal">Bs 0,00</span>' },
+        ].concat(campoSucursal()),
+        afterRender: (body) => {
+          bodyRef = body;
+          bodyRef.__montos = montarMontos(body);
+          autonumerarZ();
+          const maq = body.querySelector('[data-name="maquina"]');
+          if (maq) maq.addEventListener('change', () => autonumerarZ(true));
+        },
+        onSave: (v) => {
+          if (!window.sb || !window.__CUENTA_ID || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) return 'No hay una empresa activa seleccionada.';
+          if (!(v.maquina || '').trim()) return 'Indica el serial de la máquina fiscal.';
+          if (!(v.numeroZ || '').trim()) return 'Indica el N° del reporte Z: es lo que identifica al documento.';
+          const fp = (v.fecha || '').split('-');
+          if (fp.length !== 3) return 'Indica la fecha del reporte.';
+          const periodo = fp[0] + '-' + fp[1];
+          if (window.__periodoCerrado && window.__periodoCerrado(periodo)) return 'El período de ese reporte está CERRADO. Reábrelo con el botón del período en Fiscal.';
+          /* La quincena de una VENTA sí sale del día: la máquina emite el
+             reporte el día que lo emite. No existe aquí el caso de la compra
+             recibida tarde, que es el que obliga a preguntarla. */
+          const esEsp = window.__ivaPorQuincena && window.__ivaPorQuincena();
+          const dia = parseInt(fp[2], 10);
+          const M = bodyRef && bodyRef.__montos ? bodyRef.__montos.leer()
+            : { exento: 0, base_gen: 0, iva_gen: 0, base_red: 0, iva_red: 0, base_adic: 0, iva_adic: 0, base: 0, iva: 0, total: 0 };
+          if (!(M.total > 0)) return 'Un reporte Z sin monto no dice nada. Carga las ventas del día; si el día cerró en cero, déjalo sin registrar.';
+          const igtf = /s[ií]/i.test(v.igtfAplica || '') ? M.total * 0.03 : 0;
+          const alic = M.base_adic > 0 ? ALICUOTAS.adic.pct
+            : M.base_gen >= M.base_red ? (M.base_gen > 0 ? 0.16 : 0) : 0.08;
+          const saveBtnEl = document.getElementById('fmSave');
+          if (saveBtnEl) saveBtnEl.disabled = true;
+          window.sb.from('libro_fiscal').insert({
+            cuenta_id: window.__CUENTA_ID, empresa_id: window.__EMPRESA_ACTIVA.id,
+            tipo: 'venta', fecha: fp[2] + '/' + fp[1] + '/' + fp[0].slice(2),
+            periodo: periodo, quincena: esEsp ? (dia > 15 ? 2 : 1) : null,
+            sucursal_id: sucursalDe(v.sucursal),
+            // Un reporte Z no lleva tercero: es la venta del día al público.
+            tercero_nombre: null, tercero_rif: null,
+            numero_factura: null, numero_control: null, tipo_doc: 'FV',
+            maquina_fiscal: (v.maquina || '').trim().toUpperCase(),
+            numero_zeta: (v.numeroZ || '').trim(),
+            comprobante_desde: (v.compDesde || '').trim() || null,
+            comprobante_hasta: (v.compHasta || '').trim() || null,
+            exento: M.exento, base: M.base, alicuota: alic, iva: M.iva, igtf: igtf, total: M.total,
+            base_gen: M.base_gen, iva_gen: M.iva_gen,
+            base_red: M.base_red, iva_red: M.iva_red,
+            base_adic: M.base_adic, iva_adic: M.iva_adic,
+          }).then(({ error }) => {
+            if (saveBtnEl) saveBtnEl.disabled = false;
+            if (error) {
+              // 23505 = el índice que impide cargar dos veces el mismo Z.
+              toast(error.code === '23505'
+                ? 'Ese reporte Z ya está cargado para esa máquina. Revisa el número.'
+                : 'No se pudo guardar: ' + error.message, 'error');
+              return;
+            }
+            if (window.__invalidarArrastres) window.__invalidarArrastres();
+            cargarLibroFiscal('venta');
+            toast('Reporte Z ' + v.numeroZ + ' registrado · Bs ' + fmtF(M.total), 'success');
+            /* Se limpia para el día siguiente y se propone el Z que sigue: son
+               treinta reportes por mes y se cargan de corrido. */
+            if (bodyRef && bodyRef.__montos) bodyRef.__montos.reiniciar();
+            ['compDesde', 'compHasta'].forEach((n) => {
+              const e = bodyRef && bodyRef.querySelector('[data-name="' + n + '"]');
+              if (e) e.value = '';
+            });
+            autonumerarZ(true);
+          });
+        },
+      });
+    }
+
     function registrarMov(tipo) {
       const esCompra = tipo === 'compra';
       let invBox = null; // contenedor de líneas para reponer inventario (solo compras)
@@ -10578,12 +10705,36 @@
 
        La pestaña se esconde cuando la empresa no vende así, para no ofrecer
        una vista que siempre estaría vacía. */
+    /* Si la empresa vende por máquina fiscal, en cualquier período. Se
+       consulta una vez por empresa y con una sola fila: solo hace falta saber
+       si existe alguna, no cuántas. */
+    let _usaMaquina = false;
+    let _usaMaquinaDe = '';
+    async function revisarUsaMaquina() {
+      const emp = window.__EMPRESA_ACTIVA || {};
+      if (!emp.id || _usaMaquinaDe === emp.id) return;
+      _usaMaquinaDe = emp.id;
+      _usaMaquina = false;
+      if (!window.sb) return;
+      const { data } = await window.sb.from('libro_fiscal')
+        .select('id').eq('empresa_id', emp.id).not('numero_zeta', 'is', null).limit(1);
+      _usaMaquina = !!(data && data.length);
+      if (window.__libroData) pintarMaquina((window.__libroData.venta || []).filter((r) => r.numero_zeta));
+    }
+
     function pintarMaquina(filas) {
       const vista = document.querySelector('.ventas-view[data-ventasmode="maquina"]');
       const nav = document.getElementById('ventasModeNav');
       const btn = nav && nav.querySelector('button[data-vmode="maquina"]');
       const hay = (filas || []).length > 0;
-      if (btn) btn.hidden = !hay;
+      /* La pestaña se muestra si la empresa usa máquina fiscal, aunque el
+         período que se está mirando no tenga reportes todavía.
+
+         Antes se escondía cuando el período venía vacío, y eso creaba un
+         callejón: para cargar el PRIMER reporte Z de un mes había que entrar
+         a la sección, pero la sección no aparecía hasta que hubiera uno
+         cargado. Radian tiene 240 y ninguno se pudo registrar desde aquí. */
+      if (btn) btn.hidden = !(hay || _usaMaquina);
       // Si estaba mirando la vista de máquina y cambia a una empresa que no
       // vende así, se la devuelve a facturas en vez de dejarla en blanco.
       if (!hay && vista && !vista.hidden && nav) {
@@ -10888,6 +11039,7 @@
       calcularArrastres(); // trae excedente de crédito y retenciones acumuladas del período anterior
     }
     window.cargarLibroFiscal = cargarLibroFiscal;
+    window.__revisarUsaMaquina = revisarUsaMaquina;
 
     // Editar / eliminar un registro del libro (clic en la fila)
     function editLibroFiscal(id, tipo) {
@@ -11138,6 +11290,8 @@
     if (regVentaBtn) regVentaBtn.addEventListener('click', () => registrarMov('venta'));
     // El módulo "Compras y CxP" reutiliza el mismo registro de compra (la factura del proveedor es formal)
     window.__registrarCompra = () => registrarMov('compra');
+    const regZetaBtn = document.getElementById('regZetaBtn');
+    if (regZetaBtn) regZetaBtn.addEventListener('click', registrarZeta);
     const comprasRegBtn = document.getElementById('comprasRegBtn');
     if (comprasRegBtn) comprasRegBtn.addEventListener('click', () => registrarMov('compra'));
     cargarLibroFiscal('compra');
