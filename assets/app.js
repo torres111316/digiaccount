@@ -13236,27 +13236,27 @@
                'plan'    — diseñado, todavía no construido
        Ver docs/equipo-digital.html para la identidad completa. */
     const AGENTS = [
-      { id: 'maria', n: 'María', ic: 'scan-text', col: '#A96A12', auto: 'sugiere', orden: 1, estado: 'parcial',
+      { id: 'arelis', n: 'Arelis', g: 'f', ic: 'scan-text', col: '#A96A12', auto: 'sugiere', orden: 1, estado: 'parcial',
         spec: 'Asistente administrativa',
         hace: 'Lee facturas de compra por foto y arma el libro',
         prox: 'Recibir comprobantes de retención por WhatsApp y enlazarlos a su factura' },
-      { id: 'rafael', n: 'Rafael', ic: 'shield-check', col: '#6A3C86', auto: 'aviso', orden: 2, estado: 'plan',
-        spec: 'Gerente fiscal · revisa antes de declarar',
+      { id: 'lucho', n: 'Lucho', g: 'm', ic: 'shield-check', col: '#6A3C86', auto: 'aviso', orden: 2, estado: 'plan',
+        spec: 'Especialista tributario · coordina al equipo',
         hace: '',
         prox: 'Revisar el libro del período: retenciones sin comprobante, facturas repetidas, correlativos saltados' },
-      { id: 'juan', n: 'Juan', ic: 'book-open', col: '#0E6B4E', auto: 'sugiere', orden: 3, estado: 'plan',
+      { id: 'roberth', n: 'Roberth', g: 'm', ic: 'book-open', col: '#0E6B4E', auto: 'sugiere', orden: 3, estado: 'plan',
         spec: 'Analista contable',
         hace: '',
         prox: 'Proponer el asiento de cada operación usando el histórico de esa empresa' },
-      { id: 'andrea', n: 'Andrea', ic: 'wallet', col: '#0B7079', auto: 'sugiere', orden: 4, estado: 'plan',
+      { id: 'mariale', n: 'Mariale', g: 'f', ic: 'wallet', col: '#0B7079', auto: 'sugiere', orden: 4, estado: 'plan',
         spec: 'Ventas, tesorería y cobranzas',
         hace: '',
         prox: 'Cruzar los pagos móviles recibidos contra las facturas pendientes' },
-      { id: 'elena', n: 'Elena', ic: 'package', col: '#93304F', auto: 'aviso', orden: 5, estado: 'plan',
+      { id: 'augusto', n: 'Augusto', g: 'm', ic: 'package', col: '#93304F', auto: 'aviso', orden: 5, estado: 'plan',
         spec: 'Costos e inventario',
         hace: '',
         prox: 'Recalcular el costo promedio y avisar cuando un precio quede por debajo del costo' },
-      { id: 'carlos', n: 'Carlos', ic: 'users', col: '#2A5AA8', auto: 'sugiere', orden: 6, estado: 'plan',
+      { id: 'carmen', n: 'Carmen', g: 'f', ic: 'users', col: '#2A5AA8', auto: 'sugiere', orden: 6, estado: 'plan',
         spec: 'Especialista de nómina',
         hace: '',
         prox: 'Avisar vacaciones vencidas y preparar utilidades y prestaciones sociales' },
@@ -13325,6 +13325,19 @@
         + '</svg>';
     }
 
+    /* Retrato del agente. Es un dibujo, no una inicial: dos de ellos empiezan
+       por la misma letra y el monograma dejaba de distinguirlos. */
+    function busto(g) {
+      return '<svg viewBox="0 0 48 48" fill="currentColor" class="ag-busto" aria-hidden="true">'
+        + (g === 'f'
+            ? '<path d="M14 19a10 10 0 0 1 20 0v9.5a2.5 2.5 0 0 1-5 0V19a5 5 0 0 0-10 0v9.5a2.5 2.5 0 0 1-5 0z"/>'
+              + '<circle cx="24" cy="20" r="7.5"/>'
+              + '<path d="M24 30c-8.3 0-15 5.6-15 12.5V44h30v-2.5C39 35.6 32.3 30 24 30z"/>'
+            : '<circle cx="24" cy="18" r="8.5"/>'
+              + '<path d="M24 29c-8.3 0-15 5.6-15 12.5V44h30v-2.5C39 34.6 32.3 29 24 29z"/>')
+        + '</svg>';
+    }
+
     const grid = document.getElementById('agGrid');
     function renderGrid() {
       const esc2 = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -13333,7 +13346,7 @@
         const e = EST[a.estado] || EST.plan;
         return '<div class="ag-card ' + e.cls + '" data-agent="' + a.id + '" style="--ag:' + a.col + ';">'
         + '<div class="ag-card-top">'
-        +   '<span class="ag-mono">' + esc2(a.n.charAt(0)) + '<span class="ag-mono-badge"><i data-lucide="' + a.ic + '"></i></span></span>'
+        +   '<span class="ag-mono">' + busto(a.g) + '<span class="ag-mono-badge"><i data-lucide="' + a.ic + '"></i></span></span>'
         +   '<span class="ag-est">' + e.txt + '</span>'
         + '</div>'
         + '<div class="ag-name">' + esc2(a.n) + '</div><div class="ag-spec">' + esc2(a.spec) + '</div>'
@@ -15597,7 +15610,7 @@
     };
     // Tope REAL de empresas por plan (se aplica al registrar; el fundador no tiene tope).
     const LIMITE_EMPRESAS = {
-      'Contador Básico': 3, 'Contador PRO': 10, 'Firma Contable': Infinity,
+      'Contador Básico': 3, 'Contador PRO': 10, 'Firma Contable': 30,
       'Emprendimientos y PYME': 1, 'Empresa Completa': 1, 'Grupo Empresarial': 5,
     };
     window.__limiteEmpresas = function () {

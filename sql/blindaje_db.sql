@@ -64,7 +64,7 @@ begin
   v_limite := case v_slug
     when 'contador_basico'   then 3
     when 'contador_pro'      then 10
-    when 'firma_contable'    then 2147483647   -- ilimitado
+    when 'firma_contable'    then 30           -- tope real (decisión de Luis 24/08/2026)
     when 'pyme'              then 1
     when 'empresa_completa'  then 1
     when 'grupo_empresarial' then 5

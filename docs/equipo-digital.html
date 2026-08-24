@@ -18,12 +18,12 @@
     --sombra:  0 1px 2px rgba(19,26,33,.05), 0 10px 30px -22px rgba(19,26,33,.5);
 
     /* Un color por persona */
-    --c-maria:  #A96A12;  --p-maria:  #FAF0DE;
-    --c-juan:   #0E6B4E;  --p-juan:   #E1EEE8;
-    --c-carlos: #2A5AA8;  --p-carlos: #E4EBF7;
-    --c-andrea: #0B7079;  --p-andrea: #DDEFF0;
-    --c-elena:  #93304F;  --p-elena:  #F8E5EB;
-    --c-rafael: #6A3C86;  --p-rafael: #EEE6F4;
+    --c-arelis:  #A96A12;  --p-arelis:  #FAF0DE;
+    --c-roberth:   #0E6B4E;  --p-roberth:   #E1EEE8;
+    --c-carmen: #2A5AA8;  --p-carmen: #E4EBF7;
+    --c-mariale: #0B7079;  --p-mariale: #DDEFF0;
+    --c-augusto:  #93304F;  --p-augusto:  #F8E5EB;
+    --c-lucho: #6A3C86;  --p-lucho: #EEE6F4;
 
     --display: "Helvetica Neue", Helvetica, Arial, sans-serif;
     --voz: Charter, "Bitstream Charter", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
@@ -43,12 +43,12 @@
       --alerta:  #E07878;
       --sombra:  0 1px 2px rgba(0,0,0,.5), 0 10px 30px -22px rgba(0,0,0,.9);
 
-      --c-maria:  #E2A551;  --p-maria:  #2B2113;
-      --c-juan:   #4FAE84;  --p-juan:   #122720;
-      --c-carlos: #7BA5E8;  --p-carlos: #162034;
-      --c-andrea: #46B0B8;  --p-andrea: #0F2A2C;
-      --c-elena:  #DB7D9C;  --p-elena:  #2E1620;
-      --c-rafael: #B58CD0;  --p-rafael: #251A2E;
+      --c-arelis:  #E2A551;  --p-arelis:  #2B2113;
+      --c-roberth:   #4FAE84;  --p-roberth:   #122720;
+      --c-carmen: #7BA5E8;  --p-carmen: #162034;
+      --c-mariale: #46B0B8;  --p-mariale: #0F2A2C;
+      --c-augusto:  #DB7D9C;  --p-augusto:  #2E1620;
+      --c-lucho: #B58CD0;  --p-lucho: #251A2E;
     }
   }
   :root[data-theme="dark"] {
@@ -63,12 +63,12 @@
     --alerta:  #E07878;
     --sombra:  0 1px 2px rgba(0,0,0,.5), 0 10px 30px -22px rgba(0,0,0,.9);
 
-    --c-maria:  #E2A551;  --p-maria:  #2B2113;
-    --c-juan:   #4FAE84;  --p-juan:   #122720;
-    --c-carlos: #7BA5E8;  --p-carlos: #162034;
-    --c-andrea: #46B0B8;  --p-andrea: #0F2A2C;
-    --c-elena:  #DB7D9C;  --p-elena:  #2E1620;
-    --c-rafael: #B58CD0;  --p-rafael: #251A2E;
+    --c-arelis:  #E2A551;  --p-arelis:  #2B2113;
+    --c-roberth:   #4FAE84;  --p-roberth:   #122720;
+    --c-carmen: #7BA5E8;  --p-carmen: #162034;
+    --c-mariale: #46B0B8;  --p-mariale: #0F2A2C;
+    --c-augusto:  #DB7D9C;  --p-augusto:  #2E1620;
+    --c-lucho: #B58CD0;  --p-lucho: #251A2E;
   }
 
   * { box-sizing: border-box; }
@@ -134,12 +134,12 @@
     grid-template-columns: 132px 1fr;
     overflow: hidden;
   }
-  .m  { --c: var(--c-maria);  --p: var(--p-maria); }
-  .j  { --c: var(--c-juan);   --p: var(--p-juan); }
-  .ca { --c: var(--c-carlos); --p: var(--p-carlos); }
-  .an { --c: var(--c-andrea); --p: var(--p-andrea); }
-  .e  { --c: var(--c-elena);  --p: var(--p-elena); }
-  .r  { --c: var(--c-rafael); --p: var(--p-rafael); }
+  .ar { --c: var(--c-arelis);  --p: var(--p-arelis); }
+  .ro { --c: var(--c-roberth);   --p: var(--p-roberth); }
+  .cr { --c: var(--c-carmen); --p: var(--p-carmen); }
+  .ma { --c: var(--c-mariale); --p: var(--p-mariale); }
+  .au { --c: var(--c-augusto);  --p: var(--p-augusto); }
+  .lu { --c: var(--c-lucho); --p: var(--p-lucho); }
 
   .retrato {
     background: var(--p);
@@ -156,6 +156,7 @@
     color: var(--hoja);
     box-shadow: 0 3px 10px -3px var(--c);
   }
+  .avatar svg { width: 42px; height: 42px; }
   .icono { width: 22px; height: 22px; color: var(--c); opacity: .85; }
 
   .expediente { padding: 26px 30px 28px; min-width: 0; }
@@ -278,8 +279,8 @@
   }
   .msg.no { border-top: 3px solid var(--alerta); }
   .msg.no .msg-tag { color: var(--alerta); }
-  .msg.si { border-top: 3px solid var(--c-juan); }
-  .msg.si .msg-tag { color: var(--c-juan); }
+  .msg.si { border-top: 3px solid var(--c-roberth); }
+  .msg.si .msg-tag { color: var(--c-roberth); }
   .msg p { font-family: var(--voz); font-size: 16px; line-height: 1.5; margin: 0; }
   @media (max-width: 600px) { .contraste { grid-template-columns: 1fr; } }
 
@@ -302,7 +303,7 @@
     <p class="rotulo">La idea</p>
     <h2>Cargos, no funciones</h2>
 
-    <p class="lectura">Una lista de funciones —<em>OCR de documentos, clasificación automática, validación de correlativos</em>— no le dice nada a un contador. Un organigrama sí. Cuando el cliente entra al sistema y ve que <strong>María</strong> le recibió catorce comprobantes por WhatsApp mientras él estaba en la calle, entiende el producto sin que nadie se lo explique.</p>
+    <p class="lectura">Una lista de funciones —<em>OCR de documentos, clasificación automática, validación de correlativos</em>— no le dice nada a un contador. Un organigrama sí. Cuando el cliente entra al sistema y ve que <strong>Arelis</strong> le recibió catorce comprobantes por WhatsApp mientras él estaba en la calle, entiende el producto sin que nadie se lo explique.</p>
 
     <p class="lectura">Cada uno de los seis corresponde a un módulo real y a una automatización que existe o que está por construirse. <strong>No hay personajes de adorno:</strong> si un agente no tiene trabajo que hacer, no está en la nómina.</p>
 
@@ -322,17 +323,17 @@
 
     <div class="plantilla">
 
-      <!-- MARÍA -->
-      <article class="ficha m">
+      <!-- ARELIS -->
+      <article class="ficha ar">
         <div class="retrato">
-          <div class="avatar">M</div>
+          <div class="avatar" aria-hidden="true"><svg viewBox="0 0 48 48" fill="currentColor"><path d="M14 19a10 10 0 0 1 20 0v9.5a2.5 2.5 0 0 1-5 0V19a5 5 0 0 0-10 0v9.5a2.5 2.5 0 0 1-5 0z"/><circle cx="24" cy="20" r="7.5"/><path d="M24 30c-8.3 0-15 5.6-15 12.5V44h30v-2.5C39 35.6 32.3 30 24 30z"/></svg></div>
           <svg class="icono" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M4 4h16v13H7l-3 3z"/><path d="M8 9h8"/><path d="M8 13h5"/>
           </svg>
         </div>
         <div class="expediente">
           <div class="fila-nombre">
-            <h3 class="nombre">María</h3>
+            <h3 class="nombre">Arelis</h3>
             <span class="autonomia">Sugiere</span>
           </div>
           <p class="cargo">Asistente administrativa</p>
@@ -344,21 +345,21 @@
             <li>Te avisa cuando un comprobante llega de un período que ya declaraste</li>
           </ul>
           <p class="voz">Llegaron 14 comprobantes de retención de IVA. Doce los enlacé a su factura; dos no encontré a qué corresponden. ¿Los revisas?</p>
-          <p class="limite"><b>Lo que no hace</b>Registrar sin que alguien confirme. Todo lo que María lee queda en la bandeja de pendientes hasta que lo apruebas.</p>
+          <p class="limite"><b>Lo que no hace</b>Registrar sin que alguien confirme. Todo lo que Arelis lee queda en la bandeja de pendientes hasta que lo apruebas.</p>
         </div>
       </article>
 
-      <!-- JUAN -->
-      <article class="ficha j">
+      <!-- ROBERTH -->
+      <article class="ficha ro">
         <div class="retrato">
-          <div class="avatar">J</div>
+          <div class="avatar" aria-hidden="true"><svg viewBox="0 0 48 48" fill="currentColor"><circle cx="24" cy="18" r="8.5"/><path d="M24 29c-8.3 0-15 5.6-15 12.5V44h30v-2.5C39 34.6 32.3 29 24 29z"/></svg></div>
           <svg class="icono" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <rect x="4" y="3" width="16" height="18" rx="1.5"/><path d="M8 8h8"/><path d="M8 12h8"/><path d="M8 16h4"/>
           </svg>
         </div>
         <div class="expediente">
           <div class="fila-nombre">
-            <h3 class="nombre">Juan</h3>
+            <h3 class="nombre">Roberth</h3>
             <span class="autonomia">Sugiere</span>
           </div>
           <p class="cargo">Analista contable</p>
@@ -370,25 +371,25 @@
             <li>Marca lo que no logra clasificar en vez de inventar una cuenta</li>
           </ul>
           <p class="voz">Esta compra la clasifiqué en Repuestos y accesorios — es donde han ido las siete anteriores de este mismo proveedor.</p>
-          <p class="limite"><b>Lo que no hace</b>Contabilizar solo. Juan propone el asiento; el asiento entra al libro cuando lo apruebas.</p>
+          <p class="limite"><b>Lo que no hace</b>Contabilizar solo. Roberth propone el asiento; el asiento entra al libro cuando lo apruebas.</p>
         </div>
       </article>
 
-      <!-- ELENA -->
-      <article class="ficha e">
+      <!-- AUGUSTO -->
+      <article class="ficha au">
         <div class="retrato">
-          <div class="avatar">E</div>
+          <div class="avatar" aria-hidden="true"><svg viewBox="0 0 48 48" fill="currentColor"><circle cx="24" cy="18" r="8.5"/><path d="M24 29c-8.3 0-15 5.6-15 12.5V44h30v-2.5C39 34.6 32.3 29 24 29z"/></svg></div>
           <svg class="icono" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M3.5 7.5 12 3l8.5 4.5v9L12 21l-8.5-4.5z"/><path d="M3.5 7.5 12 12l8.5-4.5"/><path d="M12 12v9"/>
           </svg>
         </div>
         <div class="expediente">
           <div class="fila-nombre">
-            <h3 class="nombre">Elena</h3>
+            <h3 class="nombre">Augusto</h3>
             <span class="autonomia">Auto + aviso</span>
           </div>
           <p class="cargo">Costos e inventario</p>
-          <p class="resumen">Sabe cuánto cuesta de verdad lo que vendes y cuánto queda en el depósito. Es la que ve la plata que se pierde sin que nadie la note.</p>
+          <p class="resumen">Sabe cuánto cuesta de verdad lo que vendes y cuánto queda en el depósito. Es el que ve la plata que se pierde sin que nadie la note.</p>
           <ul class="encargos">
             <li>Recalcula el costo promedio de cada producto conforme entran las compras</li>
             <li>Avisa cuando un precio de venta quedó por debajo del costo de reposición</li>
@@ -396,21 +397,21 @@
             <li>Señala qué está por agotarse y qué lleva meses sin moverse</li>
           </ul>
           <p class="voz">El costo del filtro de aceite subió 34% en la última compra. Lo sigues vendiendo al precio de hace tres meses: pierdes Bs 180 en cada uno.</p>
-          <p class="limite"><b>Lo que no hace</b>Cambiar precios ni ajustar existencias. Elena recalcula el costo y avisa; mover la lista de precios o cuadrar un faltante es decisión tuya.</p>
+          <p class="limite"><b>Lo que no hace</b>Cambiar precios ni ajustar existencias. Augusto recalcula el costo y avisa; mover la lista de precios o cuadrar un faltante es decisión tuya.</p>
         </div>
       </article>
 
-      <!-- CARLOS -->
-      <article class="ficha ca">
+      <!-- CARMEN -->
+      <article class="ficha cr">
         <div class="retrato">
-          <div class="avatar">C</div>
+          <div class="avatar" aria-hidden="true"><svg viewBox="0 0 48 48" fill="currentColor"><path d="M14 19a10 10 0 0 1 20 0v9.5a2.5 2.5 0 0 1-5 0V19a5 5 0 0 0-10 0v9.5a2.5 2.5 0 0 1-5 0z"/><circle cx="24" cy="20" r="7.5"/><path d="M24 30c-8.3 0-15 5.6-15 12.5V44h30v-2.5C39 35.6 32.3 30 24 30z"/></svg></div>
           <svg class="icono" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <circle cx="9" cy="8" r="3.2"/><path d="M3.5 20c0-3.2 2.5-5.2 5.5-5.2s5.5 2 5.5 5.2"/><path d="M17 11h5"/><path d="M17 15h5"/>
           </svg>
         </div>
         <div class="expediente">
           <div class="fila-nombre">
-            <h3 class="nombre">Carlos</h3>
+            <h3 class="nombre">Carmen</h3>
             <span class="autonomia">Sugiere</span>
           </div>
           <p class="cargo">Especialista de nómina</p>
@@ -422,21 +423,21 @@
             <li>Avisa cuando a un trabajador le toca su período de vacaciones</li>
           </ul>
           <p class="voz">A tres trabajadores les corresponden vacaciones este mes. Ya calculé el bono vacacional de cada uno según su antigüedad.</p>
-          <p class="limite"><b>Lo que no hace</b>Pagar. Carlos calcula y prepara; la orden de pago la das tú desde Tesorería.</p>
+          <p class="limite"><b>Lo que no hace</b>Pagar. Carmen calcula y prepara; la orden de pago la das tú desde Tesorería.</p>
         </div>
       </article>
 
-      <!-- ANDREA -->
-      <article class="ficha an">
+      <!-- MARIALE -->
+      <article class="ficha ma">
         <div class="retrato">
-          <div class="avatar">A</div>
+          <div class="avatar" aria-hidden="true"><svg viewBox="0 0 48 48" fill="currentColor"><path d="M14 19a10 10 0 0 1 20 0v9.5a2.5 2.5 0 0 1-5 0V19a5 5 0 0 0-10 0v9.5a2.5 2.5 0 0 1-5 0z"/><circle cx="24" cy="20" r="7.5"/><path d="M24 30c-8.3 0-15 5.6-15 12.5V44h30v-2.5C39 35.6 32.3 30 24 30z"/></svg></div>
           <svg class="icono" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M3 7h18v12H3z"/><path d="M3 11h18"/><path d="M7 15h4"/>
           </svg>
         </div>
         <div class="expediente">
           <div class="fila-nombre">
-            <h3 class="nombre">Andrea</h3>
+            <h3 class="nombre">Mariale</h3>
             <span class="autonomia">Sugiere</span>
           </div>
           <p class="cargo">Ventas, tesorería y cobranzas</p>
@@ -448,24 +449,24 @@
             <li>Prepara el recordatorio de cobro listo para enviar por WhatsApp</li>
           </ul>
           <p class="voz">Entró un pago de Bs 4.820 desde un teléfono que coincide con Distribuidora Andina. Su factura 00-004412 es por ese monto exacto. ¿Lo enlazo?</p>
-          <p class="limite"><b>Lo que no hace</b>Asignar por monto solamente. Si solo coincide la cifra, Andrea lo sugiere pero no lo aplica.</p>
+          <p class="limite"><b>Lo que no hace</b>Asignar por monto solamente. Si solo coincide la cifra, Mariale lo sugiere pero no lo aplica.</p>
         </div>
       </article>
 
-      <!-- RAFAEL -->
-      <article class="ficha r">
+      <!-- LUCHO -->
+      <article class="ficha lu">
         <div class="retrato">
-          <div class="avatar">R</div>
+          <div class="avatar" aria-hidden="true"><svg viewBox="0 0 48 48" fill="currentColor"><circle cx="24" cy="18" r="8.5"/><path d="M24 29c-8.3 0-15 5.6-15 12.5V44h30v-2.5C39 34.6 32.3 29 24 29z"/></svg></div>
           <svg class="icono" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M12 3l8 3.5v5c0 5-3.4 8.8-8 9.5-4.6-.7-8-4.5-8-9.5v-5z"/><path d="M9 12l2.2 2.2L15.5 10"/>
           </svg>
         </div>
         <div class="expediente">
           <div class="fila-nombre">
-            <h3 class="nombre">Rafael</h3>
+            <h3 class="nombre">Lucho</h3>
             <span class="autonomia">Auto + aviso</span>
           </div>
-          <p class="cargo">Gerente fiscal · revisa antes de declarar</p>
+          <p class="cargo">Especialista tributario · coordina al equipo</p>
           <p class="resumen">El último en ver los libros. No registra nada: busca lo que se le escapó a los demás.</p>
           <ul class="encargos">
             <li>Revisa el libro del período completo antes de que declares</li>
@@ -475,7 +476,7 @@
             <li>Te recuerda tu fecha de declaración según el terminal del RIF</li>
           </ul>
           <p class="voz">Antes de declarar julio: hay dos facturas con el mismo número de control y una retención de ISLR sin comprobante. Te dejo el detalle.</p>
-          <p class="limite"><b>Lo que no hace</b>Declarar ni corregir. Rafael revisa y te entrega el informe; presentar la declaración y arreglar lo que señale es tuyo.</p>
+          <p class="limite"><b>Lo que no hace</b>Declarar ni corregir. Lucho revisa y te entrega el informe; presentar la declaración y arreglar lo que señale es tuyo.</p>
         </div>
       </article>
 
@@ -485,7 +486,7 @@
   <!-- ================= CADENA DE MANDO ================= -->
   <section>
     <p class="rotulo">Cómo trabajan juntos</p>
-    <h2>El documento entra por María y sale por Rafael</h2>
+    <h2>El documento entra por Arelis y sale por Lucho</h2>
 
     <div class="mando">
       <p class="flecha-nota">Recorrido de una compra</p>
@@ -510,12 +511,12 @@
         <div class="mini r"><span class="pastilla">R</span><span>Revisa</span></div>
       </div>
 
-      <p style="margin:0;font-family:var(--voz);font-size:16.5px;color:var(--tinta-2);max-width:64ch">Carlos trabaja aparte, sobre la nómina, y también le entrega a Rafael. Cada paso deja su registro, así que siempre se sabe quién propuso qué y quién lo aprobó.</p>
+      <p style="margin:0;font-family:var(--voz);font-size:16.5px;color:var(--tinta-2);max-width:64ch">Carmen trabaja aparte, sobre la nómina, y también le entrega a Lucho. Cada paso deja su registro, así que siempre se sabe quién propuso qué y quién lo aprobó.</p>
     </div>
 
     <p class="lectura">Esa cadena es lo que hace creíble la historia. No son seis chatbots sueltos con nombre bonito: es un flujo real donde cada uno recibe del anterior, y el último tiene autoridad de revisión sobre todos.</p>
 
-    <p class="lectura"><strong>Elena aparece en los dos recorridos</strong>, y ahí está su valor. En la compra fija el costo; en la venta descarga la existencia. Es la única que ve las dos puntas del mismo producto — por eso es la que puede decirte que estás vendiendo por debajo del costo.</p>
+    <p class="lectura"><strong>Augusto aparece en los dos recorridos</strong>, y ahí está su valor. En la compra fija el costo; en la venta descarga la existencia. Es el único que ve las dos puntas del mismo producto — por eso es el que puede decirte que estás vendiendo por debajo del costo.</p>
   </section>
 
   <!-- ================= MAPEO AL MÓDULO ================= -->
@@ -532,15 +533,15 @@
           <tr><th>Tarjeta actual</th><th>Persona</th><th>Por qué</th></tr>
         </thead>
         <tbody>
-          <tr><td class="mod">Agente OCR / Documentos</td><td class="quien" style="color:var(--c-maria)">María</td><td>Mismo trabajo, con nombre</td></tr>
-          <tr><td class="mod">Agente Contable</td><td class="quien" style="color:var(--c-juan)">Juan</td><td>Mismo trabajo, con nombre</td></tr>
-          <tr><td class="mod">Agente Inventario</td><td class="quien" style="color:var(--c-elena)">Elena</td><td>Se le suma costos, que es lo que faltaba</td></tr>
-          <tr><td class="mod">Agente Nómina</td><td class="quien" style="color:var(--c-carlos)">Carlos</td><td>Mismo trabajo, con nombre</td></tr>
-          <tr><td class="mod">Agente Tesorería</td><td class="quien" style="color:var(--c-andrea)">Andrea</td><td>Mismo trabajo, con nombre</td></tr>
-          <tr><td class="mod">Agente Ventas</td><td class="quien" style="color:var(--c-andrea)">Andrea</td><td>Facturar y cobrar son un solo flujo</td></tr>
-          <tr><td class="mod">Agente Fiscal</td><td class="quien" style="color:var(--c-rafael)">Rafael</td><td>Es su especialidad, no un cargo aparte</td></tr>
-          <tr><td class="mod">Agente Analista</td><td class="quien" style="color:var(--c-rafael)">Rafael</td><td>Quien revisa los libros es quien los interpreta</td></tr>
-          <tr><td class="mod">Gerente IA</td><td class="quien" style="color:var(--c-rafael)">Rafael</td><td>El gerente ya tiene nombre</td></tr>
+          <tr><td class="mod">Agente OCR / Documentos</td><td class="quien" style="color:var(--c-arelis)">Arelis</td><td>Mismo trabajo, con nombre</td></tr>
+          <tr><td class="mod">Agente Contable</td><td class="quien" style="color:var(--c-roberth)">Roberth</td><td>Mismo trabajo, con nombre</td></tr>
+          <tr><td class="mod">Agente Inventario</td><td class="quien" style="color:var(--c-augusto)">Augusto</td><td>Se le suma costos, que es lo que faltaba</td></tr>
+          <tr><td class="mod">Agente Nómina</td><td class="quien" style="color:var(--c-carmen)">Carmen</td><td>Mismo trabajo, con nombre</td></tr>
+          <tr><td class="mod">Agente Tesorería</td><td class="quien" style="color:var(--c-mariale)">Mariale</td><td>Mismo trabajo, con nombre</td></tr>
+          <tr><td class="mod">Agente Ventas</td><td class="quien" style="color:var(--c-mariale)">Mariale</td><td>Facturar y cobrar son un solo flujo</td></tr>
+          <tr><td class="mod">Agente Fiscal</td><td class="quien" style="color:var(--c-lucho)">Lucho</td><td>Es su especialidad, no un cargo aparte</td></tr>
+          <tr><td class="mod">Agente Analista</td><td class="quien" style="color:var(--c-lucho)">Lucho</td><td>Quien revisa los libros es quien los interpreta</td></tr>
+          <tr><td class="mod">Gerente IA</td><td class="quien" style="color:var(--c-lucho)">Lucho</td><td>El gerente ya tiene nombre</td></tr>
         </tbody>
       </table>
     </div>
@@ -560,11 +561,11 @@
       </div>
       <div class="regla-it">
         <h3>Cada uno habla solo de lo suyo</h3>
-        <p>María no opina de contabilidad. Rafael no registra facturas. Si un agente se sale de su cargo, la ficción se cae y con ella la confianza en el sistema.</p>
+        <p>Arelis no opina de contabilidad. Lucho no registra facturas. Si un agente se sale de su cargo, la ficción se cae y con ella la confianza en el sistema.</p>
       </div>
       <div class="regla-it">
         <h3>Hablan como colegas, no como robots ni como amigos</h3>
-        <p>Nada de «¡Hola! 😊 Soy María, tu asistente virtual». Tampoco «PROCESO COMPLETADO: 14 REGISTROS». El tono es el de un colega competente que te pasa un reporte: directo, con el número exacto, y termina en una pregunta si necesita tu decisión.</p>
+        <p>Nada de «¡Hola! 😊 Soy Arelis, tu asistente virtual». Tampoco «PROCESO COMPLETADO: 14 REGISTROS». El tono es el de un colega competente que te pasa un reporte: directo, con el número exacto, y termina en una pregunta si necesita tu decisión.</p>
       </div>
       <div class="regla-it">
         <h3>Ninguno firma nada</h3>
@@ -597,7 +598,7 @@
   </section>
 
   <p class="pie">
-    Los seis cargos corresponden a módulos existentes de DigiAccount. Los avatares son monogramas de color, no retratos: nadie debe poder confundirlos con fotos de personas reales.<br>
+    Los seis cargos corresponden a módulos existentes de DigiAccount. Los avatares son siluetas dibujadas —distinguen el género del nombre y nada más—, nunca fotografías: nadie debe poder confundirlos con personas reales.<br>
     Frases de ejemplo redactadas como referencia de tono para la redacción de la interfaz.
   </p>
 

@@ -7175,6 +7175,7 @@
     display:grid; place-items:center;
   }
   .ag-mono-badge i, .ag-mono-badge svg { width:11px; height:11px; }
+  .ag-mono .ag-busto { width:27px; height:27px; }
   .ag-est { font-size:10.5px; font-weight:700; letter-spacing:.04em; padding:3px 9px; border-radius:999px; white-space:nowrap; }
 
   .ag-linea { font-size:12px; line-height:1.45; margin-top:10px; padding-left:11px; border-left:2px solid var(--border); color:var(--fg); }
@@ -7188,6 +7189,7 @@
     background:var(--ag, var(--da-blue)); color:#fff;
     display:grid; place-items:center; font-size:22px; font-weight:800; letter-spacing:-.02em;
   }
+  .agm-mono .ag-busto { width:42px; height:42px; }
 
   /* Nota bajo un campo de configuración */
   .cfg-hint { display: block; font-size: 10.5px; color: var(--fg-muted); margin-top: 4px; line-height: 1.4; }
