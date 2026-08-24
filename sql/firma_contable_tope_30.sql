@@ -68,7 +68,19 @@ begin
   end if;
 end $$;
 
--- Comprobación: ninguna cuenta debería estar ya por encima del nuevo tope.
+-- ----------------------------------------------------------------------------
+--  COMPROBACIÓN 1 · ¿quedó aplicado?
+--  Lee el codigo del trigger tal como esta viviendo en la base ahora mismo.
+--  Devuelve 30 si corrio; 2147483647 si no.
+-- ----------------------------------------------------------------------------
+select substring(prosrc from 'firma_contable''\s*then\s*(\d+)') as tope_firma_contable
+  from pg_proc where proname = 'validar_limite_empresas';
+
+-- ----------------------------------------------------------------------------
+--  COMPROBACIÓN 2 · ninguna cuenta debería estar ya por encima del nuevo tope.
+--  Si devuelve filas, esas cuentas conservan las empresas que ya tienen (el
+--  trigger es BEFORE INSERT y no borra nada), pero no podran registrar mas.
+-- ----------------------------------------------------------------------------
 select c.id, c.plan_id, count(e.id) as empresas
   from public.cuentas c
   join public.empresas e on e.cuenta_id = c.id
