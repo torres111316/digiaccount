@@ -9974,8 +9974,19 @@
              Por eso se pregunta CUÁNTO se cobró en divisas, y de ahí sale el
              3%. El monto queda editable porque el que manda es el que imprime
              la máquina: si el Z dice otra cifra, esa es la que va al libro. */
-          { name: 'igtfBase', label: 'Del total del día, cuánto se cobró en divisas o cripto (Bs)', type: 'number', step: '0.01', placeholder: '0.00' },
-          { name: 'igtfMonto', label: 'IGTF del reporte (Bs) — 3% de lo anterior, ajústalo si el Z dice otra cosa', type: 'number', step: '0.01', placeholder: '0.00' },
+          /* La tasa se ELIGE. El IGTF no tiene una sola: son 3% para moneda
+             extranjera, criptomonedas y criptoactivos —el caso común de una
+             venta al detal— y 2% para las transacciones en bolívares (guía
+             TRI.GR.03.018, Gaceta 6.687 Extraordinario del 25/02/2022).
+
+             Se deja escribible y no cerrada a dos opciones porque la ley fija
+             un rango y el Ejecutivo puede moverla: el día que cambie, se
+             escribe la nueva sin tocar el programa. */
+          { name: 'igtfPct', label: 'Tasa del IGTF (%)', type: 'datalist', value: '3',
+            options: [{ value: '3', label: '3% · divisas, criptomonedas y criptoactivos' },
+                      { value: '2', label: '2% · transacciones en bolívares' }] },
+          { name: 'igtfBase', label: 'Base: cuánto del día se cobró así (Bs)', type: 'number', step: '0.01', placeholder: '0.00' },
+          { name: 'igtfMonto', label: 'IGTF del reporte (Bs)', type: 'number', step: '0.01', placeholder: '0.00' },
         ].concat(campoSucursal()),
         afterRender: (body) => {
           bodyRef = body;
@@ -9983,13 +9994,37 @@
           autonumerarZ();
           const maq = body.querySelector('[data-name="maquina"]');
           if (maq) maq.addEventListener('change', () => autonumerarZ(true));
-          // Al escribir la base en divisas se propone su 3%; queda editable.
+          /* Base e impuesto se completan EN LOS DOS SENTIDOS.
+
+             El reporte Z no siempre imprime las dos cifras: unas veces se
+             tiene la base cobrada en divisas y otras solo el impuesto. Pedir
+             siempre la base obligaba a dividir a mano para poder registrar
+             algo que el papel ya trae hecho.
+
+             Cada campo calcula EL OTRO, nunca a sí mismo, así que no se pisan
+             mientras se escribe. Y al cambiar la tasa se recalcula desde el
+             que tenga valor, dando preferencia a la base. */
+          const igP = body.querySelector('[data-name="igtfPct"]');
           const igB = body.querySelector('[data-name="igtfBase"]');
           const igM = body.querySelector('[data-name="igtfMonto"]');
           if (igB && igM) {
+            const tasa = () => {
+              const p = parseFloat((igP && igP.value) || '3');
+              return (p > 0 && p < 100) ? p / 100 : 0.03;
+            };
             igB.addEventListener('input', () => {
               const b = parseFloat(igB.value) || 0;
-              igM.value = b > 0 ? (b * 0.03).toFixed(2) : '';
+              igM.value = b > 0 ? (b * tasa()).toFixed(2) : '';
+            });
+            igM.addEventListener('input', () => {
+              const m = parseFloat(igM.value) || 0;
+              igB.value = m > 0 ? (m / tasa()).toFixed(2) : '';
+            });
+            if (igP) igP.addEventListener('input', () => {
+              const b = parseFloat(igB.value) || 0;
+              const m = parseFloat(igM.value) || 0;
+              if (b > 0) igM.value = (b * tasa()).toFixed(2);
+              else if (m > 0) igB.value = (m / tasa()).toFixed(2);
             });
           }
         },
@@ -10012,8 +10047,9 @@
           /* Se guarda el MONTO, no un porcentaje del total. Si quedó vacío
              pero se escribió la base, se calcula; si no hay ninguno de los
              dos, el día no tuvo cobros en divisas y el IGTF es cero. */
+          const pct = (parseFloat(v.igtfPct) > 0 && parseFloat(v.igtfPct) < 100) ? parseFloat(v.igtfPct) / 100 : 0.03;
           const igtfBase = parseFloat(v.igtfBase) || 0;
-          const igtf = parseFloat(v.igtfMonto) || (igtfBase > 0 ? igtfBase * 0.03 : 0);
+          const igtf = parseFloat(v.igtfMonto) || (igtfBase > 0 ? igtfBase * pct : 0);
           if (igtf > M.total) return 'El IGTF (' + fmtF(igtf) + ') no puede ser mayor que el total del día (' + fmtF(M.total) + '). Revisa el monto.';
           const alic = M.base_adic > 0 ? ALICUOTAS.adic.pct
             : M.base_gen >= M.base_red ? (M.base_gen > 0 ? 0.16 : 0) : 0.08;
@@ -10069,6 +10105,8 @@
             // El IGTF es de la jornada: no se arrastra al día siguiente.
             poner('igtfBase', '');
             poner('igtfMonto', '');
+            // La tasa NO se limpia: quien cobra en divisas lo hace todos los
+            // días, y volver a elegir 3% en cada reporte es trabajo de más.
             // La fecha avanza un día: un reporte Z es de una jornada.
             const d = new Date(fp[0] + '-' + fp[1] + '-' + fp[2] + 'T12:00:00');
             d.setDate(d.getDate() + 1);
