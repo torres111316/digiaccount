@@ -9963,6 +9963,10 @@
           { name: 'numeroZ', label: 'N° de reporte Z', placeholder: '0000' },
           { name: 'compDesde', label: 'Primer comprobante del día', placeholder: '00000000' },
           { name: 'compHasta', label: 'Último comprobante del día', placeholder: '00000000' },
+          { name: 'avisoCero', col: 2, type: 'static', label: '', html:
+            '<div style="font-size:11.5px;color:var(--fg-muted);line-height:1.5;">'
+            + 'Si la jornada cerró <strong>sin ventas</strong> —falla de la impresora, un Z de prueba, un día sin operar— '
+            + 'regístralo igual con sus montos en cero: lo que no puede quedar es un salto en el correlativo.</div>' },
           { name: 'numResumen', col: 2, type: 'static', label: '', html: montosHTML() },
           /* EL IGTF DE UN REPORTE Z NO SALE DEL TOTAL DEL DÍA.
 
@@ -10043,7 +10047,21 @@
           const dia = parseInt(fp[2], 10);
           const M = bodyRef && bodyRef.__montos ? bodyRef.__montos.leer()
             : { exento: 0, base_gen: 0, iva_gen: 0, base_red: 0, iva_red: 0, base_adic: 0, iva_adic: 0, base: 0, iva: 0, total: 0 };
-          if (!(M.total > 0)) return 'Un reporte Z sin monto no dice nada. Carga las ventas del día; si el día cerró en cero, déjalo sin registrar.';
+          /* UN REPORTE Z EN CERO SÍ SE REGISTRA.
+
+             Aquí decía que un Z sin monto "no dice nada" y aconsejaba dejarlo
+             sin registrar. Es al revés, y era un mal consejo: lo que un Z
+             identifica es el CORRELATIVO de la máquina, y saltarse uno deja un
+             hueco en la secuencia — justo lo que se mira en una fiscalización.
+
+             Pasa de verdad y a menudo: la impresora falla, se cierra la
+             jornada sin ventas, se hace un Z de prueba. En el libro de Radian
+             hay cuatro así, y doce días con más de un reporte. La máquina
+             igual quema un comprobante, por eso el rango suele venir con el
+             mismo número de principio y fin.
+
+             Lo que sí se exige es el N° de Z, que es lo que da la continuidad,
+             y eso ya se validó arriba. */
           /* Se guarda el MONTO, no un porcentaje del total. Si quedó vacío
              pero se escribió la base, se calcula; si no hay ninguno de los
              dos, el día no tuvo cobros en divisas y el IGTF es cero. */
@@ -10082,7 +10100,9 @@
             }
             if (window.__invalidarArrastres) window.__invalidarArrastres();
             cargarLibroFiscal('venta');
-            toast('Reporte Z ' + v.numeroZ + ' registrado · Bs ' + fmtF(M.total), 'success');
+            toast(M.total > 0
+              ? 'Reporte Z ' + v.numeroZ + ' registrado · Bs ' + fmtF(M.total)
+              : 'Reporte Z ' + v.numeroZ + ' registrado EN CERO · el correlativo queda sin huecos', 'success');
             /* Y se deja listo el reporte del día siguiente. Son treinta al mes
                y se cargan de corrido: el que carga no debería escribir ni la
                fecha ni el número, solo los montos.
