@@ -9765,9 +9765,11 @@
     /* Monta la caja y devuelve su API. `inicial` es una fila de libro_fiscal
        (al editar) o nada (al registrar). */
     function montarMontos(body, inicial) {
+      /* El IGTF salió de aquí: ya no es un «sí/no» que multiplica el total.
+         Lo llevan `camposIgtf`/`montarIgtf`/`leerIgtf`, que piden la tasa y la
+         porción realmente cobrada en divisas — una factura puede cobrarse
+         mitad en bolívares, y un reporte Z lo hace casi siempre. */
       const rengRows = body.querySelector('#lfRengRows');
-      const igtfSel = body.querySelector('[data-name="igtfAplica"]');
-      const igtfShow = document.getElementById('igtfShowVal');
       const elBase = document.getElementById('numResBase');
       const elEx = document.getElementById('numResEx');
       const elIva = document.getElementById('numResIva');
@@ -9804,7 +9806,6 @@
         if (elEx) elEx.textContent = 'Bs ' + fmtF(t.exento);
         if (elIva) elIva.textContent = 'Bs ' + fmtF(t.iva);
         if (elTotal) elTotal.textContent = 'Bs ' + fmtF(t.total);
-        if (igtfSel && igtfShow) igtfShow.textContent = 'Bs ' + fmtF(/s[ií]/i.test(igtfSel.value) ? t.total * 0.03 : 0);
         // El IVA de cada renglón, para cotejarlo contra el papel línea por línea
         (rengRows ? [...rengRows.querySelectorAll('.ic-row')] : []).forEach((r) => {
           const monto = parseFloat(r.querySelector('.lf-monto').value) || 0;
@@ -9872,7 +9873,6 @@
       const addBtn = body.querySelector('#lfRengAdd');
       if (addBtn) addBtn.addEventListener('click', () => { const r = agregar('', 'gen'); if (r) r.querySelector('.lf-monto').focus(); });
       if (elCheck) elCheck.addEventListener('input', recalcular);
-      if (igtfSel) igtfSel.addEventListener('change', recalcular);
       reiniciar(inicial);
       return { leer: leer, agregar: agregar, reiniciar: reiniciar, recalcular: recalcular };
     }
@@ -9888,6 +9888,83 @@
 
        Radian lleva 240 reportes Z y ninguno se podía cargar desde la pantalla:
        el botón de registrar existía solo en la sección de facturas. */
+    /* EL IGTF, EN UN SOLO SITIO PARA LOS CUATRO FORMULARIOS.
+
+       Vive al nivel del módulo —no dentro de un formulario— porque lo usan el
+       de registrar venta, el de editarla, el de registrar reporte Z y el de
+       editarlo. Encerrarlo en uno solo es el error que ya se pagó cuatro
+       veces esta semana.
+
+       POR QUÉ NO ES UN «SÍ / NO» CON EL 3% DEL TOTAL
+
+       Antes se preguntaba si la operación llevaba IGTF y se calculaba el 3%
+       del total. Eso solo acierta cuando TODO se cobró en divisas, y casi
+       nunca es así:
+
+       · Un reporte Z es la suma del día entero y solo algunas ventas se
+         cobraron en divisas — en RADIAN el IGTF real va del 0,13% al 1,64%
+         del total facturado, no del 3%.
+       · Y una factura suelta puede cobrarse mitad en bolívares y mitad en
+         divisas, aunque el documento detalle una sola venta.
+
+       Por eso se piden la TASA y la porción cobrada así, y se completa en los
+       dos sentidos: quien tiene la base obtiene el impuesto, y quien solo
+       tiene el impuesto —lo que suele imprimir la máquina— obtiene la base.
+
+       Las tasas son 3% para moneda extranjera, criptomonedas y criptoactivos
+       y 2% para transacciones en bolívares (guía TRI.GR.03.018, Gaceta 6.687
+       Extraordinario del 25/02/2022). Queda escribible: la ley fija un rango
+       y el Ejecutivo puede moverla. */
+    function camposIgtf(igtfActual, rotulo) {
+      const m = Number(igtfActual) || 0;
+      return [
+        { name: 'igtfPct', label: 'Tasa del IGTF (%)', type: 'datalist', value: '3',
+          options: [{ value: '3', label: '3% · divisas, criptomonedas y criptoactivos' },
+                    { value: '2', label: '2% · transacciones en bolívares' }] },
+        { name: 'igtfBase', label: rotulo || 'Base: cuánto se cobró así (Bs)', type: 'number', step: '0.01',
+          placeholder: '0.00', value: m > 0 ? (m / 0.03).toFixed(2) : '' },
+        { name: 'igtfMonto', label: 'IGTF (Bs)', type: 'number', step: '0.01',
+          placeholder: '0.00', value: m > 0 ? m.toFixed(2) : '' },
+      ];
+    }
+
+    /* Cada campo calcula EL OTRO, nunca a sí mismo, así que no se pisan
+       mientras se escribe. Al cambiar la tasa se recalcula desde el que tenga
+       valor, dando preferencia a la base. */
+    function montarIgtf(body) {
+      const igP = body.querySelector('[data-name="igtfPct"]');
+      const igB = body.querySelector('[data-name="igtfBase"]');
+      const igM = body.querySelector('[data-name="igtfMonto"]');
+      if (!igB || !igM) return;
+      const tasa = () => {
+        const p = parseFloat((igP && igP.value) || '3');
+        return (p > 0 && p < 100) ? p / 100 : 0.03;
+      };
+      igB.addEventListener('input', () => {
+        const b = parseFloat(igB.value) || 0;
+        igM.value = b > 0 ? (b * tasa()).toFixed(2) : '';
+      });
+      igM.addEventListener('input', () => {
+        const m = parseFloat(igM.value) || 0;
+        igB.value = m > 0 ? (m / tasa()).toFixed(2) : '';
+      });
+      if (igP) igP.addEventListener('input', () => {
+        const b = parseFloat(igB.value) || 0;
+        const m = parseFloat(igM.value) || 0;
+        if (b > 0) igM.value = (b * tasa()).toFixed(2);
+        else if (m > 0) igB.value = (m / tasa()).toFixed(2);
+      });
+    }
+
+    /* Lo que se guarda es el MONTO. Si quedó vacío pero hay base, se calcula;
+       si no hay ninguno de los dos, la operación no llevó IGTF. */
+    function leerIgtf(v) {
+      const p = parseFloat(v.igtfPct);
+      const pct = (p > 0 && p < 100) ? p / 100 : 0.03;
+      const base = parseFloat(v.igtfBase) || 0;
+      return parseFloat(v.igtfMonto) || (base > 0 ? base * pct : 0);
+    }
+
     /* Vive al nivel del MÓDULO y no dentro de un formulario: la usan el de
        facturas y el de reportes Z. Estaba dentro de `registrarMov`, así que
        el de reportes Z no la veía y lanzaba ReferenceError dentro de un
@@ -9978,59 +10055,14 @@
              Por eso se pregunta CUÁNTO se cobró en divisas, y de ahí sale el
              3%. El monto queda editable porque el que manda es el que imprime
              la máquina: si el Z dice otra cifra, esa es la que va al libro. */
-          /* La tasa se ELIGE. El IGTF no tiene una sola: son 3% para moneda
-             extranjera, criptomonedas y criptoactivos —el caso común de una
-             venta al detal— y 2% para las transacciones en bolívares (guía
-             TRI.GR.03.018, Gaceta 6.687 Extraordinario del 25/02/2022).
-
-             Se deja escribible y no cerrada a dos opciones porque la ley fija
-             un rango y el Ejecutivo puede moverla: el día que cambie, se
-             escribe la nueva sin tocar el programa. */
-          { name: 'igtfPct', label: 'Tasa del IGTF (%)', type: 'datalist', value: '3',
-            options: [{ value: '3', label: '3% · divisas, criptomonedas y criptoactivos' },
-                      { value: '2', label: '2% · transacciones en bolívares' }] },
-          { name: 'igtfBase', label: 'Base: cuánto del día se cobró así (Bs)', type: 'number', step: '0.01', placeholder: '0.00' },
-          { name: 'igtfMonto', label: 'IGTF del reporte (Bs)', type: 'number', step: '0.01', placeholder: '0.00' },
-        ].concat(campoSucursal()),
+        ].concat(camposIgtf(0, 'Base: cuánto del día se cobró así (Bs)')).concat(campoSucursal()),
         afterRender: (body) => {
           bodyRef = body;
           bodyRef.__montos = montarMontos(body);
           autonumerarZ();
           const maq = body.querySelector('[data-name="maquina"]');
           if (maq) maq.addEventListener('change', () => autonumerarZ(true));
-          /* Base e impuesto se completan EN LOS DOS SENTIDOS.
-
-             El reporte Z no siempre imprime las dos cifras: unas veces se
-             tiene la base cobrada en divisas y otras solo el impuesto. Pedir
-             siempre la base obligaba a dividir a mano para poder registrar
-             algo que el papel ya trae hecho.
-
-             Cada campo calcula EL OTRO, nunca a sí mismo, así que no se pisan
-             mientras se escribe. Y al cambiar la tasa se recalcula desde el
-             que tenga valor, dando preferencia a la base. */
-          const igP = body.querySelector('[data-name="igtfPct"]');
-          const igB = body.querySelector('[data-name="igtfBase"]');
-          const igM = body.querySelector('[data-name="igtfMonto"]');
-          if (igB && igM) {
-            const tasa = () => {
-              const p = parseFloat((igP && igP.value) || '3');
-              return (p > 0 && p < 100) ? p / 100 : 0.03;
-            };
-            igB.addEventListener('input', () => {
-              const b = parseFloat(igB.value) || 0;
-              igM.value = b > 0 ? (b * tasa()).toFixed(2) : '';
-            });
-            igM.addEventListener('input', () => {
-              const m = parseFloat(igM.value) || 0;
-              igB.value = m > 0 ? (m / tasa()).toFixed(2) : '';
-            });
-            if (igP) igP.addEventListener('input', () => {
-              const b = parseFloat(igB.value) || 0;
-              const m = parseFloat(igM.value) || 0;
-              if (b > 0) igM.value = (b * tasa()).toFixed(2);
-              else if (m > 0) igB.value = (m / tasa()).toFixed(2);
-            });
-          }
+          montarIgtf(body);
         },
         onSave: (v) => {
           if (!window.sb || !window.__CUENTA_ID || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) return 'No hay una empresa activa seleccionada.';
@@ -10065,9 +10097,7 @@
           /* Se guarda el MONTO, no un porcentaje del total. Si quedó vacío
              pero se escribió la base, se calcula; si no hay ninguno de los
              dos, el día no tuvo cobros en divisas y el IGTF es cero. */
-          const pct = (parseFloat(v.igtfPct) > 0 && parseFloat(v.igtfPct) < 100) ? parseFloat(v.igtfPct) / 100 : 0.03;
-          const igtfBase = parseFloat(v.igtfBase) || 0;
-          const igtf = parseFloat(v.igtfMonto) || (igtfBase > 0 ? igtfBase * pct : 0);
+          const igtf = leerIgtf(v);
           if (igtf > M.total) return 'El IGTF (' + fmtF(igtf) + ') no puede ser mayor que el total del día (' + fmtF(M.total) + '). Revisa el monto.';
           const alic = M.base_adic > 0 ? ALICUOTAS.adic.pct
             : M.base_gen >= M.base_red ? (M.base_gen > 0 ? 0.16 : 0) : 0.08;
@@ -10261,9 +10291,11 @@
           // pago, y esa decisión pertenece a Tesorería, no al libro fiscal.
         ] : [
           // El valor que se propone sale de la preferencia de la empresa.
-          { name: 'igtfAplica', label: '¿Aplica IGTF? (cobro en divisas/cripto)', type: 'select', options: ['No', 'Sí (3%)'],
-            value: (window.__EMPRESA_PREFS || {}).igtf ? 'Sí (3%)' : 'No' },
-          { name: 'igtfShow', label: 'IGTF 3% (calculado del total con IVA)', type: 'static', html: '<span class="mono" id="igtfShowVal">Bs 0,00</span>' },
+        ]).concat(camposIgtf(0, 'Base: cuánto de esta factura se cobró así (Bs)')).concat([
+          { name: 'igtfNota', col: 2, type: 'static', label: '', html:
+            '<div style="font-size:11.5px;color:var(--fg-muted);line-height:1.5;">'
+            + 'Una factura puede cobrarse <strong>mitad en bolívares y mitad en divisas</strong>, así que el IGTF '
+            + 'no siempre es el 3% del total. Deja los dos campos vacíos si no hubo cobro en divisas ni cripto.</div>' },
         ]).concat([
           /* La retención se registra por UN SOLO CAMINO: este botón.
 
@@ -10321,7 +10353,7 @@
           // de poner "ANULADA" como cliente y dejar los montos a mano, propenso a error).
           const anularSel = body.querySelector('[data-name="anularVenta"]');
           if (anularSel) {
-            const camposReales = ['nombre', 'rif', 'igtfAplica'];
+            const camposReales = ['nombre', 'rif', 'igtfPct', 'igtfBase', 'igtfMonto'];
             const aplicarAnular = () => {
               const on = /^s[ií]/i.test(anularSel.value || '');
               camposReales.forEach((n) => {
@@ -10378,6 +10410,7 @@
           });
           // Autocompletado en los dos sentidos + F2 para crear el que falta.
           montarCampoTercero(body, { lista: terceros, esCompra: esCompra });
+          if (!esCompra) montarIgtf(body);   // base <-> impuesto, en los dos sentidos
 
           /* El atajo a la retención trabaja con lo que HAY EN PANTALLA. Si el
              formulario ya se limpió tras guardar, cae en la última factura
@@ -10501,7 +10534,7 @@
             : (esCompra ? elegido.quincena : (diaV && diaV > 15 ? 2 : 1));
           if (window.__periodoCerrado && window.__periodoCerrado(periodo)) return '🔒 El período de declaración elegido está CERRADO. Reábrelo con el botón del período en Fiscal si necesitas registrar.';
           const esAnulada = !esCompra && /^s[ií]/i.test(v.anularVenta || '');
-          if (esAnulada) { v = Object.assign({}, v, { nombre: 'ANULADA', rif: '', igtfAplica: 'No' }); }
+          if (esAnulada) { v = Object.assign({}, v, { nombre: 'ANULADA', rif: '', igtfBase: '', igtfMonto: '' }); }
           if (!v.nombre) return 'Indica el ' + (esCompra ? 'proveedor' : 'cliente') + '.';
           /* Los montos ya NO salen de tres campos sueltos sino de los renglones,
              porque una factura puede traer varias alícuotas a la vez. */
@@ -10515,7 +10548,7 @@
           const alic = M.base_adic > 0 ? ALICUOTAS.adic.pct
             : M.base_gen >= M.base_red ? (M.base_gen > 0 ? 0.16 : 0)
               : 0.08;
-          const igtf = /s[ií]/i.test(v.igtfAplica || '') ? total * 0.03 : 0; // IGTF sobre el total de la factura
+          const igtf = leerIgtf(v);   // el monto, no un porcentaje del total
           const p = (v.fecha || '').split('-');
           const fecha = p.length === 3 ? (p[2] + '/' + p[1] + '/' + p[0].slice(2)) : '';
           const saveBtnEl = document.getElementById('fmSave');
@@ -11148,9 +11181,99 @@
     window.__revisarUsaMaquina = revisarUsaMaquina;
 
     // Editar / eliminar un registro del libro (clic en la fila)
+    /* EDITAR UN REPORTE Z.
+
+       Un reporte Z se editaba con el formulario de facturas: pedía cliente,
+       RIF y N° de factura —que un Z no tiene— y no mostraba ni la máquina, ni
+       el número de Z, ni el rango de comprobantes, que es TODO lo que lo
+       identifica. Corregirle el IGTF a un reporte ya cargado era imposible.
+
+       Lleva los mismos campos que el de registrar, para que quien corrige vea
+       lo mismo que vio al cargar. */
+    function editarZeta(r) {
+      let montosEd = null;
+      window.openFormModal && window.openFormModal({
+        title: 'Editar reporte Z ' + (r.numero_zeta || ''),
+        saveLabel: 'Guardar cambios',
+        fields: [
+          { name: 'fecha', label: 'Fecha (dd/mm/aa)', value: r.fecha || '' },
+          { name: 'maquina', label: 'Serial de la máquina fiscal', upper: true, value: r.maquina_fiscal || '' },
+          { name: 'numeroZ', label: 'N° de reporte Z', value: r.numero_zeta || '' },
+          { name: 'compDesde', label: 'Primer comprobante del día', value: r.comprobante_desde || '' },
+          { name: 'compHasta', label: 'Último comprobante del día', value: r.comprobante_hasta || '' },
+          { name: 'numResumen', col: 2, type: 'static', label: '', html: montosHTML() },
+        ].concat(camposIgtf(Number(r.igtf) || 0, 'Base: cuánto del día se cobró así (Bs)'))
+          .concat(campoSucursal(r.sucursal_id)),
+        afterRender: (body) => {
+          // Con la fila cargada: si trae varias alícuotas salen sus renglones.
+          montosEd = montarMontos(body, r);
+          montarIgtf(body);
+        },
+        // Recibe el cierre del formulario: se cierra al confirmar el borrado,
+        // no antes, para que un error deje el cuadro abierto con su aviso.
+        onDelete: (cerrar) => {
+          if (!window.sb) return;
+          if (!window.confirm('¿Eliminar el reporte Z ' + (r.numero_zeta || '')
+            + '?  Ojo: el correlativo de la máquina quedará con un hueco.')) return;
+          window.sb.from('libro_fiscal').delete().eq('id', r.id).then(({ error }) => {
+            if (error) { toast('No se pudo eliminar: ' + error.message, 'error'); return; }
+            if (cerrar) cerrar();
+            if (window.__invalidarArrastres) window.__invalidarArrastres();
+            cargarLibroFiscal('venta');
+            toast('Reporte Z ' + (r.numero_zeta || '') + ' eliminado', 'success');
+          });
+        },
+        onSave: (v) => {
+          if (!window.sb) return 'No hay sesión activa.';
+          if (!(v.numeroZ || '').trim()) return 'Indica el N° del reporte Z: es lo que identifica al documento.';
+          if (!(v.maquina || '').trim()) return 'Indica el serial de la máquina fiscal.';
+          const M = montosEd ? montosEd.leer()
+            : { exento: 0, base_gen: 0, iva_gen: 0, base_red: 0, iva_red: 0, base_adic: 0, iva_adic: 0, base: 0, iva: 0, total: 0 };
+          const igtf = leerIgtf(v);
+          if (M.total > 0 && igtf > M.total) return 'El IGTF (' + fmtF(igtf) + ') no puede ser mayor que el total del día (' + fmtF(M.total) + ').';
+          const alic = M.base_adic > 0 ? ALICUOTAS.adic.pct
+            : M.base_gen >= M.base_red ? (M.base_gen > 0 ? 0.16 : 0) : 0.08;
+          /* El período y la quincena se recalculan de la fecha: si se corrige
+             el día, el reporte tiene que moverse con él. En una venta el día
+             es dato firme — la máquina emite el Z cuando lo emite. */
+          const p = (v.fecha || '').split('/');
+          const periodo = p.length === 3 ? ('20' + p[2].slice(-2) + '-' + p[1].padStart(2, '0')) : r.periodo;
+          const esEsp = window.__ivaPorQuincena && window.__ivaPorQuincena();
+          const dia = parseInt(p[0], 10);
+          window.sb.from('libro_fiscal').update({
+            fecha: v.fecha, periodo: periodo,
+            quincena: esEsp ? (dia > 15 ? 2 : 1) : null,
+            sucursal_id: sucursalDe(v.sucursal),
+            maquina_fiscal: (v.maquina || '').trim().toUpperCase(),
+            numero_zeta: (v.numeroZ || '').trim(),
+            comprobante_desde: (v.compDesde || '').trim() || null,
+            comprobante_hasta: (v.compHasta || '').trim() || null,
+            exento: M.exento, base: M.base, alicuota: alic, iva: M.iva, igtf: igtf, total: M.total,
+            base_gen: M.base_gen, iva_gen: M.iva_gen,
+            base_red: M.base_red, iva_red: M.iva_red,
+            base_adic: M.base_adic, iva_adic: M.iva_adic,
+          }).eq('id', r.id).then(({ error }) => {
+            if (error) {
+              toast(error.code === '23505'
+                ? 'Ya hay otro reporte con ese N° de Z en esa máquina.'
+                : 'No se pudo actualizar: ' + error.message, 'error');
+              return;
+            }
+            if (window.__invalidarArrastres) window.__invalidarArrastres();
+            cargarLibroFiscal('venta');
+            toast('Reporte Z ' + v.numeroZ + ' actualizado · Bs ' + fmtF(M.total), 'success');
+          });
+        },
+      });
+    }
+
     function editLibroFiscal(id, tipo) {
       const r = (_libroData[tipo] || []).find((x) => String(x.id) === String(id));
       if (!r) return;
+      /* Un reporte Z no se edita con el formulario de facturas: no tiene
+         cliente ni N° de factura, y sí tiene máquina, N° de Z y rango de
+         comprobantes que aquí no se verían. */
+      if (String(r.numero_zeta || '').trim()) { editarZeta(r); return; }
       const esCompra = tipo === 'compra';
       const tdMap = { FC: 'FC (Factura)', FV: 'FV (Factura de venta)', NC: 'NC (Nota de crédito)', ND: 'ND (Nota de débito)' };
       let editMontos = null; // la caja de renglones, montada en afterRender
@@ -11191,8 +11314,7 @@
               : 'Esta factura no tiene IVA, así que no habría retención de IVA que registrar.')
             + '</span></div>' },
         ].concat(esCompra ? [] : [
-          { name: 'igtfAplica', label: '¿Aplica IGTF? (3%)', type: 'select', options: ['No', 'Sí (3%)'], value: (Number(r.igtf) > 0 ? 'Sí (3%)' : 'No') },
-          { name: 'igtfShow', label: 'IGTF 3% (calculado del total con IVA)', type: 'static', html: '<span class="mono" id="igtfShowVal">Bs ' + fmtF(Number(r.igtf) || 0) + '</span>' },
+        ]).concat(camposIgtf(Number(r.igtf) || 0, 'Base: cuánto de esta factura se cobró así (Bs)')).concat([
         ]).concat(campoSucursal(r.sucursal_id))),
         afterRender: (body) => {
           // Se monta con la fila ya cargada: si trae varias alícuotas salen
@@ -11207,6 +11329,7 @@
              cambiar un dato puntual —casi siempre el cliente que faltaba—,
              y saltar a otro campo le quita el sitio al que está corrigiendo. */
           montarCampoTercero(body, { lista: tercerosEd, esCompra: esCompra, moverFoco: false });
+          if (!esCompra) montarIgtf(body);
 
           /* Si esta factura ya tiene retenciones, se dice AQUÍ, junto al
              botón, antes de que nadie llene nada. */
@@ -11277,7 +11400,7 @@
           const alic = M.base_adic > 0 ? ALICUOTAS.adic.pct
             : M.base_gen >= M.base_red ? (M.base_gen > 0 ? 0.16 : 0)
               : 0.08;
-          const igtf = /s[ií]/i.test(v.igtfAplica || '') ? total * 0.03 : 0; // IGTF sobre el total de la factura
+          const igtf = leerIgtf(v);   // el monto, no un porcentaje del total
           window.sb.from('libro_fiscal').update({
             fecha: v.fecha, periodo: perNuevo, tipo_doc: (v.tipoDoc || '').slice(0, 2), tercero_nombre: v.nombre,
             sucursal_id: sucursalDe(v.sucursal),
