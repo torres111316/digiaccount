@@ -80,3 +80,46 @@ select column_name, column_default
  where table_schema = 'public'
    and table_name   = 'cuentas'
    and column_name  = 'trial_termina_en';
+
+
+-- ─────────────────────────────────────────────────────────────────────────
+--  PARTE 4 · DE DONDE SALIAN LOS 14 DIAS
+--
+--  Quitar el default puede no ser suficiente: si hay un trigger o una funcion
+--  escribiendo esa fecha, las cuentas nuevas siguen naciendo con prueba. Nada
+--  en este repositorio la escribe, asi que vive en la base.
+--
+--  Va como UNA sola consulta a proposito: el editor de Supabase muestra solo
+--  el resultado de la ultima sentencia, y asi no se pierde ningun hallazgo.
+--  Si no devuelve ninguna fila de trigger ni de funcion, no habia nada mas
+--  que el default y el trabajo quedo terminado.
+-- ─────────────────────────────────────────────────────────────────────────
+select 'default de la columna' as revision,
+       coalesce(column_default, '(ninguno — ya se quito)') as hallazgo
+  from information_schema.columns
+ where table_schema = 'public' and table_name = 'cuentas'
+   and column_name = 'trial_termina_en'
+
+union all
+select 'trigger sobre public.cuentas · ' || t.tgname, pg_get_triggerdef(t.oid)
+  from pg_trigger t
+ where t.tgrelid = 'public.cuentas'::regclass and not t.tgisinternal
+
+union all
+select 'trigger sobre auth.users · ' || t.tgname, pg_get_triggerdef(t.oid)
+  from pg_trigger t
+ where t.tgrelid = 'auth.users'::regclass and not t.tgisinternal
+
+union all
+-- La decisiva: cualquier funcion, en cualquier esquema, que mencione el campo.
+select 'FUNCION que menciona el campo · ' || n.nspname || '.' || p.proname,
+       left(p.prosrc, 400)
+  from pg_proc p
+  join pg_namespace n on n.oid = p.pronamespace
+ where p.prosrc ilike '%trial_termina_en%'
+   and n.nspname not in ('pg_catalog', 'information_schema')
+
+union all
+select 'cuentas que hoy tienen fecha de prueba',
+       (select count(*)::text from public.cuentas where trial_termina_en is not null)
+       || ' de ' || (select count(*)::text from public.cuentas) || ' cuentas';
