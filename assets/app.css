@@ -7474,3 +7474,30 @@ table.suc-tabla td.c-mat { text-align: center; }
   table.suc-tabla .c-mat { display: none; }
   table.suc-tabla .c-nom { width: 8rem; }
 }
+
+/* ── Panel del Socio · programa de referidos ──────────────────────────────
+   Clases propias y prefijadas. La tira de indicadores y la rejilla de
+   cupones no encajaban en .ss-card, que es una tarjeta ancha con metadatos.
+   ──────────────────────────────────────────────────────────────────────── */
+.soc-tarjetas {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px; margin-bottom: 22px;
+}
+.soc-card {
+  background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: 12px; padding: 16px 18px;
+}
+.soc-label {
+  font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--fg-muted); font-weight: 600; margin-bottom: 6px;
+}
+.soc-value { font-size: 24px; font-weight: 700; line-height: 1.15; color: var(--fg); }
+.soc-note { font-size: 11px; color: var(--fg-muted); margin-top: 5px; line-height: 1.45; }
+
+.soc-cupones {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px;
+}
+.soc-cupon {
+  background: var(--bg-subtle, var(--bg-surface));
+  border: 1px dashed var(--da-cyan-500); border-radius: 12px; padding: 18px 20px;
+}

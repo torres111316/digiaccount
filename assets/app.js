@@ -12620,6 +12620,8 @@
       // El fundador carga el listado real de cuentas del SaaS y sus contactos (CRM)
       if (window.__ES_FUNDADOR && window.cargarCuentasFundador) window.cargarCuentasFundador();
       if (window.__ES_FUNDADOR && window.cargarContactos) { try { window.cargarContactos(); } catch (e) {} }
+      // Panel del socio: solo se pinta si esta cuenta tiene fila en `socios`.
+      if (window.cargarPanelSocio) { try { window.cargarPanelSocio(); } catch (e) {} }
       // Todos cargan SUS pagos (RLS limita): el cliente ve su estado real y sus recibos
       if (window.cargarPagos) { try { window.cargarPagos(); } catch (e) {} }
       // Notificaciones persistentes de la cuenta
@@ -16235,4 +16237,205 @@
     btnNuevo.addEventListener('click', () => ficha(null));
     window.__renderSucursalesConfig = render;
     render();
+  })();
+
+  /* ══════════════════════════════════════════════════════════════════════
+     PANEL DEL SOCIO · Programa de referidos
+
+     Lo ve unicamente quien tiene fila en la tabla `socios`. Para todos los
+     demas la entrada del menu queda oculta y esta vista no se carga nunca.
+
+     Ni un solo numero de aqui esta guardado: nivel, empresas activas,
+     retencion y porcentaje salen de v_socios_resumen, que los calcula de los
+     pagos confirmados. Es lo que evita que el tablero diga una cosa y la
+     liquidacion diga otra.
+     ══════════════════════════════════════════════════════════════════════ */
+  (function panelSocio() {
+    const NIVEL = {
+      asociado:    { t: 'Asociado',        pct: 10 },
+      certificado: { t: 'Certificado',     pct: 20 },
+      socio:       { t: 'Socio',           pct: 25 },
+      principal:   { t: 'Socio Principal', pct: 30 },
+    };
+    // Lo que hace falta para el SIGUIENTE peldano.
+    const META = {
+      asociado:    { sig: 'certificado', empresas: 5,  ret: 0.70, examen: true },
+      certificado: { sig: 'socio',       empresas: 15, ret: 0.80, examen: false },
+      socio:       { sig: 'principal',   empresas: 25, ret: 0.85, examen: false },
+    };
+
+    const $ = (id) => document.getElementById(id);
+    const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const plata = (n) => '$' + (Number(n) || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const fecha = (s) => (s ? new Date(s).toLocaleDateString('es-VE') : '—');
+
+    let MI = null;   // la fila de v_socios_resumen de quien esta viendo
+
+    window.cargarPanelSocio = async function () {
+      const nav = document.querySelector('.nav-item[data-view="socio"]');
+      if (!window.sb || !window.__CUENTA_ID) return;
+
+      const { data, error } = await window.sb
+        .from('v_socios_resumen').select('*').eq('cuenta_id', window.__CUENTA_ID).maybeSingle();
+
+      // Sin fila de socio no hay panel. La entrada del menu ni aparece.
+      if (error || !data) { if (nav) nav.hidden = true; return; }
+
+      MI = data;
+      if (nav) nav.hidden = false;
+      const nv = NIVEL[data.nivel] || NIVEL.asociado;
+      const badgeNav = $('navSocioNivel');
+      if (badgeNav) badgeNav.textContent = nv.pct + '%';
+      const badge = $('socNivelBadge');
+      if (badge) { const s = badge.querySelector('span'); if (s) s.textContent = nv.t + ' · ' + nv.pct + '%'; }
+
+      pintarResumen(data, nv);
+      pintarProgreso(data);
+      await pintarCupones(data.id);
+      await pintarReferidos(data.id);
+      await pintarComisiones(data.id);
+      if (window.lucide) window.lucide.createIcons();
+    };
+
+    function pintarResumen(d, nv) {
+      const cont = $('socResumen');
+      if (!cont) return;
+      const tarjeta = (etq, val, nota) =>
+        '<div class="soc-card"><div class="soc-label">' + etq + '</div>'
+        + '<div class="soc-value">' + val + '</div>'
+        + (nota ? '<div class="soc-note">' + nota + '</div>' : '') + '</div>';
+      cont.innerHTML = '<div class="soc-tarjetas">' +
+          tarjeta('Tu código', '<span class="mono">' + esc(d.codigo) + '</span>',
+                  'Es lo que tu cliente escribe al registrarse')
+        + tarjeta('Empresas activas', d.empresas_activas,
+                  d.referidos_totales + ' referidas en total')
+        + tarjeta('Retención', Math.round((Number(d.retencion) || 0) * 100) + '%',
+                  'Últimos doce meses')
+        + tarjeta('Por cobrar', plata(d.comision_por_pagar),
+                  'Antes de retención de ISLR')
+        + tarjeta('Ya cobrado', plata(d.comision_pagada), 'Histórico del programa')
+        + '</div>';
+    }
+
+    function pintarProgreso(d) {
+      const cont = $('socProgreso');
+      const sub = $('socProgresoSub');
+      if (!cont) return;
+      const meta = META[d.nivel];
+      if (!meta) {
+        if (sub) sub.textContent = 'Estás en el techo del programa.';
+        cont.innerHTML = '<p class="ag-linea nada" style="margin:0;">Socio Principal es el nivel más alto. No hay siguiente peldaño: cobras 30% y formas a los socios nuevos de tu zona.</p>';
+        return;
+      }
+      const actual = NIVEL[d.nivel] || NIVEL.asociado;
+      const sigNv = NIVEL[meta.sig];
+      if (sub) sub.textContent = 'De ' + actual.t + ' a ' + sigNv.t + ' · del ' + actual.pct + '% al ' + sigNv.pct + '%';
+
+      const faltan = Math.max(0, meta.empresas - (d.empresas_activas || 0));
+      const ret = Number(d.retencion) || 0;
+      const barra = (etq, hecho, total, ok) => {
+        const p = total > 0 ? Math.min(100, Math.round((hecho / total) * 100)) : 100;
+        return '<div style="margin-bottom:14px;">'
+          + '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:5px;">'
+          +   '<span>' + etq + '</span>'
+          +   '<span class="mono" style="color:' + (ok ? 'var(--da-cyan-600)' : 'var(--fg-muted)') + ';">' + (ok ? '✓ ' : '') + hecho + ' / ' + total + '</span>'
+          + '</div>'
+          + '<div style="height:7px;border-radius:99px;background:var(--border);overflow:hidden;">'
+          +   '<div style="height:100%;width:' + p + '%;background:' + (ok ? 'var(--da-cyan-500)' : 'var(--da-navy-400, #2c5689)') + ';"></div>'
+          + '</div></div>';
+      };
+
+      let html = barra('Empresas activas', d.empresas_activas || 0, meta.empresas, (d.empresas_activas || 0) >= meta.empresas)
+        + barra('Retención mínima', Math.round(ret * 100), Math.round(meta.ret * 100), ret >= meta.ret);
+      if (meta.examen) {
+        html += '<div style="font-size:12px;color:' + (d.certificado ? 'var(--da-cyan-600)' : 'var(--fg-muted)') + ';">'
+          + (d.certificado ? '✓ Formación y examen aprobados' : '○ Falta aprobar la formación con examen')
+          + '</div>';
+      }
+      if (faltan > 0) {
+        html += '<p class="cfg-hint" style="margin-top:14px;">Te faltan <strong>' + faltan + '</strong> empresa'
+          + (faltan === 1 ? '' : 's') + ' activa' + (faltan === 1 ? '' : 's') + '. '
+          + 'Al llegar, el ' + sigNv.pct + '% se aplica a <strong>toda tu cartera</strong>, no solo a las nuevas.</p>';
+      }
+      cont.innerHTML = html;
+    }
+
+    async function pintarCupones(socioId) {
+      const cont = $('socCupones');
+      if (!cont) return;
+      const { data } = await window.sb.from('cupones')
+        .select('codigo, dias, vence_en, canjeado_en').eq('socio_id', socioId).order('emitido_en');
+      const filas = data || [];
+      if (!filas.length) { cont.innerHTML = '<p class="ag-linea nada" style="margin:0;">Todavía no tienes cupones emitidos.</p>'; return; }
+      cont.innerHTML = '<div class="soc-cupones">' + filas.map((c) => {
+        const usado = !!c.canjeado_en;
+        const vencido = !usado && c.vence_en && new Date(c.vence_en) < new Date();
+        const estado = usado ? 'Canjeado el ' + fecha(c.canjeado_en)
+          : vencido ? 'Venció el ' + fecha(c.vence_en)
+          : 'Disponible hasta el ' + fecha(c.vence_en);
+        return '<div class="soc-cupon" style="opacity:' + (usado || vencido ? '.55' : '1') + ';">'
+          + '<div class="soc-label">' + c.dias + ' días de cortesía</div>'
+          + '<div class="mono" style="font-size:22px;font-weight:700;letter-spacing:.06em;margin:6px 0;">' + esc(c.codigo) + '</div>'
+          + '<div class="cfg-hint" style="margin:0;">' + estado + '</div>'
+          + '</div>';
+      }).join('') + '</div>';
+    }
+
+    async function pintarReferidos(socioId) {
+      const body = $('socReferidosBody');
+      if (!body) return;
+      const { data } = await window.sb.from('referidos')
+        .select('codigo_usado, creado_en, cese_en, cuentas(nombre, estado)')
+        .eq('socio_id', socioId).order('creado_en', { ascending: false });
+      const filas = data || [];
+      const cnt = $('socReferidosCount');
+      if (cnt) cnt.textContent = filas.length;
+      if (!filas.length) {
+        body.innerHTML = '<tr><td colspan="4" class="ic-empty">Todavía no has referido ninguna empresa. Comparte tu código y aparecerán aquí.</td></tr>';
+        return;
+      }
+      body.innerHTML = filas.map((r) => {
+        const c = r.cuentas || {};
+        const est = r.cese_en ? 'Cesó actividades'
+          : c.estado === 'activa' ? 'Pagando'
+          : c.estado === 'prueba' ? 'En cortesía'
+          : c.estado === 'pendiente' ? 'Sin activar' : (c.estado || '—');
+        return '<tr><td>' + esc(c.nombre || '—') + '</td>'
+          + '<td class="mono">' + esc(r.codigo_usado) + '</td>'
+          + '<td>' + fecha(r.creado_en) + '</td>'
+          + '<td>' + est + '</td></tr>';
+      }).join('');
+    }
+
+    async function pintarComisiones(socioId) {
+      const body = $('socComisionesBody');
+      if (!body) return;
+      const { data } = await window.sb.from('comisiones')
+        .select('periodo, nivel, pct, base, monto, estado')
+        .eq('socio_id', socioId).order('periodo', { ascending: false });
+      const filas = data || [];
+      const porCobrar = filas.filter((c) => c.estado === 'calculada').reduce((a, c) => a + (Number(c.monto) || 0), 0);
+      const pc = $('socPorCobrar');
+      if (pc) pc.textContent = plata(porCobrar);
+      if (!filas.length) {
+        body.innerHTML = '<tr><td colspan="6" class="ic-empty">Aún no hay comisiones liquidadas. Se calculan al cerrar cada mes.</td></tr>';
+        return;
+      }
+      body.innerHTML = filas.map((c) => '<tr>'
+        + '<td class="mono">' + esc(c.periodo) + '</td>'
+        + '<td>' + ((NIVEL[c.nivel] || {}).t || c.nivel) + '</td>'
+        + '<td class="num mono">' + Math.round((Number(c.pct) || 0) * 100) + '%</td>'
+        + '<td class="num mono">' + plata(c.base) + '</td>'
+        + '<td class="num mono">' + plata(c.monto) + '</td>'
+        + '<td>' + (c.estado === 'pagada' ? 'Pagada' : c.estado === 'anulada' ? 'Anulada' : 'Por cobrar') + '</td>'
+        + '</tr>').join('');
+    }
+
+    const btnCopiar = document.getElementById('socCopiarCodigo');
+    if (btnCopiar) btnCopiar.addEventListener('click', () => {
+      if (!MI || !MI.codigo) return;
+      navigator.clipboard.writeText(MI.codigo)
+        .then(() => window.toast && window.toast('Código ' + MI.codigo + ' copiado', 'success'))
+        .catch(() => window.toast && window.toast('No se pudo copiar. Tu código es ' + MI.codigo, 'info'));
+    });
   })();

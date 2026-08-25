@@ -210,6 +210,11 @@
         <span class="lbl">Panel del Fundador</span>
         <span class="badge" style="background:var(--da-cyan-500);color:var(--da-navy-900);">Tú</span>
       </a>
+      <a class="nav-item nav-socio" data-view="socio" data-title="Mi Panel de Socio" href="#socio" hidden>
+        <span class="ico"><i data-lucide="handshake"></i></span>
+        <span class="lbl">Mi Panel de Socio</span>
+        <span class="badge" id="navSocioNivel" style="background:var(--da-cyan-500);color:var(--da-navy-900);"></span>
+      </a>
       <a class="nav-item" data-view="planes" data-title="Planes y Precios" href="#planes">
         <span class="ico"><i data-lucide="badge-dollar-sign"></i></span>
         <span class="lbl">Planes y Precios</span>
@@ -4332,6 +4337,75 @@
     </section><!-- /view-usuarios -->
 
     <!-- ===================== PANEL DEL FUNDADOR (SaaS) ===================== -->
+    <!-- PROGRAMA DE SOCIOS · lo ve unicamente quien tiene fila en la tabla socios.
+         Todo lo que muestra sale de v_socios_resumen, que calcula el nivel de
+         los pagos confirmados: no hay ningun numero guardado a mano. -->
+    <section class="view" id="view-socio">
+      <header class="dash-header">
+        <div class="dash-title-block">
+          <div class="overline">DigiAccount · Programa de Socios</div>
+          <div class="dash-title-row">
+            <h1 class="dash-title">Mi Panel de Socio</h1>
+            <span class="contrib-badge" id="socNivelBadge"><i data-lucide="award"></i> <span>—</span></span>
+          </div>
+        </div>
+        <div class="dash-actions">
+          <button class="btn btn-ghost" id="socCopiarCodigo"><i data-lucide="copy"></i> Copiar mi código</button>
+        </div>
+      </header>
+
+      <div class="sub-summary" id="socResumen"><!-- por JS --></div>
+
+      <div class="panel" id="socProgresoPanel">
+        <div class="panel-head">
+          <div class="panel-title-block">
+            <div class="title">Cuánto te falta para el siguiente nivel</div>
+            <div class="sub" id="socProgresoSub">—</div>
+          </div>
+        </div>
+        <div id="socProgreso"><!-- por JS --></div>
+      </div>
+
+      <div class="panel" id="socCuponesPanel">
+        <div class="panel-head">
+          <div class="panel-title-block">
+            <div class="title">Tus cupones de cortesía</div>
+            <div class="sub">Un mes gratis para el cliente que elijas. DigiAccount no tiene prueba abierta: ese mes solo lo consigue por ti.</div>
+          </div>
+        </div>
+        <div id="socCupones"><!-- por JS --></div>
+      </div>
+
+      <div class="data-table-wrap">
+        <div class="table-toolbar">
+          <div class="panel-title-block"><div class="title">Empresas que has referido</div></div>
+        </div>
+        <div class="table-scroll">
+          <table class="data-table" style="min-width:720px;">
+            <thead><tr><th>Empresa</th><th>Entró con</th><th>Desde</th><th>Estado</th></tr></thead>
+            <tbody id="socReferidosBody"><!-- por JS --></tbody>
+          </table>
+        </div>
+        <div class="table-footer"><div class="count">Mostrando <strong id="socReferidosCount">0</strong> referidos</div></div>
+      </div>
+
+      <div class="data-table-wrap">
+        <div class="table-toolbar">
+          <div class="panel-title-block">
+            <div class="title">Tus comisiones</div>
+            <div class="sub">Los montos son antes de la retención de ISLR que corresponda.</div>
+          </div>
+        </div>
+        <div class="table-scroll">
+          <table class="data-table" style="min-width:720px;">
+            <thead><tr><th>Período</th><th>Nivel</th><th class="num">%</th><th class="num">Base</th><th class="num">Comisión</th><th>Estado</th></tr></thead>
+            <tbody id="socComisionesBody"><!-- por JS --></tbody>
+          </table>
+        </div>
+        <div class="table-footer"><div class="count">Acumulado por cobrar: <strong id="socPorCobrar">$0,00</strong></div></div>
+      </div>
+    </section>
+
     <section class="view" id="view-fundador">
       <header class="dash-header">
         <div class="dash-title-block">
