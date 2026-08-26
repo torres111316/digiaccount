@@ -1589,7 +1589,9 @@
           { name: 'tipo', label: 'Impuesto', type: 'select', options: ['IVA', 'ISLR'] },
           { name: 'concepto', label: 'Concepto de retención (ISLR)', col: 2, type: 'select', options: CONCEPTOS_ISLR.map((c) => c.act) },
           { name: 'sujeto', label: 'Tipo de sujeto (ISLR)', type: 'select', options: [{ value: 'PNR', label: 'PN Residente' }, { value: 'PNNR', label: 'PN No Residente' }, { value: 'PJD', label: 'PJ Domiciliada' }, { value: 'PJND', label: 'PJ No Domiciliada' }] },
-          { name: 'fecha', label: 'Fecha del comprobante', type: 'date', value: window.__hoyISO() },
+          // Arranca en la fecha de la factura que se retiene, no en la de hoy:
+          // se puede cambiar, pero el punto de partida es la operación.
+          { name: 'fecha', label: 'Fecha del comprobante', type: 'date', value: pre.fechaFactura || window.__hoyISO() },
           /* El período de declaración va aparte de la fecha, igual que en el
              libro de compras. Un cliente manda en agosto la retención de una
              factura de julio: la fecha es de agosto y el período, julio. Sin
@@ -1621,7 +1623,19 @@
 
                Se sigue pudiendo cambiar: hay casos donde el comprobante se
                emite en una quincena y se entera en la otra. */
-            value: _quincenaDeISO(window.__hoyISO()) },
+            /* Sale de la QUINCENA DE LA FACTURA que se está reteniendo, que
+               ya se eligió al registrarla. Si no viene —una retención suelta,
+               sin factura de origen— se deduce de la fecha del comprobante:
+               del 1 al 15 la primera, del 16 en adelante la segunda.
+
+               Deducirla de la fecha de HOY estaba mal: una factura de la
+               primera quincena cargada el día 26 salía enterada en la
+               segunda. Y proponerla desde el selector de la pantalla también,
+               porque quien mirara el mes completo la guardaba sin quincena, y
+               una retención sin quincena no entra en ningún TXT. */
+            value: (pre.quincena === 1 || pre.quincena === 2)
+              ? String(pre.quincena)
+              : _quincenaDeISO(pre.fechaFactura || window.__hoyISO()) },
         ] : []).concat([
           { name: 'nombre', label: 'Tercero (escribe iniciales y elige)', col: 2, type: 'datalist', options: terceros.map((t) => t.nombre), placeholder: 'Proveedor o cliente…', value: pre.nombre || '' },
           { name: 'rif', label: 'RIF (mayúscula, sin guiones)', upper: true, placeholder: 'J123456789', value: pre.rif || '' },
@@ -10536,6 +10550,7 @@
               // La de IVA se calcula sobre el IVA; la de ISLR, sobre la base.
               base: Number(u.iva) || 0, baseIva: Number(u.iva) || 0, baseIslr: Number(u.base) || 0,
               sucursal_id: u.sucursal_id || null,
+              quincena: u.quincena, fechaFactura: u.fechaFactura || '',
             };
             const cancelar = document.getElementById('fmCancel');
             if (cancelar) cancelar.click();
@@ -10637,7 +10652,14 @@
                 rif: normRif(v.rif), numControl: v.numControl || '', iva: iva, base: base,
                 // La retención hereda el establecimiento de su factura: no se
                 // pregunta, que sería una respuesta de más y un error posible.
-                sucursal_id: sucursalDe(v.sucursal) };
+                sucursal_id: sucursalDe(v.sucursal),
+                /* Y hereda la quincena de la MISMA factura, que ya se eligió
+                   al registrarla. Deducirla de la fecha de hoy fue un error:
+                   una factura de la primera quincena que se carga el día 26
+                   terminaba enterada en la segunda. La operación manda, no el
+                   día en que uno se sienta a cargarla. */
+                quincena: quincena,
+                fechaFactura: v.fecha || '' };
               pintarUltimo();
             }
             if (window.__invalidarArrastres) window.__invalidarArrastres(); // el nuevo registro puede cambiar los arrastres
