@@ -1127,15 +1127,29 @@
     // Traslada las retenciones de IVA SUFRIDAS (las que nos retienen los clientes) a la
     // autoliquidación de la Forma 30 Ventas (ítem 66/38 → reduce el Total a Pagar) y
     // refleja el detalle en los mini-cuadros de cada Forma 30.
+    /* Deja solo las retenciones del establecimiento que se esté mirando.
+
+       Una retención hereda el establecimiento de SU factura (sucursal_id, que
+       rellena sql/retenciones_por_establecimiento.sql). Las que no lo tengan
+       —cargadas antes de que existiera la columna, o de una empresa sin
+       sucursales— se muestran siempre: esconderlas sería peor, porque una
+       retención que no se ve es una que no se entera. */
+    function delEstablecimiento(arr, tipo) {
+      const filtro = window.__sucFiltroDe ? window.__sucFiltroDe(tipo) : '';
+      if (!filtro) return arr;
+      return arr.filter((r) => !r.sucursal_id || r.sucursal_id === filtro);
+    }
+
     function aplicarAForma30(arr) {
       arr = arr || [];
       const ivaSuf = arr.filter((r) => r.direccion === 'sufrida' && r.tipo === 'iva').reduce((s, r) => s + (Number(r.monto) || 0), 0);
       window.__RET_IVA_SUFRIDA = ivaSuf;
       if (window.__recalcAutoliq) window.__recalcAutoliq();
-      const practicadas = arr.filter((r) => r.direccion === 'practicada');
+      const practicadas = delEstablecimiento(arr.filter((r) => r.direccion === 'practicada'), 'compra');
       renderMini(document.querySelector('.fiscal-tab[data-tab="compras"] table.ret-mini'), practicadas);
       // El desglose ve el MES entero, aunque arriba se este mirando una quincena.
-      pintarQuincenasRet((_retMes.length ? _retMes : arr).filter((r) => r.direccion === 'practicada'));
+      pintarQuincenasRet(delEstablecimiento(
+        (_retMes.length ? _retMes : arr).filter((r) => r.direccion === 'practicada'), 'compra'));
       /* Se busca en la PESTAÑA, no dentro de la vista de facturas.
 
          La tablita vive junto a la Forma 30, y esa salió de las dos vistas
@@ -1148,7 +1162,8 @@
          Buscarla en la pestaña la deja además visible en las dos secciones,
          que es lo correcto: al cliente que paga con tique de máquina también
          se le puede retener. */
-      renderMini(document.querySelector('.fiscal-tab[data-tab="ventas"] table.ret-mini'), arr.filter((r) => r.direccion === 'sufrida'));
+      renderMini(document.querySelector('.fiscal-tab[data-tab="ventas"] table.ret-mini'),
+                 delEstablecimiento(arr.filter((r) => r.direccion === 'sufrida'), 'venta'));
       // Resumen de retenciones ISLR practicadas (panel del generador XML)
       const islrBody = document.getElementById('islrResumenBody');
       if (islrBody) {
@@ -1849,6 +1864,9 @@
             periodo: v.periodo || _periodoVigente(), comprobante: compFinal,
             tercero_nombre: v.nombre, tercero_rif: normRif(v.rif), factura: v.factura, numero_control: v.numControl || null,
             base: base, pct: pct, monto: monto, estado: 'Registrado',
+            // Nulo cuando la empresa no tiene sucursales o la factura es de
+            // casa matriz: se comporta igual que siempre.
+            sucursal_id: v.sucursal_id || null,
             concepto: esIslr ? v.concepto : null, concepto_codigo: esIslr ? cod : null, sujeto: esIslr ? suj : null, sustraendo: sust,
             // Solo en quien entera por quincena existe el campo; en los demás
             // ni se pregunta y la retención es del mes, como debe ser.
@@ -9428,6 +9446,9 @@
         const dataEl = h.querySelector('.lh-data');
         if (dataEl) dataEl.innerHTML = '<span class="mono">RIF ' + (emp.rif || '—') + '</span> · ' + cond + ' · Período de imposición: <strong>' + perTxt + '</strong>';
       });
+      // Se acaba de reescribir el membrete entero: hay que volver a estampar
+      // el establecimiento o el auxiliar sale sin decir de cuál es.
+      if (window.__sellarEstablecimiento) { try { window.__sellarEstablecimiento(); } catch (e) {} }
     };
     // Período de declaración: clave 'aaaa-mm' y etiqueta 'Mes aaaa'
     const _MESES_PER = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
@@ -10475,6 +10496,7 @@
               numControl: u.numControl || '',
               // La de IVA se calcula sobre el IVA; la de ISLR, sobre la base.
               base: Number(u.iva) || 0, baseIva: Number(u.iva) || 0, baseIslr: Number(u.base) || 0,
+              sucursal_id: u.sucursal_id || null,
             };
             const cancelar = document.getElementById('fmCancel');
             if (cancelar) cancelar.click();
@@ -10573,7 +10595,10 @@
                que está llenando. */
             if (guardado && guardado[0]) {
               _ultimoRegistro[tipo] = { id: guardado[0].id, num: v.numFactura || '(sin N°)', nombre: v.nombre,
-                rif: normRif(v.rif), numControl: v.numControl || '', iva: iva, base: base };
+                rif: normRif(v.rif), numControl: v.numControl || '', iva: iva, base: base,
+                // La retención hereda el establecimiento de su factura: no se
+                // pregunta, que sería una respuesta de más y un error posible.
+                sucursal_id: sucursalDe(v.sucursal) };
               pintarUltimo();
             }
             if (window.__invalidarArrastres) window.__invalidarArrastres(); // el nuevo registro puede cambiar los arrastres
@@ -10930,10 +10955,37 @@
       if (window.lucide) window.lucide.createIcons();
     }
 
+    /* Estampa el establecimiento en el membrete del libro.
+
+       Vive aparte porque hay DOS sitios que escriben ese membrete: la barra
+       de establecimientos y __syncFiscalHeader, que lo reconstruye entero en
+       cada cambio de período o de empresa. El segundo borraba lo que ponía el
+       primero, así que el establecimiento aparecía o no según cuál corriera
+       de último — en julio se perdía y en agosto no, sin ninguna lógica
+       visible. Ahora los dos llaman aquí. */
+    window.__sellarEstablecimiento = function (tipo) {
+      const tipos = tipo ? [tipo] : ['compra', 'venta'];
+      tipos.forEach((tp) => {
+        const tab = tp === 'compra' ? 'compras' : 'ventas';
+        document.querySelectorAll('.fiscal-tab[data-tab="' + tab + '"] .libro-head .lh-data').forEach((cab) => {
+          const suc = (window.__SUCURSALES || []).find((s) => s.id === (_sucFiltro || {})[tp]);
+          const previo = cab.innerHTML.split(' · Establecimiento:')[0];
+          cab.innerHTML = previo + (suc
+            ? ' · Establecimiento: <strong>' + esc(suc.codigo + ' · ' + suc.nombre) + '</strong>'
+            : '');
+        });
+      });
+    };
+
     /* Qué establecimiento se está mirando en cada libro. Vacío = todos.
        Va por tipo: uno puede estar viendo las compras de la matriz y las
        ventas consolidadas sin que una cosa mueva a la otra. */
     const _sucFiltro = { compra: '', venta: '' };
+    /* Qué establecimiento está mirando cada libro, para quien no viva en este
+       cierre. El cuadro de retenciones se pinta desde otro módulo y necesita
+       el mismo filtro que el libro: si no, el auxiliar de la sucursal sale con
+       las retenciones de casa matriz debajo y los dos números no cuadran. */
+    window.__sucFiltroDe = (tipo) => (_sucFiltro[tipo] || '');
 
     /* La barra para elegir establecimiento, encima del libro.
 
@@ -10961,6 +11013,9 @@
         anclaje.parentNode.insertBefore(bar, anclaje);
         bar.querySelector('.suc-sel').addEventListener('change', (e) => {
           _sucFiltro[tipo] = e.target.value;
+          // Los cuadros de retenciones cuelgan del libro: si no se repintan,
+          // se queda el resumen del establecimiento anterior debajo del nuevo.
+          if (window.cargarRetenciones) { try { window.cargarRetenciones(); } catch (e2) {} }
           cargarLibroFiscal(tipo, 1);   // desde la primera página: el lote cambió
         });
       }
@@ -10973,12 +11028,7 @@
       /* El membrete del libro dice de qué establecimiento es. Sin esto los
          dos auxiliares salen impresos idénticos y no hay forma de saber cuál
          es cuál cuando están sobre la mesa. */
-      const suc = (window.__SUCURSALES || []).find((s) => s.id === _sucFiltro[tipo]);
-      const cab = pane.querySelector('.libro-head .lh-data');
-      if (cab) {
-        const previo = cab.innerHTML.split(' · Establecimiento:')[0];
-        cab.innerHTML = previo + (suc ? ' · Establecimiento: <strong>' + esc(suc.codigo + ' · ' + suc.nombre) + '</strong>' : '');
-      }
+      window.__sellarEstablecimiento(tipo);
       const nota = bar.querySelector('.suc-nota');
       nota.textContent = _sucFiltro[tipo]
         ? visibles.length + ' de ' + todas.length + ' operaciones del período · lo que se imprime y se exporta es este libro; la Forma 30 sigue consolidada'
