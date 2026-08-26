@@ -12650,9 +12650,9 @@
       if (estado === 'suspendida') modo = 'suspendida';
       else if (estado === 'prueba' && window.__TRIAL_VENCIDO) modo = 'trial';
       const ui = {
-        pendiente:  { ic: 'clock',        col: '#c97a1422;color:#e0a341', t: 'Tu cuenta está en revisión', p: 'Gracias por registrarte en DigiAccount. Estamos verificando tu cuenta para activarla; será muy pronto. Si tienes dudas, escríbenos por WhatsApp.' },
+        pendiente:  { ic: 'clock',        col: '#c97a1422;color:#e0a341', t: 'Tu cuenta está lista para activar', p: 'Ya creamos tu cuenta. Para abrirla conversamos quince minutos y la dejamos andando con tus propios datos — o si ya sabes qué plan quieres, escríbenos por WhatsApp y la activamos hoy mismo.' },
         suspendida: { ic: 'shield-alert', col: '#c0392b22;color:#e06b5e', t: 'Cuenta suspendida', p: 'Tu acceso está suspendido temporalmente. Comunícate con nosotros para reactivarla.' },
-        trial:      { ic: 'timer-off',    col: '#c97a1422;color:#e0a341', t: 'Tu prueba terminó', p: 'Tu periodo de prueba de 14 días finalizó. Activa tu plan para seguir usando DigiAccount — escríbenos por WhatsApp y te ayudamos.' },
+        trial:      { ic: 'timer-off',    col: '#c97a1422;color:#e0a341', t: 'Tu acceso de cortesía terminó', p: 'Se venció el período de cortesía de esta cuenta. Activa tu plan para seguir usando DigiAccount — escríbenos por WhatsApp y te ayudamos.' },
       }[modo];
       let ov = document.getElementById('cuentaBloqueoOverlay');
       if (!ov) {
@@ -14648,7 +14648,7 @@
       return 'info';
     }
     const CONTENIDO = {
-      info: (d) => ({ icon: 'gift', title: 'Estás disfrutando tu prueba gratis', sub: 'Quedan ' + d + ' días · activa tu plan cuando quieras, sin apuro.' }),
+      info: (d) => ({ icon: 'gift', title: 'Estás usando tu mes de cortesía', sub: 'Quedan ' + d + ' días · activa tu plan cuando quieras, sin apuro.' }),
       aviso: (d) => ({ icon: 'clock', title: 'Tu prueba vence en ' + d + ' días', sub: 'Activa tu plan para no perder el acceso a tus módulos.' }),
       urgente: (d) => ({ icon: 'alert-triangle', title: '¡Solo te quedan ' + d + (d === 1 ? ' día' : ' días') + ' de prueba!', sub: 'Activa tu plan ahora para no perder tu información ni tu acceso.' }),
       vencido: () => ({ icon: 'lock', title: 'Tu prueba terminó', sub: 'Activa un plan para seguir usando DigiAccount.' }),
@@ -14702,7 +14702,7 @@
 
   /* =========================================================
      ONBOARDING · Selección de plan (funnel de registro)
-     cuenta creada → elegir plan (prueba 14 días) → empresa → sistema
+     cuenta creada → elegir plan → empresa → sistema (el acceso lo abre el pago)
      ========================================================= */
   (function planOnboarding() {
     const scrim = document.getElementById('planOnboarding');
@@ -14732,8 +14732,8 @@
           + (p.sub ? '<div class="pc-sub">' + p.sub + '</div>' : '<div class="pc-sub">&nbsp;</div>')
           + precioHtml
           + '<ul class="pc-features">' + p.features.map((f) => '<li class="' + (f.ok ? 'ok' : 'no') + '"><i data-lucide="' + (f.ok ? 'check' : 'x') + '"></i> ' + f.t + '</li>').join('') + '</ul>'
-          + '<button class="pc-cta ' + (p.popular ? 'primary' : 'ghost') + '" data-plan="' + p.nombre + '"><i data-lucide="sparkles"></i> Iniciar prueba</button>'
-          + '<div class="pc-trial-note">14 días gratis · luego $' + precioMes(p) + '/mes</div>'
+          + '<button class="pc-cta ' + (p.popular ? 'primary' : 'ghost') + '" data-plan="' + p.nombre + '"><i data-lucide="sparkles"></i> Elegir este plan</button>'
+          + '<div class="pc-trial-note">$' + precioMes(p) + '/mes + IVA · activas al pagar</div>'
           + '</div>';
       }).join('');
       grid.querySelectorAll('.pc-cta').forEach((b) => b.addEventListener('click', () => elegir(b.dataset.plan)));
@@ -14741,10 +14741,14 @@
     }
 
     function elegir(plan) {
-      if (window.__iniciarPrueba) window.__iniciarPrueba(plan, 14);
-      else if (window.aplicarPlan) window.aplicarPlan(plan);
+      /* Ya no hay prueba abierta. Antes esto llamaba a __iniciarPrueba(plan, 14),
+         que encendia 14 dias INVENTADOS en el navegador sin consultar la cuenta:
+         el letrero de "quedan 14 dias" salia hasta en cuentas activas cuya
+         prueba habia vencido hacia un mes. El plan se aplica, y el acceso lo
+         abre el pago, el cupon de un socio, o el fundador. */
+      if (window.aplicarPlan) window.aplicarPlan(plan);
       close();
-      toast('Prueba de 14 días iniciada · Plan ' + plan + ' · ahora registra tu empresa', 'success');
+      toast('Plan ' + plan + ' seleccionado · ahora registra tu empresa', 'success');
       if (window.openCompanyWizard) setTimeout(() => window.openCompanyWizard({ fromSignup: true }), 280);
     }
 
@@ -15677,7 +15681,9 @@
       const badge = document.getElementById('planActivoBadge');
       if (badge) badge.textContent = plan;
       // badge de prueba (días restantes) — visible solo en modo prueba
-      window.__prueba = prueba ? { plan: plan, dias: prueba.dias || 14 } : null;
+      // Sin dias reales NO hay prueba: inventar un numero aqui fue lo que hizo
+      // que el letrero mintiera. Los dias salen de trial_termina_en de la cuenta.
+      window.__prueba = (prueba && typeof prueba.dias === 'number') ? { plan: plan, dias: prueba.dias } : null;
       const trial = document.getElementById('planTrial');
       if (trial) {
         trial.hidden = !prueba;
@@ -15697,8 +15703,12 @@
       if (window.lucide) window.lucide.createIcons();
     }
     window.aplicarPlan = aplicarPlan;
-    // Inicia el plan en modo prueba (14 días) — usado por el onboarding
-    window.__iniciarPrueba = function (plan, dias) { aplicarPlan(plan, { dias: dias || 14 }); };
+    // Enciende la interfaz de cortesía con los días REALES que queden.
+    // Solo para una cortesia ya otorgada de verdad; hay que pasarle los dias.
+    window.__iniciarPrueba = function (plan, dias) {
+      if (typeof dias !== 'number') { console.warn('[Prueba] Hacen falta los dias reales.'); return; }
+      aplicarPlan(plan, { dias: dias });
+    };
     // Botón "Ver planes" del banner de demo de Agentes
     const demoBtn = document.querySelector('#agDemoBanner [data-view="planes"]');
     if (demoBtn) demoBtn.addEventListener('click', () => { if (window.showView) window.showView('planes', 'Planes y Precios'); });
