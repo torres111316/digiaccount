@@ -11063,7 +11063,7 @@
         actualizarAutoliquidacion();
         calcularArrastres(); // el período puede no tener operaciones propias pero SÍ arrastre del mes anterior
       };
-      if (!window.sb || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) { vacio(); return; }
+      if (!window.sb || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) { pintarFiltroSucursal(tabName, tipo, [], []); vacio(); return; }
       // Se consulta por el PERÍODO DE DECLARACIÓN seleccionado (no por la fecha de la factura):
       // una compra recibida tarde se declara en el período en que llega la factura.
       // Filtrar en la BD evita el tope de 1000 filas de PostgREST.
@@ -11072,7 +11072,7 @@
       const { data, error } = await window.__sbAll((q) => q
         .eq('empresa_id', window.__EMPRESA_ACTIVA.id).eq('tipo', tipo)
         .or('periodo.eq.' + perDecl + ',and(periodo.is.null,fecha.like.*' + sufPer + ')'), 'libro_fiscal', '*');
-      if (error) { console.warn('[DigiAccount] No se pudo cargar el libro fiscal:', error.message); vacio('No se pudieron cargar (¿creaste la tabla libro_fiscal?).'); return; }
+      if (error) { console.warn('[DigiAccount] No se pudo cargar el libro fiscal:', error.message); pintarFiltroSucursal(tabName, tipo, [], []); vacio('No se pudieron cargar (¿creaste la tabla libro_fiscal?).'); return; }
       /* El orden se hace AQUÍ y no en la consulta: la base ordenaría el texto
          'dd/mm/aa' por el día. Primero por fecha real, y a igual fecha por
          número de factura, que es como se lee un libro fiscal. */
@@ -11092,7 +11092,16 @@
       window.__libroData = _libroData; // expuesto para la impresión (printLibro está en otro IIFE)
       // (más abajo se reemplaza por lo visible, para que imprimir y exportar
       //  saquen el libro del establecimiento elegido y no el consolidado)
-      if (!arr.length) { vacio('Sin registros en ' + _perLabel() + '. Cambia el período arriba o usa "Registrar ' + tipo + '".'); return; }
+      if (!arr.length) {
+        /* La barra de establecimientos se pinta IGUAL cuando el período está
+           vacío. Antes se salía aquí, antes de pintarla, y el resultado era
+           una trampa: sin barra no se puede cambiar de establecimiento, así
+           que quien cayera en un período sin registros se quedaba encerrado
+           en la vista vacía sin manera de volver al consolidado. */
+        pintarFiltroSucursal(tabName, tipo, [], []);
+        vacio('Sin registros en ' + _perLabel() + '. Cambia el período arriba o usa "Registrar ' + tipo + '".');
+        return;
+      }
       // Totales y Forma 30: SIEMPRE sobre el mes completo (la paginación es solo visual)
       let tTot = 0, tEx = 0, tBase = 0, tIva = 0, tIgtf = 0;
       let base16 = 0, iva16 = 0, base8 = 0, iva8 = 0, baseAd = 0, ivaAd = 0;
