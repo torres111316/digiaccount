@@ -46,16 +46,11 @@ select e.nombre     as empresa,
 
 
 -- ─────────────────────────────────────────────────────────────────────────
---  EL CAMBIO
+--  EL CAMBIO · van a la PRIMERA quincena
 --
---  Van a la PRIMERA quincena porque sus facturas son de la primera mitad de
---  agosto. La segunda quincena de agosto todavia no ha terminado el dia que
---  se escribe esto, asi que no hay retenciones legitimas de la segunda que
---  esto pueda pisar.
---
---  Si al correr el bloque de ARRIBA aparecieran filas que SI son de la
---  segunda quincena, NO correr esto: corregir esas dos a mano por su numero
---  de comprobante.
+--  Confirmado por Luis: esas dos retenciones son de la primera quincena de
+--  agosto. Sus facturas son de la primera mitad del mes, y la segunda
+--  quincena ni siquiera ha terminado todavia.
 -- ─────────────────────────────────────────────────────────────────────────
 update public.retenciones r
    set quincena = 1
