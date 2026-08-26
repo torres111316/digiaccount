@@ -12766,9 +12766,21 @@
       window.location.reload();
     });
 
-    // Estado inicial: pantalla de acceso
+    // Estado inicial: pantalla de acceso.
+    //
+    // La pestana sale de la URL. El sitio web tiene dos botones distintos
+    // —"Iniciar sesion" y "Crear mi cuenta"— y ambos caian en Iniciar sesion,
+    // porque aqui se forzaba 'login' sin mirar a que venia el visitante. El que
+    // hizo clic en "Crear mi cuenta" tenia que darse cuenta solo de que le
+    // faltaba cambiar de pestana.
+    //
+    // Vale cualquiera de las formas, para que ningun enlace viejo se rompa:
+    //   app.digiaccount.io/#signup   #registro   #crear-cuenta   ?registro=1
     body.classList.remove('authed');
-    setTab('login');
+    (function pestanaInicial() {
+      const marca = (String(location.hash || '') + ' ' + String(location.search || '')).toLowerCase();
+      setTab(/signup|registro|crear.?cuenta|registrarme/.test(marca) ? 'signup' : 'login');
+    })();
 
     // Si ya hay una sesión activa (p. ej. tras recargar), entra directo a la app
     window.sb.auth.getSession().then(async ({ data }) => {
