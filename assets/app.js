@@ -1516,6 +1516,14 @@
     }
     // En ISLR muestra concepto/sujeto/sustraendo y autollena código, % y sustraendo.
     // En IVA los oculta (no aplican).
+    /* Qué quincena le toca a una fecha 'aaaa-mm-dd'. Del 1 al 15, la primera;
+       del 16 al último día, la segunda. Es la regla del enteramiento y no
+       depende de cuándo se cargue el registro. */
+    function _quincenaDeISO(iso) {
+      const d = parseInt(String(iso || '').slice(8, 10), 10);
+      return (d >= 1 && d <= 15) ? '1' : (d >= 16 ? '2' : '');
+    }
+
     function setupIslrFields(body) {
       const tipoSel = body.querySelector('[data-name="tipo"]');
       const concSel = body.querySelector('[data-name="concepto"]');
@@ -1605,7 +1613,15 @@
             options: [{ value: '1', label: '1ra quincena (se entera del 1 al 15)' },
                       { value: '2', label: '2da quincena (se entera del 16 al último día)' },
                       { value: '', label: 'No sé todavía — la asigno después' }],
-            value: String((window.__retQuincenaActual && window.__retQuincenaActual()) || '') },
+            /* Sale de la FECHA del comprobante, que es el criterio real: del 1
+               al 15 es primera, del 16 en adelante segunda. Antes se proponía
+               la del selector de arriba, así que quien estuviera mirando el
+               mes completo registraba la retención sin quincena — y una
+               retención sin quincena no entra en ningún TXT.
+
+               Se sigue pudiendo cambiar: hay casos donde el comprobante se
+               emite en una quincena y se entera en la otra. */
+            value: _quincenaDeISO(window.__hoyISO()) },
         ] : []).concat([
           { name: 'nombre', label: 'Tercero (escribe iniciales y elige)', col: 2, type: 'datalist', options: terceros.map((t) => t.nombre), placeholder: 'Proveedor o cliente…', value: pre.nombre || '' },
           { name: 'rif', label: 'RIF (mayúscula, sin guiones)', upper: true, placeholder: 'J123456789', value: pre.rif || '' },
@@ -1623,6 +1639,21 @@
             '<div class="ret-calc" id="retCalc"></div>' },
         ]),
         afterRender: (body) => {
+          /* La quincena sigue a la fecha del comprobante mientras nadie la
+             toque a mano. Si el usuario la elige él, deja de moverse: puede
+             haber un comprobante emitido en una quincena y enterado en otra,
+             y ese criterio es suyo, no del sistema. */
+          const _fQuin = body.querySelector('[data-name="fecha"]');
+          const _selQuin = body.querySelector('[data-name="quincena"]');
+          if (_fQuin && _selQuin) {
+            let _quinAMano = false;
+            _selQuin.addEventListener('change', () => { _quinAMano = true; });
+            _fQuin.addEventListener('change', () => {
+              if (_quinAMano) return;
+              const q = _quincenaDeISO(_fQuin.value);
+              if (q) _selQuin.value = q;
+            });
+          }
           const dirSel = body.querySelector('[data-name="direccion"]');
           const tipoSel = body.querySelector('[data-name="tipo"]');
           const prov = body.querySelector('[data-name="nombre"]');
