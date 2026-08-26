@@ -1129,15 +1129,23 @@
     // refleja el detalle en los mini-cuadros de cada Forma 30.
     /* Deja solo las retenciones del establecimiento que se esté mirando.
 
-       Una retención hereda el establecimiento de SU factura (sucursal_id, que
-       rellena sql/retenciones_por_establecimiento.sql). Las que no lo tengan
-       —cargadas antes de que existiera la columna, o de una empresa sin
-       sucursales— se muestran siempre: esconderlas sería peor, porque una
-       retención que no se ve es una que no se entera. */
+       Una retención hereda el establecimiento de SU factura (sucursal_id).
+
+       El filtro es ESTRICTO: sin establecimiento no entra en el auxiliar de
+       ninguno. El primer intento dejaba pasar las que tuvieran el campo en
+       nulo, con la idea de no esconder ninguna retención — pero eso hacía
+       justo lo contrario de lo que se pide: el auxiliar de una sucursal sin
+       movimiento salía cargado con todas las retenciones de la casa matriz,
+       que es exactamente el descuadre que había que resolver.
+
+       Nada se pierde: el consolidado —sin establecimiento elegido— es la
+       vista por defecto y la que alimenta la declaración, y ahí siguen
+       apareciendo todas. Lo que no tenga establecimiento se asigna con
+       sql/historico_a_casa_matriz.sql. */
     function delEstablecimiento(arr, tipo) {
       const filtro = window.__sucFiltroDe ? window.__sucFiltroDe(tipo) : '';
       if (!filtro) return arr;
-      return arr.filter((r) => !r.sucursal_id || r.sucursal_id === filtro);
+      return arr.filter((r) => r.sucursal_id === filtro);
     }
 
     function aplicarAForma30(arr) {
