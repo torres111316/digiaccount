@@ -12733,8 +12733,10 @@
       if ((pass || '').length < 8) return toast('La contraseña debe tener al menos 8 caracteres', 'error');
       if (!document.getElementById('suTerms').checked) return toast('Debes aceptar los términos', 'error');
       const segmento = (document.getElementById('suSegmento') || {}).value || 'empresas';
-      // Código de invitación (opcional): si es válido, el trigger une a la persona a la
-      // cuenta que la invitó (como auxiliar) en vez de crearle una cuenta nueva de prueba.
+      // Codigo opcional. Puede ser de DOS tipos y el sistema averigua cual:
+      //   · invitacion de equipo → la persona se suma a la cuenta que la invito
+      //   · codigo de socio      → su cuenta nueva queda amarrada a ese contador
+      // Se resuelve al entrar (ver el canje mas abajo), no aqui.
       const codigoInv = ((document.getElementById('suCodigo') || {}).value || '').trim().toUpperCase();
       // Registro REAL en Supabase Auth — el trigger 'on_auth_user_created' crea la cuenta + el perfil
       const { data, error } = await window.sb.auth.signUp({
@@ -12798,15 +12800,40 @@
         // CANJE DE INVITACIÓN: si esta persona se registró con un código de invitación,
         // la RPC la muda a la cuenta del equipo que la invitó (con su rol) y elimina la
         // cuenta de prueba creada por defecto. Idempotente: usado el código, no hace nada.
+        /* UN SOLO CODIGO EN EL REGISTRO, DOS DESTINOS POSIBLES.
+
+           Quien recibe un codigo no sabe —ni tiene por que saber— de que tipo
+           es. Un trabajador no sabe que es un "socio"; el dueno de un negocio
+           no sabe que es una "invitacion". Los dos tienen lo mismo: un codigo
+           que alguien les paso. Asi que se prueba primero como invitacion de
+           equipo y, si no era eso, como codigo de socio.
+
+           Son poblaciones distintas y excluyentes por naturaleza: la
+           invitacion suma a la persona a la cuenta de OTRO; el codigo de socio
+           amarra SU PROPIA cuenta nueva a un contador. Nunca aplican las dos.
+
+           El codigo de socio solo se puede escribir AQUI, al registrarse. No
+           hay forma de escribirlo despues desde dentro de la app, y eso es
+           deliberado: cierra por diseno la posibilidad de que un trabajador ya
+           dentro de una empresa le amarre la cuenta de su patron a un socio. */
         try {
           const usr = data.session.user || {};
           const cod = (usr.user_metadata && usr.user_metadata.codigo_invitacion) || '';
           if (cod) {
             const { data: rj } = await window.sb.rpc('canjear_invitacion', { p_codigo: cod });
+            const fueInvitacion = rj && (rj.ok || rj.repetido);
             if (rj && rj.ok && !rj.repetido) {
               if (window.toast) setTimeout(() => window.toast('¡Bienvenido al equipo! Tu acceso fue activado ✓', 'success'), 900);
-            } else if (rj && rj.error && rj.error_visible) {
-              if (window.toast) setTimeout(() => window.toast('Invitación: ' + rj.error, 'error'), 900);
+            } else if (!fueInvitacion) {
+              // No era una invitacion. Se prueba como codigo de socio.
+              const { data: rs } = await window.sb.rpc('registrar_referido', { p_codigo: cod });
+              if (rs && rs.ok) {
+                if (window.toast) setTimeout(() => window.toast('Vienes de parte de ' + rs.socio + ' · tu cuenta quedó vinculada ✓', 'success'), 900);
+              } else if (rj && rj.error && rj.error_visible) {
+                // No era ninguno de los dos: se reporta el motivo de la invitacion,
+                // que es el que el usuario entiende ("ese codigo no existe").
+                if (window.toast) setTimeout(() => window.toast('Código: ' + rj.error, 'error'), 900);
+              }
             }
           }
         } catch (e) {}
