@@ -13737,7 +13737,9 @@
     }
     window.__renderContactos = render;
 
-    const PANELS = { cuentas: panelCuentas, contactos: panelContactos, cobros: document.getElementById('fundadorTabCobros') };
+    const PANELS = { cuentas: panelCuentas, contactos: panelContactos,
+                     cobros: document.getElementById('fundadorTabCobros'),
+                     socios: document.getElementById('fundadorTabSocios') };
     tabs.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => {
       tabs.querySelectorAll('button').forEach((x) => (x.dataset.active = x === b ? 'true' : 'false'));
       const tab = b.dataset.tab;
@@ -13747,6 +13749,7 @@
       if (nuevaBtn) nuevaBtn.style.display = esCuentas ? '' : 'none';
       if (tab === 'contactos') { render(); if (window.cargarContactos) window.cargarContactos(); }
       if (tab === 'cobros') { if (window.__renderPagos) window.__renderPagos(); if (window.cargarPagos) window.cargarPagos(); }
+      if (tab === 'socios') { try { if (window.cargarSociosFundador) window.cargarSociosFundador(); } catch (e) { console.warn('[Socios]', e); } }
     }));
 
     document.getElementById('leadsFiltros').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => {
@@ -16438,4 +16441,235 @@
         .then(() => window.toast && window.toast('Código ' + MI.codigo + ' copiado', 'success'))
         .catch(() => window.toast && window.toast('No se pudo copiar. Tu código es ' + MI.codigo, 'info'));
     });
+  })();
+
+  /* ══════════════════════════════════════════════════════════════════════
+     PROGRAMA DE SOCIOS · gestion del fundador
+
+     Aqui NO se edita ningun numero. El nivel, las empresas activas y la
+     retencion se calculan de los pagos confirmados (v_socios_resumen); lo
+     que el fundador hace es aprobar, certificar, emitir cupones y liquidar
+     el mes. Si el nivel se pudiera escribir a mano, el tablero y la
+     liquidacion terminarian diciendo cosas distintas.
+
+     Todo va dentro de su propio try al engancharse: si algo aqui fallara,
+     se cae esta pestaña y ninguna otra.
+     ══════════════════════════════════════════════════════════════════════ */
+  (function sociosFundador() {
+    const NIVEL = {
+      asociado:    { t: 'Asociado',        pct: 10 },
+      certificado: { t: 'Certificado',     pct: 20 },
+      socio:       { t: 'Socio',           pct: 25 },
+      principal:   { t: 'Socio Principal', pct: 30 },
+    };
+    const $ = (id) => document.getElementById(id);
+    const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const plata = (n) => (Number(n) || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const toast = (m, t) => { if (window.toast) window.toast(m, t); };
+
+    let SOCIOS = [];
+
+    window.cargarSociosFundador = async function () {
+      if (!window.sb || !window.__ES_FUNDADOR) return;
+      const { data, error } = await window.sb.from('v_socios_resumen').select('*').order('nombre');
+      if (error) { console.warn('[Socios] No se pudieron cargar:', error.message); return; }
+      SOCIOS = data || [];
+      pintarKpis();
+      pintarTabla();
+      await pintarLiquidaciones();
+      if (window.lucide) window.lucide.createIcons();
+    };
+
+    function pintarKpis() {
+      const activos = SOCIOS.filter((s) => s.estado === 'activo');
+      const set = (id, v) => { const e = $(id); if (e) e.textContent = v; };
+      set('socKpiActivos', activos.length);
+      set('socKpiFundadores', SOCIOS.filter((s) => s.es_fundador).length);
+      set('socKpiEmpresas', SOCIOS.reduce((a, s) => a + (s.empresas_activas || 0), 0));
+      set('socKpiPorPagar', plata(SOCIOS.reduce((a, s) => a + (Number(s.comision_por_pagar) || 0), 0)));
+      set('socKpiPagado', plata(SOCIOS.reduce((a, s) => a + (Number(s.comision_pagada) || 0), 0)));
+    }
+
+    function pintarTabla() {
+      const body = $('socFundBody');
+      const cnt = $('socFundCount');
+      if (!body) return;
+      if (cnt) cnt.textContent = SOCIOS.length;
+      if (!SOCIOS.length) {
+        body.innerHTML = '<tr><td colspan="9" class="ic-empty">Todavía no hay socios. Usa «Dar de alta socio» con la cuenta de un contador que ya sea cliente.</td></tr>';
+        return;
+      }
+      body.innerHTML = SOCIOS.map((s) => {
+        const nv = NIVEL[s.nivel] || NIVEL.asociado;
+        const est = s.estado === 'activo' ? 'Activo' : s.estado === 'suspendido' ? 'Suspendido' : 'Postulado';
+        return '<tr>'
+          + '<td>' + esc(s.nombre) + (s.es_fundador ? ' <span class="ag-est est-ok">Fundador</span>' : '')
+          +   (s.ciudad ? '<div class="cfg-hint" style="margin:2px 0 0;">' + esc(s.ciudad) + '</div>' : '') + '</td>'
+          + '<td class="mono">' + esc(s.codigo) + '</td>'
+          + '<td>' + nv.t + (s.certificado ? '' : ' <span class="cfg-hint" style="display:inline;">· sin examen</span>') + '</td>'
+          + '<td class="num mono">' + nv.pct + '%</td>'
+          + '<td class="num mono">' + (s.empresas_activas || 0) + '</td>'
+          + '<td class="num mono">' + Math.round((Number(s.retencion) || 0) * 100) + '%</td>'
+          + '<td class="num mono">$' + plata(s.comision_por_pagar) + '</td>'
+          + '<td>' + est + '</td>'
+          + '<td><button class="btn btn-ghost" style="height:28px;font-size:11px;" data-soc-acc="' + s.id + '">Gestionar</button></td>'
+          + '</tr>';
+      }).join('');
+      body.querySelectorAll('[data-soc-acc]').forEach((b) =>
+        b.addEventListener('click', () => gestionar(b.dataset.socAcc)));
+    }
+
+    async function pintarLiquidaciones() {
+      const body = $('socLiqBody');
+      if (!body) return;
+      const { data } = await window.sb.from('comisiones')
+        .select('id, periodo, nivel, pct, base, monto, estado, socios(nombre)')
+        .order('periodo', { ascending: false }).limit(200);
+      const filas = data || [];
+      const total = filas.filter((c) => c.estado === 'calculada').reduce((a, c) => a + (Number(c.monto) || 0), 0);
+      const tt = $('socLiqTotal');
+      if (tt) tt.textContent = '$' + plata(total);
+      if (!filas.length) {
+        body.innerHTML = '<tr><td colspan="8" class="ic-empty">Aún no hay comisiones liquidadas. Usa «Liquidar mes» al cerrar cada período.</td></tr>';
+        return;
+      }
+      body.innerHTML = filas.map((c) => '<tr>'
+        + '<td class="mono">' + esc(c.periodo) + '</td>'
+        + '<td>' + esc((c.socios || {}).nombre || '—') + '</td>'
+        + '<td>' + ((NIVEL[c.nivel] || {}).t || c.nivel) + '</td>'
+        + '<td class="num mono">' + Math.round((Number(c.pct) || 0) * 100) + '%</td>'
+        + '<td class="num mono">$' + plata(c.base) + '</td>'
+        + '<td class="num mono">$' + plata(c.monto) + '</td>'
+        + '<td>' + (c.estado === 'pagada' ? 'Pagada' : c.estado === 'anulada' ? 'Anulada' : 'Por pagar') + '</td>'
+        + '<td>' + (c.estado === 'calculada'
+            ? '<button class="btn btn-ghost" style="height:28px;font-size:11px;" data-soc-pagar="' + c.id + '">Marcar pagada</button>'
+            : '') + '</td>'
+        + '</tr>').join('');
+      body.querySelectorAll('[data-soc-pagar]').forEach((b) =>
+        b.addEventListener('click', () => marcarPagada(b.dataset.socPagar)));
+    }
+
+    // ── Dar de alta ───────────────────────────────────────────────────────
+    const btnAlta = $('socAltaBtn');
+    if (btnAlta) btnAlta.addEventListener('click', async () => {
+      // Solo cuentas de contador que aun no sean socias: el programa exige que
+      // el socio sea cliente, porque no se recomienda lo que uno no usa.
+      const { data: ctas } = await window.sb.from('cuentas')
+        .select('id, nombre, email_contacto, segmento, plan_id').order('nombre');
+      const yaSocios = new Set(SOCIOS.map((s) => s.cuenta_id));
+      const libres = (ctas || []).filter((c) => !yaSocios.has(c.id));
+      if (!libres.length) { toast('No hay cuentas disponibles para dar de alta.', 'info'); return; }
+
+      window.openFormModal && window.openFormModal({
+        title: 'Dar de alta a un socio',
+        saveLabel: 'Dar de alta y generar código',
+        fields: [
+          { name: 'cuenta', label: 'Cuenta del contador', type: 'select', col: 2,
+            options: libres.map((c) => c.nombre + ' · ' + (c.email_contacto || 'sin correo')) },
+          { name: 'nombre', label: 'Nombre y apellido', col: 2, placeholder: 'Como aparecerá en el directorio' },
+          { name: 'colegiado', label: 'N° de C.P.C.', placeholder: 'C.P.C. 00000' },
+          { name: 'ciudad', label: 'Ciudad' },
+          { name: 'telefono', label: 'WhatsApp' },
+          { name: 'fundador', label: 'Socio fundador (uno de los 20)', type: 'select', options: ['No', 'Sí'] },
+        ],
+        onSave: async (v) => {
+          const idx = libres.findIndex((c) => (c.nombre + ' · ' + (c.email_contacto || 'sin correo')) === v.cuenta);
+          if (idx < 0) return 'Elige la cuenta del contador.';
+          if (!(v.nombre || '').trim()) return 'Indica el nombre del socio.';
+          const { data, error } = await window.sb.rpc('alta_socio', {
+            p_cuenta_id: libres[idx].id,
+            p_nombre: v.nombre.trim(),
+            p_colegiado: (v.colegiado || '').trim() || null,
+            p_ciudad: (v.ciudad || '').trim() || null,
+            p_telefono: (v.telefono || '').trim() || null,
+            p_email: libres[idx].email_contacto || null,
+            p_es_fundador: /s[ií]/i.test(v.fundador || ''),
+          });
+          if (error) return 'No se pudo dar de alta: ' + error.message;
+          toast('Socio dado de alta · su código es ' + (data && data.codigo ? data.codigo : '—'), 'success');
+          window.cargarSociosFundador();
+        },
+      });
+    });
+
+    // ── Liquidar el mes ───────────────────────────────────────────────────
+    const btnLiq = $('socLiquidarBtn');
+    if (btnLiq) btnLiq.addEventListener('click', () => {
+      const hoy = new Date();
+      // Por defecto el mes ANTERIOR: el mes en curso todavia esta cobrandose.
+      const ant = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1);
+      const per = ant.getFullYear() + '-' + String(ant.getMonth() + 1).padStart(2, '0');
+      window.openFormModal && window.openFormModal({
+        title: 'Liquidar comisiones del mes',
+        saveLabel: 'Calcular y registrar',
+        fields: [
+          { name: 'periodo', label: 'Período (AAAA-MM)', value: per, placeholder: '2026-08' },
+          { name: 'aviso', col: 2, type: 'static', label: '',
+            html: '<p class="cfg-hint" style="margin:0;">Congela el nivel y el porcentaje de ese mes: si un socio baja después, lo liquidado no cambia. Volver a correrlo recalcula lo que siga «por pagar»; lo ya pagado no se toca.</p>' },
+        ],
+        onSave: async (v) => {
+          const per2 = (v.periodo || '').trim();
+          if (!/^\d{4}-\d{2}$/.test(per2)) return 'El período va como AAAA-MM (ejemplo: 2026-08).';
+          const { data, error } = await window.sb.rpc('liquidar_comisiones', { p_periodo: per2 });
+          if (error) return 'No se pudo liquidar: ' + error.message;
+          const n = (data && data.socios) || 0;
+          toast(n ? n + ' socio(s) liquidados · $' + plata((data && data.total) || 0)
+                  : 'No hubo pagos de referidos en ' + per2, n ? 'success' : 'info');
+          window.cargarSociosFundador();
+        },
+      });
+    });
+
+    // ── Gestionar un socio ────────────────────────────────────────────────
+    function gestionar(socioId) {
+      const s = SOCIOS.find((x) => x.id === socioId);
+      if (!s) return;
+      const nv = NIVEL[s.nivel] || NIVEL.asociado;
+      window.openFormModal && window.openFormModal({
+        title: 'Socio · ' + s.nombre,
+        saveLabel: 'Guardar cambios',
+        fields: [
+          { name: 'resumen', col: 2, type: 'static', label: '',
+            html: '<p class="cfg-hint" style="margin:0;">Código <strong class="mono">' + esc(s.codigo) + '</strong> · '
+                + nv.t + ' al ' + nv.pct + '% · ' + (s.empresas_activas || 0) + ' empresas activas · '
+                + Math.round((Number(s.retencion) || 0) * 100) + '% de retención · '
+                + (s.cupones_disponibles || 0) + ' cupones sin usar.<br>'
+                + 'El nivel se calcula solo. Solo fuérzalo para corregir un caso puntual.</p>' },
+          { name: 'estado', label: 'Estado', type: 'select', options: ['activo', 'postulado', 'suspendido'], value: s.estado },
+          { name: 'certificado', label: 'Aprobó la formación con examen', type: 'select', options: ['No', 'Sí'],
+            value: s.certificado ? 'Sí' : 'No' },
+          { name: 'forzar', label: 'Forzar nivel (dejar vacío = calculado)', type: 'select',
+            options: ['— calculado —', 'asociado', 'certificado', 'socio', 'principal'] },
+          { name: 'cupones', label: 'Emitir dos cupones nuevos', type: 'select', options: ['No', 'Sí'] },
+        ],
+        onSave: async (v) => {
+          const cambios = { estado: v.estado };
+          cambios.certificado_en = /s[ií]/i.test(v.certificado || '')
+            ? (s.certificado ? undefined : new Date().toISOString().slice(0, 10))
+            : null;
+          if (cambios.certificado_en === undefined) delete cambios.certificado_en;
+          cambios.nivel_forzado = (v.forzar && v.forzar.indexOf('calculado') < 0) ? v.forzar : null;
+
+          const { error } = await window.sb.from('socios').update(cambios).eq('id', socioId);
+          if (error) return 'No se pudo guardar: ' + error.message;
+
+          if (/s[ií]/i.test(v.cupones || '')) {
+            const { error: e2 } = await window.sb.rpc('emitir_cupones_socio', { p_socio: socioId });
+            if (e2) toast('Se guardó, pero los cupones no: ' + e2.message, 'error');
+            else toast('Dos cupones nuevos emitidos para ' + s.nombre, 'success');
+          } else {
+            toast('Cambios guardados', 'success');
+          }
+          window.cargarSociosFundador();
+        },
+      });
+    }
+
+    async function marcarPagada(id) {
+      const { error } = await window.sb.from('comisiones')
+        .update({ estado: 'pagada', pagada_en: new Date().toISOString().slice(0, 10) }).eq('id', id);
+      if (error) { toast('No se pudo marcar: ' + error.message, 'error'); return; }
+      toast('Comisión marcada como pagada', 'success');
+      window.cargarSociosFundador();
+    }
   })();

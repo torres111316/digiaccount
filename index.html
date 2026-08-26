@@ -4425,6 +4425,7 @@
         <button data-active="true" data-tab="cuentas"><i data-lucide="building-2"></i> Cuentas y suscripciones</button>
         <button data-tab="contactos"><i data-lucide="contact-round"></i> Contactos y Leads</button>
         <button data-tab="cobros"><i data-lucide="wallet"></i> Cobros y Pagos</button>
+        <button data-tab="socios"><i data-lucide="handshake"></i> Programa de Socios</button>
       </div>
 
       <div id="fundadorTabCuentas">
@@ -4547,6 +4548,49 @@
           <div class="table-footer"><div class="count">Mostrando <strong id="pagosShown">0</strong> pagos</div></div>
         </div>
       </div><!-- /fundadorTabCobros -->
+
+      <!-- PROGRAMA DE SOCIOS · gestion del fundador.
+           Los niveles y las comisiones se CALCULAN de los pagos confirmados;
+           aqui no se edita ningun numero, solo se aprueba, se certifica, se
+           emiten cupones y se liquida el mes. -->
+      <div id="fundadorTabSocios" hidden>
+        <section class="kpi-row">
+          <div class="kpi"><div class="kpi-head"><span class="label">Socios activos</span><span class="kpi-icon success"><i data-lucide="handshake"></i></span></div><div class="kpi-value" id="socKpiActivos">—</div><div class="kpi-sub"><span class="meta">De <span id="socKpiFundadores">0</span>/20 cupos de fundador</span></div></div>
+          <div class="kpi"><div class="kpi-head"><span class="label">Empresas referidas</span><span class="kpi-icon"><i data-lucide="building-2"></i></span></div><div class="kpi-value" id="socKpiEmpresas">—</div><div class="kpi-sub"><span class="meta">Activas, pagando hoy</span></div></div>
+          <div class="kpi"><div class="kpi-head"><span class="label">Comisión por pagar</span><span class="kpi-icon warn"><i data-lucide="hand-coins"></i></span></div><div class="kpi-value"><span class="currency">$</span> <span id="socKpiPorPagar">—</span></div><div class="kpi-sub"><span class="meta">Liquidada y pendiente</span></div></div>
+          <div class="kpi"><div class="kpi-head"><span class="label">Ya pagado</span><span class="kpi-icon"><i data-lucide="badge-check"></i></span></div><div class="kpi-value"><span class="currency">$</span> <span id="socKpiPagado">—</span></div><div class="kpi-sub"><span class="meta">Histórico del programa</span></div></div>
+        </section>
+
+        <div class="data-table-wrap">
+          <div class="table-toolbar">
+            <div class="panel-title-block"><div class="title">Socios</div><div class="sub">El nivel se calcula de los pagos confirmados. No se edita a mano.</div></div>
+            <div class="dash-actions">
+              <button class="btn btn-ghost" id="socLiquidarBtn"><i data-lucide="calculator"></i> Liquidar mes</button>
+              <button class="btn btn-primary" id="socAltaBtn"><i data-lucide="user-plus"></i> Dar de alta socio</button>
+            </div>
+          </div>
+          <div class="table-scroll">
+            <table class="data-table" style="min-width:1040px;">
+              <thead><tr><th>Socio</th><th>Código</th><th>Nivel</th><th class="num">%</th><th class="num">Activas</th><th class="num">Retención</th><th class="num">Por pagar</th><th>Estado</th><th></th></tr></thead>
+              <tbody id="socFundBody"><!-- por JS --></tbody>
+            </table>
+          </div>
+          <div class="table-footer"><div class="count">Mostrando <strong id="socFundCount">0</strong> socios</div></div>
+        </div>
+
+        <div class="data-table-wrap">
+          <div class="table-toolbar">
+            <div class="panel-title-block"><div class="title">Comisiones liquidadas</div><div class="sub">Montos antes de la retención de ISLR que corresponda.</div></div>
+          </div>
+          <div class="table-scroll">
+            <table class="data-table" style="min-width:900px;">
+              <thead><tr><th>Período</th><th>Socio</th><th>Nivel</th><th class="num">%</th><th class="num">Base</th><th class="num">Comisión</th><th>Estado</th><th></th></tr></thead>
+              <tbody id="socLiqBody"><!-- por JS --></tbody>
+            </table>
+          </div>
+          <div class="table-footer"><div class="count">Total por pagar: <strong id="socLiqTotal">$0,00</strong></div></div>
+        </div>
+      </div><!-- /fundadorTabSocios -->
     </section><!-- /view-fundador -->
 
     <!-- ===================== PLANES Y PRECIOS ===================== -->
