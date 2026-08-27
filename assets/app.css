@@ -5045,7 +5045,9 @@
   .comp-detail-islr th:nth-child(11), .comp-detail-islr td:nth-child(11) { width: 12%; }
 
   /* Pie: separado del cuadro y con espacio para la firma (sin línea superior) */
-  .comprobante .comp-footer { padding: 14px 24px 16px; gap: 24px; margin-top: 22px; border-top: 0; }
+  /* Al imprimir se recorta el aire del pie: lo que el estampado necesita
+     sale de aqui, no de una segunda hoja. */
+  .comprobante .comp-footer { padding: 4px 24px 10px; gap: 24px; margin-top: 6px; border-top: 0; }
   .comprobante .comp-sign { padding-top: 4px; }
   .comprobante .comp-legal { font-size: 8px; line-height: 1.35; padding-top: 10px; margin-top: 6px; }
 
@@ -7721,19 +7723,27 @@ table.suc-tabla td.c-mat { text-align: center; }
    bloque, y las imágenes terminaban por DEBAJO de la línea: el contexto de
    posicionamiento no era el que yo suponía. Así no hay nada que suponer —
    lo que va antes en el documento, se dibuja arriba. */
+/* El hueco reserva POCO —casi lo que el bloque ya tenia— y las imagenes se
+   DESBORDAN hacia arriba, ocupando el aire que ya existe entre la tabla y las
+   lineas de firma.
+
+   Un elemento en posicion absoluta no aporta altura a su contenedor: por eso
+   la firma puede medir 150 px sin que el pie crezca 150 px. El intento
+   anterior reservaba los 165 px completos y empujaba el comprobante a una
+   segunda hoja. */
 .comp-hueco-firma {
   position: relative;
-  height: 165px;
-  margin-bottom: 4px;
+  height: 58px;
+  margin-bottom: 2px;
 }
 .comp-hueco-firma img {
   position: absolute; bottom: 0;
-  max-height: 160px; max-width: 60%;
+  max-height: 148px; max-width: 58%;
 }
 .comp-hueco-firma .cf-firma { left: 50%; transform: translateX(-99%); }
 .comp-hueco-firma .cf-sello {
   left: 50%; transform: translateX(-1%) rotate(-8deg);
-  opacity: .82; max-height: 172px; bottom: -6px;
+  opacity: .82; max-height: 160px; bottom: -6px;
 }
 .comp-firmante {
   margin-top: 3px; font-size: 9px; color: var(--fg-muted);
