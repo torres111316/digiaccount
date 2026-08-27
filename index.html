@@ -4186,6 +4186,12 @@
           <button type="button" class="btn btn-ghost" id="cfgSucNuevo" style="height:32px;font-size:12px;margin-top:8px;"><i data-lucide="plus"></i> Agregar establecimiento</button>
         </div>
 
+        <!-- Ramo e inventario -->
+        <div class="cfg-card cfg-full">
+          <div class="cfg-card-head"><span class="cfg-ic"><i data-lucide="tags"></i></span><div><div class="cfg-tt">Ramo e inventario</div><div class="cfg-sub">A qué se dedica el negocio y qué controles lleva su catálogo.</div></div></div>
+          <div id="cfgInventario"><!-- por JS --></div>
+        </div>
+
         <!-- Identidad visual -->
         <div class="cfg-card">
           <div class="cfg-card-head"><span class="cfg-ic"><i data-lucide="image"></i></span><div><div class="cfg-tt">Identidad visual</div><div class="cfg-sub">Logo y color para tus documentos.</div></div></div>
@@ -5055,8 +5061,16 @@
       </div>
       <div class="wiz-pane" data-step="3">
         <div class="pane-title">¿A qué se dedica tu empresa?</div>
-        <div class="pane-sub">Configura el módulo de inventario adecuado.</div>
-        <div class="wiz-choice three" data-choice="actividad">
+        <div class="pane-sub">De aquí salen los controles de tu inventario y la alícuota con que nace cada producto. Todo se puede cambiar después.</div>
+        <!-- UNA sola pregunta, no un arbol. Se escribe "ferre" y aparece
+             Ferreteria. La familia agrupa la lista para quien prefiera mirar,
+             pero no es un paso que haya que atravesar. -->
+        <label class="ramo-buscar"><i data-lucide="search"></i><input type="text" id="cwRamoBuscar" placeholder="Escribe tu ramo… ferretería, abasto, restaurante"></label>
+        <div class="ramo-lista" id="cwRamoLista"><!-- por JS --></div>
+        <div class="ramo-elegido" id="cwRamoElegido" hidden></div>
+        <!-- Los tres modelos siguen existiendo: ahora los deduce el ramo en
+             vez de adivinarlos el usuario. Quedan ocultos y sincronizados. -->
+        <div class="wiz-choice three" data-choice="actividad" hidden>
           <div class="choice-card" data-val="comercial" data-sel="true"><div class="cc-ic"><i data-lucide="store"></i></div><div class="cc-t">Comercial</div><div class="cc-d">Compra y reventa de mercancía.</div><div class="cc-check"><i data-lucide="check-circle-2"></i></div></div>
           <div class="choice-card" data-val="manufactura"><div class="cc-ic"><i data-lucide="factory"></i></div><div class="cc-t">Manufactura</div><div class="cc-d">Producción: MP → terminados.</div><div class="cc-check"><i data-lucide="check-circle-2"></i></div></div>
           <div class="choice-card" data-val="servicios"><div class="cc-ic"><i data-lucide="briefcase"></i></div><div class="cc-t">Servicios</div><div class="cc-d">Sin inventario físico.</div><div class="cc-check"><i data-lucide="check-circle-2"></i></div></div>

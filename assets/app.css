@@ -7501,3 +7501,87 @@ table.suc-tabla td.c-mat { text-align: center; }
   background: var(--bg-subtle, var(--bg-surface));
   border: 1px dashed var(--da-cyan-500); border-radius: 12px; padding: 18px 20px;
 }
+
+/* ── Ramo del negocio · asistente y configuración ─────────────────────────
+   Una lista buscable, no un árbol. La familia agrupa visualmente pero no es
+   un paso que haya que atravesar.
+   ──────────────────────────────────────────────────────────────────────── */
+.ramo-buscar {
+  display: flex; align-items: center; gap: 8px;
+  border: 1px solid var(--border-strong); border-radius: 9px;
+  padding: 0 12px; height: 38px; margin-bottom: 10px;
+  background: var(--bg-surface);
+}
+.ramo-buscar i, .ramo-buscar svg { width: 15px; height: 15px; color: var(--fg-muted); flex: none; }
+.ramo-buscar input { flex: 1; border: 0; background: none; color: inherit; font: inherit; outline: none; }
+
+.ramo-lista {
+  max-height: 260px; overflow-y: auto;
+  border: 1px solid var(--border); border-radius: 9px;
+  background: var(--bg-surface); padding: 4px;
+}
+.ramo-fam {
+  font-size: 10px; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--fg-muted); font-weight: 600;
+  padding: 10px 10px 5px;
+}
+.ramo-op {
+  display: block; width: 100%; text-align: left;
+  background: none; border: 0; border-radius: 7px;
+  padding: 8px 10px; cursor: pointer; font: inherit; color: inherit;
+}
+.ramo-op:hover { background: var(--bg-subtle, rgba(127,127,127,.09)); }
+.ramo-op:focus-visible { outline: 2px solid var(--da-cyan-500); outline-offset: -2px; }
+.ramo-op.sel { background: var(--da-cyan-500); color: var(--da-navy-900); }
+.ramo-op b { display: block; font-size: 13.5px; font-weight: 600; }
+.ramo-op span { display: block; font-size: 11.5px; color: var(--fg-muted); line-height: 1.45; }
+.ramo-op.sel span { color: inherit; opacity: .8; }
+.ramo-vacio { padding: 16px 12px; font-size: 12.5px; color: var(--fg-muted); margin: 0; line-height: 1.6; }
+
+.ramo-elegido {
+  margin-top: 12px; padding: 14px 16px;
+  border: 1px solid var(--da-cyan-500); border-radius: 9px;
+  background: var(--bg-subtle, rgba(0,191,255,.06));
+}
+.ramo-elegido .re-cab { display: flex; align-items: center; gap: 7px; font-size: 14px; margin-bottom: 8px; }
+.ramo-elegido .re-cab i, .ramo-elegido .re-cab svg { width: 15px; height: 15px; color: var(--da-cyan-600); }
+.re-mods { display: flex; flex-wrap: wrap; gap: 6px; }
+.re-mod {
+  font-size: 10.5px; font-weight: 600; letter-spacing: .04em;
+  padding: 3px 9px; border-radius: 999px;
+  background: var(--da-cyan-500); color: var(--da-navy-900);
+}
+.re-nota { margin: 8px 0 0; font-size: 11.5px; color: var(--fg-muted); line-height: 1.55; }
+
+/* ── Los interruptores en Configuración ──────────────────────────────── */
+.inv-ramo { padding-bottom: 14px; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
+.ir-cab { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ir-lbl { font-size: 11.5px; color: var(--fg-muted); font-weight: 600; }
+#cfgRamoSel {
+  height: 32px; border: 1px solid var(--border-strong); border-radius: 8px;
+  padding: 0 8px; font: inherit; font-size: 13px;
+  background: var(--bg-surface); color: inherit; min-width: 220px;
+}
+#cfgRamoAplicar { height: 32px; font-size: 12px; }
+.ir-nota { margin: 8px 0 0; font-size: 11.5px; color: var(--fg-muted); line-height: 1.5; }
+
+.inv-grupo { padding: 16px 0 6px; border-bottom: 1px solid var(--border); }
+.inv-grupo:last-of-type { border-bottom: 0; }
+.inv-grupo h4 {
+  margin: 0 0 3px; font-size: 12px; letter-spacing: .09em;
+  text-transform: uppercase; color: var(--fg-muted); font-weight: 600;
+}
+.ig-sub { margin: 0 0 10px; font-size: 11.5px; color: var(--fg-muted); line-height: 1.5; }
+
+.inv-sw {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 9px 11px; border-radius: 8px; cursor: pointer;
+  border: 1px solid transparent;
+}
+.inv-sw:hover { background: var(--bg-subtle, rgba(127,127,127,.06)); }
+.inv-sw.on { background: var(--bg-subtle, rgba(0,191,255,.07)); border-color: var(--border); }
+.inv-sw input { margin-top: 3px; flex: none; accent-color: var(--da-cyan-500); }
+.inv-sw .sw-txt b { display: block; font-size: 13px; font-weight: 600; }
+.inv-sw .sw-txt span { display: block; font-size: 11.5px; color: var(--fg-muted); line-height: 1.5; }
+
+.inv-guardar { margin-top: 16px; }

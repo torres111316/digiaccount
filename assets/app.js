@@ -156,6 +156,9 @@
           ['criptoactivos', () => window.cargarCriptoactivos && window.cargarCriptoactivos()],
           ['encabezado fiscal', () => window.__syncFiscalHeader && window.__syncFiscalHeader()],
           ['establecimientos (configuración)', () => window.__renderSucursalesConfig && window.__renderSucursalesConfig()],
+          ['ramo e inventario', () => Promise.resolve(window.__cargarInvConfig && window.__cargarInvConfig())
+            .then(() => { if (window.__renderInventarioConfig) return window.__renderInventarioConfig(); })
+            .catch((err) => console.error('[cambio de empresa] ramo e inventario:', err))],
           ['¿usa máquina fiscal?', () => window.__revisarUsaMaquina && window.__revisarUsaMaquina()],
           /* Los libros ESPERAN a las sucursales. Iban por separado y los
              libros ganaban la carrera: pintaban la barra con los
@@ -15426,6 +15429,11 @@
     const TOTAL = 5;
     let step = 1, fromSignup = false;
     const sel = { tipo: 'Persona jurídica (J)', actividad: 'comercial' };
+    // El paso 3 pregunta el ramo; los tres modelos se deducen de ahí.
+    window.__cwSetActividad = (v) => { sel.actividad = v; };
+    // El catálogo de ramos se carga al abrir el asistente, no antes: quien
+    // nunca cree una empresa no paga esa consulta.
+    if (window.__montarRamoWizard) { setTimeout(() => { try { window.__montarRamoWizard(); } catch (e) {} }, 300); }
 
     // Selección de tarjetas (single por grupo)
     /* sel.tipo arranca en 'Persona jurídica (J)', así que por su valor no hay
@@ -15683,6 +15691,10 @@
           if (window.cargarEmpresas) window.cargarEmpresas();   // recarga la lista real
           if (window.toast) window.toast('Empresa guardada en la base de datos ✓', 'success');
           archivarRif(nueva && nueva.id);                        // el RIF adjunto → Bóveda Fiscal
+          /* El ramo se aplica DESPUÉS porque hace falta el id. Si fallara, la
+             empresa queda creada y sin ramo — igual que las que ya existían,
+             así que no rompe nada. */
+          if (window.__aplicarRamoNuevaEmpresa) { try { window.__aplicarRamoNuevaEmpresa(nueva && nueva.id); } catch (e) {} }
         }
       } else {
         console.warn('[DigiAccount] Falta la sesión o el cuenta_id; la empresa no se guardó en la base.');
@@ -16841,4 +16853,285 @@
       toast('Comisión marcada como pagada', 'success');
       window.cargarSociosFundador();
     }
+  })();
+
+  /* ══════════════════════════════════════════════════════════════════════
+     EL RAMO DE LA EMPRESA · la pantalla
+
+     Una sola pregunta al crear la empresa, y unos interruptores editables en
+     Configuración. El ramo siembra los valores; a partir de ahí manda la
+     configuración de la empresa, que es lo único que el resto del sistema
+     debe consultar.
+
+     Los tres modelos —comercial, manufactura, servicios— siguen existiendo:
+     lo que cambia es que ahora los deduce el ramo en vez de adivinarlos
+     alguien, y que por fin se guardan.
+     ══════════════════════════════════════════════════════════════════════ */
+  (function ramosEmpresa() {
+    const FAMILIA = {
+      empaquetado: 'Comercio empaquetado',
+      tecnico:     'Comercio técnico',
+      peso:        'Venta por peso',
+      produccion:  'Producción y transformación',
+      servicio:    'Servicios',
+      otro:        'Otro',
+    };
+
+    /* Los interruptores, con su explicación en una línea. El orden es el de
+       la pantalla de configuración y va de lo más general a lo más
+       específico: si el primero está apagado, los demás sobran. */
+    const INTERRUPTORES = [
+      ['lleva_inventario',   'Lleva inventario',            'Hay existencias que descontar al vender. Apágalo si vendes solo servicios.'],
+      ['codigo_barras',      'Código de barras',            'Los productos traen código de fábrica y se venden con lector.'],
+      ['vende_por_peso',     'Venta por peso',              'El precio sale del peso. Lee la etiqueta que imprime la balanza.'],
+      ['control_lotes',      'Lotes y vencimiento',         'Pide lote al comprar y sugiere el más viejo al vender.'],
+      ['control_series',     'Series o IMEI',               'Cada unidad tiene su número. Necesario para sostener garantías.'],
+      ['unidades_multiples', 'Unidades múltiples',          'Compras en caja o saco y vendes por unidad o kilo.'],
+      ['variantes',          'Tallas y colores',            'Un producto con varias combinaciones, cada una con su existencia.'],
+      ['aplicabilidad',      'Aplicabilidad',               'Para qué marca, modelo y año sirve cada pieza.'],
+      ['receta',             'Recetas',                     'Vender un producto descuenta sus insumos. Es lo que da el costo real.'],
+      ['registro_sanitario', 'Registro sanitario',          'Guarda el permiso y su vencimiento, y avisa antes de que caduque.'],
+      ['listas_precio',      'Listas de precio',            'El mismo producto a precio de detal, mayor o distribuidor.'],
+    ];
+
+    const COSTOS = [
+      ['promedio',   'Promedio ponderado', 'Lo que pide VEN-NIF y lo que usa casi todo el mundo.'],
+      ['peps',       'PEPS',               'Lo primero que entra es lo primero que sale. Donde el vencimiento manda.'],
+      ['especifica', 'Identificación específica', 'Cada unidad vale distinto: vehículos, joyería, maquinaria.'],
+    ];
+
+    const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const $ = (id) => document.getElementById(id);
+    const toast = (m, t) => { if (window.toast) window.toast(m, t); };
+    // Para buscar sin que estorben los acentos: "panaderia" encuentra "panadería".
+    const llano = (s) => String(s || '').toLowerCase()
+      .normalize('NFD').replace(/[̀-ͯ]/g, '');
+
+    let RAMOS = [];      // catálogo maestro con su perfil
+    let elegido = null;  // el ramo elegido en el asistente
+
+    async function cargarCatalogo() {
+      if (RAMOS.length || !window.sb) return RAMOS;
+      const { data, error } = await window.sb.from('ramos')
+        .select('id, nombre, familia, nota, orden, ramo_perfil(*)').order('orden');
+      if (error) { console.warn('[Ramos] No se pudo cargar el catálogo:', error.message); return []; }
+      RAMOS = (data || []).map((r) => Object.assign({}, r, { perfil: r.ramo_perfil || {} }));
+      return RAMOS;
+    }
+    window.__cargarRamos = cargarCatalogo;
+
+    // ── El resumen de lo que enciende un ramo ────────────────────────────
+    function resumenPerfil(pf) {
+      const mods = [];
+      if (pf.mod_comercial) mods.push('Comercial');
+      if (pf.mod_manufactura) mods.push('Manufactura');
+      if (pf.mod_servicios) mods.push('Servicios');
+      const enc = INTERRUPTORES.filter(([k]) => k !== 'lleva_inventario' && pf[k]).map(([, t]) => t);
+      let html = '<div class="re-mods">' + mods.map((m) => '<span class="re-mod">' + m + '</span>').join('') + '</div>';
+      if (!pf.lleva_inventario) {
+        html += '<p class="re-nota">Sin inventario: se factura por descripción, sin catálogo ni existencias.</p>';
+      } else {
+        const costo = (COSTOS.find((c) => c[0] === pf.metodo_costo) || COSTOS[0])[1];
+        html += '<p class="re-nota">Costo por <strong>' + costo + '</strong>'
+             + (enc.length ? ' · Enciende: ' + esc(enc.join(', ')) : '') + '</p>';
+      }
+      return html;
+    }
+
+    // ── El buscador del asistente ────────────────────────────────────────
+    async function montarBuscador() {
+      const lista = $('cwRamoLista');
+      const busca = $('cwRamoBuscar');
+      if (!lista || !busca || lista.dataset.listo) return;
+      lista.dataset.listo = '1';
+      await cargarCatalogo();
+
+      function pintar() {
+        const q = llano(busca.value.trim());
+        const hay = RAMOS.filter((r) => !q || llano(r.nombre + ' ' + (r.nota || '')).indexOf(q) >= 0);
+        if (!hay.length) {
+          lista.innerHTML = '<p class="ramo-vacio">No encontramos ese ramo. Elige <strong>Otro — lo configuro yo</strong> y ajusta los controles a tu medida.</p>';
+          return;
+        }
+        let html = '', famActual = '';
+        hay.forEach((r) => {
+          if (r.familia !== famActual) {
+            famActual = r.familia;
+            html += '<div class="ramo-fam">' + esc(FAMILIA[r.familia] || r.familia) + '</div>';
+          }
+          html += '<button type="button" class="ramo-op' + (elegido && elegido.id === r.id ? ' sel' : '')
+               + '" data-ramo="' + esc(r.id) + '">'
+               + '<b>' + esc(r.nombre) + '</b>'
+               + (r.nota ? '<span>' + esc(r.nota) + '</span>' : '')
+               + '</button>';
+        });
+        lista.innerHTML = html;
+        lista.querySelectorAll('[data-ramo]').forEach((b) =>
+          b.addEventListener('click', () => escoger(b.dataset.ramo)));
+      }
+
+      function escoger(id) {
+        elegido = RAMOS.find((r) => r.id === id) || null;
+        const caja = $('cwRamoElegido');
+        if (elegido && caja) {
+          caja.hidden = false;
+          caja.innerHTML = '<div class="re-cab"><i data-lucide="check-circle-2"></i> <b>' + esc(elegido.nombre) + '</b></div>'
+                         + resumenPerfil(elegido.perfil);
+          /* Los tres modelos que ya existían siguen mandando en la vista de
+             Inventario: aquí solo se sincronizan con lo que dice el ramo, en
+             vez de que alguien los adivine. */
+          const pf = elegido.perfil;
+          const mod = pf.mod_manufactura ? 'manufactura' : (pf.mod_comercial ? 'comercial' : 'servicios');
+          const tarjetas = document.querySelectorAll('.wiz-choice[data-choice="actividad"] .choice-card');
+          tarjetas.forEach((c) => c.dataset.sel = (c.dataset.val === mod) ? 'true' : 'false');
+          if (window.__cwSetActividad) window.__cwSetActividad(mod);
+        }
+        pintar();
+        if (window.lucide) window.lucide.createIcons();
+      }
+
+      busca.addEventListener('input', pintar);
+      pintar();
+    }
+    window.__montarRamoWizard = montarBuscador;
+    window.__ramoElegido = () => (elegido ? elegido.id : null);
+
+    /* Se aplica DESPUÉS de crear la empresa, porque hace falta su id. Si
+       fallara, la empresa queda creada igual y sin ramo — que es exactamente
+       como quedan las que ya existían, así que no rompe nada. */
+    window.__aplicarRamoNuevaEmpresa = function (empresaId) {
+      const id = window.__ramoElegido();
+      if (!id || !empresaId || !window.sb) return;
+      window.sb.rpc('aplicar_ramo', { p_empresa_id: empresaId, p_ramo_id: id, p_sobrescribir: true })
+        .then(({ error }) => {
+          if (error) console.warn('[Ramos] No se pudo aplicar el ramo:', error.message);
+          elegido = null;
+        });
+    };
+
+    // ══════════════════════════════════════════════════════════════════════
+    //  Los interruptores en Configuración
+    // ══════════════════════════════════════════════════════════════════════
+    window.__renderInventarioConfig = async function () {
+      const cont = $('cfgInventario');
+      if (!cont || !window.sb || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) return;
+      const emp = window.__EMPRESA_ACTIVA;
+      await cargarCatalogo();
+
+      const { data: cfg } = await window.sb.from('empresa_inventario_config')
+        .select('*').eq('empresa_id', emp.id).maybeSingle();
+      const { data: e2 } = await window.sb.from('empresas')
+        .select('ramo_id').eq('id', emp.id).maybeSingle();
+      const ramoId = (e2 || {}).ramo_id || '';
+      const ramo = RAMOS.find((r) => r.id === ramoId);
+
+      // Sin fila de configuración se muestran los valores de comercio general,
+      // que es como se comporta hoy una empresa sin ramo.
+      const c = cfg || { lleva_inventario: true, metodo_costo: 'promedio',
+        mod_comercial: true, mod_manufactura: false, mod_servicios: false };
+
+      const opt = (id, txt, ayuda, on) =>
+        '<label class="inv-sw' + (on ? ' on' : '') + '">'
+        + '<input type="checkbox" data-inv="' + id + '"' + (on ? ' checked' : '') + '>'
+        + '<span class="sw-txt"><b>' + esc(txt) + '</b><span>' + esc(ayuda) + '</span></span>'
+        + '</label>';
+
+      cont.innerHTML =
+        '<div class="inv-ramo">'
+        + '<div class="ir-cab"><span class="ir-lbl">Ramo del negocio</span>'
+        +   '<select id="cfgRamoSel">'
+        +     '<option value="">— sin definir —</option>'
+        +     RAMOS.map((r) => '<option value="' + esc(r.id) + '"' + (r.id === ramoId ? ' selected' : '') + '>'
+              + esc(r.nombre) + '</option>').join('')
+        +   '</select>'
+        +   '<button class="btn btn-ghost" id="cfgRamoAplicar"><i data-lucide="wand-2"></i> Aplicar su perfil</button>'
+        + '</div>'
+        + '<p class="ir-nota">' + (ramo
+            ? 'El ramo solo sugiere. Lo que manda es lo que quede marcado abajo.'
+            : 'Elegir un ramo propone unos valores de partida. Nada se cambia sin que pulses «Aplicar su perfil».')
+          + '</p>'
+        + '</div>'
+
+        + '<div class="inv-grupo"><h4>Modelos de negocio</h4>'
+        + '<p class="ig-sub">Una empresa puede combinar varios. Es lo que decide qué secciones se ven en Inventario.</p>'
+        + opt('mod_comercial',   'Comercial',   'Compra y revende mercancía sin transformarla.', c.mod_comercial)
+        + opt('mod_manufactura', 'Manufactura', 'Transforma insumos en producto terminado.', c.mod_manufactura)
+        + opt('mod_servicios',   'Servicios',   'Vende trabajo, no mercancía.', c.mod_servicios)
+        + '</div>'
+
+        + '<div class="inv-grupo"><h4>Control del inventario</h4>'
+        + INTERRUPTORES.map(([k, txt, ayuda]) => opt(k, txt, ayuda, !!c[k])).join('')
+        + '</div>'
+
+        + '<div class="inv-grupo"><h4>Cómo se valora la salida</h4>'
+        + '<p class="ig-sub">Define el costo de venta y el valor del inventario en el balance.</p>'
+        + COSTOS.map(([v, txt, ayuda]) =>
+            '<label class="inv-sw' + (c.metodo_costo === v ? ' on' : '') + '">'
+            + '<input type="radio" name="cfgCosto" value="' + v + '"' + (c.metodo_costo === v ? ' checked' : '') + '>'
+            + '<span class="sw-txt"><b>' + esc(txt) + '</b><span>' + esc(ayuda) + '</span></span></label>').join('')
+        + '</div>'
+
+        + '<div class="inv-guardar"><button class="btn btn-primary" id="cfgInvGuardar"><i data-lucide="save"></i> Guardar configuración</button></div>';
+
+      cont.querySelectorAll('.inv-sw input').forEach((i) =>
+        i.addEventListener('change', () => {
+          if (i.type === 'radio') {
+            cont.querySelectorAll('input[name="cfgCosto"]').forEach((r) =>
+              r.closest('.inv-sw').classList.toggle('on', r.checked));
+          } else {
+            i.closest('.inv-sw').classList.toggle('on', i.checked);
+          }
+        }));
+
+      const btnAplicar = $('cfgRamoAplicar');
+      if (btnAplicar) btnAplicar.addEventListener('click', async () => {
+        const sel = $('cfgRamoSel');
+        if (!sel || !sel.value) { toast('Elige primero un ramo.', 'info'); return; }
+        const r = RAMOS.find((x) => x.id === sel.value);
+        /* Se avisa antes de pisar. Una empresa que ya tiene su configuración
+           ajustada no debe perderla por elegir un ramo en un desplegable. */
+        if (cfg && !confirm('Esto reemplaza los controles de esta empresa por los de «'
+            + (r ? r.nombre : sel.value) + '».\n\n¿Continuar?')) return;
+        const { data, error } = await window.sb.rpc('aplicar_ramo',
+          { p_empresa_id: emp.id, p_ramo_id: sel.value, p_sobrescribir: true });
+        if (error || (data && data.ok === false)) {
+          toast('No se pudo aplicar: ' + (error ? error.message : data.motivo), 'error'); return;
+        }
+        toast('Perfil de «' + (r ? r.nombre : sel.value) + '» aplicado', 'success');
+        window.__renderInventarioConfig();
+      });
+
+      const btnGuardar = $('cfgInvGuardar');
+      if (btnGuardar) btnGuardar.addEventListener('click', async () => {
+        const fila = { empresa_id: emp.id, cuenta_id: window.__CUENTA_ID, actualizado_en: new Date().toISOString() };
+        cont.querySelectorAll('[data-inv]').forEach((i) => { fila[i.dataset.inv] = i.checked; });
+        const radio = cont.querySelector('input[name="cfgCosto"]:checked');
+        fila.metodo_costo = radio ? radio.value : 'promedio';
+        const selR = $('cfgRamoSel');
+        if (selR) await window.sb.from('empresas').update({ ramo_id: selR.value || null }).eq('id', emp.id);
+        const { error } = await window.sb.from('empresa_inventario_config')
+          .upsert(fila, { onConflict: 'empresa_id' });
+        if (error) { toast('No se pudo guardar: ' + error.message, 'error'); return; }
+        toast('Configuración de inventario guardada ✓', 'success');
+        if (window.__aplicarConfigInventario) { try { window.__aplicarConfigInventario(); } catch (e) {} }
+      });
+
+      if (window.lucide) window.lucide.createIcons();
+    };
+
+    /* Lo que el resto del sistema debe consultar. Nunca el ramo: siempre esto.
+       Devuelve los valores de comercio general mientras no haya configuración,
+       que es como se comportan hoy las empresas sin ramo. */
+    let _cfgCache = null;
+    window.__invConfig = () => _cfgCache || {
+      lleva_inventario: true, metodo_costo: 'promedio',
+      mod_comercial: true, mod_manufactura: false, mod_servicios: false,
+    };
+    window.__cargarInvConfig = async function () {
+      _cfgCache = null;
+      if (!window.sb || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) return;
+      const { data } = await window.sb.from('empresa_inventario_config')
+        .select('*').eq('empresa_id', window.__EMPRESA_ACTIVA.id).maybeSingle();
+      if (data) _cfgCache = data;
+    };
   })();
