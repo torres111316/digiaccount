@@ -1627,7 +1627,8 @@
           { name: 'sujeto', label: 'Tipo de sujeto (ISLR)', type: 'select', options: [{ value: 'PNR', label: 'PN Residente' }, { value: 'PNNR', label: 'PN No Residente' }, { value: 'PJD', label: 'PJ Domiciliada' }, { value: 'PJND', label: 'PJ No Domiciliada' }] },
           // Arranca en la fecha de la factura que se retiene, no en la de hoy:
           // se puede cambiar, pero el punto de partida es la operación.
-          { name: 'fecha', label: 'Fecha del comprobante', type: 'date', value: pre.fechaFactura || window.__hoyISO() },
+          { name: 'fecha', label: 'Fecha de emisión del comprobante — cuándo practicas la retención, no la de la factura',
+            type: 'date', value: pre.fechaFactura || window.__hoyISO() },
           /* El período de declaración va aparte de la fecha, igual que en el
              libro de compras. Un cliente manda en agosto la retención de una
              factura de julio: la fecha es de agosto y el período, julio. Sin
@@ -2103,7 +2104,7 @@
       const facMap = {};
       if (window.sb && emp.id) {
         const { data } = await window.sb.from('libro_fiscal')
-          .select('numero_factura, total, base, exento, alicuota, iva')
+          .select('numero_factura, fecha, total, base, exento, alicuota, iva')
           .eq('empresa_id', emp.id).eq('tipo', esPract ? 'compra' : 'venta');
         (data || []).forEach((f) => { facMap[(f.numero_factura || '').trim()] = f; });
       }
@@ -2140,7 +2141,16 @@
         if (esIslr) {
           const base = Number(rr.base) || 0;
           tBase += base; tMonto += monto;
-          rowsHtml += '<tr><td class="ctr">' + esc(rr.fecha || '') + '</td><td class="ctr mono">—</td><td class="ctr">FACT</td>'
+          /* La fecha de la FILA es la de la factura retenida, no la del
+             comprobante. Arriba, en «Fecha de emisión», va la de la retención:
+             son dos fechas distintas y confundirlas descuadra el documento
+             cuando se retiene una factura de un mes anterior.
+
+             Si la factura no aparece en el libro se usa la de la retención,
+             que es mejor que dejar la celda vacía. */
+          const facI = facMap[(rr.factura || '').trim()] || null;
+          const fechaFac = (facI && facI.fecha) || rr.fecha || '';
+          rowsHtml += '<tr><td class="ctr">' + esc(fechaFac) + '</td><td class="ctr mono">—</td><td class="ctr">FACT</td>'
             + '<td class="ctr mono">' + esc(rr.factura || '—') + '</td><td class="ctr mono">' + esc(rr.numero_control || '—') + '</td>'
             + '<td class="num">' + fmt(base) + '</td><td class="num">' + fmt(base) + '</td><td class="num">' + fmt(base) + '</td>'
             + '<td class="ctr">' + pctT.replace('.', ',') + '</td>'
@@ -2154,7 +2164,9 @@
           const exento = fac ? (Number(fac.exento) || 0) : 0;
           const total = fac ? (Number(fac.total) || (baseImp + ivaFact + exento)) : (baseImp + ivaFact + exento);
           tTotal += total; tBase += baseImp; tIva += ivaFact; tMonto += monto;
-          rowsHtml += '<tr><td>' + esc(rr.fecha || '') + '</td><td class="mono">' + esc(rr.factura || '—') + '</td>'
+          // La fecha de la fila es la de la FACTURA, no la del comprobante.
+          const fechaFac = (fac && fac.fecha) || rr.fecha || '';
+          rowsHtml += '<tr><td>' + esc(fechaFac) + '</td><td class="mono">' + esc(rr.factura || '—') + '</td>'
             + '<td class="mono">' + esc(rr.numero_control || '—') + '</td><td></td><td></td>'
             + '<td class="num">' + fmt(total) + '</td><td class="num"></td><td class="num">' + fmt(baseImp) + '</td>'
             + '<td class="ctr">' + alic + '%</td><td class="num">' + fmt(ivaFact) + '</td><td class="ctr">' + pctT + '%</td>'
