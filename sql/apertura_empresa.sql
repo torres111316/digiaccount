@@ -66,7 +66,7 @@ create table if not exists public.apertura_partidas (
   cuenta_id      uuid not null references public.cuentas(id) on delete cascade,
 
   grupo          text not null check (grupo in (
-                   'caja','banco','inventario','cxc','cxp','activo_fijo',
+                   'caja','banco','inventario','cxc','cxp','anticipo','activo_fijo',
                    'fiscal','laboral','prestamo','patrimonio','otro')),
   descripcion    text not null,
 
@@ -267,7 +267,7 @@ insert into public.apertura_guia (id, grupo, titulo, ayuda, lado, detallado, ord
    'Valorada al COSTO, no al precio de venta. Es el conteo fisico del dia del corte.', 'debe', true, 30),
   ('cxc',         'cxc',         'Clientes que te deben',
    'Documento por documento. Un saldo global no sirve para cobrar: hay que saber quien debe que factura.', 'debe', true, 40),
-  ('anticipo_c',  'cxc',         'Anticipos entregados a proveedores',
+  ('anticipo_c',  'anticipo',    'Anticipos entregados a proveedores',
    'Plata ya pagada por mercancia o servicios que aun no has recibido.', 'debe', true, 45),
   ('activo_fijo', 'activo_fijo', 'Activos fijos',
    'Al costo, y aparte su depreciacion acumulada. Sin la depreciacion, el balance sobrevalua el activo.', 'debe', true, 50),
@@ -278,7 +278,7 @@ insert into public.apertura_guia (id, grupo, titulo, ayuda, lado, detallado, ord
 
   ('cxp',         'cxp',         'Proveedores a los que debes',
    'Documento por documento, igual que las cuentas por cobrar: hay que saber que factura se esta pagando.', 'haber', true, 70),
-  ('anticipo_p',  'cxp',         'Anticipos recibidos de clientes',
+  ('anticipo_p',  'anticipo',    'Anticipos recibidos de clientes',
    'Plata que ya te pagaron por algo que aun no has entregado.', 'haber', true, 75),
   ('iva_debito',  'fiscal',      'IVA por pagar',
    'El saldo de la ultima declaracion si quedo cuota por pagar.', 'haber', false, 80),
@@ -299,6 +299,14 @@ insert into public.apertura_guia (id, grupo, titulo, ayuda, lado, detallado, ord
 on conflict (id) do update set
   grupo = excluded.grupo, titulo = excluded.titulo, ayuda = excluded.ayuda,
   lado = excluded.lado, detallado = excluded.detallado, orden = excluded.orden;
+
+-- Reclasificacion: los anticipos estaban agrupados con cxc y cxp. El lado
+-- estaba bien —uno es activo y el otro pasivo— pero un anticipo a un proveedor
+-- no es algo que deba un cliente, y en pantalla aparecia bajo el titulo
+-- equivocado. Esto corrige lo ya cargado.
+update public.apertura_guia set grupo = 'anticipo' where id in ('anticipo_c','anticipo_p');
+update public.apertura_partidas set grupo = 'anticipo'
+ where grupo in ('cxc','cxp') and descripcion ilike '%anticipo%';
 
 alter table public.apertura_guia enable row level security;
 drop policy if exists guia_lectura on public.apertura_guia;
