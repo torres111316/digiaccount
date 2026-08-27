@@ -2765,6 +2765,9 @@
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 40px;
+    /* Las dos firmas apoyadas en la misma línea base: si una crece —por el
+       nombre de quien firma, por ejemplo— la otra no se queda arriba. */
+    align-items: end;
     border-top: 1px solid var(--border-default);
   }
   .comp-sign {
