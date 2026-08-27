@@ -1448,34 +1448,51 @@
        ISLR y por eso al retener IVA de una compra el campo salía en blanco. */
     async function siguienteComprobante(empresaId, fechaISO, tipo) {
       if (!window.sb || !empresaId) return '';
-      const p = String(fechaISO || '').split('-');
-      const aaaamm = (p.length === 3) ? (p[0] + p[1])
-        : (function () {
-          const d = new Date();
-          return String(d.getFullYear()) + String(d.getMonth() + 1).padStart(2, '0');
-        })();
       const { data, error } = await window.sb.from('retenciones')
         .select('comprobante')
         .eq('empresa_id', empresaId).eq('tipo', tipo).eq('direccion', 'practicada');
       if (error) { console.warn('[Comprobante ' + tipo + ']', error.message); return ''; }
       const usados = (data || []).map((r) => String(r.comprobante || '').trim()).filter(Boolean);
-      // Los de ESTE mes mandan: de ahí sale el correlativo y el formato.
-      const delMes = usados.filter((c) => c.replace(/\D/g, '').indexOf(aaaamm) === 0);
-      if (delMes.length) {
+
+      /* El siguiente de una lista, conservando prefijo y cantidad de dígitos. */
+      const siguienteDe = (lista, largoPorDefecto) => {
         let mejor = null, maxN = -1;
-        delMes.forEach((c) => {
-          const m = c.match(/^(.*?)(\d+)$/);
+        lista.forEach((c) => {
+          const m = String(c).match(/^(.*?)(\d+)$/);
           if (!m) return;
           const n = parseInt(m[2], 10);
           if (!isNaN(n) && n > maxN) { maxN = n; mejor = m; }
         });
         if (mejor) return mejor[1] + String(maxN + 1).padStart(mejor[2].length, '0');
+        return String(1).padStart(largoPorDefecto, '0');
+      };
+
+      /* ── ISLR ──────────────────────────────────────────────────────────
+         Un correlativo normal y corrido. NO lleva el AAAAMM del IVA, no se
+         reinicia cada mes, y puede ir vacío: hay empresas que ni se lo ponen.
+
+         Antes esto usaba la misma numeración del IVA, y el resultado era que
+         al registrar la retención de ISLR de una factura salía el número que
+         le tocaba al siguiente comprobante de IVA — dos series distintas
+         comiéndose la misma numeración. */
+      if (tipo !== 'iva') {
+        return siguienteDe(usados, 4);
       }
-      /* Primero del mes: se conserva el LARGO que ya usa la empresa. Si no
-         tiene ninguno, el del IVA sale de la Providencia SNAT/2015/0049 —
-         AAAAMM + ocho dígitos— y el de ISLR queda en el que veníamos usando. */
-      const largoNorma = (tipo === 'iva') ? 14 : 10;
-      const largo = usados.length ? usados[0].replace(/\D/g, '').length : largoNorma;
+
+      /* ── IVA ───────────────────────────────────────────────────────────
+         Providencia SNAT/2015/0049: AAAAMM + secuencial, y el secuencial
+         arranca de nuevo con cada mes. */
+      const p2 = String(fechaISO || '').split('-');
+      const aaaamm = (p2.length === 3) ? (p2[0] + p2[1])
+        : (function () {
+          const d = new Date();
+          return String(d.getFullYear()) + String(d.getMonth() + 1).padStart(2, '0');
+        })();
+      const delMes = usados.filter((c) => c.replace(/\D/g, '').indexOf(aaaamm) === 0);
+      if (delMes.length) return siguienteDe(delMes, 14);
+
+      // Primero del mes: se conserva el largo que ya usa la empresa.
+      const largo = usados.length ? usados[0].replace(/\D/g, '').length : 14;
       const correl = Math.max(1, largo - aaaamm.length);
       return aaaamm + String(1).padStart(correl, '0');
     }
@@ -1697,21 +1714,38 @@
              documento —o el usuario lo corrigió— manda ese. */
           const compEl = body.querySelector('[data-name="comprobante"]');
           const fechaComp = body.querySelector('[data-name="fecha"]');
+          /* Se recuerda si el número que hay en el campo lo puso el sistema.
+
+             El guardián de antes era `if (compEl.value.trim()) return`, con la
+             idea de no pisar nunca lo escrito. Pero también impedía reemplazar
+             lo que el propio sistema había propuesto: el formulario abre en
+             IVA, propone el correlativo de IVA, y al cambiar a ISLR ya no lo
+             tocaba. Resultado: la retención de ISLR se llevaba el número que
+             le tocaba al siguiente comprobante de IVA.
+
+             Ahora solo se respeta lo que escribió una persona. */
+          let compPropuesto = '';
+          if (compEl) compEl.addEventListener('input', () => { compPropuesto = ''; });
+
           const proponerComp = () => {
-            if (!compEl || compEl.value.trim()) return;
-            /* En TODA practicada —IVA o ISLR— la empresa es la que emite el
-               comprobante, así que el número es suyo y correlativo. Antes solo
-               se proponía en ISLR y en IVA había que escribirlo a mano, que es
-               justo donde más se equivoca uno: son muchos y van seguidos. */
+            if (!compEl) return;
+            const actual = compEl.value.trim();
+            if (actual && actual !== compPropuesto) return;   // lo escribió el usuario
             const esPract = dirSel && /^practicada/i.test(dirSel.value);
             const tipoRet = (tipoSel && /islr/i.test(tipoSel.value)) ? 'islr' : 'iva';
             const emp = window.__EMPRESA_ACTIVA || {};
-            if (!esPract || !emp.id) return;
+            if (!esPract || !emp.id) {
+              // En una SUFRIDA el número lo pone el cliente: se limpia lo propuesto.
+              if (actual && actual === compPropuesto) { compEl.value = ''; compPropuesto = ''; }
+              return;
+            }
             siguienteComprobante(emp.id, fechaComp ? fechaComp.value : '', tipoRet).then((n) => {
-              if (n && compEl && !compEl.value.trim()) {
-                compEl.value = n;
-                compEl.placeholder = 'Correlativo propuesto — cámbialo si tu numeración es otra';
-              }
+              if (!n || !compEl) return;
+              const ahora = compEl.value.trim();
+              if (ahora && ahora !== compPropuesto) return;   // escribió mientras se consultaba
+              compEl.value = n;
+              compPropuesto = n;
+              compEl.placeholder = 'Correlativo propuesto — cámbialo si tu numeración es otra';
             });
           };
           if (tipoSel) tipoSel.addEventListener('change', proponerComp);
