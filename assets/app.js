@@ -166,6 +166,7 @@
           ['sucursales y libros', () => Promise.resolve(window.cargarSucursales && window.cargarSucursales())
             .then(() => { if (window.cargarLibroFiscal) { window.cargarLibroFiscal('compra'); window.cargarLibroFiscal('venta'); } })
             .catch((err) => console.error('[cambio de empresa] sucursales y libros:', err))],
+          ['apertura', () => window.cargarApertura && window.cargarApertura()],
           ['cierres', () => window.cargarCierres && window.cargarCierres()],
           ['calendario', () => window.cargarCalendarioFiscal && window.cargarCalendarioFiscal()],
           ['métodos de cobro', () => window.__cargarCobrosEmp && window.__cargarCobrosEmp(opt.dataset.empresaId)],
@@ -2301,6 +2302,9 @@
           const tab = btn.dataset.tab;
           tabs.forEach((b) => (b.dataset.active = b === btn ? 'true' : 'false'));
           panes.forEach((p) => (p.dataset.active = p.dataset.tab === tab ? 'true' : 'false'));
+          // La apertura se carga al abrir su pestaña, en su propio try:
+          // si fallara, no puede impedir el cambio de pestaña.
+          if (tab === 'apertura' && window.cargarApertura) { try { window.cargarApertura(); } catch (e) { console.warn('[Apertura]', e); } }
           drawIcons();
         });
       });
@@ -17134,4 +17138,306 @@
         .select('*').eq('empresa_id', window.__EMPRESA_ACTIVA.id).maybeSingle();
       if (data) _cfgCache = data;
     };
+  })();
+
+  /* ══════════════════════════════════════════════════════════════════════
+     LA APERTURA · los saldos con que arranca una empresa que ya operaba
+
+     No es un formulario de carga: es un asiento a una fecha de corte. Por eso
+     el marcador de cuadre está siempre a la vista y la apertura no se cierra
+     mientras el debe y el haber no sean iguales — eso lo exige la base, no
+     esta pantalla.
+
+     El guion sale de apertura_guia, en orden de trabajo: bancos, cuentas por
+     cobrar, por pagar e inventario primero, que es lo que el cliente tiene a
+     la mano. Lo demás hay que ir a buscarlo. Nada obliga a seguir el orden:
+     se carga lo que se tenga cuando se tenga.
+     ══════════════════════════════════════════════════════════════════════ */
+  (function aperturaEmpresa() {
+    const GRUPO = {
+      banco: 'Bancos', cxc: 'Por cobrar', cxp: 'Por pagar', inventario: 'Inventario',
+      caja: 'Caja', anticipo: 'Anticipos', activo_fijo: 'Activos fijos',
+      fiscal: 'Fiscal', laboral: 'Laboral', prestamo: 'Préstamos',
+      patrimonio: 'Patrimonio', otro: 'Otros',
+    };
+    const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const $ = (id) => document.getElementById(id);
+    const toast = (m, t) => { if (window.toast) window.toast(m, t); };
+    const bs = (n) => (Number(n) || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const hoyISO = () => (window.__hoyISO ? window.__hoyISO() : new Date().toISOString().slice(0, 10));
+    const dmy = (iso) => (iso ? String(iso).slice(8, 10) + '/' + String(iso).slice(5, 7) + '/' + String(iso).slice(0, 4) : '—');
+
+    let GUIA = [], AP = null, PART = [];
+
+    const emp = () => window.__EMPRESA_ACTIVA || {};
+
+    async function cargar() {
+      const cont = $('aperturaVista');
+      if (!cont || !window.sb) return;
+      if (!emp().id) { cont.innerHTML = vacio('Elige una empresa para ver su apertura.'); return; }
+
+      if (!GUIA.length) {
+        const { data } = await window.sb.from('apertura_guia').select('*').order('orden');
+        GUIA = data || [];
+      }
+      const { data: ap } = await window.sb.from('apertura').select('*').eq('empresa_id', emp().id).maybeSingle();
+      AP = ap || null;
+      PART = [];
+      if (AP) {
+        const { data: pr } = await window.sb.from('apertura_partidas')
+          .select('*').eq('empresa_id', emp().id).order('creado_en');
+        PART = pr || [];
+      }
+      pintar();
+    }
+    window.cargarApertura = cargar;
+
+    const vacio = (txt) => '<div class="ap-vacio">' + esc(txt) + '</div>';
+
+    function cuadre() {
+      const debe = PART.reduce((a, p) => a + (Number(p.debe) || 0), 0);
+      const haber = PART.reduce((a, p) => a + (Number(p.haber) || 0), 0);
+      return { debe: debe, haber: haber, dif: debe - haber, cuadra: Math.abs(debe - haber) < 0.005 };
+    }
+
+    // ── Sin apertura todavía ─────────────────────────────────────────────
+    function pintarInicio() {
+      return '<div class="ap-arranque">'
+        + '<h3>Los saldos con que arranca ' + esc(emp().n || 'esta empresa') + '</h3>'
+        + '<p>Si el negocio ya venía operando, no arranca en cero: tiene plata en el banco, '
+        + 'mercancía en el depósito, clientes que le deben y obligaciones pendientes. Todo eso '
+        + 'se carga <strong>a una fecha de corte</strong>: antes de esa fecha el sistema no calcula '
+        + 'nada, y desde ahí en adelante manda él.</p>'
+        + '<p class="ap-nota">Es un asiento contable, así que tiene que cuadrar. El sistema te va a '
+        + 'mostrar la diferencia en todo momento y no te va a dejar cerrarlo hasta que sea cero.</p>'
+        + '<div class="ap-fecha-row">'
+        +   '<label>Fecha de corte<input type="date" id="apFecha" value="' + hoyISO() + '"></label>'
+        +   '<button class="btn btn-primary" id="apIniciar"><i data-lucide="flag"></i> Comenzar la apertura</button>'
+        + '</div>'
+        + '<p class="ap-nota">Lo habitual es el último día del mes o del ejercicio anterior al que '
+        + 'empiezas a usar el sistema.</p>'
+        + '</div>';
+    }
+
+    // ── El guion, con lo cargado en cada renglón ─────────────────────────
+    function pintarGuion() {
+      const porGrupo = {};
+      PART.forEach((p) => { (porGrupo[p.grupo] = porGrupo[p.grupo] || []).push(p); });
+
+      return GUIA.map((g) => {
+        const filas = (porGrupo[g.grupo] || []).filter((p) => coincide(p, g));
+        const suma = filas.reduce((a, p) => a + (Number(p.debe) || 0) + (Number(p.haber) || 0), 0);
+        return '<div class="ap-reng' + (filas.length ? ' con' : '') + '">'
+          + '<div class="ar-cab">'
+          +   '<div class="ar-tit"><b>' + esc(g.titulo) + '</b>'
+          +     '<span class="ar-lado ' + g.lado + '">' + (g.lado === 'debe' ? 'Activo' : 'Pasivo / patrimonio') + '</span>'
+          +   '</div>'
+          +   '<div class="ar-der">'
+          +     (filas.length ? '<span class="ar-suma">' + bs(suma) + '</span>' : '')
+          +     (AP.estado === 'cerrada' ? ''
+                : '<button class="btn btn-ghost ar-add" data-guia="' + esc(g.id) + '"><i data-lucide="plus"></i> Agregar</button>')
+          +   '</div>'
+          + '</div>'
+          + '<p class="ar-ayuda">' + esc(g.ayuda) + (g.detallado ? ' <em>Va documento por documento.</em>' : '') + '</p>'
+          + (filas.length ? '<div class="ar-filas">' + filas.map((p) =>
+              '<div class="ar-fila">'
+              + '<span class="af-desc">' + esc(p.descripcion)
+              +   (p.tercero_nombre ? '<em>' + esc(p.tercero_nombre) + (p.documento ? ' · ' + esc(p.documento) : '') + '</em>' : '')
+              +   (p.calculado ? '<span class="af-calc">calculado por el sistema</span>' : '')
+              + '</span>'
+              + '<span class="af-monto">' + bs((Number(p.debe) || 0) + (Number(p.haber) || 0))
+              +   (p.moneda !== 'VES' ? '<em>' + esc(p.moneda) + ' ' + bs(p.monto_divisa) + '</em>' : '')
+              + '</span>'
+              + (AP.estado === 'cerrada' ? ''
+                 : '<button class="af-quitar" data-quitar="' + p.id + '" title="Quitar"><i data-lucide="x"></i></button>')
+              + '</div>').join('') + '</div>' : '')
+          + '</div>';
+      }).join('');
+    }
+
+    /* Un grupo puede tener dos renglones de guía (los anticipos, lo fiscal),
+       así que se separan por el lado además del grupo. */
+    function coincide(p, g) {
+      const mismos = GUIA.filter((x) => x.grupo === g.grupo);
+      if (mismos.length < 2) return true;
+      return (g.lado === 'debe') ? (Number(p.debe) || 0) > 0 : (Number(p.haber) || 0) > 0;
+    }
+
+    function pintar() {
+      const cont = $('aperturaVista');
+      if (!cont) return;
+
+      if (!AP) { cont.innerHTML = pintarInicio(); enganchar(); return; }
+
+      const c = cuadre();
+      const cerrada = AP.estado === 'cerrada';
+
+      cont.innerHTML =
+        '<div class="ap-cab">'
+        + '<div><div class="ap-lbl">Apertura al</div><div class="ap-fecha">' + dmy(AP.fecha_corte) + '</div></div>'
+        + '<div class="ap-marcador ' + (c.cuadra ? 'ok' : 'no') + '">'
+        +   '<div class="am-par"><span>Debe</span><b>' + bs(c.debe) + '</b></div>'
+        +   '<div class="am-par"><span>Haber</span><b>' + bs(c.haber) + '</b></div>'
+        +   '<div class="am-dif"><span>' + (c.cuadra ? 'Cuadra' : 'Diferencia') + '</span><b>'
+        +     (c.cuadra ? '✓' : bs(Math.abs(c.dif))) + '</b></div>'
+        + '</div>'
+        + '<div class="ap-acc">'
+        +   (cerrada
+              ? '<span class="ap-sello"><i data-lucide="lock"></i> Cerrada</span>'
+                + '<button class="btn btn-ghost" id="apReabrir"><i data-lucide="unlock"></i> Reabrir</button>'
+              : (!c.cuadra && PART.length
+                  ? '<button class="btn btn-ghost" id="apCuadrar"><i data-lucide="wand-2"></i> Cuadrar con resultados acumulados</button>'
+                  : '')
+                + '<button class="btn btn-primary" id="apCerrar"' + (c.cuadra && PART.length ? '' : ' disabled')
+                + '><i data-lucide="check"></i> Cerrar apertura</button>')
+        + '</div>'
+        + '</div>'
+
+        + (cerrada ? '' : (c.cuadra || !PART.length ? '' :
+            '<p class="ap-aviso">Faltan <strong>' + bs(Math.abs(c.dif)) + '</strong> por el lado del '
+            + (c.dif > 0 ? 'haber (pasivo o patrimonio)' : 'debe (activo)')
+            + '. Revisa los saldos, o registra la diferencia como resultados acumulados.</p>'))
+
+        + '<div class="ap-guion">' + pintarGuion() + '</div>'
+
+        + (AP.nota ? '<p class="ap-hist">' + esc(AP.nota).replace(/\n/g, '<br>') + '</p>' : '');
+
+      enganchar();
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    function enganchar() {
+      const ini = $('apIniciar');
+      if (ini) ini.addEventListener('click', async () => {
+        const f = $('apFecha');
+        if (!f || !f.value) { toast('Indica la fecha de corte.', 'error'); return; }
+        const { error } = await window.sb.from('apertura').insert({
+          empresa_id: emp().id, cuenta_id: window.__CUENTA_ID, fecha_corte: f.value });
+        if (error) { toast('No se pudo iniciar: ' + error.message, 'error'); return; }
+        cargar();
+      });
+
+      document.querySelectorAll('[data-guia]').forEach((b) =>
+        b.addEventListener('click', () => agregar(GUIA.find((g) => g.id === b.dataset.guia))));
+
+      document.querySelectorAll('[data-quitar]').forEach((b) =>
+        b.addEventListener('click', async () => {
+          const { error } = await window.sb.from('apertura_partidas').delete().eq('id', b.dataset.quitar);
+          if (error) { toast('No se pudo quitar: ' + error.message, 'error'); return; }
+          cargar();
+        }));
+
+      const cua = $('apCuadrar');
+      if (cua) cua.addEventListener('click', cuadrarConResultados);
+
+      const cer = $('apCerrar');
+      if (cer) cer.addEventListener('click', async () => {
+        const { data, error } = await window.sb.rpc('cerrar_apertura', { p_empresa: emp().id });
+        if (error) { toast('No se pudo cerrar: ' + error.message, 'error'); return; }
+        if (data && data.ok === false) { toast(data.motivo, 'error'); return; }
+        toast('Apertura cerrada ✓ · el sistema arranca desde ' + dmy(AP.fecha_corte), 'success');
+        cargar();
+      });
+
+      const rea = $('apReabrir');
+      if (rea) rea.addEventListener('click', async () => {
+        const motivo = prompt('¿Por qué se reabre la apertura?\n\nQueda registrado con la fecha.');
+        if (motivo === null) return;
+        const { data, error } = await window.sb.rpc('reabrir_apertura',
+          { p_empresa: emp().id, p_motivo: motivo || 'sin motivo' });
+        if (error || (data && data.ok === false)) {
+          toast('No se pudo reabrir: ' + (error ? error.message : data.motivo), 'error'); return;
+        }
+        toast('Apertura reabierta · puedes corregirla', 'info');
+        cargar();
+      });
+    }
+
+    // ── Agregar un renglón ───────────────────────────────────────────────
+    function agregar(g) {
+      if (!g) return;
+      const detallado = g.detallado;
+      window.openFormModal && window.openFormModal({
+        title: g.titulo,
+        saveLabel: 'Agregar al asiento',
+        autoClose: false,
+        fields: [
+          { name: 'ayuda', col: 2, type: 'static', label: '', html: '<p class="cfg-hint" style="margin:0;">' + esc(g.ayuda) + '</p>' },
+          { name: 'descripcion', label: 'Concepto', col: 2,
+            placeholder: g.titulo, value: detallado ? '' : g.titulo },
+        ].concat(detallado ? [
+          { name: 'tercero', label: 'Tercero (cliente, proveedor, banco, trabajador)', col: 2, placeholder: 'Nombre' },
+          { name: 'rif', label: 'RIF o cédula', upper: true, placeholder: 'J123456789' },
+          { name: 'documento', label: 'Documento', placeholder: 'N° de factura, cuenta o contrato' },
+          { name: 'fechaDoc', label: 'Fecha del documento', type: 'date' },
+        ] : []).concat([
+          { name: 'moneda', label: 'Moneda', type: 'select', options: ['VES (bolívares)', 'USD', 'EUR', 'USDT'] },
+          { name: 'montoDivisa', label: 'Monto en divisa (si aplica)', type: 'number', placeholder: '0,00' },
+          { name: 'tasa', label: 'Tasa usada (si aplica)', type: 'number', placeholder: 'Bs por 1 divisa' },
+          { name: 'monto', label: 'Monto en bolívares', type: 'number', col: 2, placeholder: '0,00' },
+        ]),
+        onSave: async (v) => {
+          const monto = Math.abs(parseFloat(String(v.monto).replace(',', '.')) || 0);
+          if (!(monto > 0)) return 'Indica el monto en bolívares.';
+          if (!(v.descripcion || '').trim()) return 'Indica el concepto.';
+          const mon = String(v.moneda || 'VES').split(' ')[0];
+          const fila = {
+            empresa_id: emp().id, cuenta_id: window.__CUENTA_ID,
+            grupo: g.grupo, descripcion: v.descripcion.trim(),
+            debe:  g.lado === 'debe'  ? monto : 0,
+            haber: g.lado === 'haber' ? monto : 0,
+            moneda: mon,
+            monto_divisa: mon === 'VES' ? null : (parseFloat(String(v.montoDivisa).replace(',', '.')) || null),
+            tasa: mon === 'VES' ? null : (parseFloat(String(v.tasa).replace(',', '.')) || null),
+          };
+          if (detallado) {
+            fila.tercero_nombre = (v.tercero || '').trim() || null;
+            fila.tercero_rif = (v.rif || '').trim() || null;
+            fila.documento = (v.documento || '').trim() || null;
+            fila.fecha_doc = v.fechaDoc || null;
+          }
+          const { error } = await window.sb.from('apertura_partidas').insert(fila);
+          if (error) return 'No se pudo agregar: ' + error.message;
+          toast('Agregado · ' + bs(monto), 'success');
+          await cargar();
+          /* El formulario queda abierto: quien está cargando cuentas por
+             cobrar tiene veinte, no una. Se limpian los campos del documento
+             y se conserva el resto. */
+          const body = document.getElementById('fmBody');
+          if (body) {
+            ['descripcion', 'tercero', 'rif', 'documento', 'monto', 'montoDivisa'].forEach((n) => {
+              const e = body.querySelector('[data-name="' + n + '"]');
+              if (e && !(n === 'descripcion' && !detallado)) e.value = '';
+            });
+            const foco = body.querySelector('[data-name="' + (detallado ? 'tercero' : 'descripcion') + '"]');
+            if (foco) foco.focus();
+          }
+        },
+      });
+    }
+
+    // ── Cuadrar con resultados acumulados ────────────────────────────────
+    async function cuadrarConResultados() {
+      const c = cuadre();
+      if (c.cuadra) return;
+      const monto = Math.abs(c.dif);
+      /* La diferencia va del lado que falte. Si el activo pesa más, sobra
+         patrimonio; si pesa el pasivo, hay pérdidas acumuladas. */
+      const alHaber = c.dif > 0;
+      const txt = alHaber ? 'Resultados acumulados' : 'Resultados acumulados (pérdida)';
+      if (!confirm('Se va a registrar ' + bs(monto) + ' como «' + txt + '».\n\n'
+                 + 'Queda marcado como calculado por el sistema, no aportado por el cliente:\n'
+                 + 'si el balance no cuadra con la realidad más adelante, es el primer renglón a revisar.\n\n'
+                 + '¿Continuar?')) return;
+      const { error } = await window.sb.from('apertura_partidas').insert({
+        empresa_id: emp().id, cuenta_id: window.__CUENTA_ID,
+        grupo: 'patrimonio', descripcion: txt,
+        debe: alHaber ? 0 : monto, haber: alHaber ? monto : 0,
+        calculado: true,
+        nota: 'Diferencia de la apertura al ' + dmy(AP.fecha_corte) + ', calculada por el sistema.',
+      });
+      if (error) { toast('No se pudo registrar: ' + error.message, 'error'); return; }
+      toast('Apertura cuadrada con ' + bs(monto) + ' en resultados acumulados', 'success');
+      cargar();
+    }
   })();

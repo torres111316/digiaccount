@@ -342,3 +342,61 @@ select 'nada existente fue modificado', 'correcto: solo CREATE';
 -- La guia, para revisarla:
 select orden, grupo, lado, titulo, detallado as documento_por_documento
   from public.apertura_guia order by orden;
+
+
+-- ============================================================================
+--  AJUSTES · 26/08/2026, decididos con Luis
+-- ============================================================================
+
+-- 1 · ORDEN DE TRABAJO, no de balance.
+--     "Por lo general uno siempre comienza con Bancos, CxC, CxP e Inventarios."
+--     La pantalla es un flujo de trabajo: se ordena por lo que el cliente tiene
+--     a la mano primero, y lo que hay que ir a buscar despues. El asiento
+--     terminado se muestra ordenado por debe/haber, que da el orden de balance
+--     sin necesidad de guardar dos ordenes distintos.
+update public.apertura_guia set orden = 10  where id = 'banco';
+update public.apertura_guia set orden = 20  where id = 'cxc';
+update public.apertura_guia set orden = 30  where id = 'cxp';
+update public.apertura_guia set orden = 40  where id = 'inventario';
+update public.apertura_guia set orden = 50  where id = 'caja';
+update public.apertura_guia set orden = 60  where id = 'anticipo_c';
+update public.apertura_guia set orden = 65  where id = 'anticipo_p';
+update public.apertura_guia set orden = 70  where id = 'activo_fijo';
+update public.apertura_guia set orden = 80  where id = 'iva_credito';
+update public.apertura_guia set orden = 82  where id = 'iva_debito';
+update public.apertura_guia set orden = 84  where id = 'ret_enterar';
+update public.apertura_guia set orden = 86  where id = 'islr_antic';
+update public.apertura_guia set orden = 90  where id = 'prestaciones';
+update public.apertura_guia set orden = 92  where id = 'intereses_p';
+update public.apertura_guia set orden = 94  where id = 'vacaciones';
+update public.apertura_guia set orden = 100 where id = 'prestamo';
+update public.apertura_guia set orden = 110 where id = 'capital';
+update public.apertura_guia set orden = 120 where id = 'resultados';
+
+
+-- 2 · QUEDA CONSTANCIA DE LO QUE CALCULO EL SISTEMA.
+--     La pantalla puede ofrecer cuadrar la apertura registrando la diferencia
+--     como resultados acumulados — es lo que uno hace en la practica. Pero esa
+--     cifra NO la aporto el cliente: la dedujo el sistema.
+--
+--     Si dentro de seis meses el balance no cuadra con la realidad, hay que
+--     poder saber exactamente donde se metio el faltante. Una nota de texto no
+--     alcanza: se puede editar, se pierde, nadie la lee. Una columna si.
+alter table public.apertura_partidas
+  add column if not exists calculado boolean not null default false;
+
+comment on column public.apertura_partidas.calculado is
+  'true = este renglon lo dedujo el sistema para cuadrar la apertura, no lo aporto el cliente. Es donde hay que mirar primero cuando el balance no cuadra con la realidad.';
+
+
+-- VERIFICACION DE LOS AJUSTES
+select 'columna calculado' as revision,
+       case when exists (select 1 from information_schema.columns
+                          where table_schema='public' and table_name='apertura_partidas'
+                            and column_name='calculado')
+            then 'si' else 'NO' end as hallazgo
+union all
+select 'primer renglon del guion',
+       (select titulo from public.apertura_guia order by orden limit 1);
+
+select orden, grupo, lado, titulo from public.apertura_guia order by orden;

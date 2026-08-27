@@ -3402,6 +3402,7 @@
 
       <!-- Sub-tabs -->
       <div class="subtabs" id="contaTabs">
+        <button data-tab="apertura"><i data-lucide="flag"></i> Apertura</button>
         <button data-active="true" data-tab="diario"><i data-lucide="book-text"></i> Libro Diario <span class="count" id="contaDiarioCount">0</span></button>
         <button data-tab="mayor"><i data-lucide="library"></i> Libro Mayor</button>
         <button data-tab="balance"><i data-lucide="scale"></i> Balance de Comprobación</button>
@@ -3412,6 +3413,13 @@
         <button data-tab="activos"><i data-lucide="building"></i> Activos Fijos <span class="count">0</span></button>
         <button data-tab="cripto"><i data-lucide="bitcoin"></i> Criptoactivos <span class="tag cyan" style="margin-left:4px;font-size:9px;padding:1px 5px;">VEN-NIF 12</span></button>
         <button data-tab="diferido"><i data-lucide="scale"></i> Impuesto Diferido <span class="tag cyan" style="margin-left:4px;font-size:9px;padding:1px 5px;">VEN-NIF 11</span></button>
+      </div>
+
+      <!-- TAB: Apertura · los saldos con que arranca una empresa que ya venia
+           operando. No es un formulario de carga: es un asiento a una fecha de
+           corte, y tiene que cuadrar para poder cerrarse. -->
+      <div class="conta-tab" data-tab="apertura">
+        <div id="aperturaVista"><!-- por JS --></div>
       </div>
 
       <!-- TAB: Libro Diario -->

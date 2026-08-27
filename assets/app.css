@@ -7585,3 +7585,91 @@ table.suc-tabla td.c-mat { text-align: center; }
 .inv-sw .sw-txt span { display: block; font-size: 11.5px; color: var(--fg-muted); line-height: 1.5; }
 
 .inv-guardar { margin-top: 16px; }
+
+/* ── Apertura · los saldos con que arranca una empresa ────────────────────
+   El marcador de cuadre manda en la jerarquía: es lo único que decide si la
+   apertura puede cerrarse, así que va arriba y siempre a la vista.
+   ──────────────────────────────────────────────────────────────────────── */
+.ap-vacio { padding: 30px; text-align: center; color: var(--fg-muted); font-size: 13px; }
+
+.ap-arranque { max-width: 640px; padding: 8px 0; }
+.ap-arranque h3 { margin: 0 0 10px; font-size: 17px; }
+.ap-arranque p { font-size: 13.5px; line-height: 1.65; color: var(--fg); margin: 0 0 12px; }
+.ap-arranque .ap-nota { font-size: 12px; color: var(--fg-muted); }
+.ap-fecha-row { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; margin: 18px 0 10px; }
+.ap-fecha-row label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: var(--fg-muted); }
+.ap-fecha-row input {
+  height: 34px; border: 1px solid var(--border-strong); border-radius: 8px;
+  padding: 0 10px; font: inherit; background: var(--bg-surface); color: inherit;
+}
+
+.ap-cab {
+  display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+  padding: 14px 16px; margin-bottom: 14px;
+  border: 1px solid var(--border); border-radius: 11px; background: var(--bg-surface);
+}
+.ap-lbl { font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--fg-muted); font-weight: 600; }
+.ap-fecha { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+.ap-marcador { display: flex; gap: 18px; align-items: center; margin-left: auto; }
+.am-par, .am-dif { text-align: right; }
+.am-par span, .am-dif span {
+  display: block; font-size: 10px; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--fg-muted); font-weight: 600;
+}
+.am-par b, .am-dif b { font-size: 15px; font-variant-numeric: tabular-nums; }
+.am-dif { padding-left: 18px; border-left: 1px solid var(--border); }
+.ap-marcador.ok .am-dif b { color: var(--da-cyan-600); font-size: 20px; }
+.ap-marcador.no .am-dif b { color: #e0a341; }
+
+.ap-acc { display: flex; gap: 8px; flex-wrap: wrap; }
+.ap-acc .btn { height: 34px; font-size: 12.5px; }
+.ap-sello {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--da-cyan-600); font-weight: 600;
+}
+.ap-sello i, .ap-sello svg { width: 14px; height: 14px; }
+
+.ap-aviso {
+  margin: 0 0 14px; padding: 11px 14px; border-radius: 9px;
+  background: #c97a1418; border-left: 3px solid #e0a341;
+  font-size: 12.5px; line-height: 1.55;
+}
+.ap-hist { margin-top: 16px; font-size: 11.5px; color: var(--fg-muted); line-height: 1.6; }
+
+.ap-guion { display: grid; gap: 10px; }
+.ap-reng { border: 1px solid var(--border); border-radius: 10px; padding: 13px 15px; background: var(--bg-surface); }
+.ap-reng.con { border-color: var(--border-strong); }
+.ar-cab { display: flex; align-items: flex-start; gap: 12px; }
+.ar-tit { display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap; }
+.ar-tit b { font-size: 13.5px; }
+.ar-lado {
+  font-size: 9.5px; letter-spacing: .07em; text-transform: uppercase;
+  padding: 2px 7px; border-radius: 999px; font-weight: 600;
+}
+.ar-lado.debe { background: var(--da-navy-50, #eef4f8); color: var(--da-navy-700, #14476b); }
+.ar-lado.haber { background: #93304f18; color: #b0556f; }
+.ar-der { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.ar-suma { font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.ar-add { height: 28px; font-size: 11.5px; }
+.ar-ayuda { margin: 5px 0 0; font-size: 11.5px; color: var(--fg-muted); line-height: 1.55; }
+.ar-ayuda em { font-style: normal; color: var(--da-cyan-600); }
+
+.ar-filas { margin-top: 10px; border-top: 1px solid var(--border); }
+.ar-fila { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--border); }
+.ar-fila:last-child { border-bottom: 0; }
+.af-desc { flex: 1; font-size: 12.5px; min-width: 0; }
+.af-desc em { display: block; font-style: normal; font-size: 11px; color: var(--fg-muted); }
+.af-calc {
+  display: inline-block; margin-top: 2px; font-size: 10px;
+  padding: 1px 7px; border-radius: 999px;
+  background: #c97a1418; color: #e0a341; font-weight: 600;
+}
+.af-monto { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
+.af-monto em { display: block; font-style: normal; font-size: 10.5px; color: var(--fg-muted); font-weight: 400; }
+.af-quitar {
+  background: none; border: 0; cursor: pointer; color: var(--fg-muted);
+  padding: 3px; border-radius: 6px; display: flex; flex: none;
+}
+.af-quitar:hover { color: #e06b5e; background: #c0392b18; }
+.af-quitar i, .af-quitar svg { width: 13px; height: 13px; }
