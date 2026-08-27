@@ -7705,16 +7705,28 @@ table.suc-tabla td.c-mat { text-align: center; }
 .fs-check small { display: block; font-size: 11.5px; color: var(--fg-muted); line-height: 1.5; }
 
 /* ── Firma y sello estampados en el comprobante ─────────────────────────
-   El sello va detrás y ligeramente girado, como se estampa en papel; la
-   firma encima. Los dos se recortan al alto del bloque para que no empujen
-   la línea ni descuadren la hoja al imprimir. */
-.comp-firma-img { position: relative; height: 54px; margin-bottom: -6px; }
-.comp-firma-img img { position: absolute; bottom: 0; left: 50%; max-height: 54px; }
-.comp-firma-img .cf-sello { transform: translateX(-50%) rotate(-7deg); opacity: .85; max-height: 62px; bottom: -6px; }
-.comp-firma-img .cf-firma { transform: translateX(-50%); }
+
+   Van FUERA DEL FLUJO, sobre el hueco que el bloque ya reservaba para firmar
+   a mano. El primer intento las metió en el flujo y pasaron dos cosas: la
+   línea del agente bajaba mientras la del proveedor se quedaba arriba —los
+   dos bloques dejaban de estar a la misma altura— y firma y sello, ambos
+   centrados, quedaban uno encima del otro.
+
+   Ahora el bloque mide igual tenga o no estampado, y las dos imágenes se
+   reparten el ancho: la firma a la izquierda del centro y el sello a la
+   derecha, algo girado y traslúcido, montándose apenas como en el papel. */
+.comp-sign { position: relative; }
+.comp-firma-img {
+  position: absolute; top: 0; left: 0; right: 0; height: 52px;
+  pointer-events: none;
+}
+.comp-firma-img img { position: absolute; bottom: 0; max-height: 50px; max-width: 46%; }
+.comp-firma-img .cf-firma { left: 50%; transform: translateX(-96%); }
+.comp-firma-img .cf-sello {
+  left: 50%; transform: translateX(-4%) rotate(-8deg);
+  opacity: .82; max-height: 56px; bottom: -3px;
+}
 .comp-firmante {
   margin-top: 3px; font-size: 9px; color: var(--fg-muted);
   line-height: 1.4; letter-spacing: .02em;
 }
-/* Con firma estampada ya no hace falta el hueco que se dejaba para firmar. */
-.comp-sign:has(.comp-firma-img) { padding-top: 6px; }
