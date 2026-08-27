@@ -1674,7 +1674,7 @@
           { name: 'rif', label: 'RIF (mayúscula, sin guiones)', upper: true, placeholder: 'J123456789', value: pre.rif || '' },
           { name: 'factura', label: 'Factura afectada (elige una registrada)', type: 'datalist', options: [], placeholder: 'Primero elige el tercero…', value: pre.factura || '' },
           { name: 'numControl', label: 'N° de Control (se llena de la factura)', placeholder: '00-00000000', value: pre.numControl || '' },
-          { name: 'comprobante', label: 'N° de comprobante · en las practicadas lo propone el sistema; en las sufridas lo pone el cliente', type: 'datalist', options: [], placeholder: 'Tal como viene en el documento' },
+          { name: 'comprobante', label: 'N° de comprobante · obligatorio en IVA, donde lo propone el sistema · en ISLR es opcional', type: 'datalist', options: [], placeholder: 'Tal como viene en el documento' },
           { name: 'base', label: 'Monto sobre el que se retiene (Bs)', type: 'number', step: '0.01', placeholder: '0.00', value: pre.base != null ? String(pre.base) : '' },
           { name: 'pct', label: '% de retención', type: 'number', step: '0.01', placeholder: '75' },
           { name: 'sustraendo', label: 'Sustraendo (ISLR, automático)', type: 'number', step: '0.01', placeholder: '0.00' },
@@ -1732,14 +1732,22 @@
             const actual = compEl.value.trim();
             if (actual && actual !== compPropuesto) return;   // lo escribió el usuario
             const esPract = dirSel && /^practicada/i.test(dirSel.value);
-            const tipoRet = (tipoSel && /islr/i.test(tipoSel.value)) ? 'islr' : 'iva';
+            const esIslrSel = tipoSel && /islr/i.test(tipoSel.value);
             const emp = window.__EMPRESA_ACTIVA || {};
-            if (!esPract || !emp.id) {
-              // En una SUFRIDA el número lo pone el cliente: se limpia lo propuesto.
+            /* Solo el IVA lleva correlativo propuesto.
+
+               El comprobante de retención de IVA es obligatorio y tiene
+               formato impuesto por la Providencia SNAT/2015/0049: AAAAMM más
+               ocho dígitos, correlativo por mes. El de ISLR no tiene formato
+               impuesto y muchas empresas no lo numeran — GATMA entre ellas.
+               Proponerle un número era inventarle una serie que nadie pidió.
+
+               En una SUFRIDA tampoco: ahí el comprobante lo emite el cliente. */
+            if (!esPract || esIslrSel || !emp.id) {
               if (actual && actual === compPropuesto) { compEl.value = ''; compPropuesto = ''; }
               return;
             }
-            siguienteComprobante(emp.id, fechaComp ? fechaComp.value : '', tipoRet).then((n) => {
+            siguienteComprobante(emp.id, fechaComp ? fechaComp.value : '', 'iva').then((n) => {
               if (!n || !compEl) return;
               const ahora = compEl.value.trim();
               if (ahora && ahora !== compPropuesto) return;   // escribió mientras se consultaba
