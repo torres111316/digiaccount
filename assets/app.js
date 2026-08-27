@@ -2048,24 +2048,34 @@
        sale con la línea en blanco como siempre: no se inventa nada. */
     function estamparFirma(node, esPract) {
       const f = window.__firmaEmpresa && window.__firmaEmpresa();
-      if (!f) return;
       const firmas = node.querySelectorAll('.comp-sign');
       if (!firmas.length) return;
-      /* El primer bloque es el del agente. En una retención PRACTICADA el
-         agente somos nosotros, así que ahí va nuestra firma. En una SUFRIDA el
-         agente es el cliente y la firma suya no la tenemos — ese comprobante
-         lo emitió él. */
-      if (!esPract) return;
-      const bloque = firmas[0];
-      const linea = bloque.querySelector('.line');
 
-      const cap = document.createElement('div');
-      cap.className = 'comp-firma-img';
-      if (f.sello_img) cap.innerHTML += '<img class="cf-sello" src="' + f.sello_img + '" alt="Sello">';
-      if (f.firma_img) cap.innerHTML += '<img class="cf-firma" src="' + f.firma_img + '" alt="Firma">';
-      if (cap.innerHTML) bloque.insertBefore(cap, linea || null);
+      /* El hueco va en LOS DOS bloques, aunque el segundo quede vacío. Es lo
+         que mantiene las dos líneas a la misma altura sin depender de si hay
+         estampado o no. Y va ANTES de la línea en el documento, que es lo que
+         garantiza que se dibuje encima de ella. */
+      firmas.forEach((bloque) => {
+        if (bloque.querySelector('.comp-hueco-firma')) return;
+        const hueco = document.createElement('div');
+        hueco.className = 'comp-hueco-firma';
+        bloque.insertBefore(hueco, bloque.firstChild);
+      });
+
+      if (!f) return;
+      /* Solo el lado del AGENTE. En una retención sufrida el agente es el
+         cliente: esa firma no es nuestra y ese comprobante lo emitió él. */
+      if (!esPract) return;
+
+      const hueco = firmas[0].querySelector('.comp-hueco-firma');
+      if (!hueco) return;
+      let html = '';
+      if (f.sello_img) html += '<img class="cf-sello" src="' + f.sello_img + '" alt="Sello">';
+      if (f.firma_img) html += '<img class="cf-firma" src="' + f.firma_img + '" alt="Firma">';
+      hueco.innerHTML = html;
 
       // Quién firmó, debajo del trazo. Un comprobante debe decirlo.
+      const linea = firmas[0].querySelector('.line');
       if (linea && (f.firmante_nombre || f.firmante_cedula || f.firmante_cargo)) {
         const quien = document.createElement('div');
         quien.className = 'comp-firmante';

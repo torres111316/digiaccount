@@ -2775,9 +2775,9 @@
   }
   .comp-sign {
     text-align: center;
-    /* El hueco donde caben la firma y el sello. Es el mismo en los dos
-       bloques, y por eso las dos líneas quedan a la misma altura. */
-    padding-top: 175px;
+    /* El hueco lo pone .comp-hueco-firma, que va en los dos bloques. Aquí
+       solo queda un respiro mínimo. */
+    padding-top: 4px;
   }
   .comp-sign .line {
     border-top: 1px solid var(--fg-body);
@@ -5046,7 +5046,7 @@
 
   /* Pie: separado del cuadro y con espacio para la firma (sin línea superior) */
   .comprobante .comp-footer { padding: 14px 24px 16px; gap: 24px; margin-top: 22px; border-top: 0; }
-  .comprobante .comp-sign { padding-top: 170px; }
+  .comprobante .comp-sign { padding-top: 4px; }
   .comprobante .comp-legal { font-size: 8px; line-height: 1.35; padding-top: 10px; margin-top: 6px; }
 
   /* Portal de impresión: oculto en pantalla, contiene el clon del comprobante */
@@ -7714,34 +7714,26 @@ table.suc-tabla td.c-mat { text-align: center; }
 
 /* ── Firma y sello estampados en el comprobante ─────────────────────────
 
-   Van FUERA DEL FLUJO, sobre el hueco que el bloque ya reservaba para firmar
-   a mano. El primer intento las metió en el flujo y pasaron dos cosas: la
-   línea del agente bajaba mientras la del proveedor se quedaba arriba —los
-   dos bloques dejaban de estar a la misma altura— y firma y sello, ambos
-   centrados, quedaban uno encima del otro.
+   El hueco es un BLOQUE REAL en el flujo, colocado antes de la línea, y se
+   inserta en los DOS lados aunque uno vaya vacío.
 
-   Ahora el bloque mide igual tenga o no estampado, y las dos imágenes se
-   reparten el ancho: la firma a la izquierda del centro y el sello a la
-   derecha, algo girado y traslúcido, montándose apenas como en el papel. */
-.comp-sign { position: relative; }
-.comp-firma-img {
-  position: absolute; top: 0; left: 0; right: 0; height: 170px;
-  pointer-events: none;
+   Los intentos anteriores lo posicionaban en absoluto sobre el padding del
+   bloque, y las imágenes terminaban por DEBAJO de la línea: el contexto de
+   posicionamiento no era el que yo suponía. Así no hay nada que suponer —
+   lo que va antes en el documento, se dibuja arriba. */
+.comp-hueco-firma {
+  position: relative;
+  height: 165px;
+  margin-bottom: 4px;
 }
-/* Ancladas ARRIBA del hueco, no abajo.
-
-   Una firma escaneada suele ser ancha y baja, así que la limita el ancho
-   (max-width) y su alto real queda por debajo del hueco disponible. Apoyadas
-   abajo, ese sobrante quedaba encima y la firma se veía hundida contra la
-   línea. Desde arriba suben casi su propio alto, y el pie no crece nada. */
-/* El ancho ya no las limita: se sube a 60% para que puedan crecer a lo alto.
-   Antes las frenaba el max-height, y por eso anclarlas arriba no las movia —
-   ya llenaban el hueco. Ahora el hueco es mayor y ellas tambien. */
-.comp-firma-img img { position: absolute; top: 0; max-height: 160px; max-width: 60%; }
-.comp-firma-img .cf-firma { left: 50%; transform: translateX(-99%); }
-.comp-firma-img .cf-sello {
+.comp-hueco-firma img {
+  position: absolute; bottom: 0;
+  max-height: 160px; max-width: 60%;
+}
+.comp-hueco-firma .cf-firma { left: 50%; transform: translateX(-99%); }
+.comp-hueco-firma .cf-sello {
   left: 50%; transform: translateX(-1%) rotate(-8deg);
-  opacity: .82; max-height: 176px; max-width: 62%; top: -10px;
+  opacity: .82; max-height: 172px; bottom: -6px;
 }
 .comp-firmante {
   margin-top: 3px; font-size: 9px; color: var(--fg-muted);
