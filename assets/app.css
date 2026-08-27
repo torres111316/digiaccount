@@ -2765,14 +2765,19 @@
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 40px;
-    /* Las dos firmas apoyadas en la misma línea base: si una crece —por el
-       nombre de quien firma, por ejemplo— la otra no se queda arriba. */
-    align-items: end;
+    /* Alineados por ARRIBA. Lo que debe coincidir es la altura de la LÍNEA,
+       y esa la fija el hueco reservado sobre ella, que es igual en los dos.
+       Alinear por la base fue un error: el bloque del agente lleva el nombre
+       del firmante DEBAJO de la línea, así que al apoyarlos por abajo su
+       línea subía y la del proveedor bajaba. */
+    align-items: start;
     border-top: 1px solid var(--border-default);
   }
   .comp-sign {
     text-align: center;
-    padding-top: 50px;
+    /* El hueco donde caben la firma y el sello. Es el mismo en los dos
+       bloques, y por eso las dos líneas quedan a la misma altura. */
+    padding-top: 100px;
   }
   .comp-sign .line {
     border-top: 1px solid var(--fg-body);
@@ -5041,7 +5046,7 @@
 
   /* Pie: separado del cuadro y con espacio para la firma (sin línea superior) */
   .comprobante .comp-footer { padding: 14px 24px 16px; gap: 24px; margin-top: 22px; border-top: 0; }
-  .comprobante .comp-sign { padding-top: 46px; }
+  .comprobante .comp-sign { padding-top: 94px; }
   .comprobante .comp-legal { font-size: 8px; line-height: 1.35; padding-top: 10px; margin-top: 6px; }
 
   /* Portal de impresión: oculto en pantalla, contiene el clon del comprobante */
@@ -7720,14 +7725,16 @@ table.suc-tabla td.c-mat { text-align: center; }
    derecha, algo girado y traslúcido, montándose apenas como en el papel. */
 .comp-sign { position: relative; }
 .comp-firma-img {
-  position: absolute; top: 0; left: 0; right: 0; height: 52px;
+  position: absolute; top: 0; left: 0; right: 0; height: 100px;
   pointer-events: none;
 }
-.comp-firma-img img { position: absolute; bottom: 0; max-height: 50px; max-width: 46%; }
-.comp-firma-img .cf-firma { left: 50%; transform: translateX(-96%); }
+/* Despegadas de la línea, como se firma sobre el papel: el trazo no se apoya
+   en el renglón, queda un poco encima. */
+.comp-firma-img img { position: absolute; bottom: 7px; max-height: 96px; max-width: 52%; }
+.comp-firma-img .cf-firma { left: 50%; transform: translateX(-98%); }
 .comp-firma-img .cf-sello {
-  left: 50%; transform: translateX(-4%) rotate(-8deg);
-  opacity: .82; max-height: 56px; bottom: -3px;
+  left: 50%; transform: translateX(-2%) rotate(-8deg);
+  opacity: .82; max-height: 108px; bottom: 2px;
 }
 .comp-firmante {
   margin-top: 3px; font-size: 9px; color: var(--fg-muted);
