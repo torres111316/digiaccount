@@ -7728,13 +7728,17 @@ table.suc-tabla td.c-mat { text-align: center; }
   position: absolute; top: 0; left: 0; right: 0; height: 100px;
   pointer-events: none;
 }
-/* Despegadas de la línea, como se firma sobre el papel: el trazo no se apoya
-   en el renglón, queda un poco encima. */
-.comp-firma-img img { position: absolute; bottom: 7px; max-height: 96px; max-width: 52%; }
+/* Ancladas ARRIBA del hueco, no abajo.
+
+   Una firma escaneada suele ser ancha y baja, así que la limita el ancho
+   (max-width) y su alto real queda por debajo del hueco disponible. Apoyadas
+   abajo, ese sobrante quedaba encima y la firma se veía hundida contra la
+   línea. Desde arriba suben casi su propio alto, y el pie no crece nada. */
+.comp-firma-img img { position: absolute; top: 0; max-height: 96px; max-width: 52%; }
 .comp-firma-img .cf-firma { left: 50%; transform: translateX(-98%); }
 .comp-firma-img .cf-sello {
   left: 50%; transform: translateX(-2%) rotate(-8deg);
-  opacity: .82; max-height: 108px; bottom: 2px;
+  opacity: .82; max-height: 108px; top: -8px;
 }
 .comp-firmante {
   margin-top: 3px; font-size: 9px; color: var(--fg-muted);
