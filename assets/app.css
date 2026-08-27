@@ -7673,3 +7673,48 @@ table.suc-tabla td.c-mat { text-align: center; }
 }
 .af-quitar:hover { color: #e06b5e; background: #c0392b18; }
 .af-quitar i, .af-quitar svg { width: 13px; height: 13px; }
+
+/* ── Firma y sello · configuración ──────────────────────────────────────── */
+.fs-zonas { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
+.fs-zona { display: flex; gap: 12px; align-items: flex-start; padding: 12px; border: 1px solid var(--border); border-radius: 10px; }
+.fs-prev {
+  width: 84px; height: 60px; flex: none; border-radius: 8px;
+  border: 1px dashed var(--border-strong); display: grid; place-items: center;
+  background: var(--bg-subtle, rgba(127,127,127,.05)); overflow: hidden;
+}
+.fs-prev.con { border-style: solid; background: #fff; }
+.fs-prev img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.fs-prev i, .fs-prev svg { width: 18px; height: 18px; color: var(--fg-muted); }
+.fs-info { min-width: 0; }
+.fs-info b { display: block; font-size: 13px; }
+.fs-info small { display: block; font-size: 11px; color: var(--fg-muted); line-height: 1.45; margin: 2px 0 7px; }
+.fs-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.fs-quien { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border); }
+.fs-quien h4 { margin: 0 0 3px; font-size: 12px; letter-spacing: .09em; text-transform: uppercase; color: var(--fg-muted); font-weight: 600; }
+.fs-campos { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
+.fs-campos label { display: flex; flex-direction: column; gap: 5px; font-size: 11.5px; color: var(--fg-muted); }
+.fs-campos input {
+  height: 34px; border: 1px solid var(--border-strong); border-radius: 8px;
+  padding: 0 10px; font: inherit; font-size: 13px;
+  background: var(--bg-surface); color: inherit;
+}
+.fs-check { display: flex; gap: 9px; align-items: flex-start; margin-top: 14px; cursor: pointer; }
+.fs-check input { margin-top: 3px; accent-color: var(--da-cyan-500); }
+.fs-check b { display: block; font-size: 13px; }
+.fs-check small { display: block; font-size: 11.5px; color: var(--fg-muted); line-height: 1.5; }
+
+/* ── Firma y sello estampados en el comprobante ─────────────────────────
+   El sello va detrás y ligeramente girado, como se estampa en papel; la
+   firma encima. Los dos se recortan al alto del bloque para que no empujen
+   la línea ni descuadren la hoja al imprimir. */
+.comp-firma-img { position: relative; height: 54px; margin-bottom: -6px; }
+.comp-firma-img img { position: absolute; bottom: 0; left: 50%; max-height: 54px; }
+.comp-firma-img .cf-sello { transform: translateX(-50%) rotate(-7deg); opacity: .85; max-height: 62px; bottom: -6px; }
+.comp-firma-img .cf-firma { transform: translateX(-50%); }
+.comp-firmante {
+  margin-top: 3px; font-size: 9px; color: var(--fg-muted);
+  line-height: 1.4; letter-spacing: .02em;
+}
+/* Con firma estampada ya no hace falta el hueco que se dejaba para firmar. */
+.comp-sign:has(.comp-firma-img) { padding-top: 6px; }

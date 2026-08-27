@@ -167,6 +167,9 @@
             .then(() => { if (window.cargarLibroFiscal) { window.cargarLibroFiscal('compra'); window.cargarLibroFiscal('venta'); } })
             .catch((err) => console.error('[cambio de empresa] sucursales y libros:', err))],
           ['apertura', () => window.cargarApertura && window.cargarApertura()],
+          ['firma y sello', () => Promise.resolve(window.__cargarFirma && window.__cargarFirma())
+            .then(() => { if (window.__renderFirmaConfig) return window.__renderFirmaConfig(); })
+            .catch((err) => console.error('[cambio de empresa] firma:', err))],
           ['cierres', () => window.cargarCierres && window.cargarCierres()],
           ['calendario', () => window.cargarCalendarioFiscal && window.cargarCalendarioFiscal()],
           ['métodos de cobro', () => window.__cargarCobrosEmp && window.__cargarCobrosEmp(opt.dataset.empresaId)],
@@ -2034,6 +2037,44 @@
        quién es agente y quién retenido— como para tener dos versiones que
        se separen con el tiempo. La vista previa y lo que sale impreso
        tienen que decir lo mismo. */
+    /* Pone la firma, el sello y el nombre de quien firma sobre la línea del
+       agente de retención.
+
+       Es un FACSÍMIL —la imagen de una firma manuscrita— y no una firma
+       electrónica certificada. Para un comprobante de retención es la práctica
+       normal, pero no conviene confundir una cosa con la otra.
+
+       Si la empresa no cargó nada, o desactivó el estampado, el comprobante
+       sale con la línea en blanco como siempre: no se inventa nada. */
+    function estamparFirma(node, esPract) {
+      const f = window.__firmaEmpresa && window.__firmaEmpresa();
+      if (!f) return;
+      const firmas = node.querySelectorAll('.comp-sign');
+      if (!firmas.length) return;
+      /* El primer bloque es el del agente. En una retención PRACTICADA el
+         agente somos nosotros, así que ahí va nuestra firma. En una SUFRIDA el
+         agente es el cliente y la firma suya no la tenemos — ese comprobante
+         lo emitió él. */
+      if (!esPract) return;
+      const bloque = firmas[0];
+      const linea = bloque.querySelector('.line');
+
+      const cap = document.createElement('div');
+      cap.className = 'comp-firma-img';
+      if (f.sello_img) cap.innerHTML += '<img class="cf-sello" src="' + f.sello_img + '" alt="Sello">';
+      if (f.firma_img) cap.innerHTML += '<img class="cf-firma" src="' + f.firma_img + '" alt="Firma">';
+      if (cap.innerHTML) bloque.insertBefore(cap, linea || null);
+
+      // Quién firmó, debajo del trazo. Un comprobante debe decirlo.
+      if (linea && (f.firmante_nombre || f.firmante_cedula || f.firmante_cargo)) {
+        const quien = document.createElement('div');
+        quien.className = 'comp-firmante';
+        quien.innerHTML = [f.firmante_nombre, f.firmante_cedula, f.firmante_cargo]
+          .filter(Boolean).map((x) => esc(x)).join(' · ');
+        linea.parentNode.insertBefore(quien, linea.nextSibling);
+      }
+    }
+
     async function imprimirComprobante(r, destino) {
       const emp = window.__EMPRESA_ACTIVA || {};
       const esIslr = r.tipo === 'islr';
@@ -2118,6 +2159,12 @@
         if (tf) tf.innerHTML = '<tr><td colspan="5" style="text-align:right;">Totales</td><td class="num">' + fmt(tTotal) + '</td><td class="num">0,00</td><td class="num">' + fmt(tBase) + '</td><td></td><td class="num">' + fmt(tIva) + '</td><td></td><td class="num highlight">' + fmt(tMonto) + '</td></tr>';
         if (words) words.innerHTML = 'Total IVA retenido: <strong>Bs ' + fmt(tMonto) + '</strong> · ' + grupo.length + ' factura(s) en este comprobante. Monto neto a cancelar: <strong>Bs ' + fmt(Math.max(0, tTotal - tMonto)) + '</strong>.';
       }
+      /* La firma y el sello se estampan ANTES de decidir si esto es vista
+         previa o impresión, para que lo que se ve en pantalla sea exactamente
+         lo que sale por la impresora. Solo van en el lado del AGENTE: en el
+         otro firma quien recibe, de su puño. */
+      try { estamparFirma(node, esPract); } catch (e) { console.warn('[Firma]', e); }
+
       // Solo pintar la vista previa: no hay nada que imprimir todavía.
       if (destino) { if (window.lucide) window.lucide.createIcons(); return; }
       let portal = document.getElementById('printPortal');
@@ -17498,4 +17545,144 @@
       toast('Apertura cuadrada con ' + bs(monto) + ' en resultados acumulados', 'success');
       cargar();
     }
+  })();
+
+  /* ══════════════════════════════════════════════════════════════════════
+     FIRMA Y SELLO DE LA EMPRESA
+
+     Se cargan una vez en Configuración y se estampan al imprimir los
+     comprobantes de retención. Es un facsímil —la imagen de una firma
+     manuscrita—, no una firma electrónica certificada.
+
+     De paso el LOGO por fin se guarda. Hasta hoy se previsualizaba y decía
+     «se usará en tus documentos», pero no se persistía en ningún lado y se
+     perdía al recargar: una promesa que el sistema no cumplía.
+     ══════════════════════════════════════════════════════════════════════ */
+  (function firmaSello() {
+    const $ = (id) => document.getElementById(id);
+    const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const toast = (m, t) => { if (window.toast) window.toast(m, t); };
+    const MAX = 500 * 1024;   // una firma o un sello no deberían pasar de esto
+
+    let FIRMA = null;   // la fila de empresa_firma de la empresa activa
+    const emp = () => window.__EMPRESA_ACTIVA || {};
+
+    /* Lo que consulta la impresión. Devuelve null si la empresa no tiene nada
+       cargado o si decidió no estampar — y entonces el comprobante sale con la
+       línea en blanco, como siempre. */
+    window.__firmaEmpresa = () => (FIRMA && FIRMA.estampar ? FIRMA : null);
+
+    window.__cargarFirma = async function () {
+      FIRMA = null;
+      if (!window.sb || !emp().id) return;
+      const { data, error } = await window.sb.from('empresa_firma')
+        .select('*').eq('empresa_id', emp().id).maybeSingle();
+      if (error) { console.warn('[Firma]', error.message); return; }
+      FIRMA = data || null;
+    };
+
+    window.__renderFirmaConfig = async function () {
+      const cont = $('cfgFirma');
+      if (!cont) return;
+      if (!emp().id) { cont.innerHTML = '<p class="cfg-hint">Elige una empresa para configurar su firma.</p>'; return; }
+      await window.__cargarFirma();
+      const f = FIRMA || {};
+
+      const zona = (id, titulo, ayuda, img) =>
+        '<div class="fs-zona">'
+        + '<div class="fs-prev' + (img ? ' con' : '') + '" id="fsPrev' + id + '">'
+        +   (img ? '<img src="' + img + '" alt="' + esc(titulo) + '">' : '<i data-lucide="image-plus"></i>')
+        + '</div>'
+        + '<div class="fs-info"><b>' + esc(titulo) + '</b><small>' + esc(ayuda) + '</small>'
+        +   '<div class="fs-btns">'
+        +     '<button type="button" class="btn btn-ghost btn-sm" data-subir="' + id + '"><i data-lucide="upload"></i> Subir</button>'
+        +     (img ? '<button type="button" class="btn btn-ghost btn-sm" data-borrar="' + id + '"><i data-lucide="trash-2"></i> Quitar</button>' : '')
+        +   '</div>'
+        + '</div>'
+        + '<input type="file" accept="image/png,image/jpeg,image/webp" hidden data-file="' + id + '">'
+        + '</div>';
+
+      cont.innerHTML =
+        '<div class="fs-zonas">'
+        + zona('firma', 'Firma', 'PNG con fondo transparente. Firma sobre papel blanco y recórtala.', f.firma_img)
+        + zona('sello', 'Sello', 'El sello húmedo escaneado, también con fondo transparente.', f.sello_img)
+        + zona('logo',  'Logo',  'Va en el encabezado de tus documentos.', f.logo_img)
+        + '</div>'
+
+        + '<div class="fs-quien">'
+        + '<h4>Quién firma</h4>'
+        + '<p class="cfg-hint" style="margin:0 0 10px;">Se imprime debajo del trazo. Un comprobante debe decir quién lo firmó, no solo mostrar una rúbrica.</p>'
+        + '<div class="fs-campos">'
+        +   '<label>Nombre y apellido<input type="text" id="fsNombre" value="' + esc(f.firmante_nombre || '') + '" placeholder="Como aparece en su cédula"></label>'
+        +   '<label>Cédula<input type="text" id="fsCedula" value="' + esc(f.firmante_cedula || '') + '" placeholder="V-12345678"></label>'
+        +   '<label>Cargo<input type="text" id="fsCargo" value="' + esc(f.firmante_cargo || '') + '" placeholder="Administrador, Gerente, Contador…"></label>'
+        + '</div>'
+        + '<label class="fs-check"><input type="checkbox" id="fsEstampar"' + (f.estampar === false ? '' : ' checked') + '>'
+        +   '<span><b>Estampar al imprimir</b><small>Si lo apagas, el comprobante sale con la línea en blanco para firmar a mano.</small></span></label>'
+        + '<button class="btn btn-primary" id="fsGuardar" style="margin-top:14px;"><i data-lucide="save"></i> Guardar</button>'
+        + '</div>';
+
+      // Subir
+      cont.querySelectorAll('[data-subir]').forEach((b) =>
+        b.addEventListener('click', () => {
+          const inp = cont.querySelector('[data-file="' + b.dataset.subir + '"]');
+          if (inp) inp.click();
+        }));
+
+      cont.querySelectorAll('[data-file]').forEach((inp) =>
+        inp.addEventListener('change', () => {
+          const f2 = inp.files && inp.files[0];
+          if (!f2) return;
+          if (f2.size > MAX) {
+            toast('Esa imagen pesa ' + Math.round(f2.size / 1024) + ' KB. Recórtala: una firma no debería pasar de 500 KB.', 'error');
+            inp.value = ''; return;
+          }
+          const rd = new FileReader();
+          rd.onload = (e) => {
+            const prev = $('fsPrev' + inp.dataset.file);
+            if (prev) { prev.innerHTML = '<img src="' + e.target.result + '" alt="">'; prev.classList.add('con'); }
+            prev.dataset.img = e.target.result;
+            toast('Cargada · pulsa Guardar para conservarla', 'info');
+          };
+          rd.readAsDataURL(f2);
+        }));
+
+      cont.querySelectorAll('[data-borrar]').forEach((b) =>
+        b.addEventListener('click', () => {
+          const prev = $('fsPrev' + b.dataset.borrar);
+          if (!prev) return;
+          prev.innerHTML = '<i data-lucide="image-plus"></i>';
+          prev.classList.remove('con');
+          prev.dataset.img = '';
+          if (window.lucide) window.lucide.createIcons();
+          toast('Quitada · pulsa Guardar para confirmarlo', 'info');
+        }));
+
+      const guardar = $('fsGuardar');
+      if (guardar) guardar.addEventListener('click', async () => {
+        const leer = (id, actual) => {
+          const prev = $('fsPrev' + id);
+          if (!prev) return actual || null;
+          if (prev.dataset.img === '') return null;              // se quitó
+          return prev.dataset.img || actual || null;             // nueva, o la que había
+        };
+        const fila = {
+          empresa_id: emp().id, cuenta_id: window.__CUENTA_ID,
+          firma_img: leer('firma', f.firma_img),
+          sello_img: leer('sello', f.sello_img),
+          logo_img:  leer('logo',  f.logo_img),
+          firmante_nombre: ($('fsNombre').value || '').trim() || null,
+          firmante_cedula: ($('fsCedula').value || '').trim() || null,
+          firmante_cargo:  ($('fsCargo').value  || '').trim() || null,
+          estampar: !!$('fsEstampar').checked,
+          actualizado_en: new Date().toISOString(),
+        };
+        const { error } = await window.sb.from('empresa_firma').upsert(fila, { onConflict: 'empresa_id' });
+        if (error) { toast('No se pudo guardar: ' + error.message, 'error'); return; }
+        toast('Firma y sello guardados ✓', 'success');
+        window.__renderFirmaConfig();
+      });
+
+      if (window.lucide) window.lucide.createIcons();
+    };
   })();
