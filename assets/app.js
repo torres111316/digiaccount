@@ -1437,7 +1437,16 @@
        SOLO EN LAS PRACTICADAS. En una retención sufrida el comprobante lo
        emite el agente que retuvo: ese número se copia del documento que él
        entregó, y generarlo aquí sería inventarse un dato ajeno. */
-    async function siguienteCompIslr(empresaId, fechaISO) {
+    /* El siguiente comprobante que emite ESTA empresa.
+
+       En una retención PRACTICADA la empresa es el agente de retención: el
+       comprobante lo emite ella y su número es correlativo propio. En una
+       SUFRIDA el número lo pone el cliente y cambia de uno a otro, así que ahí
+       sí hay que escribirlo.
+
+       IVA e ISLR llevan SERIES SEPARADAS. Antes esta función estaba cableada a
+       ISLR y por eso al retener IVA de una compra el campo salía en blanco. */
+    async function siguienteComprobante(empresaId, fechaISO, tipo) {
       if (!window.sb || !empresaId) return '';
       const p = String(fechaISO || '').split('-');
       const aaaamm = (p.length === 3) ? (p[0] + p[1])
@@ -1447,8 +1456,8 @@
         })();
       const { data, error } = await window.sb.from('retenciones')
         .select('comprobante')
-        .eq('empresa_id', empresaId).eq('tipo', 'islr').eq('direccion', 'practicada');
-      if (error) { console.warn('[Comprobante ISLR]', error.message); return ''; }
+        .eq('empresa_id', empresaId).eq('tipo', tipo).eq('direccion', 'practicada');
+      if (error) { console.warn('[Comprobante ' + tipo + ']', error.message); return ''; }
       const usados = (data || []).map((r) => String(r.comprobante || '').trim()).filter(Boolean);
       // Los de ESTE mes mandan: de ahí sale el correlativo y el formato.
       const delMes = usados.filter((c) => c.replace(/\D/g, '').indexOf(aaaamm) === 0);
@@ -1462,8 +1471,11 @@
         });
         if (mejor) return mejor[1] + String(maxN + 1).padStart(mejor[2].length, '0');
       }
-      // Primero del mes: se conserva el LARGO que ya usa la empresa.
-      const largo = usados.length ? usados[0].replace(/\D/g, '').length : 10;
+      /* Primero del mes: se conserva el LARGO que ya usa la empresa. Si no
+         tiene ninguno, el del IVA sale de la Providencia SNAT/2015/0049 —
+         AAAAMM + ocho dígitos— y el de ISLR queda en el que veníamos usando. */
+      const largoNorma = (tipo === 'iva') ? 14 : 10;
+      const largo = usados.length ? usados[0].replace(/\D/g, '').length : largoNorma;
       const correl = Math.max(1, largo - aaaamm.length);
       return aaaamm + String(1).padStart(correl, '0');
     }
@@ -1645,7 +1657,7 @@
           { name: 'rif', label: 'RIF (mayúscula, sin guiones)', upper: true, placeholder: 'J123456789', value: pre.rif || '' },
           { name: 'factura', label: 'Factura afectada (elige una registrada)', type: 'datalist', options: [], placeholder: 'Primero elige el tercero…', value: pre.factura || '' },
           { name: 'numControl', label: 'N° de Control (se llena de la factura)', placeholder: '00-00000000', value: pre.numControl || '' },
-          { name: 'comprobante', label: 'N° de comprobante (obligatorio en IVA · en ISLR déjalo vacío si no lo hay)', type: 'datalist', options: [], placeholder: 'Tal como viene en el documento' },
+          { name: 'comprobante', label: 'N° de comprobante · en las practicadas lo propone el sistema; en las sufridas lo pone el cliente', type: 'datalist', options: [], placeholder: 'Tal como viene en el documento' },
           { name: 'base', label: 'Monto sobre el que se retiene (Bs)', type: 'number', step: '0.01', placeholder: '0.00', value: pre.base != null ? String(pre.base) : '' },
           { name: 'pct', label: '% de retención', type: 'number', step: '0.01', placeholder: '75' },
           { name: 'sustraendo', label: 'Sustraendo (ISLR, automático)', type: 'number', step: '0.01', placeholder: '0.00' },
@@ -1687,11 +1699,15 @@
           const fechaComp = body.querySelector('[data-name="fecha"]');
           const proponerComp = () => {
             if (!compEl || compEl.value.trim()) return;
-            const esIslr = tipoSel && /islr/i.test(tipoSel.value);
+            /* En TODA practicada —IVA o ISLR— la empresa es la que emite el
+               comprobante, así que el número es suyo y correlativo. Antes solo
+               se proponía en ISLR y en IVA había que escribirlo a mano, que es
+               justo donde más se equivoca uno: son muchos y van seguidos. */
             const esPract = dirSel && /^practicada/i.test(dirSel.value);
+            const tipoRet = (tipoSel && /islr/i.test(tipoSel.value)) ? 'islr' : 'iva';
             const emp = window.__EMPRESA_ACTIVA || {};
-            if (!esIslr || !esPract || !emp.id) return;
-            siguienteCompIslr(emp.id, fechaComp ? fechaComp.value : '').then((n) => {
+            if (!esPract || !emp.id) return;
+            siguienteComprobante(emp.id, fechaComp ? fechaComp.value : '', tipoRet).then((n) => {
               if (n && compEl && !compEl.value.trim()) {
                 compEl.value = n;
                 compEl.placeholder = 'Correlativo propuesto — cámbialo si tu numeración es otra';
