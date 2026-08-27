@@ -7749,3 +7749,18 @@ table.suc-tabla td.c-mat { text-align: center; }
   margin-top: 3px; font-size: 9px; color: var(--fg-muted);
   line-height: 1.4; letter-spacing: .02em;
 }
+
+/* Atajos de fecha en el formulario de retención. No hay un valor por defecto
+   que sirva siempre —hay proveedores que facturan el mismo día y otros que se
+   tardan semanas— así que se ponen los dos a un clic en vez de adivinar. */
+.fecha-atajos { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.fecha-atajos button {
+  font: inherit; font-size: 11px; cursor: pointer;
+  padding: 3px 9px; border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-surface); color: var(--fg-muted);
+}
+.fecha-atajos button:hover {
+  border-color: var(--da-cyan-500); color: var(--da-cyan-600);
+}
+.fecha-atajos button:focus-visible { outline: 2px solid var(--da-cyan-500); outline-offset: 1px; }

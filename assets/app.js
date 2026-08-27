@@ -1696,6 +1696,34 @@
              y ese criterio es suyo, no del sistema. */
           const _fQuin = body.querySelector('[data-name="fecha"]');
           const _selQuin = body.querySelector('[data-name="quincena"]');
+
+          /* Dos atajos para la fecha del comprobante, porque no hay un valor
+             por defecto que sirva siempre: hay proveedores que mandan la
+             factura el mismo día y otros que se tardan semanas — la madera en
+             GATMA, el cemento en RADIAN. Elegir uno por el usuario acierta la
+             mitad de las veces y obliga a corregir la otra mitad.
+
+             Con los dos a la vista y a un clic, se ve cuál es cuál y la
+             quincena se recalcula sola al pulsarlos. */
+          if (_fQuin) {
+            const dmy = (iso) => (iso ? iso.slice(8, 10) + '/' + iso.slice(5, 7) + '/' + iso.slice(0, 4) : '');
+            const hoy = window.__hoyISO();
+            const atajos = document.createElement('div');
+            atajos.className = 'fecha-atajos';
+            let botones = '<button type="button" data-fecha="' + hoy + '">Hoy · ' + dmy(hoy) + '</button>';
+            if (pre.fechaFactura && pre.fechaFactura !== hoy) {
+              botones += '<button type="button" data-fecha="' + pre.fechaFactura + '">Fecha de la factura · ' + dmy(pre.fechaFactura) + '</button>';
+            }
+            atajos.innerHTML = botones;
+            _fQuin.parentNode.appendChild(atajos);
+            atajos.querySelectorAll('[data-fecha]').forEach((b) =>
+              b.addEventListener('click', () => {
+                _fQuin.value = b.dataset.fecha;
+                // El cambio programático no dispara 'change': hay que avisarlo
+                // para que la quincena y el correlativo se recalculen.
+                _fQuin.dispatchEvent(new Event('change', { bubbles: true }));
+              }));
+          }
           if (_fQuin && _selQuin) {
             let _quinAMano = false;
             _selQuin.addEventListener('change', () => { _quinAMano = true; });
