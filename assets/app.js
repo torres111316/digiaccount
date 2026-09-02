@@ -10451,7 +10451,54 @@
           const sigC = siguienteDe(filas.map((r) => r.comprobante_hasta));
           if (nz && sigZ && (forzar || !nz.value)) nz.value = sigZ;
           if (cd && sigC && (forzar || !cd.value)) cd.value = sigC;
+          /* La fecha más alta cargada para esa máquina, para el aviso de
+             salto. Las fechas vienen como dd/mm/aa, así que se comparan
+             pasándolas a aaaa-mm-dd — comparar el texto dd/mm/aa ordena
+             por día y diría que el 30/01 es posterior al 02/12. */
+          const isos = filas.map((r) => {
+            const p = String(r.fecha || '').split('/');
+            return p.length === 3 ? '20' + p[2].slice(-2) + '-' + p[1].padStart(2, '0') + '-' + p[0].padStart(2, '0') : '';
+          }).filter(Boolean).sort();
+          ultimaFechaZ = isos.length ? isos[isos.length - 1] : null;
+          revisarFecha();
         });
+      }
+
+      /* Última fecha cargada para esa máquina, para poder avisar del salto.
+         Se guarda aquí y no se vuelve a preguntar a la base en cada tecla. */
+      let ultimaFechaZ = null;
+
+      const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+
+      /* Dice qué día de la semana es y, si se aleja del último reporte,
+         cuántos días quedarían sin cargar. No impide nada: un domingo sin
+         ventas es normal. Lo que no debe pasar es enterarse en julio. */
+      function revisarFecha() {
+        const caja = bodyRef && bodyRef.querySelector('#zAvisoFecha');
+        const campo = bodyRef && bodyRef.querySelector('[data-name="fecha"]');
+        if (!caja || !campo || !campo.value) return;
+        const d = new Date(campo.value + 'T12:00:00');
+        if (isNaN(d.getTime())) { caja.innerHTML = ''; return; }
+
+        const dia = DIAS[d.getDay()];
+        let extra = '';
+        if (ultimaFechaZ) {
+          const ant = new Date(ultimaFechaZ + 'T12:00:00');
+          const saltados = Math.round((d - ant) / 86400000) - 1;
+          if (saltados > 0) {
+            extra = ' · <strong>' + saltados + ' día' + (saltados === 1 ? '' : 's')
+              + ' sin reporte</strong> desde el ' + ant.getDate() + '/'
+              + String(ant.getMonth() + 1).padStart(2, '0')
+              + '. Si no se laboró, está bien; si falta cargarlo, cárgalo antes.';
+          } else if (saltados < 0) {
+            extra = ' · <strong>esta fecha es anterior</strong> al último reporte cargado.';
+          }
+        }
+        const alerta = extra !== '';
+        caja.innerHTML = '<div style="font-size:11.5px;line-height:1.5;padding:' + (alerta ? '8px 10px' : '2px 0')
+          + ';border-radius:6px;'
+          + (alerta ? 'background:var(--da-amber-50,#fff8e6);color:var(--da-amber-700,#9a6700);' : 'color:var(--fg-muted);')
+          + '">Es ' + dia + extra + '</div>';
       }
 
       window.openFormModal && window.openFormModal({
@@ -10460,8 +10507,13 @@
         autoClose: false,
         fields: [
           { name: 'fecha', label: 'Fecha del reporte Z', type: 'date', value: window.__hoyISO() },
+          { name: 'avisoFecha', col: 2, type: 'static', label: '', html: '<div id="zAvisoFecha"></div>' },
           { name: 'maquina', label: 'Serial de la máquina fiscal', upper: true, placeholder: 'Z7C0000000' },
-          { name: 'numeroZ', label: 'N° de reporte Z', placeholder: '0000' },
+          /* El número es correlativo de la MÁQUINA, no del calendario: si un
+             día no se labora, el siguiente reporte lleva el número siguiente
+             igual. Se dice aquí porque es la duda que surge sola al saltar
+             un domingo. */
+          { name: 'numeroZ', label: 'N° de reporte Z — correlativo de la máquina, no del calendario', placeholder: '0000' },
           { name: 'compDesde', label: 'Primer comprobante del día', placeholder: '00000000' },
           { name: 'compHasta', label: 'Último comprobante del día', placeholder: '00000000' },
           { name: 'avisoCero', col: 2, type: 'static', label: '', html:
@@ -10488,6 +10540,11 @@
           autonumerarZ();
           const maq = body.querySelector('[data-name="maquina"]');
           if (maq) maq.addEventListener('change', () => autonumerarZ(true));
+          /* Cambiar la fecha NO recalcula el número: el correlativo es de la
+             máquina. Solo se refresca el aviso. */
+          const fec = body.querySelector('[data-name="fecha"]');
+          if (fec) { fec.addEventListener('change', revisarFecha); fec.addEventListener('input', revisarFecha); }
+          revisarFecha();
           montarIgtf(body);
         },
         onSave: (v) => {
@@ -10587,9 +10644,13 @@
             // La tasa NO se limpia: quien cobra en divisas lo hace todos los
             // días, y volver a elegir 3% en cada reporte es trabajo de más.
             // La fecha avanza un día: un reporte Z es de una jornada.
-            const d = new Date(fp[0] + '-' + fp[1] + '-' + fp[2] + 'T12:00:00');
+            /* El día siguiente es una PROPUESTA. Si no se laboró, se cambia
+               a mano y el número no se mueve: son cosas independientes. */
+            ultimaFechaZ = fp[0] + '-' + fp[1] + '-' + fp[2];
+            const d = new Date(ultimaFechaZ + 'T12:00:00');
             d.setDate(d.getDate() + 1);
             poner('fecha', d.toISOString().slice(0, 10));
+            revisarFecha();
             const nzEl = bodyRef && bodyRef.querySelector('[data-name="numeroZ"]');
             if (nzEl) nzEl.focus();
           });
