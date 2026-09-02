@@ -42,7 +42,8 @@ alter table public.libro_fiscal
 
 comment on column public.libro_fiscal.notas_z is
   'Notas de crédito/débito que la máquina fiscal emitió dentro de este reporte Z. '
-  'Arreglo de objetos {n: n° de la nota, f: factura afectada, m: monto, t: NC|ND}. '
+  'Arreglo de objetos {n: n° de la nota, f: factura afectada, m: monto total, '
+  'i: IVA de la nota (opcional), t: NC|ND (NC si falta)}. '
   'ES INFORMATIVO: el monto YA está descontado del campo `total`, que viene neto '
   'de la máquina. No restar de nuevo — se descontaría dos veces.';
 

@@ -7133,6 +7133,17 @@
   .lf-notasz[open] > summary::before { transform: rotate(90deg); }
   .lf-notasz-cont { font-size: 11.5px; font-weight: var(--fw-regular); color: var(--accent-fg, var(--fg-muted)); margin-left: auto; }
   .lf-notasz .ic-row input { min-width: 0; }
+  /* Cinco columnas aqui: numero, factura, monto, IVA y el boton de quitar.
+     La reticula base de .ic-row trae cuatro y sirve al resto del sistema,
+     asi que se ajusta SOLO dentro de este bloque. */
+  .lf-notasz .ic-head, .lf-notasz .ic-row {
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr) 36px;
+  }
+  @media (max-width: 640px) {
+    .lf-notasz .ic-head { display: none; }
+    .lf-notasz .ic-row { grid-template-columns: 1fr 1fr; gap: 6px; }
+    .lf-notasz .ic-row .nz-del { grid-column: 1 / -1; }
+  }
   .fm-numbox-sum-row.lf-check small { font-weight: 400; color: var(--fg-muted); }
   .fm-numbox-sum-row.lf-check input {
     width: 130px; height: 30px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm);

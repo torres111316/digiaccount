@@ -37,6 +37,30 @@
     return Math.abs(Number(fila && fila[campo || 'total']) || 0) * window.__signoDoc(fila);
   };
 
+  /* Los números de nota de un reporte Z, para las columnas «N° N.C.» y
+     «N° N.D.» de la tabla de máquina fiscal — que existían en el encabezado
+     desde el principio y se pintaban vacías.
+
+     Global, y no dentro del módulo del libro, porque la llaman DOS módulos
+     distintos: el que pinta la tabla y el que arma la exportación. La
+     primera versión vivía en uno solo y desde el otro habría reventado con
+     un ReferenceError al exportar — un error que la sintaxis no delata y
+     que solo aparece al recorrer ese camino.
+
+     Trae su propio formateo de número: `fmtF` también es local de cada
+     módulo y no se puede tomar prestado. */
+  window.__notasZTxt = function (fila, tipo) {
+    const bs = (n) => Number(n || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const arr = Array.isArray(fila && fila.notas_z) ? fila.notas_z : [];
+    const suyas = arr.filter((x) => ((x && x.t) || 'NC').toUpperCase() === String(tipo || 'NC').toUpperCase());
+    if (!suyas.length) return { txt: '', det: '' };
+    return {
+      txt: suyas.map((x) => x.n).join(', '),
+      det: suyas.map((x) => x.n + (x.f ? ' s/factura ' + x.f : '') + ' · Bs ' + bs(Math.abs(Number(x.m) || 0))
+        + (Number(x.i) > 0 ? ' (IVA ' + bs(Math.abs(Number(x.i))) + ')' : '')).join('  |  '),
+    };
+  };
+
   // Fecha de HOY en formato YYYY-MM-DD (hora LOCAL, para inputs type=date)
   window.__hoyISO = function () {
     const d = new Date();
@@ -9125,7 +9149,7 @@
         const tot = Number(r.total) || 0, ex = Number(r.exento) || 0, base = Number(r.base) || 0, iva = Number(r.iva) || 0, igtf = Number(r.igtf) || 0;
         return '<tr><td>' + (i + 1) + '</td><td>' + (r.fecha || '') + '</td><td>' + (r.maquina_fiscal || '') + '</td>'
           + '<td>' + (r.numero_zeta || '') + '</td><td>' + (r.comprobante_desde || '') + '</td><td>' + (r.comprobante_hasta || '') + '</td>'
-          + '<td>' + esc(notasZTxt(r, 'ND').txt) + '</td><td>' + esc(notasZTxt(r, 'NC').txt) + '</td>'
+          + '<td>' + esc(window.__notasZTxt(r, 'ND').txt) + '</td><td>' + esc(window.__notasZTxt(r, 'NC').txt) + '</td>'
           + '<td class="num">' + fmtF(tot) + '</td><td class="num">' + fmtF(ex) + '</td><td class="num">' + fmtF(base) + '</td>'
           + '<td class="num">' + fmtF(iva) + '</td><td class="num">' + fmtF(igtf) + '</td></tr>';
       }).join('');
@@ -10274,31 +10298,18 @@
        Va vacío por defecto y en un acordeón cerrado: la inmensa mayoría de
        los días no hay devoluciones, y un formulario que pide todos los días
        algo que casi nunca pasa termina ignorándose. */
-    /* Los números de nota de un reporte Z, para las columnas «N° N.C.» y
-       «N° N.D.» de la tabla — que existían en el encabezado desde el
-       principio y se pintaban vacías. El detalle completo (factura afectada
-       y monto) va en el `title`, para no ensanchar una tabla que ya pide
-       1360px. */
-    function notasZTxt(r, tipo) {
-      const arr = Array.isArray(r && r.notas_z) ? r.notas_z : [];
-      const míos = arr.filter((x) => ((x && x.t) || 'NC').toUpperCase() === tipo);
-      if (!míos.length) return { txt: '', det: '' };
-      return {
-        txt: míos.map((x) => x.n).join(', '),
-        det: míos.map((x) => x.n + (x.f ? ' s/factura ' + x.f : '') + ' · Bs ' + fmtF(Math.abs(Number(x.m) || 0))).join('  |  '),
-      };
-    }
-
     function notasZHTML() {
       return '<details class="lf-notasz" id="lfNotasZ">'
         + '<summary>Notas de crédito o débito emitidas en este Z '
         + '<span class="lf-notasz-cont" id="lfNotasCont"></span></summary>'
         + '<div class="lf-reng" style="margin-top:8px;">'
-        + '<div class="ic-head"><span>N° de la nota</span><span>Factura afectada</span><span>Monto (Bs)</span><span></span></div>'
+        + '<div class="ic-head"><span>N° de la nota</span><span>Factura afectada</span><span>Monto total (Bs)</span><span>IVA (Bs)</span><span></span></div>'
         + '<div id="lfNotasRows"></div>'
         + '<button type="button" class="btn btn-ghost" id="lfNotasAdd" style="height:30px;font-size:12px;margin-top:2px;">'
         + '<i data-lucide="plus" style="width:14px;height:14px;"></i> Agregar nota</button>'
-        + '<div class="lf-reng-hint"><strong>El monto ya está descontado del total del día.</strong> '
+        + '<div class="lf-reng-hint">El <strong>IVA</strong> es opcional: sirve para responder cuánto débito fiscal se reversó, '
+        + 'si alguna vez lo preguntan. Una devolución de mercancía exenta no lleva. '
+        + '<strong>El monto ya está descontado del total del día.</strong> '
         + 'La máquina lo resta antes de imprimir el Z, así que esto NO se vuelve a restar: '
         + 'queda para poder cuadrar el libro contra la cinta.</div>'
         + '</div></details>';
@@ -10329,6 +10340,7 @@
         r.innerHTML = '<input class="nz-num" type="text" placeholder="N° de la nota" value="' + esc((d && d.n) || '') + '">'
           + '<input class="nz-fact" type="text" placeholder="N° de factura" value="' + esc((d && d.f) || '') + '">'
           + '<input class="nz-monto" type="number" step="0.01" placeholder="0,00" value="' + esc(d && d.m != null ? String(d.m) : '') + '">'
+          + '<input class="nz-iva" type="number" step="0.01" placeholder="0,00" value="' + esc(d && d.i != null ? String(d.i) : '') + '">'
           + '<button type="button" class="btn btn-ghost nz-del" title="Quitar nota"><i data-lucide="x" style="width:14px;height:14px;"></i></button>';
         cont.appendChild(r);
         r.querySelectorAll('input').forEach((i) => i.addEventListener('input', resumen));
@@ -10353,10 +10365,15 @@
           cont.querySelectorAll('.ic-row').forEach((f) => {
             const n = (f.querySelector('.nz-num').value || '').trim();
             if (!n) return;   // sin número no es una nota, es una fila a medio llenar
+            const iva = Math.abs(parseFloat(f.querySelector('.nz-iva').value) || 0);
             out.push({
               n: n,
               f: (f.querySelector('.nz-fact').value || '').trim() || null,
               m: Math.abs(parseFloat(f.querySelector('.nz-monto').value) || 0),
+              /* El IVA queda fuera si es cero: una devolución de mercancía
+                 exenta no lo lleva, y guardar un 0 haría creer que se
+                 escribió y daba cero. */
+              i: iva > 0 ? iva : undefined,
             });
           });
           return out.length ? out : null;
@@ -11293,7 +11310,7 @@
             + '<td class="mono">' + esc(r.comprobante_desde || '') + '</td>'
             + '<td class="mono">' + esc(r.comprobante_hasta || '') + '</td>'
             + (function () {
-              const nd = notasZTxt(r, 'ND'), nc = notasZTxt(r, 'NC');
+              const nd = window.__notasZTxt(r, 'ND'), nc = window.__notasZTxt(r, 'NC');
               return '<td class="ctr mono"' + (nd.det ? ' title="' + esc(nd.det) + '"' : '') + '>' + esc(nd.txt) + '</td>'
                 + '<td class="ctr mono"' + (nc.det ? ' title="' + esc(nc.det) + '"' : '') + '>' + esc(nc.txt) + '</td>';
             })()
