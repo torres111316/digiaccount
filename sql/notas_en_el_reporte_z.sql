@@ -25,6 +25,15 @@
 -- a cambio de nada. El sistema ya guarda así los renglones de una factura y
 -- las líneas de un asiento.
 --
+-- POR QUÉ UN DISPARADOR Y NO UN CHECK PARA EL CONTENIDO
+-- La primera versión validaba cada elemento dentro de un `check` con un
+-- `not exists (select ...)`, y Postgres lo rechaza:
+--     ERROR 0A000: cannot use subquery in check constraint
+-- Un CHECK solo admite expresiones sobre la fila. Lo que se puede decir sin
+-- subconsulta —que sea un arreglo, que solo un Z las traiga— se queda en
+-- CHECK; el recorrido elemento por elemento pasa a un disparador, que
+-- además puede decir CUÁL nota está mal y no solo que algo lo está.
+--
 -- Idempotente. No borra ni modifica ningún dato.
 -- =============================================================
 
@@ -37,34 +46,18 @@ comment on column public.libro_fiscal.notas_z is
   'ES INFORMATIVO: el monto YA está descontado del campo `total`, que viene neto '
   'de la máquina. No restar de nuevo — se descontaría dos veces.';
 
-/* La forma se valida en la base. Un jsonb sin regla acepta cualquier cosa, y
-   lo que aquí se guarda mal no da un error visible: da un libro que no se
-   puede reconciliar el día que hace falta.
 
-   Se exige que sea un arreglo y que cada elemento traiga su número de nota y
-   su monto. La factura afectada se pide en la pantalla pero no se exige aquí:
-   una nota de la máquina puede referirse a un comprobante que ya no se
-   ubique, y es peor perder el registro que guardarlo incompleto. */
+-- -------------------------------------------------------------
+-- 1) LO QUE SÍ CABE EN UN CHECK: la forma de afuera.
+-- -------------------------------------------------------------
 alter table public.libro_fiscal drop constraint if exists libro_notas_z_chk;
 alter table public.libro_fiscal
-  add constraint libro_notas_z_chk check (
-    notas_z is null
-    or (
-      jsonb_typeof(notas_z) = 'array'
-      and not exists (
-        select 1
-          from jsonb_array_elements(notas_z) as e
-         where jsonb_typeof(e) <> 'object'
-            or coalesce(btrim(e ->> 'n'), '') = ''
-            or (e ->> 'm') is null
-            or (e ->> 'm') !~ '^-?[0-9]+(\.[0-9]+)?$'
-      )
-    )
-  );
+  add constraint libro_notas_z_chk
+  check (notas_z is null or jsonb_typeof(notas_z) = 'array');
 
 /* Solo un reporte Z puede traer notas dentro. Una factura suelta que se
    corrige lleva su propia nota como documento aparte, con su renglón y su
-   tipo_doc = NC — que es lo que el resto del sistema ya sabe sumar. */
+   tipo_doc = NC — que es lo que el resto del sistema ya sabe restar. */
 alter table public.libro_fiscal drop constraint if exists libro_notas_z_solo_zeta_chk;
 alter table public.libro_fiscal
   add constraint libro_notas_z_solo_zeta_chk check (
@@ -72,6 +65,65 @@ alter table public.libro_fiscal
     or jsonb_array_length(notas_z) = 0
     or coalesce(btrim(numero_zeta), '') <> ''
   );
+
+
+-- -------------------------------------------------------------
+-- 2) EL CONTENIDO, NOTA POR NOTA.
+--
+-- Se exige número y monto. La factura afectada se pide en la pantalla pero
+-- no se exige aquí: una nota de la máquina puede referirse a un comprobante
+-- que ya no se ubique, y es peor perder el registro que no guardarlo.
+--
+-- El mensaje dice CUÁL nota está mal. Un «datos inválidos» a secas obliga a
+-- adivinar, y quien carga treinta reportes al mes no debería adivinar.
+-- -------------------------------------------------------------
+create or replace function public.validar_notas_z()
+returns trigger
+language plpgsql
+as $$
+declare
+  e     jsonb;
+  i     int := 0;
+  monto text;
+begin
+  if new.notas_z is null or jsonb_array_length(new.notas_z) = 0 then
+    return new;
+  end if;
+
+  for e in select * from jsonb_array_elements(new.notas_z) loop
+    i := i + 1;
+
+    if jsonb_typeof(e) <> 'object' then
+      raise exception 'La nota % del reporte Z no tiene la forma esperada.', i
+        using errcode = '23514';
+    end if;
+
+    if coalesce(btrim(e ->> 'n'), '') = '' then
+      raise exception 'La nota % del reporte Z no tiene número. Sin número no se puede ubicar en la cinta.', i
+        using errcode = '23514';
+    end if;
+
+    monto := e ->> 'm';
+    if monto is null or monto !~ '^-?[0-9]+(\.[0-9]+)?$' then
+      raise exception 'La nota % (%) no tiene un monto válido.', i, e ->> 'n'
+        using errcode = '23514';
+    end if;
+
+    if coalesce(upper(btrim(e ->> 't')), 'NC') not in ('NC', 'ND') then
+      raise exception 'La nota % (%) tiene un tipo que no es NC ni ND.', i, e ->> 'n'
+        using errcode = '23514';
+    end if;
+  end loop;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_validar_notas_z on public.libro_fiscal;
+create trigger trg_validar_notas_z
+  before insert or update of notas_z on public.libro_fiscal
+  for each row execute function public.validar_notas_z();
+
 
 -- Para buscar «en qué Z quedó la nota tal».
 create index if not exists libro_notas_z_idx
@@ -82,28 +134,45 @@ create index if not exists libro_notas_z_idx
 -- -------------------------------------------------------------
 -- COMPROBACIÓN (descomentar y correr)
 --
--- 1) ¿Quedó la columna con su regla?
+-- 1) ¿Quedó la columna?
 -- select column_name, data_type
 --   from information_schema.columns
 --  where table_schema = 'public' and table_name = 'libro_fiscal'
 --    and column_name = 'notas_z';
 --
--- 2) ¿La base rechaza una nota sin número? (DEBE dar error)
--- update public.libro_fiscal set notas_z = '[{"f":"1234","m":100}]'::jsonb
---  where numero_zeta is not null limit 1;
---   → esperado: viola libro_notas_z_chk
+-- 2) ¿Quedaron las dos reglas y el disparador?
+-- select conname from pg_constraint
+--  where conrelid = 'public.libro_fiscal'::regclass
+--    and conname like 'libro_notas_z%';
+-- select tgname from pg_trigger
+--  where tgrelid = 'public.libro_fiscal'::regclass and not tgisinternal;
 --
--- 3) Los reportes Z que traen notas, con su detalle desplegado:
+-- 3) ¿La base rechaza una nota SIN NÚMERO? (DEBE dar error y decir cuál)
+-- update public.libro_fiscal set notas_z = '[{"f":"1234","m":100}]'::jsonb
+--  where id = (select id from public.libro_fiscal
+--               where numero_zeta is not null limit 1);
+--   → esperado: «La nota 1 del reporte Z no tiene número.»
+--
+-- 4) ¿Y una válida pasa?
+-- update public.libro_fiscal set notas_z = '[{"n":"NC-1","f":"1234","m":100}]'::jsonb
+--  where id = (select id from public.libro_fiscal
+--               where numero_zeta is not null limit 1);
+--   → esperado: Success. Despues devolverla a null:
+-- update public.libro_fiscal set notas_z = null
+--  where id = (select id from public.libro_fiscal
+--               where numero_zeta is not null limit 1);
+--
+-- 5) Los reportes Z que traen notas, con su detalle desplegado:
 -- select lf.fecha, lf.numero_zeta, lf.total as neto_del_dia,
 --        e ->> 'n' as nota, e ->> 'f' as factura_afectada, e ->> 'm' as monto
 --   from public.libro_fiscal lf,
 --        lateral jsonb_array_elements(coalesce(lf.notas_z, '[]'::jsonb)) as e
 --  order by lf.periodo, lf.fecha;
 --
--- 4) Cuánto se devolvió en un período (informativo, NO se resta del libro):
+-- 6) Cuánto se devolvió en un período (informativo, NO se resta del libro):
 -- select lf.periodo,
---        count(*)                                        as notas,
---        round(sum((e ->> 'm')::numeric), 2)             as devuelto
+--        count(*)                            as notas,
+--        round(sum((e ->> 'm')::numeric), 2) as devuelto
 --   from public.libro_fiscal lf,
 --        lateral jsonb_array_elements(coalesce(lf.notas_z, '[]'::jsonb)) as e
 --  where lf.empresa_id = 'PON-AQUI-EL-ID'
