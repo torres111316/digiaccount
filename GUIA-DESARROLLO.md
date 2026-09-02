@@ -141,6 +141,36 @@ Por orden de importancia:
 
 ---
 
+## 6 bis. Revisiones antes de desplegar
+
+Dos auditores que se corren sobre `assets/app.js`. Ninguno reemplaza probar
+la pantalla, pero cazan dos clases de fallo que la pantalla NO delata hasta
+que ya es tarde.
+
+```
+node herramientas/auditar-alcance.js     # llamadas que cruzan de módulo
+node herramientas/auditar-columnas.js    # columnas de tabla que nadie llena
+node --check assets/app.js               # sintaxis
+```
+
+**`auditar-alcance.js`** — `app.js` está partido en IIFEs y cada una es un
+alcance cerrado. Llamar desde una a una función declarada en otra compila
+perfecto y revienta al ejecutar con `ReferenceError`. **`node --check` no lo
+ve**: la sintaxis es correcta, y el fallo solo aparece cuando alguien recorre
+ese camino — que puede ser semanas después y delante de un cliente. Pasó dos
+veces en un mismo día (30/08/2026). La forma correcta de cruzar de un módulo
+a otro es `window.__loQueSea`.
+
+**`auditar-columnas.js`** — una tabla puede declarar columnas en el
+encabezado que el cuerpo nunca llena. No da error: sale una columna en
+blanco y nadie la mira. `N° N.D.` y `N° N.C.` del libro de máquina fiscal
+estuvieron así desde el principio.
+
+**Regla al tocar un auditor:** se siembra el fallo en una copia y se
+comprueba que lo caza, ANTES de creerle. Las cuatro primeras versiones del
+de alcance daban verde con el fallo delante. Un detector que nunca ha
+detectado nada es peor que no tenerlo: da confianza falsa.
+
 ## 7. ¿Por dónde empezamos?
 
 **Fase 0 y Fase 1.** Crear las cuentas, subir a GitHub, y montar la base de datos en Supabase con su modelo y RLS. A partir de ahí, todo lo demás se conecta.
