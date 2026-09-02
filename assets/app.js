@@ -2104,6 +2104,32 @@
       return (data || []).filter((x) => !nr || normRif(x.tercero_rif || '') === nr);
     };
 
+    /* Qué retenciones ya se cargaron contra los comprobantes de un día.
+
+       `__retencionesDeFactura` busca un número exacto y aquí hace falta un
+       RANGO: el Z dice «del 00001234 al 00001289» y la retención apunta a
+       uno de ellos. Se comparan por su valor numérico y no como texto,
+       porque los comprobantes vienen rellenos de ceros y '00001290' es
+       menor que '999' comparando letra por letra. */
+    window.__retencionesDelRango = async (desde, hasta, direccion) => {
+      const num = (x) => {
+        const d = String(x || '').replace(/[^0-9]/g, '');
+        return d ? parseInt(d, 10) : null;
+      };
+      const a = num(desde), b = num(hasta);
+      if (a == null || b == null || !window.sb || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) return [];
+      const lo = Math.min(a, b), hi = Math.max(a, b);
+      const { data, error } = await window.sb.from('retenciones')
+        .select('id, tipo, direccion, comprobante, monto, factura, tercero_nombre, tercero_rif, fecha')
+        .eq('empresa_id', window.__EMPRESA_ACTIVA.id)
+        .eq('direccion', direccion || 'sufrida');
+      if (error) { console.warn('[DigiAccount] No se pudieron leer las retenciones del día:', error.message); return []; }
+      return (data || []).filter((x) => {
+        const n = num(x.factura);
+        return n != null && n >= lo && n <= hi;
+      });
+    };
+
     // Comprobante de retención: clona el template OFICIAL completo (#compIva/#compIslr)
     // y lo llena con datos reales (firmas, partes, base legal SNAT/2025/000054 o Decreto 1.808).
     /* Con `destino` llena ESE comprobante y no imprime; sin él, clona la
@@ -11640,6 +11666,23 @@
           { name: 'compHasta', label: 'Último comprobante del día', value: r.comprobante_hasta || '' },
           { name: 'numResumen', col: 2, type: 'static', label: '', html: montosHTML() },
           { name: 'notasZ', col: 2, type: 'static', label: '', html: notasZHTML() },
+          /* ATAJO A RETENCIONES, igual que en el formulario de factura.
+
+             La máquina fiscal imprime facturas y admite el RIF del comprador,
+             así que un cliente especial puede retener sobre una venta que
+             quedó dentro de este Z. La retención va contra ESA factura, no
+             contra el reporte. */
+          { name: 'atajoRetZ', col: 2, type: 'static', label: '', html:
+            '<div id="zRetBox" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;border-top:1px solid var(--border-default);padding-top:12px;">'
+            + '<button type="button" class="btn btn-ghost" id="btnRetDeZeta" style="height:32px;font-size:12px;">'
+            + '<i data-lucide="percent"></i> Registrar una retención de este día</button>'
+            + '<span style="font-size:11px;color:var(--fg-muted);line-height:1.5;">'
+            + (String(r.comprobante_desde || '').trim() && String(r.comprobante_hasta || '').trim()
+                ? 'Comprobantes del día: <strong>' + esc(r.comprobante_desde) + '</strong> al <strong>' + esc(r.comprobante_hasta) + '</strong>. '
+                : '')
+            + 'Va contra <strong>una factura</strong> de la máquina, no contra el reporte: escribe el N° de comprobante que el cliente retuvo. '
+            + 'La base no se rellena a propósito — el IVA que ves aquí es el del día entero, no el de esa factura.'
+            + '</span></div>' },
         ].concat(camposIgtf(Number(r.igtf) || 0, 'Base: cuánto del día se cobró así (Bs)'))
           .concat(campoSucursal(r.sucursal_id)),
         afterRender: (body) => {
@@ -11647,6 +11690,44 @@
           montosEd = montarMontos(body, r);
           notasEd = montarNotasZ(body, r);
           montarIgtf(body);
+
+          /* Lo que YA está cargado contra los comprobantes de este día se
+             dice antes de que nadie abra nada. Es lo que evita la retención
+             cargada dos veces, que es el error que de verdad pasa. */
+          const btnRZ = body.querySelector('#btnRetDeZeta');
+          if (btnRZ && window.__retencionesDelRango) (async () => {
+            const yaHay = await window.__retencionesDelRango(r.comprobante_desde, r.comprobante_hasta, 'sufrida');
+            if (!yaHay.length) return;
+            const av = document.createElement('div');
+            av.style.cssText = 'font-size:11.5px;margin-top:8px;padding:8px 10px;border-radius:6px;width:100%;'
+              + 'background:var(--da-amber-50,#fff8e6);color:var(--da-amber-700,#9a6700);line-height:1.55;';
+            av.innerHTML = 'Este día ya tiene <strong>' + yaHay.length + ' retenci'
+              + (yaHay.length === 1 ? 'ón' : 'ones') + '</strong> cargada'
+              + (yaHay.length === 1 ? '' : 's') + ': '
+              + yaHay.map((x) => esc((x.tipo || '').toUpperCase() + ' s/factura ' + (x.factura || '?')
+                  + ' · Bs ' + fmtF(Number(x.monto) || 0))).join(' · ');
+            const caja = body.querySelector('#zRetBox');
+            if (caja) caja.appendChild(av);
+          })();
+
+          if (btnRZ) btnRZ.addEventListener('click', () => {
+            if (!window.__registrarRetencion) {
+              if (window.toast) window.toast('No pude abrir el registro de retenciones. Ve a Fiscal → Retenciones y regístrala desde ahí.', 'error');
+              return;
+            }
+            /* Se manda la fecha del Z y la dirección; lo demás lo escribe
+               quien tiene el comprobante delante. La base NO se manda: ver
+               el comentario del bloque. */
+            const p = String(r.fecha || '').split('/');
+            const iso = p.length === 3
+              ? ('20' + p[2].slice(-2) + '-' + p[1].padStart(2, '0') + '-' + p[0].padStart(2, '0'))
+              : null;
+            const datos = { direccion: 'Sufrida (un cliente me retiene)' };
+            if (iso) datos.fechaFactura = iso;
+            const cancelar = document.getElementById('fmCancel');
+            if (cancelar) cancelar.click();
+            setTimeout(() => window.__registrarRetencion(datos), 150);
+          });
         },
         // Recibe el cierre del formulario: se cierra al confirmar el borrado,
         // no antes, para que un error deje el cuadro abierto con su aviso.
