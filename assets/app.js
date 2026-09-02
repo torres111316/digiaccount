@@ -15,6 +15,28 @@
     } catch (e) { return false; }
   };
 
+  /* EL SIGNO DE UN DOCUMENTO EN EL LIBRO FISCAL.
+
+     Una nota de CRÉDITO disminuye lo facturado; una de DÉBITO lo aumenta,
+     igual que una factura. Ningún documento se imprime en negativo, así que
+     el signo no vive en el monto guardado: vive en el TIPO de documento.
+
+     `montoDoc` devuelve el monto ya con su signo, tomando el valor absoluto
+     de lo guardado. Así quien carga transcribe la nota tal como la ve —en
+     positivo— y las filas viejas que alguien haya compensado a mano con un
+     menos quedan bien igual.
+
+     Vive aquí arriba, suelto y global, porque lo usan los SIETE sitios que
+     suman el libro y están repartidos en módulos distintos. Que un octavo
+     aparezca mañana y vuelva a decidirlo por su cuenta es justo lo que
+     produjo este defecto. */
+  window.__signoDoc = function (fila) {
+    return String((fila && fila.tipo_doc) || '').trim().toUpperCase() === 'NC' ? -1 : 1;
+  };
+  window.__montoDoc = function (fila, campo) {
+    return Math.abs(Number(fila && fila[campo || 'total']) || 0) * window.__signoDoc(fila);
+  };
+
   // Fecha de HOY en formato YYYY-MM-DD (hora LOCAL, para inputs type=date)
   window.__hoyISO = function () {
     const d = new Date();
@@ -5649,7 +5671,7 @@
       }
       // Ventas: libro fiscal en modo libro; recibos en modo recibos
       const ventas = modoLibro
-        ? ventasLibro.reduce((s, f) => s + (Number(f.total) || 0), 0)
+        ? ventasLibro.reduce((s, f) => s + window.__montoDoc(f), 0)
         : recibos.reduce((s, f) => s + (Number(f.total) || 0), 0);
       const ventasCount = modoLibro ? ventasLibro.length : recibos.length;
       const ingresos = movs.filter((m) => m.tipo === 'ingreso').reduce((s, m) => s + (Number(m.monto) || 0), 0);
@@ -5683,7 +5705,7 @@
       const mesKey = (r) => r.periodo || (String(r.fecha || '').split('/').length === 3 ? ('20' + r.fecha.split('/')[2] + '-' + String(r.fecha.split('/')[1]).padStart(2, '0')) : '');
       const serieMensual = (filas) => {
         const m = {};
-        filas.forEach((r) => { const k = mesKey(r); if (k) m[k] = (m[k] || 0) + (Number(r.total) || 0); });
+        filas.forEach((r) => { const k = mesKey(r); if (k) m[k] = (m[k] || 0) + window.__montoDoc(r); });
         return Object.keys(m).sort().slice(-12).map((k) => m[k]);
       };
       // Construye el path de una sparkline (área + línea) a partir de valores
@@ -9028,7 +9050,10 @@
       let tTot = 0, tEx = 0, tBase = 0, tIva = 0, tIgtf = 0;
       arr.forEach((r, i) => {
         const anulada = /anulada/i.test(r.tercero_nombre || '');
-        const tot = Number(r.total) || 0, ex = Number(r.exento) || 0, base = Number(r.base) || 0, iva = Number(r.iva) || 0, igtf = Number(r.igtf) || 0, alic = Number(r.alicuota) || 0;
+        /* Los montos salen ya con el signo del documento: una nota de
+           crédito se muestra en negativo y resta del total, que es como se
+           lee un libro de ventas. */
+        const tot = window.__montoDoc(r), ex = window.__montoDoc(r, 'exento'), base = window.__montoDoc(r, 'base'), iva = window.__montoDoc(r, 'iva'), igtf = window.__montoDoc(r, 'igtf'), alic = Number(r.alicuota) || 0;
         if (!anulada) { tTot += tot; tEx += ex; tBase += base; tIva += iva; tIgtf += igtf; }
         const fila = [i + 1, r.fecha || '', r.tercero_rif || '', anulada ? 'ANULADA' : (r.tercero_nombre || ''), r.numero_factura || '', r.numero_control || '', r.tipo_doc || (esCompra ? 'FC' : 'FV'), fmtF(tot), fmtF(ex), fmtF(base), (alic > 0 ? Math.round(alic * 100) + '%' : 'Ex.'), fmtF(iva)];
         if (!esCompra) fila.push(fmtF(igtf));
@@ -9077,7 +9102,10 @@
       let tTot = 0, tEx = 0, tBase = 0, tIva = 0, tIgtf = 0;
       const filas = arr.map((r, i) => {
         const anulada = /anulada/i.test(r.tercero_nombre || '');
-        const tot = Number(r.total) || 0, ex = Number(r.exento) || 0, base = Number(r.base) || 0, iva = Number(r.iva) || 0, igtf = Number(r.igtf) || 0, alic = Number(r.alicuota) || 0;
+        /* Los montos salen ya con el signo del documento: una nota de
+           crédito se muestra en negativo y resta del total, que es como se
+           lee un libro de ventas. */
+        const tot = window.__montoDoc(r), ex = window.__montoDoc(r, 'exento'), base = window.__montoDoc(r, 'base'), iva = window.__montoDoc(r, 'iva'), igtf = window.__montoDoc(r, 'igtf'), alic = Number(r.alicuota) || 0;
         if (!anulada) { tTot += tot; tEx += ex; tBase += base; tIva += iva; tIgtf += igtf; }
         /* Con varias alícuotas en la misma factura un solo porcentaje mentiría:
            se dice "Varias" y el desglose vive en las columnas del registro. */
@@ -11072,11 +11100,11 @@
       const s = { tot: 0, ex: 0, base: 0, iva: 0, igtf: 0 };
       (filas || []).forEach((r) => {
         if (/anulada/i.test(r.tercero_nombre || '')) return;
-        s.tot += Number(r.total) || 0;
-        s.ex += Number(r.exento) || 0;
-        s.base += Number(r.base) || 0;
-        s.iva += Number(r.iva) || 0;
-        s.igtf += Number(r.igtf) || 0;
+        s.tot += window.__montoDoc(r);
+        s.ex += window.__montoDoc(r, 'exento');
+        s.base += window.__montoDoc(r, 'base');
+        s.iva += window.__montoDoc(r, 'iva');
+        s.igtf += window.__montoDoc(r, 'igtf');
       });
       return s;
     }
@@ -11322,7 +11350,7 @@
       let base16 = 0, iva16 = 0, base8 = 0, iva8 = 0, baseAd = 0, ivaAd = 0;
       arr.forEach((r) => {
         if (/anulada/i.test(r.tercero_nombre || '')) return; // una factura ANULADA no suma al período
-        const tot = Number(r.total) || 0, ex = Number(r.exento) || 0, base = Number(r.base) || 0, iva = Number(r.iva) || 0, igtf = Number(r.igtf) || 0, alic = Number(r.alicuota) || 0;
+        const tot = window.__montoDoc(r), ex = window.__montoDoc(r, 'exento'), base = window.__montoDoc(r, 'base'), iva = window.__montoDoc(r, 'iva'), igtf = window.__montoDoc(r, 'igtf'), alic = Number(r.alicuota) || 0;
         tTot += tot; tEx += ex; tBase += base; tIva += iva; tIgtf += igtf;
         /* El reparto por renglón sale de las columnas del desglose. Si la fila es
            anterior al desglose y quedó sin migrar, se reparte por su alícuota
@@ -12030,7 +12058,10 @@
       if (e1) { toast('No se pudo leer el libro: ' + e1.message, 'error'); return; }
       const mes = filas || [];
       const v = { tot: 0, be: 0, iva: 0 }, c = { tot: 0, be: 0, iva: 0 };
-      mes.forEach((r) => { const o = r.tipo === 'venta' ? v : c; o.tot += Number(r.total) || 0; o.be += (Number(r.base) || 0) + (Number(r.exento) || 0); o.iva += Number(r.iva) || 0; });
+      /* El asiento del mes y la liquidación de IVA salen de aquí. Si una
+         nota de crédito sumara en vez de restar, el débito fiscal quedaría
+         inflado y el asiento arrastraría el error a la contabilidad. */
+      mes.forEach((r) => { const o = r.tipo === 'venta' ? v : c; o.tot += window.__montoDoc(r); o.be += window.__montoDoc(r, 'base') + window.__montoDoc(r, 'exento'); o.iva += window.__montoDoc(r, 'iva'); });
       const { data: rets } = await window.__sbAll((q) => q.eq('empresa_id', empId).eq('direccion', 'sufrida').eq('tipo', 'iva'), 'retenciones', 'monto,fecha,periodo');
       const retMes = (rets || []).filter((r) => r.periodo ? r.periodo === perDecl : String(r.fecha || '').endsWith(sufPer)).reduce((s, r) => s + (Number(r.monto) || 0), 0);
       const r2c = (x) => Math.round(x * 100) / 100;
