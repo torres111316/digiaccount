@@ -9119,15 +9119,17 @@
       const th = '<tr><th>N°</th><th>Fecha</th><th>RIF</th><th>' + (esCompra ? 'Proveedor' : 'Cliente') + '</th><th>Factura</th><th>Control</th><th>Doc</th><th>Total</th><th>Exento</th><th>Base</th><th>Alíc.</th><th>IVA</th>' + (esCompra ? '' : '<th>IGTF</th>') + '</tr>';
       // Las mismas columnas que la tabla de máquina fiscal en pantalla.
       const thZ = '<tr><th>N° Op.</th><th>Fecha</th><th>Máquina Fiscal</th><th>N° Zeta</th><th>Primer Comprob.</th><th>Último Comprob.</th>'
+        + '<th>N° N.D.</th><th>N° N.C.</th>'
         + '<th>Total Ventas (con IVA)</th><th>Ventas No Gravadas</th><th>Base Imponible</th><th>IVA</th><th>IGTF (3%)</th></tr>';
       const filasZ = arr.map((r, i) => {
         const tot = Number(r.total) || 0, ex = Number(r.exento) || 0, base = Number(r.base) || 0, iva = Number(r.iva) || 0, igtf = Number(r.igtf) || 0;
         return '<tr><td>' + (i + 1) + '</td><td>' + (r.fecha || '') + '</td><td>' + (r.maquina_fiscal || '') + '</td>'
           + '<td>' + (r.numero_zeta || '') + '</td><td>' + (r.comprobante_desde || '') + '</td><td>' + (r.comprobante_hasta || '') + '</td>'
+          + '<td>' + esc(notasZTxt(r, 'ND').txt) + '</td><td>' + esc(notasZTxt(r, 'NC').txt) + '</td>'
           + '<td class="num">' + fmtF(tot) + '</td><td class="num">' + fmtF(ex) + '</td><td class="num">' + fmtF(base) + '</td>'
           + '<td class="num">' + fmtF(iva) + '</td><td class="num">' + fmtF(igtf) + '</td></tr>';
       }).join('');
-      const footZ = '<tr class="libro-tot"><td colspan="6" style="text-align:right;">TOTALES DEL PERÍODO (' + arr.length + ' reportes Z)</td>'
+      const footZ = '<tr class="libro-tot"><td colspan="8" style="text-align:right;">TOTALES DEL PERÍODO (' + arr.length + ' reportes Z)</td>'
         + '<td class="num">' + fmtF(tTot) + '</td><td class="num">' + fmtF(tEx) + '</td><td class="num">' + fmtF(tBase) + '</td>'
         + '<td class="num">' + fmtF(tIva) + '</td><td class="num">' + fmtF(tIgtf) + '</td></tr>';
       const foot = '<tr class="libro-tot"><td colspan="7" style="text-align:right;">TOTALES DEL PERÍODO (' + arr.length + ' operaciones)</td><td class="num">' + fmtF(tTot) + '</td><td class="num">' + fmtF(tEx) + '</td><td class="num">' + fmtF(tBase) + '</td><td></td><td class="num">' + fmtF(tIva) + '</td>' + (esCompra ? '' : '<td class="num">' + fmtF(tIgtf) + '</td>') + '</tr>';
@@ -10263,6 +10265,105 @@
       return mejor ? mejor[1] + String(maxN + 1).padStart(mejor[2].length, '0') : '';
     }
 
+    /* LAS NOTAS QUE TRAE UN REPORTE Z.
+
+       Mismo patrón que los renglones de alícuota: una fila por nota, con su
+       número, la factura que afectó y el monto. Se reusa la retícula de
+       .ic-head/.ic-row, que ya tiene cuatro columnas.
+
+       Va vacío por defecto y en un acordeón cerrado: la inmensa mayoría de
+       los días no hay devoluciones, y un formulario que pide todos los días
+       algo que casi nunca pasa termina ignorándose. */
+    /* Los números de nota de un reporte Z, para las columnas «N° N.C.» y
+       «N° N.D.» de la tabla — que existían en el encabezado desde el
+       principio y se pintaban vacías. El detalle completo (factura afectada
+       y monto) va en el `title`, para no ensanchar una tabla que ya pide
+       1360px. */
+    function notasZTxt(r, tipo) {
+      const arr = Array.isArray(r && r.notas_z) ? r.notas_z : [];
+      const míos = arr.filter((x) => ((x && x.t) || 'NC').toUpperCase() === tipo);
+      if (!míos.length) return { txt: '', det: '' };
+      return {
+        txt: míos.map((x) => x.n).join(', '),
+        det: míos.map((x) => x.n + (x.f ? ' s/factura ' + x.f : '') + ' · Bs ' + fmtF(Math.abs(Number(x.m) || 0))).join('  |  '),
+      };
+    }
+
+    function notasZHTML() {
+      return '<details class="lf-notasz" id="lfNotasZ">'
+        + '<summary>Notas de crédito o débito emitidas en este Z '
+        + '<span class="lf-notasz-cont" id="lfNotasCont"></span></summary>'
+        + '<div class="lf-reng" style="margin-top:8px;">'
+        + '<div class="ic-head"><span>N° de la nota</span><span>Factura afectada</span><span>Monto (Bs)</span><span></span></div>'
+        + '<div id="lfNotasRows"></div>'
+        + '<button type="button" class="btn btn-ghost" id="lfNotasAdd" style="height:30px;font-size:12px;margin-top:2px;">'
+        + '<i data-lucide="plus" style="width:14px;height:14px;"></i> Agregar nota</button>'
+        + '<div class="lf-reng-hint"><strong>El monto ya está descontado del total del día.</strong> '
+        + 'La máquina lo resta antes de imprimir el Z, así que esto NO se vuelve a restar: '
+        + 'queda para poder cuadrar el libro contra la cinta.</div>'
+        + '</div></details>';
+    }
+
+    /* Monta el bloque y devuelve su API. `inicial` es la fila del libro (al
+       editar) o nada (al registrar). */
+    function montarNotasZ(body, inicial) {
+      const cont = body.querySelector('#lfNotasRows');
+      const det = body.querySelector('#lfNotasZ');
+      const cta = body.querySelector('#lfNotasCont');
+      if (!cont) return { leer: () => null };
+
+      function resumen() {
+        const filas = cont.querySelectorAll('.ic-row');
+        let n = 0, m = 0;
+        filas.forEach((f) => {
+          const num = (f.querySelector('.nz-num').value || '').trim();
+          if (!num) return;
+          n++; m += Math.abs(parseFloat(f.querySelector('.nz-monto').value) || 0);
+        });
+        if (cta) cta.textContent = n ? '· ' + n + ' nota' + (n === 1 ? '' : 's') + ' · Bs ' + fmtF(m) : '';
+      }
+
+      function agregar(d) {
+        const r = document.createElement('div');
+        r.className = 'ic-row';
+        r.innerHTML = '<input class="nz-num" type="text" placeholder="N° de la nota" value="' + esc((d && d.n) || '') + '">'
+          + '<input class="nz-fact" type="text" placeholder="N° de factura" value="' + esc((d && d.f) || '') + '">'
+          + '<input class="nz-monto" type="number" step="0.01" placeholder="0,00" value="' + esc(d && d.m != null ? String(d.m) : '') + '">'
+          + '<button type="button" class="btn btn-ghost nz-del" title="Quitar nota"><i data-lucide="x" style="width:14px;height:14px;"></i></button>';
+        cont.appendChild(r);
+        r.querySelectorAll('input').forEach((i) => i.addEventListener('input', resumen));
+        r.querySelector('.nz-del').addEventListener('click', () => { r.remove(); resumen(); });
+        if (window.lucide) window.lucide.createIcons();
+        return r;
+      }
+
+      const previas = (inicial && Array.isArray(inicial.notas_z)) ? inicial.notas_z : [];
+      previas.forEach(agregar);
+      if (previas.length && det) det.open = true;
+      resumen();
+
+      const add = body.querySelector('#lfNotasAdd');
+      if (add) add.addEventListener('click', () => { agregar(); resumen(); });
+
+      return {
+        /* Devuelve null si no se escribió ninguna: null y [] significan lo
+           mismo para la base, y null deja la columna limpia. */
+        leer: () => {
+          const out = [];
+          cont.querySelectorAll('.ic-row').forEach((f) => {
+            const n = (f.querySelector('.nz-num').value || '').trim();
+            if (!n) return;   // sin número no es una nota, es una fila a medio llenar
+            out.push({
+              n: n,
+              f: (f.querySelector('.nz-fact').value || '').trim() || null,
+              m: Math.abs(parseFloat(f.querySelector('.nz-monto').value) || 0),
+            });
+          });
+          return out.length ? out : null;
+        },
+      };
+    }
+
     function registrarZeta() {
       let bodyRef = null;
 
@@ -10309,6 +10410,7 @@
             + 'Si la jornada cerró <strong>sin ventas</strong> —falla de la impresora, un Z de prueba, un día sin operar— '
             + 'regístralo igual con sus montos en cero: lo que no puede quedar es un salto en el correlativo.</div>' },
           { name: 'numResumen', col: 2, type: 'static', label: '', html: montosHTML() },
+          { name: 'notasZ', col: 2, type: 'static', label: '', html: notasZHTML() },
           /* EL IGTF DE UN REPORTE Z NO SALE DEL TOTAL DEL DÍA.
 
              El Z es la suma de todas las facturas de la jornada, y el IGTF lo
@@ -10323,6 +10425,7 @@
         afterRender: (body) => {
           bodyRef = body;
           bodyRef.__montos = montarMontos(body);
+          bodyRef.__notas = montarNotasZ(body);
           autonumerarZ();
           const maq = body.querySelector('[data-name="maquina"]');
           if (maq) maq.addEventListener('change', () => autonumerarZ(true));
@@ -10379,6 +10482,9 @@
             numero_zeta: (v.numeroZ || '').trim(),
             comprobante_desde: (v.compDesde || '').trim() || null,
             comprobante_hasta: (v.compHasta || '').trim() || null,
+            /* Informativo: el total ya viene neto de la máquina. Guardarlo
+               aquí es lo que permite cuadrar el libro contra la cinta. */
+            notas_z: bodyRef && bodyRef.__notas ? bodyRef.__notas.leer() : null,
             exento: M.exento, base: M.base, alicuota: alic, iva: M.iva, igtf: igtf, total: M.total,
             base_gen: M.base_gen, iva_gen: M.iva_gen,
             base_red: M.base_red, iva_red: M.iva_red,
@@ -11186,7 +11292,11 @@
             + '<td class="ctr mono">' + esc(r.numero_zeta || '') + '</td>'
             + '<td class="mono">' + esc(r.comprobante_desde || '') + '</td>'
             + '<td class="mono">' + esc(r.comprobante_hasta || '') + '</td>'
-            + '<td class="ctr"></td><td class="ctr"></td>'
+            + (function () {
+              const nd = notasZTxt(r, 'ND'), nc = notasZTxt(r, 'NC');
+              return '<td class="ctr mono"' + (nd.det ? ' title="' + esc(nd.det) + '"' : '') + '>' + esc(nd.txt) + '</td>'
+                + '<td class="ctr mono"' + (nc.det ? ' title="' + esc(nc.det) + '"' : '') + '>' + esc(nc.txt) + '</td>';
+            })()
             + '<td class="num">' + fmtF(Number(r.total) || 0) + '</td>'
             + '<td class="num">' + fmtF(Number(r.exento) || 0) + '</td>'
             + '<td class="num">' + fmtF(Number(r.base) || 0) + '</td>'
@@ -11501,7 +11611,7 @@
        Lleva los mismos campos que el de registrar, para que quien corrige vea
        lo mismo que vio al cargar. */
     function editarZeta(r) {
-      let montosEd = null;
+      let montosEd = null, notasEd = null;
       window.openFormModal && window.openFormModal({
         title: 'Editar reporte Z ' + (r.numero_zeta || ''),
         saveLabel: 'Guardar cambios',
@@ -11512,11 +11622,13 @@
           { name: 'compDesde', label: 'Primer comprobante del día', value: r.comprobante_desde || '' },
           { name: 'compHasta', label: 'Último comprobante del día', value: r.comprobante_hasta || '' },
           { name: 'numResumen', col: 2, type: 'static', label: '', html: montosHTML() },
+          { name: 'notasZ', col: 2, type: 'static', label: '', html: notasZHTML() },
         ].concat(camposIgtf(Number(r.igtf) || 0, 'Base: cuánto del día se cobró así (Bs)'))
           .concat(campoSucursal(r.sucursal_id)),
         afterRender: (body) => {
           // Con la fila cargada: si trae varias alícuotas salen sus renglones.
           montosEd = montarMontos(body, r);
+          notasEd = montarNotasZ(body, r);
           montarIgtf(body);
         },
         // Recibe el cierre del formulario: se cierra al confirmar el borrado,
@@ -11558,6 +11670,7 @@
             numero_zeta: (v.numeroZ || '').trim(),
             comprobante_desde: (v.compDesde || '').trim() || null,
             comprobante_hasta: (v.compHasta || '').trim() || null,
+            notas_z: notasEd ? notasEd.leer() : (r.notas_z || null),
             exento: M.exento, base: M.base, alicuota: alic, iva: M.iva, igtf: igtf, total: M.total,
             base_gen: M.base_gen, iva_gen: M.iva_gen,
             base_red: M.base_red, iva_red: M.iva_red,
