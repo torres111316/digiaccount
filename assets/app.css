@@ -7137,8 +7137,9 @@
      La reticula base de .ic-row trae cuatro y sirve al resto del sistema,
      asi que se ajusta SOLO dentro de este bloque. */
   .lf-notasz .ic-head, .lf-notasz .ic-row {
-    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr) 36px;
+    grid-template-columns: minmax(0, .95fr) minmax(0, 1.25fr) minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, .9fr) 36px;
   }
+  .lf-notasz .ic-row select { min-width: 0; }
   @media (max-width: 640px) {
     .lf-notasz .ic-head { display: none; }
     .lf-notasz .ic-row { grid-template-columns: 1fr 1fr; gap: 6px; }

@@ -10329,15 +10329,15 @@
         + '<summary>Notas de crédito o débito emitidas en este Z '
         + '<span class="lf-notasz-cont" id="lfNotasCont"></span></summary>'
         + '<div class="lf-reng" style="margin-top:8px;">'
-        + '<div class="ic-head"><span>N° de la nota</span><span>Factura afectada</span><span>Monto total (Bs)</span><span>IVA (Bs)</span><span></span></div>'
+        + '<div class="ic-head"><span>Tipo</span><span>N° de la nota</span><span>Factura afectada</span><span>Monto total (Bs)</span><span>IVA (Bs)</span><span></span></div>'
         + '<div id="lfNotasRows"></div>'
         + '<button type="button" class="btn btn-ghost" id="lfNotasAdd" style="height:30px;font-size:12px;margin-top:2px;">'
         + '<i data-lucide="plus" style="width:14px;height:14px;"></i> Agregar nota</button>'
-        + '<div class="lf-reng-hint">El <strong>IVA</strong> es opcional: sirve para responder cuánto débito fiscal se reversó, '
-        + 'si alguna vez lo preguntan. Una devolución de mercancía exenta no lleva. '
-        + '<strong>El monto ya está descontado del total del día.</strong> '
-        + 'La máquina lo resta antes de imprimir el Z, así que esto NO se vuelve a restar: '
-        + 'queda para poder cuadrar el libro contra la cinta.</div>'
+        + '<div class="lf-reng-hint"><strong>Estos montos ya están aplicados en el total del día.</strong> '
+        + 'La máquina resta las de crédito y suma las de débito antes de imprimir el Z, '
+        + 'así que aquí NO se vuelven a aplicar: quedan para poder cuadrar el libro contra la cinta. '
+        + 'El <strong>IVA</strong> es opcional — sirve para responder cuánto débito fiscal se movió, '
+        + 'y una devolución de mercancía exenta no lleva.</div>'
         + '</div></details>';
     }
 
@@ -10349,27 +10349,42 @@
       const cta = body.querySelector('#lfNotasCont');
       if (!cont) return { leer: () => null };
 
+      /* El resumen separa las dos: sumarlas juntas daría un número que no
+         significa nada, porque una resta y la otra suma. */
       function resumen() {
-        const filas = cont.querySelectorAll('.ic-row');
-        let n = 0, m = 0;
-        filas.forEach((f) => {
+        let nC = 0, mC = 0, nD = 0, mD = 0;
+        cont.querySelectorAll('.ic-row').forEach((f) => {
           const num = (f.querySelector('.nz-num').value || '').trim();
           if (!num) return;
-          n++; m += Math.abs(parseFloat(f.querySelector('.nz-monto').value) || 0);
+          const monto = Math.abs(parseFloat(f.querySelector('.nz-monto').value) || 0);
+          if (f.querySelector('.nz-tipo').value === 'ND') { nD++; mD += monto; }
+          else { nC++; mC += monto; }
         });
-        if (cta) cta.textContent = n ? '· ' + n + ' nota' + (n === 1 ? '' : 's') + ' · Bs ' + fmtF(m) : '';
+        const partes = [];
+        if (nC) partes.push(nC + ' N.C. · Bs ' + fmtF(mC));
+        if (nD) partes.push(nD + ' N.D. · Bs ' + fmtF(mD));
+        if (cta) cta.textContent = partes.length ? '· ' + partes.join('  ·  ') : '';
       }
 
       function agregar(d) {
         const r = document.createElement('div');
         r.className = 'ic-row';
-        r.innerHTML = '<input class="nz-num" type="text" placeholder="N° de la nota" value="' + esc((d && d.n) || '') + '">'
+        /* El tipo va PRIMERO porque cambia el significado de todo lo que
+           sigue: una de crédito resta y una de débito suma. Por defecto
+           crédito, que es el caso común —una devolución—. */
+        const esND = String((d && d.t) || 'NC').toUpperCase() === 'ND';
+        r.innerHTML = '<select class="nz-tipo">'
+          + '<option value="NC"' + (esND ? '' : ' selected') + '>N. Crédito</option>'
+          + '<option value="ND"' + (esND ? ' selected' : '') + '>N. Débito</option>'
+          + '</select>'
+          + '<input class="nz-num" type="text" placeholder="N° de la nota" value="' + esc((d && d.n) || '') + '">'
           + '<input class="nz-fact" type="text" placeholder="N° de factura" value="' + esc((d && d.f) || '') + '">'
           + '<input class="nz-monto" type="number" step="0.01" placeholder="0,00" value="' + esc(d && d.m != null ? String(d.m) : '') + '">'
           + '<input class="nz-iva" type="number" step="0.01" placeholder="0,00" value="' + esc(d && d.i != null ? String(d.i) : '') + '">'
           + '<button type="button" class="btn btn-ghost nz-del" title="Quitar nota"><i data-lucide="x" style="width:14px;height:14px;"></i></button>';
         cont.appendChild(r);
         r.querySelectorAll('input').forEach((i) => i.addEventListener('input', resumen));
+        r.querySelector('.nz-tipo').addEventListener('change', resumen);
         r.querySelector('.nz-del').addEventListener('click', () => { r.remove(); resumen(); });
         if (window.lucide) window.lucide.createIcons();
         return r;
@@ -10393,6 +10408,7 @@
             if (!n) return;   // sin número no es una nota, es una fila a medio llenar
             const iva = Math.abs(parseFloat(f.querySelector('.nz-iva').value) || 0);
             out.push({
+              t: f.querySelector('.nz-tipo').value === 'ND' ? 'ND' : 'NC',
               n: n,
               f: (f.querySelector('.nz-fact').value || '').trim() || null,
               m: Math.abs(parseFloat(f.querySelector('.nz-monto').value) || 0),
