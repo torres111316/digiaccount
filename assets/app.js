@@ -1071,15 +1071,39 @@
       // La quincena es la del selector de ESTE módulo, no la de Fiscal.
       return _retQuincena ? (_retQuincena === 1 ? '1ra' : '2da') + ' quincena ' + mes : mes;
     }
+    /* La lista arranca en el mes MÁS ALTO entre el que se está mirando y
+       el real de hoy, y de ahí baja 24 meses.
+
+       Antes bajaba desde el que se mira, y ahí estaba el fallo que reportó
+       Luis: trabajando en julio, AGOSTO no existía en la lista — y una
+       retención que llega tarde pertenece justamente a un período
+       POSTERIOR al de la factura que se está revisando. */
     function _opcionesPeriodoRet() {
       const out = [];
-      const base = _periodoVigente();
+      const mirado = _periodoVigente();
+      const d = new Date();
+      const hoy = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+      const base = mirado > hoy ? mirado : hoy;
       let y = parseInt(base.slice(0, 4), 10), m = parseInt(base.slice(5, 7), 10);
-      for (let i = 0; i < 24; i++) {
+      for (let i = 0; i < 30; i++) {
         out.push({ value: y + '-' + String(m).padStart(2, '0'), label: _MESES_RET[m - 1] + ' ' + y });
         m--; if (m < 1) { m = 12; y--; }
       }
       return out;
+    }
+
+    /* El período que el propio comprobante declara.
+
+       El N° de comprobante de retención de IVA empieza por AAAAMM: son el
+       año y el mes del período en que el agente practicó la retención
+       (Providencia SNAT/2015/0049, Art. 7). Es el dato más fiable que hay
+       —está impreso en el documento— y hasta ahora nadie lo leía. */
+    function _periodoDelComprobante(comp) {
+      const d = String(comp || '').replace(/[^0-9]/g, '');
+      if (d.length < 6) return null;
+      const y = parseInt(d.slice(0, 4), 10), m = parseInt(d.slice(4, 6), 10);
+      if (y < 2000 || y > 2100 || m < 1 || m > 12) return null;
+      return y + '-' + String(m).padStart(2, '0');
     }
 
     // Mini-cuadro de retenciones dentro de una Forma 30 (compras=practicadas, ventas=sufridas)
@@ -1675,13 +1699,22 @@
           // se puede cambiar, pero el punto de partida es la operación.
           { name: 'fecha', label: 'Fecha de emisión del comprobante — cuándo practicas la retención, no la de la factura',
             type: 'date', value: pre.fechaFactura || window.__hoyISO() },
-          /* El período de declaración va aparte de la fecha, igual que en el
-             libro de compras. Un cliente manda en agosto la retención de una
-             factura de julio: la fecha es de agosto y el período, julio. Sin
-             este campo la retención se iba al mes de su fecha y desaparecía
-             del período al que pertenece. */
-          { name: 'periodo', label: 'Período en que se declara (sigue a la factura, no al comprobante)', type: 'select',
-            options: _opcionesPeriodoRet(), value: _periodoVigente() },
+          /* EL PERÍODO SIGUE AL COMPROBANTE, NO A LA FACTURA.
+
+             Aquí decía lo contrario —«sigue a la factura»— y era un error de
+             fondo. El IVA retenido se descuenta del débito fiscal en el
+             período en que la retención se practicó, y si el comprobante
+             llega tarde, en aquel en que se recibe. Nunca en el de la
+             factura. Por eso el número empieza por AAAAMM: el documento
+             dice a qué período pertenece.
+
+             Caso que lo destapó: un cliente de AGUERO manda en agosto las
+             retenciones de facturas de julio, con comprobantes 202608…
+             Van en la declaración de AGOSTO. */
+          { name: 'periodo', label: 'Período en que se descuenta — el del COMPROBANTE, no el de la factura', type: 'select',
+            options: _opcionesPeriodoRet(),
+            value: _periodoDelComprobante(pre.comprobante) || _periodoVigente() },
+          { name: 'avisoPeriodo', col: 2, type: 'static', label: '', html: '<div id="retAvisoPer"></div>' },
         ].concat((window.__retencionesPorQuincena && window.__retencionesPorQuincena()) ? [
           /* La quincena se pregunta AL NACER.
 
@@ -1736,6 +1769,73 @@
             '<div class="ret-calc" id="retCalc"></div>' },
         ]),
         afterRender: (body) => {
+          /* EL COMPROBANTE MANDA SOBRE EL PERÍODO.
+
+             Los primeros seis dígitos del N° de comprobante de IVA son el
+             AAAAMM del período en que se practicó la retención. Al
+             escribirlo, el período se ajusta solo — y se DICE, porque el
+             caso que importa es justo cuando no coincide con la factura:
+             una retención de una factura de julio que llega con
+             comprobante 202608 se descuenta en AGOSTO.
+
+             Deja de moverse en cuanto el usuario elige el período a mano.
+             Puede haber razones que el sistema no conoce, y quien decide
+             es el contador. */
+          const _cmp = body.querySelector('[data-name="comprobante"]');
+          const _selPer = body.querySelector('[data-name="periodo"]');
+          const _avPer = body.querySelector('#retAvisoPer');
+          const _selTipo = body.querySelector('[data-name="tipo"]');
+          let _perAMano = false;
+          if (_selPer) _selPer.addEventListener('change', () => { _perAMano = true; pintarAvisoPer(); });
+
+          function nombreMes(p) {
+            if (!p) return '';
+            const m = parseInt(p.slice(5, 7), 10);
+            return (_MESES_RET[m - 1] || '') + ' ' + p.slice(0, 4);
+          }
+
+          function pintarAvisoPer() {
+            if (!_avPer) return;
+            const esIslr = _selTipo && _selTipo.value === 'ISLR';
+            const delComp = _periodoDelComprobante(_cmp && _cmp.value);
+            const puesto = _selPer ? _selPer.value : '';
+            let msg = '', alerta = false;
+
+            if (esIslr) {
+              msg = 'En <strong>ISLR</strong> el comprobante no lleva el período en el número. '
+                + 'El crédito pertenece al <strong>ejercicio</strong> en que se generó el ingreso; '
+                + 'el mes que elijas aquí es para ordenar tu trabajo.';
+            } else if (delComp && puesto && delComp !== puesto) {
+              alerta = true;
+              msg = 'El comprobante dice <strong>' + esc(nombreMes(delComp)) + '</strong> '
+                + '(empieza por ' + esc(String(_cmp.value).replace(/[^0-9]/g, '').slice(0, 6)) + ') '
+                + 'y elegiste ' + esc(nombreMes(puesto)) + '. '
+                + 'El IVA retenido se descuenta en el período del comprobante — revísalo.';
+            } else if (delComp) {
+              msg = 'Período tomado del comprobante: <strong>' + esc(nombreMes(delComp)) + '</strong>. '
+                + 'Aunque la factura sea de un mes anterior, la retención se descuenta aquí.';
+            }
+
+            _avPer.innerHTML = msg
+              ? '<div style="font-size:11.5px;line-height:1.55;padding:8px 10px;border-radius:6px;'
+                + (alerta
+                  ? 'background:var(--da-amber-50,#fff8e6);color:var(--da-amber-700,#9a6700);'
+                  : 'background:var(--bg-subtle,var(--bg-surface));color:var(--fg-muted);')
+                + '">' + msg + '</div>'
+              : '';
+          }
+
+          if (_cmp) _cmp.addEventListener('input', () => {
+            const p = _periodoDelComprobante(_cmp.value);
+            if (p && !_perAMano && _selPer) {
+              const existe = Array.prototype.some.call(_selPer.options, (o) => o.value === p);
+              if (existe) _selPer.value = p;
+            }
+            pintarAvisoPer();
+          });
+          if (_selTipo) _selTipo.addEventListener('change', pintarAvisoPer);
+          pintarAvisoPer();
+
           /* La quincena sigue a la fecha del comprobante mientras nadie la
              toque a mano. Si el usuario la elige él, deja de moverse: puede
              haber un comprobante emitido en una quincena y enterado en otra,
