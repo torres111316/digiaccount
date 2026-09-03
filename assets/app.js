@@ -973,12 +973,23 @@
         + '<td class="mono">' + esc(r.factura || '') + '</td><td class="num">' + fmt(Number(r.base) || 0) + '</td>'
         + '<td class="num">' + pctTxt + '</td><td class="num">' + fmt(Number(r.monto) || 0) + '</td>'
         + '<td><span class="tag success">' + esc(r.estado || 'Registrado') + '</span> '
-        /* Imprimir desde la propia fila. Antes solo se llegaba abriendo la
-           retención para editarla y pulsando "Comprobante" ahí dentro, que es
-           un sitio donde nadie lo busca — y en las SUFRIDAS es donde más falta
-           hace, porque son las que hay que archivar y mostrar. */
-        + '<button class="icon-btn ret-print" data-retprint="' + esc(String(r.id)) + '" title="Imprimir el comprobante">'
-        + '<i data-lucide="printer"></i></button></td></tr>';
+        /* Imprimir desde la propia fila, y SOLO en las practicadas.
+
+           El comprobante de retención lo emite el AGENTE —quien retiene—
+           con su propia numeración (Providencia SNAT/2015/0049). En una
+           sufrida el agente es el CLIENTE: él nos manda su comprobante y
+           nosotros lo archivamos.
+
+           Aquí se ofrecía en las dos, y el comentario hasta lo defendía
+           diciendo que en las sufridas «es donde más falta hace». Es al
+           revés: imprimir una versión propia es fabricar un documento que
+           uno no tiene autoridad para emitir, con la plantilla oficial y
+           nuestros datos en la casilla del agente de retención. */
+        + (r.direccion === 'practicada'
+            ? '<button class="icon-btn ret-print" data-retprint="' + esc(String(r.id)) + '" title="Imprimir el comprobante">'
+              + '<i data-lucide="printer"></i></button>'
+            : '<span class="ret-sin-print" title="El comprobante de una retención sufrida lo emite el cliente: se archiva el suyo, no se imprime uno propio."></span>')
+        + '</td></tr>';
     }
     const _retPage = { practicadas: 1, sufridas: 1 };   // página actual por dirección (20 por página)
     const _retPageArr = { practicadas: [], sufridas: [] }; // datos vigentes para re-pintar al paginar
@@ -1760,7 +1771,11 @@
           { name: 'rif', label: 'RIF (mayúscula, sin guiones)', upper: true, placeholder: 'J123456789', value: pre.rif || '' },
           { name: 'factura', label: 'Factura afectada (elige una registrada)', type: 'datalist', options: [], placeholder: 'Primero elige el tercero…', value: pre.factura || '' },
           { name: 'numControl', label: 'N° de Control (se llena de la factura)', placeholder: '00-00000000', value: pre.numControl || '' },
-          { name: 'comprobante', label: 'N° de comprobante · obligatorio en IVA, donde lo propone el sistema · en ISLR es opcional', type: 'datalist', options: [], placeholder: 'Tal como viene en el documento' },
+          /* «lo propone el sistema» daba a entender que lo propone siempre.
+             Solo lo hace en las PRACTICADAS de IVA, que son las únicas que
+             uno numera. En una sufrida el número es el que trae el
+             documento del cliente. */
+          { name: 'comprobante', label: 'N° de comprobante · en una sufrida, cópialo del que envió el cliente', type: 'datalist', options: [], placeholder: 'Tal como viene en el documento' },
           { name: 'base', label: 'Monto sobre el que se retiene (Bs)', type: 'number', step: '0.01', placeholder: '0.00', value: pre.base != null ? String(pre.base) : '' },
           { name: 'pct', label: '% de retención', type: 'number', step: '0.01', placeholder: '75' },
           { name: 'sustraendo', label: 'Sustraendo (ISLR, automático)', type: 'number', step: '0.01', placeholder: '0.00' },
@@ -1815,8 +1830,12 @@
                 + 'y elegiste ' + esc(nombreMes(puesto)) + '. '
                 + 'El IVA retenido se descuenta en el período del comprobante — revísalo.';
             } else if (delComp) {
-              msg = 'Período tomado del comprobante: <strong>' + esc(nombreMes(delComp)) + '</strong>. '
+              msg = 'Período tomado del <strong>número</strong> del comprobante: <strong>' + esc(nombreMes(delComp)) + '</strong>. '
                 + 'Aunque la factura sea de un mes anterior, la retención se descuenta aquí.';
+            } else if (puesto) {
+              msg = 'Período tomado de la <strong>fecha</strong> del comprobante: <strong>' + esc(nombreMes(puesto)) + '</strong>. '
+                + 'Es el mes en que se descuenta, aunque la factura sea anterior. '
+                + 'Si escribes el N° de comprobante y empieza por AAAAMM, manda ese.';
             }
 
             _avPer.innerHTML = msg
@@ -1828,16 +1847,32 @@
               : '';
           }
 
-          if (_cmp) _cmp.addEventListener('input', () => {
-            const p = _periodoDelComprobante(_cmp.value);
-            if (p && !_perAMano && _selPer) {
+          /* El período sigue, POR ORDEN: el número del comprobante si lo
+             trae, y si no, su FECHA.
+
+             La fecha faltaba, y es la que resolvía el caso real: en una
+             sufrida el número lo pone el cliente y muchas veces se carga
+             después o no se tiene a mano. Sin número, nada movía el
+             período y se quedaba en el del mes que se estuviera mirando —
+             así una retención fechada el 04/08 de una factura del 29/07
+             terminó en JULIO. */
+          const _fechaComp = body.querySelector('[data-name="fecha"]');
+          function sincronizarPeriodo() {
+            if (_perAMano || !_selPer) { pintarAvisoPer(); return; }
+            const delNum = _periodoDelComprobante(_cmp && _cmp.value);
+            const delDia = (_fechaComp && /^\d{4}-\d{2}/.test(_fechaComp.value || ''))
+              ? _fechaComp.value.slice(0, 7) : null;
+            const p = delNum || delDia;
+            if (p) {
               const existe = Array.prototype.some.call(_selPer.options, (o) => o.value === p);
               if (existe) _selPer.value = p;
             }
             pintarAvisoPer();
-          });
+          }
+          if (_cmp) _cmp.addEventListener('input', sincronizarPeriodo);
+          if (_fechaComp) { _fechaComp.addEventListener('change', sincronizarPeriodo); _fechaComp.addEventListener('input', sincronizarPeriodo); }
           if (_selTipo) _selTipo.addEventListener('change', pintarAvisoPer);
-          pintarAvisoPer();
+          sincronizarPeriodo();
 
           /* La quincena sigue a la fecha del comprobante mientras nadie la
              toque a mano. Si el usuario la elige él, deja de moverse: puede
@@ -2456,7 +2491,9 @@
         ] : []),
         afterRender: (body) => { setupPctField(body); setupIslrFields(body); },
         extraLabel: 'Comprobante',
-        onExtra: () => imprimirComprobante(r),
+        /* Igual que en la fila: solo se imprime el de una practicada. En
+           una sufrida el documento es el que emitió el cliente. */
+        onExtra: r.direccion === 'practicada' ? () => imprimirComprobante(r) : null,
         onSave: (v) => {
           if (!window.sb) return 'Sin conexión.';
           if (!v.nombre) return 'Indica el tercero.';

@@ -686,6 +686,11 @@
   .panel-actions {
     display: flex; align-items: center; gap: 6px;
   }
+  /* Hueco del boton de imprimir en las retenciones SUFRIDAS, donde no se
+     ofrece: el comprobante lo emite el cliente. Ocupa el mismo sitio para
+     que las filas de las dos pestañas queden alineadas. */
+  .ret-sin-print { display: inline-block; width: 28px; height: 28px; vertical-align: middle; }
+
   .icon-btn {
     width: 28px; height: 28px;
     border-radius: var(--radius-xs);
