@@ -1688,10 +1688,13 @@
         facturas = data || [];
       }
       window.openFormModal && window.openFormModal({
-        title: curDir === 'sufridas' ? 'Registrar retención sufrida (un cliente me retuvo)' : 'Registrar retención practicada (yo retengo)',
+        /* Sin adjetivo. El título seguía la pestaña donde estuvieras
+           parado, así que decía «sufrida» aunque fueras a cargar una
+           practicada. Lo que manda es el selector de adentro. */
+        title: 'Registrar retención',
         saveLabel: 'Registrar',
         fields: [
-          { name: 'direccion', label: 'Dirección', type: 'select', options: ['Practicada (yo retengo a un proveedor)', 'Sufrida (un cliente me retiene)'], value: pre.direccion || (curDir === 'sufridas' ? 'Sufrida (un cliente me retiene)' : 'Practicada (yo retengo a un proveedor)') },
+          { name: 'direccion', label: '¿Quién retiene?', type: 'select', options: ['Practicada (yo retengo a un proveedor)', 'Sufrida (un cliente me retiene)'], value: pre.direccion || (curDir === 'sufridas' ? 'Sufrida (un cliente me retiene)' : 'Practicada (yo retengo a un proveedor)') },
           { name: 'tipo', label: 'Impuesto', type: 'select', options: ['IVA', 'ISLR'] },
           { name: 'concepto', label: 'Concepto de retención (ISLR)', col: 2, type: 'select', options: CONCEPTOS_ISLR.map((c) => c.act) },
           { name: 'sujeto', label: 'Tipo de sujeto (ISLR)', type: 'select', options: [{ value: 'PNR', label: 'PN Residente' }, { value: 'PNNR', label: 'PN No Residente' }, { value: 'PJD', label: 'PJ Domiciliada' }, { value: 'PJND', label: 'PJ No Domiciliada' }] },
@@ -1909,7 +1912,7 @@
             if (!compEl) return;
             const actual = compEl.value.trim();
             if (actual && actual !== compPropuesto) return;   // lo escribió el usuario
-            const esPract = dirSel && /^practicada/i.test(dirSel.value);
+            const esPract = dirSel && /practicada/i.test(dirSel.value);
             const esIslrSel = tipoSel && /islr/i.test(tipoSel.value);
             const emp = window.__EMPRESA_ACTIVA || {};
             /* Solo el IVA lleva correlativo propuesto.
@@ -1942,7 +1945,7 @@
           const tercDl = document.getElementById('fm-dl-nombre');
           const refrescarTerceros = () => {
             if (!tercDl) return;
-            const esPract = dirSel && /^practicada/i.test(dirSel.value);
+            const esPract = dirSel && /practicada/i.test(dirSel.value);
             const lista = terceros.filter((t) => (esPract ? t.prov : t.cli) && t.nombre);
             tercDl.innerHTML = lista.map((t) => '<option value="' + esc(t.nombre) + '"></option>').join('');
             prov.placeholder = esPract ? 'Proveedor… (escribe iniciales)' : 'Cliente… (escribe iniciales)';
@@ -1951,7 +1954,7 @@
           };
           const autollenarRif = () => { const t = terceros.find((x) => x.nombre.toLowerCase() === prov.value.trim().toLowerCase()); if (t && rif) rif.value = normRif(t.rif); };
           const facturasFiltradas = () => {
-            const esPract = dirSel && /^practicada/i.test(dirSel.value);
+            const esPract = dirSel && /practicada/i.test(dirSel.value);
             const tipoLibro = esPract ? 'compra' : 'venta';
             const nom = (prov.value || '').trim().toLowerCase();
             const rifN = normRif(rif && rif.value);
@@ -1985,7 +1988,10 @@
             if (!compDl) return;
             const rifN = normRif(rif && rif.value);
             const nom = (prov.value || '').trim().toLowerCase();
-            const dir = (dirSel && /^practicada/i.test(dirSel.value)) ? 'practicada' : 'sufrida';
+            /* Sin ancla al principio: basta con que la palabra esté. Anclado,
+               reordenar el texto de la opción habría guardado toda practicada
+               como sufrida, en silencio. */
+            const dir = (dirSel && /practicada/i.test(dirSel.value)) ? 'practicada' : 'sufrida';
             const tip = (tipoSel && /islr/i.test(tipoSel.value)) ? 'islr' : 'iva';
             const seen = {};
             const list = _retData.filter((x) => x.tipo === tip && x.direccion === dir && (x.comprobante || '')
@@ -2007,7 +2013,7 @@
             avisoDup.innerHTML = '';
             const nf = (factEl && factEl.value || '').trim();
             if (!nf) return;
-            const dirAhora = /^practicada/i.test((body.querySelector('[data-name="direccion"]') || {}).value || '') ? 'practicada' : 'sufrida';
+            const dirAhora = /practicada/i.test((body.querySelector('[data-name="direccion"]') || {}).value || '') ? 'practicada' : 'sufrida';
             const rifAhora = (body.querySelector('[data-name="rif"]') || {}).value || '';
             const yaHay = await window.__retencionesDeFactura(nf, dirAhora, rifAhora);
             yaHay.forEach((x) => { if (x.tipo === 'iva' || x.tipo === 'islr') _yaRetenida[x.tipo] = x; });
@@ -2047,7 +2053,7 @@
             if (!perEl || !perPista) return;
             const nf = (factEl && factEl.value || '').trim().toLowerCase();
             const fac = facturas.find((f) => (f.numero_factura || '').trim().toLowerCase() === nf);
-            const esSufrida = !/^practicada/i.test((body.querySelector('[data-name="direccion"]') || {}).value || '');
+            const esSufrida = !/practicada/i.test((body.querySelector('[data-name="direccion"]') || {}).value || '');
             const perFac = fac && fac.periodo ? fac.periodo : null;
             const fechaComp = (body.querySelector('[data-name="fecha"]') || {}).value || '';
             const perComp = fechaComp.length >= 7 ? fechaComp.slice(0, 7) : null;
@@ -2111,7 +2117,7 @@
           }
           const p = (v.fecha || '').split('-');
           const fecha = p.length === 3 ? (p[2] + '/' + p[1] + '/' + p[0].slice(2)) : '';
-          const dir = /^practicada/i.test(v.direccion) ? 'practicada' : 'sufrida';
+          const dir = /practicada/i.test(v.direccion) ? 'practicada' : 'sufrida';
           /* El N° de comprobante NO se inventa.
 
              En una retención SUFRIDA el número viene en el comprobante que
@@ -2416,7 +2422,7 @@
         title: 'Editar retención',
         saveLabel: 'Guardar cambios',
         fields: [
-          { name: 'direccion', label: 'Dirección', type: 'select', options: ['Practicada (yo retengo a un proveedor)', 'Sufrida (un cliente me retiene)'], value: r.direccion === 'practicada' ? 'Practicada (yo retengo a un proveedor)' : 'Sufrida (un cliente me retiene)' },
+          { name: 'direccion', label: '¿Quién retiene?', type: 'select', options: ['Practicada (yo retengo a un proveedor)', 'Sufrida (un cliente me retiene)'], value: r.direccion === 'practicada' ? 'Practicada (yo retengo a un proveedor)' : 'Sufrida (un cliente me retiene)' },
           { name: 'tipo', label: 'Impuesto', type: 'select', options: ['IVA', 'ISLR'], value: r.tipo === 'islr' ? 'ISLR' : 'IVA' },
           { name: 'concepto', label: 'Concepto de retención (ISLR)', col: 2, type: 'select', options: CONCEPTOS_ISLR.map((c) => c.act), value: r.concepto || CONCEPTOS_ISLR[0].act },
           { name: 'sujeto', label: 'Tipo de sujeto (ISLR)', type: 'select', options: [{ value: 'PNR', label: 'PN Residente' }, { value: 'PNNR', label: 'PN No Residente' }, { value: 'PJD', label: 'PJ Domiciliada' }, { value: 'PJND', label: 'PJ No Domiciliada' }], value: r.sujeto || 'PNR' },
@@ -2466,7 +2472,7 @@
           } else {
             monto = base * pct / 100;
           }
-          const dir = /^practicada/i.test(v.direccion) ? 'practicada' : 'sufrida';
+          const dir = /practicada/i.test(v.direccion) ? 'practicada' : 'sufrida';
           window.sb.from('retenciones').update({
             direccion: dir, tipo: (v.tipo || 'IVA').toLowerCase(), fecha: v.fecha,
             comprobante: v.comprobante, tercero_nombre: v.nombre, tercero_rif: normRif(v.rif),
