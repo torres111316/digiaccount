@@ -9,7 +9,7 @@
    queda atascado en una versión vieja (en el teléfono no hay Ctrl+Shift+R). */
 /* Sube de número en cada cambio de estos archivos: es lo que hace que el
    navegador se traiga la versión nueva en vez de servir la del caché. */
-const CACHE = 'digiaccount-v88';
+const CACHE = 'digiaccount-v89';
 const ASSETS = [
   './',
   './index.html',

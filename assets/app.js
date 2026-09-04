@@ -6347,15 +6347,85 @@
         + '<td class="num">' + fmt(stock * costo) + '</td><td style="white-space:nowrap;">' + estado
         + ' <button class="btn btn-ghost" data-prod-edit="' + (p.id || '') + '" title="Editar o eliminar" style="height:22px;font-size:10px;padding:0 7px;margin-left:4px;"><i data-lucide="pencil" style="width:11px;height:11px;"></i></button></td>';
     }
-    // Carga los artículos reales (modo comercial) desde Supabase y los pinta
+    /* Carga los artículos de LA EMPRESA ACTIVA.
+
+       Antes traía todos los de la cuenta: un producto registrado en una
+       empresa aparecía en todas las demás, con su precio y su existencia.
+       La RLS aísla por cuenta, no por empresa — si la consulta no filtra,
+       no filtra nadie.
+
+       Con el stock eso es más grave que con los terceros. Un tercero
+       repetido es una comodidad; una existencia compartida entre negocios
+       que no tienen relación es un inventario que miente en los dos.
+
+       Los que quedaron sin empresa (`empresa_id` nulo) NO se pintan, pero
+       tampoco se esconden: se cuentan y se ofrecen para traerlos aquí.
+       Hacerlos desaparecer en silencio sería peor que el fallo. */
+    let _prodHuerfanos = [];
+
+    /* Los artículos que quedaron sin empresa, de cuando el catálogo era uno
+       solo para toda la cuenta. Se dicen aquí, con el botón para traerlos,
+       porque el sitio donde se echan de menos es este. */
+    function pintarHuerfanos(tb) {
+      if (!tb || !_prodHuerfanos.length) return;
+      const emp = window.__EMPRESA_ACTIVA || {};
+      const n = _prodHuerfanos.length;
+      const nombres = _prodHuerfanos.slice(0, 4).map((p) => p.nombre).filter(Boolean).join(', ')
+        + (n > 4 ? ' y ' + (n - 4) + ' más' : '');
+      const fila = document.createElement('tr');
+      fila.innerHTML = '<td colspan="9" style="padding:10px 12px;">'
+        + '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:12px;line-height:1.5;'
+        + 'background:var(--da-amber-50,#fff8e6);color:var(--da-amber-700,#9a6700);padding:10px 12px;border-radius:6px;">'
+        + '<span><strong>' + n + ' artículo' + (n === 1 ? '' : 's') + ' sin empresa asignada</strong> '
+        + '(' + esc(nombres) + '). Vienen de cuando el catálogo era uno solo para toda la cuenta, '
+        + 'y por eso no se muestran aquí.</span>'
+        + '<button class="btn btn-ghost" id="prodAdoptar" style="height:28px;font-size:11px;white-space:nowrap;">'
+        + 'Traerlos a ' + esc(emp.nombre || 'esta empresa') + '</button></div></td>';
+      tb.appendChild(fila);
+      const btn = fila.querySelector('#prodAdoptar');
+      if (btn) btn.addEventListener('click', async () => {
+        if (!emp.id) { toast('Elige una empresa primero.', 'error'); return; }
+        if (!window.confirm('¿Asignar ' + n + ' artículo' + (n === 1 ? '' : 's') + ' a '
+          + (emp.nombre || 'esta empresa') + '?\n\nSi son de otra empresa, cancélalo: '
+          + 'después habría que moverlos uno por uno.')) return;
+        btn.disabled = true;
+        const { error } = await window.sb.from('productos')
+          .update({ empresa_id: emp.id }).is('empresa_id', null);
+        if (error) { toast('No se pudo asignar: ' + error.message, 'error'); btn.disabled = false; return; }
+        toast(n + ' artículo' + (n === 1 ? '' : 's') + ' asignado' + (n === 1 ? '' : 's')
+          + ' a ' + (emp.nombre || 'esta empresa'), 'success');
+        _prodHuerfanos = [];
+        cargarProductos();
+      });
+    }
+
     async function cargarProductos() {
       if (!window.sb) return;
       const tb = tbodyOf('invpane-com', 'articulos'); if (!tb) return;
-      const { data, error } = await window.sb.from('productos').select('*').order('nombre');
+      const emp = window.__EMPRESA_ACTIVA || {};
+      let data = null, error = null;
+      if (emp.id) {
+        const r = await window.sb.from('productos').select('*').eq('empresa_id', emp.id).order('nombre');
+        data = r.data; error = r.error;
+      }
+      /* Si la columna todavía no existe en la base —falta correr
+         sql/catalogo_por_empresa.sql— se sigue como antes en vez de dejar
+         la pantalla en blanco, y se dice por qué. */
+      if (error && /empresa_id/.test(error.message || '')) {
+        console.warn('[DigiAccount] La tabla productos aún no tiene empresa_id. '
+          + 'Corre sql/catalogo_por_empresa.sql para separar el catálogo por empresa.');
+        const r2 = await window.sb.from('productos').select('*').order('nombre');
+        data = r2.data; error = r2.error;
+      } else if (!error && emp.id) {
+        // Los que quedaron sin dueño, para poder ofrecerlos.
+        const h = await window.sb.from('productos').select('id,nombre,stock').is('empresa_id', null);
+        _prodHuerfanos = (h.error ? [] : (h.data || []));
+      }
       if (error) { console.warn('[DigiAccount] No se pudieron cargar productos:', error.message); return; }
       const arr = data || [];
       window.__PRODUCTOS = arr;   // disponible para el recibo (selector de productos)
       tb.innerHTML = arr.map((p) => '<tr>' + filaArticulo(p) + '</tr>').join('');
+      pintarHuerfanos(tb);
       tb.querySelectorAll('[data-prod-edit]').forEach((b) => b.addEventListener('click', () => editarArticulo(b.dataset.prodEdit)));
       // Actualizar KPIs y contadores con datos reales
       const total = arr.length;
@@ -6451,6 +6521,9 @@
           const UNI = { 'Unidad / pieza': 'und', 'Kg': 'kg', 'Gramo': 'g', 'Litro': 'L', 'Ml': 'ml', 'Metro': 'm', 'Caja': 'caja', 'Bulto': 'bulto', 'Docena': 'doc' };
           const fila = {
             cuenta_id: window.__CUENTA_ID,
+            /* De QUÉ empresa es. Sin esto el artículo nace huérfano y
+               aparece en todas: es el fallo que se está corrigiendo. */
+            empresa_id: (window.__EMPRESA_ACTIVA || {}).id || null,
             nombre: v.nombre, sku: sku, categoria: (v.cat || 'Otros').trim(), alicuota: v.alic,
             unidad: UNI[v.unidad] || 'und',
             stock: Number(v.stock) || 0, stock_min: Number(v.min) || 0,
@@ -11284,6 +11357,9 @@
                       creados.push(li.nombre);
                       return window.sb.from('productos').insert({
                         cuenta_id: window.__CUENTA_ID,
+                        // Sin esto el artículo nace huérfano y reaparece en
+                        // todas las empresas: el mismo fallo por otra puerta.
+                        empresa_id: (window.__EMPRESA_ACTIVA || {}).id || null,
                         nombre: li.nombre, sku: 'SKU-' + String(Date.now()).slice(-5) + '-' + Math.floor(Math.random() * 90 + 10),
                         categoria: 'Otros', alicuota: '16%',
                         stock: li.cant, stock_min: 0, costo: li.costo || 0, precio: 0,
@@ -13667,9 +13743,23 @@
       }
       return true;
     }
-    function render() {
+    /* 20 por página, como la tabla de retenciones. La página vive fuera de
+       render() para que sobreviva a un re-pintado, pero se vuelve a la 1
+       cuando cambia el filtro: si buscas algo y te deja en la página 7,
+       parece que no hay resultados. */
+    let _terPag = 1;
+    function render(page) {
       const vis = DB.filter(pasa);
-      tbody.innerHTML = vis.map((t, i) => {
+      const PAG = 20;
+      const totalPag = Math.max(1, Math.ceil(vis.length / PAG));
+      _terPag = Math.min(Math.max(1, page || _terPag), totalPag);
+      const ini = (_terPag - 1) * PAG;
+      const pagina = vis.slice(ini, ini + PAG);
+      tbody.innerHTML = pagina.map((t, i) => {
+        /* El índice es el de DB, NO el de la página: los botones de Ficha y
+           Eliminar lo usan para buscar el tercero. Si aquí se pusiera el de
+           la página, en la página 2 se abriría la ficha equivocada — un
+           fallo que no da error y borra a quien no era. */
         const idx = DB.indexOf(t);
         return '<tr data-idx="' + idx + '">'
           + '<td><div class="prod-cell"><div class="prod-thumb" style="background:var(--da-navy-50);color:var(--da-navy-700);"><i data-lucide="' + iconTipo(t.tipo) + '"></i></div><div class="info"><div class="n">' + esc(t.nombre) + '</div><div class="sku">ID ' + esc(idSistema(t.rif)) + (t.email ? ' · ' + esc(t.email) : '') + '</div></div></div></td>'
@@ -13679,11 +13769,24 @@
           + '<td style="white-space:nowrap;"><button class="btn btn-ghost" data-ver-tercero="' + idx + '" style="height:26px;font-size:11px;padding:0 9px;white-space:nowrap;"><i data-lucide="eye"></i> Ficha</button>'
           + '<button class="icon-btn" data-borrar-tercero="' + idx + '" title="Eliminar del directorio" style="width:26px;height:26px;margin-left:4px;"><i data-lucide="trash-2" style="width:13px;height:13px;"></i></button></td></tr>';
       }).join('');
+      if (!vis.length) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--fg-muted);padding:16px;">'
+          + (DB.length ? 'Ningún tercero coincide con el filtro.' : 'El directorio está vacío.') + '</td></tr>';
+      } else if (totalPag > 1) {
+        tbody.innerHTML += '<tr><td colspan="8" style="padding:6px 10px;">'
+          + '<div style="display:flex;justify-content:center;align-items:center;gap:14px;font-size:12px;color:var(--fg-muted);">'
+          + '<button class="btn btn-ghost" data-terpag="-1"' + (_terPag <= 1 ? ' disabled' : '') + ' style="height:26px;font-size:11px;">« Anterior</button>'
+          + '<span>Página ' + _terPag + ' de ' + totalPag + ' · ' + vis.length + ' tercero' + (vis.length === 1 ? '' : 's') + '</span>'
+          + '<button class="btn btn-ghost" data-terpag="1"' + (_terPag >= totalPag ? ' disabled' : '') + ' style="height:26px;font-size:11px;">Siguiente »</button>'
+          + '</div></td></tr>';
+      }
       const shown = document.getElementById('tercerosShown'); if (shown) shown.textContent = vis.length;
       const totalEl = document.getElementById('tercerosTotal'); if (totalEl) totalEl.textContent = DB.length;
       tbody.querySelectorAll('[data-ver-tercero]').forEach((b) => b.addEventListener('click', () => openFicha(DB[parseInt(b.dataset.verTercero, 10)])));
       tbody.querySelectorAll('[data-borrar-tercero]').forEach((b) =>
         b.addEventListener('click', () => borrarTercero(DB[parseInt(b.dataset.borrarTercero, 10)])));
+      tbody.querySelectorAll('[data-terpag]').forEach((b) =>
+        b.addEventListener('click', () => render(_terPag + parseInt(b.dataset.terpag, 10))));
       if (window.lucide) window.lucide.createIcons();
     }
 
@@ -13784,11 +13887,11 @@
     document.getElementById('tercerosFilters').querySelectorAll('button').forEach((b) => {
       b.addEventListener('click', () => {
         document.getElementById('tercerosFilters').querySelectorAll('button').forEach((x) => x.classList.toggle('active', x === b));
-        filtroRol = b.dataset.rol; render();
+        filtroRol = b.dataset.rol; render(1);   // filtrar vuelve a la pagina 1
       });
     });
     const search = document.getElementById('tercerosSearch');
-    if (search) search.addEventListener('input', () => { query = search.value.trim().toLowerCase(); render(); });
+    if (search) search.addEventListener('input', () => { query = search.value.trim().toLowerCase(); render(1); });
 
     // ---- Modal: pestañas, roles, contactos ----
     const tabsWrap = document.getElementById('terTabs');
