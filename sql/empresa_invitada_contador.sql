@@ -79,6 +79,39 @@ select c.table_name as tabla,
  order by tiene_empresa_id desc, tabla;
 
 
+-- 1.4 · LAS POLÍTICAS A MIGRAR, en formato corto para poder pegarlo entero.
+--
+--       El resultado de 1.1 son cien filas con condiciones larguísimas. Esto
+--       dice lo mismo en una línea por política: sobre qué tabla, cómo se
+--       llama, qué operación cubre, y de qué se agarra. Con eso se escribe la
+--       migración sin tener que suponer un solo nombre.
+select p.tablename                                  as tabla,
+       p.policyname                                 as politica,
+       p.cmd                                        as op,
+       case
+         when coalesce(p.qual, '') like '%mis_empresas%'  then 'ya migrada'
+         when coalesce(p.qual, '') like '%empresas%'      then 'por empresa'
+         when coalesce(p.qual, '') like '%mi_cuenta_id%'  then 'POR CUENTA'
+         when coalesce(p.qual, '') like '%soy_superadmin%' then 'solo fundador'
+         else 'otra'
+       end                                          as se_agarra_de,
+       length(coalesce(p.qual, ''))                 as largo_condicion
+  from pg_policies p
+  join information_schema.columns c
+    on c.table_schema = 'public' and c.table_name = p.tablename
+   and c.column_name = 'empresa_id'
+ where p.schemaname = 'public'
+ group by p.tablename, p.policyname, p.cmd, p.qual
+ order by se_agarra_de desc, p.tablename, p.policyname;
+
+-- 1.5 · Y la de `empresas`, ENTERA: es la única que hay que reescribir
+--       con precisión quirúrgica, porque de ella cuelga todo lo demás.
+select policyname, cmd, qual as condicion_lectura, with_check as condicion_escritura
+  from pg_policies
+ where schemaname = 'public' and tablename = 'empresas'
+ order by policyname;
+
+
 -- =============================================================
 -- PARTE 2 · LA BASE. Esto SÍ se puede correr ya: solo AGREGA.
 -- =============================================================
@@ -153,6 +186,42 @@ drop policy if exists empresa_acceso_dueno on public.empresa_acceso;
 create policy empresa_acceso_dueno on public.empresa_acceso for all
   using (public.soy_dueno_de(empresa_id) or public.soy_superadmin())
   with check (public.soy_dueno_de(empresa_id) or public.soy_superadmin());
+
+
+-- =============================================================
+-- LO QUE DESTAPÓ EL DIAGNÓSTICO 1.3 (30/08/2026)
+--
+-- 28 tablas tienen empresa_id y se pueden atar a la empresa. Nueve tienen
+-- solo cuenta_id, y de esas SIETE está bien que se queden así porque son
+-- de la cuenta y no de la empresa: invitaciones, pagos_suscripcion,
+-- perfiles, referidos, socios, trabajos_ia y la propia empresas.
+--
+-- PERO DOS NO DEBERÍAN QUEDARSE, y son un problema real al traspasar:
+--
+--   · terceros — el directorio de clientes y proveedores. Hoy es de la
+--     CUENTA, y compartirlo entre las empresas de un contador es cómodo
+--     (lo dijo Luis: se ahorra registrarlos en cada una). Pero cuando una
+--     empresa se va con su propia cuenta, SUS clientes y proveedores se
+--     quedan con el contador. La empresa arranca con el directorio vacío
+--     y hay que reescribirlo entero.
+--
+--   · parametros_nomina — los parámetros de cálculo de la nómina. Si son
+--     de la cuenta, la empresa que se va pierde su configuración y sus
+--     recibos siguientes se calculan con otra cosa. En nómina eso no es
+--     una molestia: es un recibo mal hecho.
+--
+-- NINGUNA DE LAS DOS SE TOCA EN ESTE ARCHIVO. Las dos necesitan una
+-- decisión de producto antes que una de código:
+--
+--   terceros        ¿se COPIAN al traspasar (cada quien con el suyo desde
+--                   ese día) o se comparten como hoy? Copiar rompe el
+--                   ahorro que a Luis le gusta; compartir deja al cliente
+--                   dependiendo del contador para su propio directorio.
+--
+--   parametros_nomina  aquí no hay duda de producto: son de la empresa.
+--                   Falta agregarle empresa_id y migrar lo que exista.
+--
+-- =============================================================
 
 
 -- =============================================================
