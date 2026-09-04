@@ -25,6 +25,11 @@
 -- filas huérfanas, hay que asignarlas ANTES de migrar, no después.
 --
 -- TODAS LAS CIFRAS DEBEN DAR CERO. La que no dé cero, se resuelve primero.
+--
+-- RESULTADO (30/08/2026): quince tablas en cero y UNA no —
+-- `eventos_sistema`, con 10 filas sin empresa. No eran un descuido: son
+-- eventos de la CUENTA. Su política se trató aparte, más abajo. Esta
+-- comprobación se escribió por si acaso y encontró algo al primer intento.
 -- =============================================================
 
 select 'apertura'                  as tabla, count(*) as sin_empresa from public.apertura                  where empresa_id is null
@@ -121,8 +126,25 @@ alter policy cfg_escritura on public.empresa_inventario_config
 alter policy cfg_lectura on public.empresa_inventario_config
   using       (soy_superadmin() or empresa_id in (select public.mis_empresas()));
 
+/* eventos_sistema · EL CASO ESPECIAL, y el que justifica el paso 5.0.
+
+   Tiene 10 filas con empresa_id NULO, y no son un descuido: un registro de
+   eventos guarda también lo que le pasa a la CUENTA —un inicio de sesión,
+   un cambio de plan, un usuario invitado— que no pertenece a ninguna
+   empresa en particular.
+
+   Atarlo solo a la empresa las habría vuelto invisibles para todos,
+   incluido su propio dueño. Así que la política distingue:
+
+     · el evento CON empresa  -> lo ve quien pueda ver esa empresa
+     · el evento SIN empresa  -> es de la cuenta, y lo ve solo su cuenta
+
+   Un contador invitado ve lo que pasó en la empresa de su cliente, pero no
+   los movimientos internos de la cuenta del cliente. Que es lo correcto. */
 alter policy eventos_ver on public.eventos_sistema
-  using       (empresa_id in (select public.mis_empresas()) or soy_superadmin());
+  using (soy_superadmin()
+         or (empresa_id is not null and empresa_id in (select public.mis_empresas()))
+         or (empresa_id is null     and cuenta_id  = public.mi_cuenta_id()));
 
 alter policy facturas_rw on public.facturas
   using       (empresa_id in (select public.mis_empresas()) or soy_superadmin())
