@@ -122,7 +122,11 @@ select p.tablename,
 
 
 -- =============================================================
--- PASO 4 · COMPROBAR, después de ejecutar lo generado.
+-- PASO 4 · COMPROBAR. La 4.2 se corre DOS VECES: antes y después.
+--
+-- Escrita al principio como «después de ejecutar», que era un descuido:
+-- sin las cifras de ANTES no hay contra qué comparar. Una prueba que solo
+-- se corre después del cambio no prueba nada.
 -- =============================================================
 
 -- 4.1 · ¿Quedó alguna política de tabla con empresa_id todavía atada a la
@@ -138,10 +142,17 @@ select p.tablename, p.policyname, p.cmd, p.qual
    and coalesce(p.qual, '') not like '%mis_empresas%'
  order by p.tablename;
 
--- 4.2 · Y la prueba que de verdad importa: SEGUIR VIENDO LO DE SIEMPRE.
---       Conectado con tu usuario normal, estas cifras tienen que dar
---       EXACTAMENTE lo mismo que antes de la migración. Si alguna sube,
---       estás viendo datos de otra cuenta y hay que revertir.
+-- 4.2 · LA PRUEBA QUE DE VERDAD IMPORTA · correr ANTES y DESPUÉS.
+--
+--       Conectado con tu usuario normal, y con la MISMA empresa activa.
+--       Las cifras de después tienen que ser IDÉNTICAS a las de antes.
+--
+--         · Si alguna SUBE  -> estás viendo datos de otra cuenta. Revertir.
+--         · Si alguna BAJA  -> perdiste acceso a lo tuyo. Revertir.
+--
+--       Anota las de antes antes de tocar nada. Es la red de seguridad
+--       entera de esta migración: contar políticas no prueba nada, lo que
+--       prueba es que sigas viendo exactamente lo mismo.
 select 'empresas'    as tabla, count(*) from public.empresas
 union all select 'libro_fiscal',  count(*) from public.libro_fiscal
 union all select 'retenciones',   count(*) from public.retenciones
