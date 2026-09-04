@@ -258,3 +258,197 @@ select tablename, policyname, cmd, permissive, roles,
                      'cuentas_contables', 'cuentas_tesoreria',
                      'documentos_fiscales', 'movimientos_tesoreria')
  order by tablename, policyname;
+
+
+-- =============================================================
+-- PASO 6 · LAS DIEZ TABLAS QUE FALTABAN, del diagnóstico 5.0.c
+--
+-- Son las que un contador usa todos los días: el libro fiscal, las
+-- retenciones, los asientos, la tesorería. Sus políticas resultaron ser el
+-- caso simple —«(cuenta_id = mi_cuenta_id())»— repartido en cuatro por
+-- tabla: una por operación.
+--
+-- Aquí está la diferencia con las del PASO 5: aquellas eran políticas ALL
+-- con el escape del fundador dentro. Estas son cuatro políticas separadas,
+-- y el fundador tiene la SUYA aparte (af_superadmin_all, lf_superadmin_all
+-- y compañía), que no se toca. Por eso estas NO llevan soy_superadmin():
+-- agregárselo sería duplicar un permiso que ya existe por otra vía.
+--
+-- Y cada una lleva solo la cláusula que le corresponde:
+--   SELECT y DELETE -> using
+--   INSERT          -> with check
+--   UPDATE          -> las dos
+--
+-- CORRER SOLO DESPUÉS DEL PASO 6.0.
+-- =============================================================
+
+
+-- =============================================================
+-- PASO 6.0 · LA MISMA TRAMPA, para estas diez tablas.
+--
+-- El 5.0 no las cubría. Y de una ya sabemos que tiene filas huérfanas:
+-- `productos`, con los artículos sin empresa que aparecieron al separar el
+-- catálogo. Si quedan, desaparecen al migrar.
+--
+-- TODAS DEBEN DAR CERO.
+-- =============================================================
+
+select 'activos_fijos'     as tabla, count(*) as sin_empresa from public.activos_fijos     where empresa_id is null
+union all select 'asientos',              count(*) from public.asientos              where empresa_id is null
+union all select 'criptoactivos',         count(*) from public.criptoactivos         where empresa_id is null
+union all select 'cuentas_contables',     count(*) from public.cuentas_contables     where empresa_id is null
+union all select 'cuentas_tesoreria',     count(*) from public.cuentas_tesoreria     where empresa_id is null
+union all select 'documentos_fiscales',   count(*) from public.documentos_fiscales   where empresa_id is null
+union all select 'libro_fiscal',          count(*) from public.libro_fiscal          where empresa_id is null
+union all select 'movimientos_tesoreria', count(*) from public.movimientos_tesoreria where empresa_id is null
+union all select 'productos',             count(*) from public.productos             where empresa_id is null
+union all select 'retenciones',           count(*) from public.retenciones           where empresa_id is null
+order by sin_empresa desc, tabla;
+
+
+-- =============================================================
+-- PASO 6.1 · LOS CUARENTA CAMBIOS.
+-- =============================================================
+
+
+-- activos_fijos
+alter policy af_select on public.activos_fijos
+  using (empresa_id in (select public.mis_empresas()));
+alter policy af_insert on public.activos_fijos
+  with check (empresa_id in (select public.mis_empresas()));
+alter policy af_update on public.activos_fijos
+  using (empresa_id in (select public.mis_empresas()))
+  with check (empresa_id in (select public.mis_empresas()));
+alter policy af_delete on public.activos_fijos
+  using (empresa_id in (select public.mis_empresas()));
+
+-- asientos
+alter policy asientos_select on public.asientos
+  using (empresa_id in (select public.mis_empresas()));
+alter policy asientos_insert on public.asientos
+  with check (empresa_id in (select public.mis_empresas()));
+alter policy asientos_update on public.asientos
+  using (empresa_id in (select public.mis_empresas()))
+  with check (empresa_id in (select public.mis_empresas()));
+alter policy asientos_delete on public.asientos
+  using (empresa_id in (select public.mis_empresas()));
+
+-- criptoactivos
+alter policy cx_select on public.criptoactivos
+  using (empresa_id in (select public.mis_empresas()));
+alter policy cx_insert on public.criptoactivos
+  with check (empresa_id in (select public.mis_empresas()));
+alter policy cx_update on public.criptoactivos
+  using (empresa_id in (select public.mis_empresas()))
+  with check (empresa_id in (select public.mis_empresas()));
+alter policy cx_delete on public.criptoactivos
+  using (empresa_id in (select public.mis_empresas()));
+
+-- cuentas_contables
+alter policy cc_select on public.cuentas_contables
+  using (empresa_id in (select public.mis_empresas()));
+alter policy cc_insert on public.cuentas_contables
+  with check (empresa_id in (select public.mis_empresas()));
+alter policy cc_update on public.cuentas_contables
+  using (empresa_id in (select public.mis_empresas()))
+  with check (empresa_id in (select public.mis_empresas()));
+alter policy cc_delete on public.cuentas_contables
+  using (empresa_id in (select public.mis_empresas()));
+
+-- cuentas_tesoreria
+alter policy ct_sel on public.cuentas_tesoreria
+  using (empresa_id in (select public.mis_empresas()));
+alter policy ct_ins on public.cuentas_tesoreria
+  with check (empresa_id in (select public.mis_empresas()));
+alter policy ct_upd on public.cuentas_tesoreria
+  using (empresa_id in (select public.mis_empresas()))
+  with check (empresa_id in (select public.mis_empresas()));
+alter policy ct_del on public.cuentas_tesoreria
+  using (empresa_id in (select public.mis_empresas()));
+
+-- documentos_fiscales
+alter policy df_sel on public.documentos_fiscales
+  using (empresa_id in (select public.mis_empresas()));
+alter policy df_ins on public.documentos_fiscales
+  with check (empresa_id in (select public.mis_empresas()));
+alter policy df_del on public.documentos_fiscales
+  using (empresa_id in (select public.mis_empresas()));
+
+-- libro_fiscal
+alter policy lf_select on public.libro_fiscal
+  using (empresa_id in (select public.mis_empresas()));
+alter policy lf_insert on public.libro_fiscal
+  with check (empresa_id in (select public.mis_empresas()));
+alter policy lf_update on public.libro_fiscal
+  using (empresa_id in (select public.mis_empresas()))
+  with check (empresa_id in (select public.mis_empresas()));
+alter policy lf_delete on public.libro_fiscal
+  using (empresa_id in (select public.mis_empresas()));
+
+-- movimientos_tesoreria
+alter policy mt_sel on public.movimientos_tesoreria
+  using (empresa_id in (select public.mis_empresas()));
+alter policy mt_ins on public.movimientos_tesoreria
+  with check (empresa_id in (select public.mis_empresas()));
+alter policy mt_upd on public.movimientos_tesoreria
+  using (empresa_id in (select public.mis_empresas()))
+  with check (empresa_id in (select public.mis_empresas()));
+alter policy mt_del on public.movimientos_tesoreria
+  using (empresa_id in (select public.mis_empresas()));
+
+-- productos
+alter policy productos_select on public.productos
+  using (empresa_id in (select public.mis_empresas()));
+alter policy productos_insert on public.productos
+  with check (empresa_id in (select public.mis_empresas()));
+alter policy productos_update on public.productos
+  using (empresa_id in (select public.mis_empresas()))
+  with check (empresa_id in (select public.mis_empresas()));
+alter policy productos_delete on public.productos
+  using (empresa_id in (select public.mis_empresas()));
+
+-- retenciones
+alter policy ret_select on public.retenciones
+  using (empresa_id in (select public.mis_empresas()));
+alter policy ret_insert on public.retenciones
+  with check (empresa_id in (select public.mis_empresas()));
+alter policy ret_update on public.retenciones
+  using (empresa_id in (select public.mis_empresas()))
+  with check (empresa_id in (select public.mis_empresas()));
+alter policy ret_delete on public.retenciones
+  using (empresa_id in (select public.mis_empresas()));
+
+
+-- =============================================================
+-- `terceros` NO ESTÁ AQUÍ, y es a propósito.
+--
+-- Sus cinco políticas tienen la misma forma, pero la tabla NO TIENE
+-- empresa_id: el directorio es de la cuenta. Migrarla es imposible sin
+-- agregarle antes esa columna, y eso todavía es una decisión de producto
+-- pendiente —¿los terceros se copian al traspasar la empresa, o se
+-- comparten como hoy?— que está anotada en empresa_invitada_contador.sql.
+--
+-- Mientras no se decida, el contador invitado usará SU propio directorio
+-- al trabajar sobre la empresa del cliente. Funciona, pero conviene saber
+-- que es así y no un olvido.
+-- =============================================================
+
+
+-- =============================================================
+-- PASO 6.2 · COMPROBAR
+-- =============================================================
+
+-- a) Que no quede ninguna atada a la cuenta, salvo las de usuario_empresa
+--    y las de terceros, que se quedan a propósito.
+select p.tablename, p.policyname, p.cmd
+  from pg_policies p
+ where p.schemaname = 'public'
+   and exists (select 1 from information_schema.columns c
+                where c.table_schema = 'public' and c.table_name = p.tablename
+                  and c.column_name = 'empresa_id')
+   and coalesce(p.qual, p.with_check, '') like '%mi_cuenta_id%'
+   and coalesce(p.qual, p.with_check, '') not like '%mis_empresas%'
+ order by p.tablename, p.policyname;
+
+-- b) Y otra vez el 4.2.b: hacerse pasar por tu usuario y comparar contra
+--    las cifras de antes. IDÉNTICAS.
