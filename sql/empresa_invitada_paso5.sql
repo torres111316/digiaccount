@@ -452,3 +452,36 @@ select p.tablename, p.policyname, p.cmd
 
 -- b) Y otra vez el 4.2.b: hacerse pasar por tu usuario y comparar contra
 --    las cifras de antes. IDÉNTICAS.
+
+
+-- =============================================================
+-- PASO 6.0.b · EL ÚNICO HUÉRFANO. Resolverlo ANTES del 6.1.
+--
+-- Resultado del 6.0 (30/08/2026): nueve tablas en cero y `productos` con
+-- UNA fila sin empresa — el artículo de prueba que apareció al separar el
+-- catálogo por empresa. libro_fiscal, con sus 2.338 renglones, limpio.
+--
+-- Si se migra sin resolverlo, ese artículo deja de verse para todos. No es
+-- grave siendo una prueba, pero el hábito de migrar dejando filas atrás sí
+-- lo es: la próxima vez pueden ser doscientas y de un cliente.
+--
+-- DESDE LA APLICACIÓN es más simple: Inventario ya muestra el aviso de los
+-- artículos sin empresa, con el botón para traerlos o para borrarlos. Esto
+-- es la alternativa por si se prefiere resolverlo aquí.
+-- =============================================================
+
+-- Ver cuál es, antes de decidir:
+select id, nombre, sku, stock, costo, precio, cuenta_id
+  from public.productos
+ where empresa_id is null;
+
+-- OPCIÓN A · era una prueba y se borra:
+-- delete from public.productos where empresa_id is null;
+
+-- OPCIÓN B · asignarlo a una empresa. Primero ver los ids:
+-- select id, nombre from public.empresas order by nombre;
+-- update public.productos set empresa_id = 'PEGA-AQUI-EL-ID-DE-LA-EMPRESA'
+--  where empresa_id is null;
+
+-- Y comprobar que quedó en cero antes de seguir:
+-- select count(*) as sin_empresa from public.productos where empresa_id is null;
