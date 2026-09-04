@@ -205,3 +205,34 @@ select p.tablename, p.policyname, p.cmd
 --
 --    Si sube: se ven datos de otra cuenta.  Si baja: se perdió acceso.
 --    Las dos se revierten con el 4.3.
+
+
+-- =============================================================
+-- PASO 5.0.c · EL CABO SUELTO.
+--
+-- El 5.0.b confirmó que no hay agujero: las once tablas tienen RLS activa
+-- y políticas de usuario. Pero destapó otra cosa.
+--
+-- `libro_fiscal` tiene CINCO políticas, CUATRO de usuario. En el PASO 3
+-- apareció UNA, la del fundador. Y el PASO 2 devolvió cero filas. Esas
+-- cuatro no salieron en NINGUNA de las dos listas, y entre ambas deberían
+-- cubrirlo todo: la 3 es literalmente el complemento de la 2.
+--
+-- O sea: mi consulta las deja fuera por alguna razón que no veo. Y sin
+-- migrarlas, el contador invitado no vería el libro del cliente — que es
+-- justo para lo que existe todo esto.
+--
+-- Esto pregunta directo, sin filtros ni interpretación. Es lo que había
+-- que hacer desde el principio para estas tablas.
+-- =============================================================
+
+select tablename, policyname, cmd, permissive, roles,
+       qual       as condicion_lectura,
+       with_check as condicion_escritura
+  from pg_policies
+ where schemaname = 'public'
+   and tablename in ('libro_fiscal', 'productos', 'retenciones', 'asientos',
+                     'terceros', 'activos_fijos', 'criptoactivos',
+                     'cuentas_contables', 'cuentas_tesoreria',
+                     'documentos_fiscales', 'movimientos_tesoreria')
+ order by tablename, policyname;
