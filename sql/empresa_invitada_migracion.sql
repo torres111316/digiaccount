@@ -153,6 +153,38 @@ select p.tablename, p.policyname, p.cmd, p.qual
 --       Anota las de antes antes de tocar nada. Es la red de seguridad
 --       entera de esta migración: contar políticas no prueba nada, lo que
 --       prueba es que sigas viendo exactamente lo mismo.
+--
+--       OJO CON UNA TRAMPA: el editor SQL de Supabase corre como
+--       superusuario y SE SALTA LA RLS. Contar así devuelve el total de la
+--       base, no lo que ve un usuario a través de sus políticas. Una prueba
+--       de seguridad ejecutada saltándose la seguridad no prueba nada, y da
+--       la peor clase de confianza: la falsa.
+--
+--       Por eso esto se HACE PASAR por el usuario. Todo dentro de una
+--       transacción que termina en rollback: no deja rastro.
+
+-- 4.2.a · Primero, tu id de usuario. Copia el de tu correo.
+select id, email from auth.users order by created_at;
+
+-- 4.2.b · Y con ese id — pégalo en las DOS líneas marcadas.
+begin;
+  select set_config('request.jwt.claims',
+                    json_build_object('sub', 'PEGA-AQUI-TU-UUID',
+                                      'role', 'authenticated')::text, true);
+  set local role authenticated;
+
+  select 'empresas'    as tabla, count(*) from public.empresas
+  union all select 'libro_fiscal',  count(*) from public.libro_fiscal
+  union all select 'retenciones',   count(*) from public.retenciones
+  union all select 'asientos',      count(*) from public.asientos
+  union all select 'facturas',      count(*) from public.facturas
+  union all select 'productos',     count(*) from public.productos
+  union all select 'empleados',     count(*) from public.empleados;
+rollback;
+
+-- 4.2.c · Y el control de que no se PIERDA nada: el total real de la base,
+--         como superusuario. Este sí puede correrse suelto, y su cifra
+--         tiene que quedar igual antes y después — aquí no se borra nada.
 select 'empresas'    as tabla, count(*) from public.empresas
 union all select 'libro_fiscal',  count(*) from public.libro_fiscal
 union all select 'retenciones',   count(*) from public.retenciones
