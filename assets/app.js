@@ -62,6 +62,30 @@
   };
 
   // Fecha de HOY en formato YYYY-MM-DD (hora LOCAL, para inputs type=date)
+  /* Deja cualquier fecha razonable en dd/mm/aa, que es como se guarda.
+
+     Existe por una razon concreta: la macro Excel del SENIAT toma la fecha
+     del formato regional de Windows, y en un equipo que no pone el cero a
+     la izquierda escribe "9/7/2026" — que el portal rechaza. Aqui NUNCA se
+     lee la fecha del sistema operativo: se arma a mano, digito por digito.
+
+     Entiende dd/mm/aa, dd/mm/aaaa y aaaa-mm-dd, con /, - o . de separador.
+     Si no la entiende devuelve null, y quien llama decide que hacer — que
+     es mejor que devolver algo a medias y que aparezca vacio en un archivo
+     que ya se subio. */
+  window.__normFecha = function (txt) {
+    const p = String(txt || '').trim().split(/[/\-.]/);
+    if (p.length !== 3) return null;
+    let dd, mm, aa;
+    if (p[0].length === 4) { aa = p[0]; mm = p[1]; dd = p[2]; }   // aaaa-mm-dd
+    else { dd = p[0]; mm = p[1]; aa = p[2]; }                      // dd/mm/aa(aa)
+    if (!/^[0-9]{1,2}$/.test(dd) || !/^[0-9]{1,2}$/.test(mm)) return null;
+    if (!/^[0-9]{2}$/.test(aa) && !/^[0-9]{4}$/.test(aa)) return null;
+    const d = parseInt(dd, 10), m = parseInt(mm, 10);
+    if (d < 1 || d > 31 || m < 1 || m > 12) return null;
+    return String(d).padStart(2, '0') + '/' + String(m).padStart(2, '0') + '/' + aa.slice(-2);
+  };
+
   window.__hoyISO = function () {
     const d = new Date();
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -2461,7 +2485,7 @@
           { name: 'tipo', label: 'Impuesto', type: 'select', options: ['IVA', 'ISLR'], value: r.tipo === 'islr' ? 'ISLR' : 'IVA' },
           { name: 'concepto', label: 'Concepto de retención (ISLR)', col: 2, type: 'select', options: CONCEPTOS_ISLR.map((c) => c.act), value: r.concepto || CONCEPTOS_ISLR[0].act },
           { name: 'sujeto', label: 'Tipo de sujeto (ISLR)', type: 'select', options: [{ value: 'PNR', label: 'PN Residente' }, { value: 'PNNR', label: 'PN No Residente' }, { value: 'PJD', label: 'PJ Domiciliada' }, { value: 'PJND', label: 'PJ No Domiciliada' }], value: r.sujeto || 'PNR' },
-          { name: 'fecha', label: 'Fecha (dd/mm/aa)', value: r.fecha || '' },
+          { name: 'fecha', label: 'Fecha (dd/mm/aa)', value: r.fecha || '', placeholder: '27/08/26' },
           { name: 'nombre', label: 'Tercero', col: 2, value: r.tercero_nombre || '' },
           { name: 'rif', label: 'RIF', upper: true, value: r.tercero_rif || '' },
           { name: 'factura', label: 'Factura afectada', value: r.factura || '' },
@@ -2497,6 +2521,11 @@
         onSave: (v) => {
           if (!window.sb) return 'Sin conexión.';
           if (!v.nombre) return 'Indica el tercero.';
+          /* De esta fecha salen el TXT del IVA y el XML del ISLR. Se
+             normaliza SIEMPRE: una fecha mal escrita no se nota hasta que el
+             portal rebota el archivo. */
+          const fechaOk = window.__normFecha ? window.__normFecha(v.fecha) : v.fecha;
+          if (!fechaOk) return 'No entiendo la fecha "' + (v.fecha || '') + '". Escríbela como 27/08/26.';
           const esIslr = /islr/i.test(v.tipo);
           const base = parseFloat(v.base) || 0, pct = parseFloat(v.pct) || 0;
           let cod = '', suj = '', sust = 0, monto;
@@ -2511,7 +2540,7 @@
           }
           const dir = /practicada/i.test(v.direccion) ? 'practicada' : 'sufrida';
           window.sb.from('retenciones').update({
-            direccion: dir, tipo: (v.tipo || 'IVA').toLowerCase(), fecha: v.fecha,
+            direccion: dir, tipo: (v.tipo || 'IVA').toLowerCase(), fecha: fechaOk,
             comprobante: v.comprobante, tercero_nombre: v.nombre, tercero_rif: normRif(v.rif),
             factura: v.factura, numero_control: v.numControl || null, base: base, pct: pct, monto: monto,
             concepto: esIslr ? v.concepto : null, concepto_codigo: esIslr ? cod : null, sujeto: esIslr ? suj : null, sustraendo: sust,
@@ -5470,6 +5499,21 @@
          es justamente la diferencia entre cuándo ocurrió algo y cuándo se
          declara. */
       const rows = iva;
+
+      /* Igual que en el XML del ISLR: se revisa ANTES de generar. Una fecha
+         que no se entendiera salía VACÍA en el archivo, sin avisar, y eso
+         solo se descubría cuando el portal lo rebotaba. */
+      const problemas = [];
+      rows.forEach((r, i) => {
+        const quien = 'Renglón ' + (i + 1) + ' · ' + (r.tercero_nombre || r.tercero_rif || 'sin tercero') + ': ';
+        if (!fechaIso(r.fecha)) problemas.push(quien + 'la fecha "' + (r.fecha || '') + '" no se entiende. Corrígela en la retención.');
+        if (!/^[VvEeJjPpGg][0-9]{9}$/.test(norm(r.tercero_rif))) problemas.push(quien + 'el RIF del tercero no tiene la forma J123456789.');
+      });
+      if (problemas.length) {
+        if (window.toast) window.toast(problemas[0] + (problemas.length > 1 ? ' (y ' + (problemas.length - 1) + ' más)' : ''), 'error');
+        return;
+      }
+
       const pf = window.__fiscalPer || {};
       const periodo = (pf.aa && pf.mm) ? ('20' + pf.aa + pf.mm)
         : (periodoDe(rows[0] && rows[0].fecha) || '').replace('-', '');
@@ -5538,7 +5582,30 @@
       return yy + (p[1] || '').padStart(2, '0');
     };
     const numFactura = (f) => { const s = (f || '').replace(/[^a-zA-Z0-9]/g, ''); return s ? s.slice(-10) : '0'; };
-    const numControl = (c) => { const s = (c || '').replace(/[^a-zA-Z0-9]/g, ''); return s ? s.slice(-8) : 'NA'; };
+    /* El numero de control venezolano viene como "00-0001866": una serie,
+       un guion y el numero. El esquema solo admite 8 caracteres, y quitar el
+       guion para cortar por la izquierda producia "00001866" — un numero que
+       no existe en ninguna factura. Se toma la parte de despues del guion,
+       que es el numero de verdad, y solo si aun excede se recorta. */
+    const numControl = (c) => {
+      const bruto = String(c || '').trim();
+      if (!bruto) return 'NA';
+      const parte = bruto.indexOf('-') >= 0 ? bruto.slice(bruto.lastIndexOf('-') + 1) : bruto;
+      const limpio = parte.replace(/[^a-zA-Z0-9]/g, '');
+      return limpio ? limpio.slice(-8) : 'NA';
+    };
+    /* 'dd/mm/aa' (como se guarda) -> 'dd/mm/aaaa' con ceros a la izquierda,
+       que es lo que valida el portal. Devuelve '' si la fecha no se entiende;
+       de eso se encarga la comprobacion previa. */
+    const fechaOperacion = (f) => {
+      const p = String(f || '').split('/');
+      if (p.length < 3) return '';
+      const dd = (p[0] || '').padStart(2, '0');
+      const mm = (p[1] || '').padStart(2, '0');
+      const aa = p[2].length === 2 ? '20' + p[2] : p[2];
+      if (!/^[0-3][0-9]$/.test(dd) || !/^[01][0-9]$/.test(mm) || !/^[12][0-9]{3}$/.test(aa)) return '';
+      return dd + '/' + mm + '/' + aa;
+    };
     btn.addEventListener('click', () => {
       const emp = window.__EMPRESA_ACTIVA || {};
       const rifAgente = norm(emp.rif);
@@ -5554,6 +5621,29 @@
          anterior al que se declara — que es lo normal cuando la factura
          llega tarde. Se enteraba de menos y nada lo avisaba. */
       const rows = islr;
+
+      /* Se revisa el archivo ANTES de generarlo. El portal solo dice
+         «elemento no esperado» con un numero de linea, y traducir eso a una
+         fila del sistema cuesta mas que comprobarlo aqui. */
+      const problemas = [];
+      rows.forEach((r, i) => {
+        const quien = 'Renglon ' + (i + 1) + ' · ' + (r.tercero_nombre || r.tercero_rif || 'sin tercero') + ': ';
+        if (!/^[VvEeJjPpGg][0-9]{9}$/.test(norm(r.tercero_rif))) problemas.push(quien + 'el RIF del retenido no tiene la forma J123456789.');
+        if (!fechaOperacion(r.fecha)) problemas.push(quien + 'falta la fecha de la operacion, o no se entiende.');
+        if (!/^[0-9]{3}$/.test(String(r.concepto_codigo || ''))) problemas.push(quien + 'el codigo de concepto debe ser de tres digitos (Anexo 6.1).');
+        const pct = Number(r.pct);
+        if (!(pct >= 0 && pct <= 100)) problemas.push(quien + 'el porcentaje de retencion debe estar entre 0 y 100.');
+        if (!(Number(r.base) >= 0)) problemas.push(quien + 'el monto de la operacion no puede ser negativo.');
+      });
+      if (problemas.length) {
+        const pre0 = document.getElementById('xmlPreviewPre');
+        if (pre0) pre0.textContent = 'El archivo NO se genero. Hay que corregir esto primero:\n\n' + problemas.join('\n');
+        const lh0 = document.getElementById('xmlPreviewLh');
+        if (lh0) lh0.textContent = problemas.length + ' punto(s) por corregir antes de exportar';
+        if (window.toast) window.toast(problemas.length + ' renglon(es) con datos incompletos. Mira el detalle abajo.', 'error');
+        return;
+      }
+
       const pf = window.__fiscalPer || {};
       const periodo = (pf.aa && pf.mm) ? ('20' + pf.aa + pf.mm)
         : (periodoDe(rows[0] && rows[0].fecha) || '').replace('-', '');
@@ -5565,6 +5655,14 @@
           + '    <RifRetenido>' + norm(r.tercero_rif) + '</RifRetenido>\r\n'
           + '    <NumeroFactura>' + numFactura(r.factura) + '</NumeroFactura>\r\n'
           + '    <NumeroControl>' + numControl(r.numero_control) + '</NumeroControl>\r\n'
+          /* FechaOperacion NO aparece en el Manual Tecnico v2.4 (mayo 2026),
+             pero el validador del portal la EXIGE: sin ella rechaza los tres
+             elementos siguientes con «no esperado» y da el DetalleRetencion
+             por incompleto. Se comprobo contra dos archivos que si fueron
+             aceptados, uno de ellos generado por la propia macro Excel del
+             SENIAT (instructivo TRI.GR.03.016). El manual va por detras del
+             validador; manda el validador. */
+          + '    <FechaOperacion>' + fechaOperacion(r.fecha) + '</FechaOperacion>\r\n'
           + '    <CodigoConcepto>' + (r.concepto_codigo || '000') + '</CodigoConcepto>\r\n'
           + '    <MontoOperacion>' + fmtMonto(r.base) + '</MontoOperacion>\r\n'
           + '    <PorcentajeRetencion>' + fmtMonto(r.pct) + '</PorcentajeRetencion>\r\n'
@@ -11955,7 +12053,7 @@
         title: 'Editar reporte Z ' + (r.numero_zeta || ''),
         saveLabel: 'Guardar cambios',
         fields: [
-          { name: 'fecha', label: 'Fecha (dd/mm/aa)', value: r.fecha || '' },
+          { name: 'fecha', label: 'Fecha (dd/mm/aa)', value: r.fecha || '', placeholder: '27/08/26' },
           { name: 'maquina', label: 'Serial de la máquina fiscal', upper: true, value: r.maquina_fiscal || '' },
           { name: 'numeroZ', label: 'N° de reporte Z', value: r.numero_zeta || '' },
           { name: 'compDesde', label: 'Primer comprobante del día', value: r.comprobante_desde || '' },
@@ -12052,12 +12150,16 @@
           /* El período y la quincena se recalculan de la fecha: si se corrige
              el día, el reporte tiene que moverse con él. En una venta el día
              es dato firme — la máquina emite el Z cuando lo emite. */
-          const p = (v.fecha || '').split('/');
-          const periodo = p.length === 3 ? ('20' + p[2].slice(-2) + '-' + p[1].padStart(2, '0')) : r.periodo;
+          /* Si la fecha no se entiende, el período se quedaba en el viejo
+             y la quincena salía NaN, sin avisar. Ahora no se guarda. */
+          const fechaOk = window.__normFecha ? window.__normFecha(v.fecha) : v.fecha;
+          if (!fechaOk) return 'No entiendo la fecha "' + (v.fecha || '') + '". Escríbela como 27/08/26.';
+          const p = fechaOk.split('/');
+          const periodo = ('20' + p[2] + '-' + p[1]);
           const esEsp = window.__ivaPorQuincena && window.__ivaPorQuincena();
           const dia = parseInt(p[0], 10);
           window.sb.from('libro_fiscal').update({
-            fecha: v.fecha, periodo: periodo,
+            fecha: fechaOk, periodo: periodo,
             quincena: esEsp ? (dia > 15 ? 2 : 1) : null,
             sucursal_id: sucursalDe(v.sucursal),
             maquina_fiscal: (v.maquina || '').trim().toUpperCase(),
@@ -12104,7 +12206,7 @@
         title: esCompra ? 'Editar compra (Libro de Compras)' : 'Editar venta (Libro de Ventas)',
         saveLabel: 'Guardar cambios',
         fields: [
-          { name: 'fecha', label: 'Fecha (dd/mm/aa)', value: r.fecha || '' },
+          { name: 'fecha', label: 'Fecha (dd/mm/aa)', value: r.fecha || '', placeholder: '27/08/26' },
         ].concat(esCompra ? [
           { name: 'periodo', label: 'Período de declaración', type: 'select', options: _opcionesPeriodo(), value: r.periodo || _periodoActualKey() },
         ] : []).concat([
@@ -12204,9 +12306,11 @@
         onSave: (v) => {
           if (!window.sb) return 'Sin conexión.';
           // Ventas: período sigue a la fecha (dd/mm/aa). Compras: el período elegido.
+          const fechaOk = window.__normFecha ? window.__normFecha(v.fecha) : v.fecha;
+          if (!fechaOk) return 'No entiendo la fecha "' + (v.fecha || '') + '". Escríbela como 27/08/26.';
           let perNuevo;
           if (esCompra) perNuevo = v.periodo || r.periodo || _periodoActualKey();
-          else { const fp = (v.fecha || '').split('/'); perNuevo = fp.length === 3 ? '20' + fp[2] + '-' + String(fp[1]).padStart(2, '0') : (r.periodo || _periodoActualKey()); }
+          else { const fp = fechaOk.split('/'); perNuevo = '20' + fp[2] + '-' + fp[1]; }
           if (window.__periodoCerrado && (window.__periodoCerrado(r.periodo) || window.__periodoCerrado(perNuevo))) return '🔒 Este registro pertenece a un período CERRADO (declarado). Reábrelo en Fiscal para modificarlo.';
           if (!v.nombre) return 'Indica el ' + (esCompra ? 'proveedor' : 'cliente') + '.';
           const M = editMontos ? editMontos.leer()
@@ -12219,7 +12323,7 @@
               : 0.08;
           const igtf = leerIgtf(v);   // el monto, no un porcentaje del total
           window.sb.from('libro_fiscal').update({
-            fecha: v.fecha, periodo: perNuevo, tipo_doc: (v.tipoDoc || '').slice(0, 2), tercero_nombre: v.nombre,
+            fecha: fechaOk, periodo: perNuevo, tipo_doc: (v.tipoDoc || '').slice(0, 2), tercero_nombre: v.nombre,
             sucursal_id: sucursalDe(v.sucursal),
             tercero_rif: (v.rif || '').toUpperCase().replace(/[\s.\-]/g, ''), numero_factura: v.numFactura, numero_control: v.numControl,
             exento: exento, base: base, alicuota: alic, iva: iva, igtf: igtf, total: total,
