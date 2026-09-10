@@ -1588,21 +1588,35 @@
       }
 
       /* ── IVA ───────────────────────────────────────────────────────────
-         Providencia SNAT/2015/0049: AAAAMM + secuencial, y el secuencial
-         arranca de nuevo con cada mes. */
+         Providencia SNAT/2015/0049: AAAAMM + secuencial.
+
+         EL CORRELATIVO NO SE REINICIA CADA MES. Lo que cambia con el mes es
+         el PREFIJO; el número sigue corriendo. Es la numeración propia del
+         agente de retención, y en GATMA va continua desde el 000001 de
+         octubre de 2025 hasta hoy, atravesando todos los meses.
+
+         Antes se filtraba por el mes en curso y, al no haber ninguno todavía,
+         se arrancaba de nuevo en 1: al pasar de agosto a septiembre proponía
+         ...900000001 en lugar de ...900000019. Eso repetía números ya
+         entregados a proveedores el año anterior. */
       const p2 = String(fechaISO || '').split('-');
       const aaaamm = (p2.length === 3) ? (p2[0] + p2[1])
         : (function () {
           const d = new Date();
           return String(d.getFullYear()) + String(d.getMonth() + 1).padStart(2, '0');
         })();
-      const delMes = usados.filter((c) => c.replace(/\D/g, '').indexOf(aaaamm) === 0);
-      if (delMes.length) return siguienteDe(delMes, 14);
 
-      // Primero del mes: se conserva el largo que ya usa la empresa.
-      const largo = usados.length ? usados[0].replace(/\D/g, '').length : 14;
-      const correl = Math.max(1, largo - aaaamm.length);
-      return aaaamm + String(1).padStart(correl, '0');
+      // El más alto de TODA la empresa, sea del mes que sea. Se conserva la
+      // cantidad de dígitos que ella ya venía usando.
+      let maxN = 0, largoCorrel = 8;
+      usados.forEach((c) => {
+        const d = String(c).replace(/\D/g, '');
+        if (d.length <= 6) return;              // sin correlativo después del AAAAMM
+        const correl = d.slice(6);
+        const n = parseInt(correl, 10);
+        if (!isNaN(n) && n > maxN) { maxN = n; largoCorrel = correl.length; }
+      });
+      return aaaamm + String(maxN + 1).padStart(largoCorrel, '0');
     }
 
     function setupPctField(body) {
