@@ -7329,6 +7329,98 @@
     .ter-contact .ter-cdel { grid-column: 1 / -1; height: 36px; }
   }
 
+  /* =========================================================
+     TELÉFONO · EDITORES DE RENGLONES
+     Cuatro y cinco columnas de campos no caben en 360 px: cada
+     una queda en unos setenta pixeles y no se lee lo que se
+     escribe. Cada renglón pasa a ser una tarjeta apilada, con el
+     campo principal arriba y el resto debajo.
+
+     Los documentos imprimibles NO entran aquí a propósito: sus
+     columnas son formato de papel.
+     ========================================================= */
+  @media (max-width: 560px) {
+
+    /* ── Montos de la factura · compras y ventas del libro ──────
+       Es el que se usa con el OCR desde el teléfono.
+       Orden real de los hijos: monto · alícuota · IVA · quitar. */
+    .lf-reng { padding: 12px; }
+    .lf-reng .ic-head { display: none; }          /* los títulos no caben */
+    .lf-reng .ic-row {
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      padding: 10px;
+      margin-bottom: 10px;
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-sm);
+      background: var(--bg-surface-alt);
+    }
+    .lf-reng .ic-row .lf-monto { grid-column: 1 / -1; height: 44px; font-size: 16px; }
+    .lf-reng .ic-row .lf-alic  { height: 44px; font-size: 16px; }
+    .lf-reng .ic-row .lf-iva   { align-self: center; text-align: right; font-size: 13px; white-space: nowrap; }
+    .lf-reng .ic-row .lf-del   { grid-column: 1 / -1; width: 100%; height: 34px; }
+    .lf-reng-hint { font-size: 11.5px; }
+
+    /* El total impreso, debajo de su etiqueta y no apretado al lado. */
+    .fm-numbox-sum-row.lf-check { flex-direction: column; align-items: stretch; gap: 6px; }
+    .fm-numbox-sum-row.lf-check input { width: 100%; height: 40px; font-size: 16px; }
+
+    /* ── Líneas de la factura de venta ──────────────────────────
+       descripción · cantidad · precio · monto · quitar */
+    .fv-lines-head { display: none; }
+    .fv-line {
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      padding: 10px;
+      margin-bottom: 10px;
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-sm);
+      background: var(--bg-surface-alt);
+    }
+    .fv-line .fv-desc { grid-column: 1 / -1; height: 44px; font-size: 16px; }
+    .fv-line .fv-cant, .fv-line .fv-precio { height: 44px; font-size: 16px; }
+    .fv-line .fv-monto { align-self: center; text-align: right; white-space: nowrap; }
+    .fv-line .fv-del { grid-column: 1 / -1; width: 100%; height: 34px; }
+    .fv-grid { grid-template-columns: 1fr; }
+    .fv-body { padding: 14px; max-height: 68vh; }
+
+    /* ── Líneas del asiento manual ──────────────────────────────
+       cuenta · debe · haber · quitar */
+    .am-lines-head { display: none; }
+    .am-line {
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      padding: 10px;
+      margin-bottom: 10px;
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-sm);
+      background: var(--bg-surface-alt);
+    }
+    .am-line .am-cta { grid-column: 1 / -1; height: 44px; font-size: 16px; }
+    .am-line .am-debe, .am-line .am-haber { height: 44px; font-size: 16px; }
+    .am-line .am-del { grid-column: 1 / -1; width: 100%; height: 34px; }
+    .am-meta { grid-template-columns: 1fr; }
+    .am-body { padding: 14px; }
+
+    /* ── Materia prima de la ficha de costo ─────────────────────
+       nombre · cantidad · × · costo · subtotal */
+    .mp-row { grid-template-columns: 1fr auto 1fr; gap: 6px 8px; }
+    .mp-row .mp-name { grid-column: 1 / -1; }
+    .mp-row .mp-sub { grid-column: 1 / -1; text-align: right; }
+    .cost-row input { width: 110px; }
+
+    /* ── Rejillas que solo se leen en pantalla ──────────────────
+       Dos y tres columnas de cifras se vuelven ilegibles antes que
+       incómodas: pasan a una sola. */
+    .auth-grid2,
+    .ficha-grid,
+    .txt-gen-row,
+    .wh-card .wh-body { grid-template-columns: 1fr; }
+    .rep-kpis,
+    .decl-pago,
+    .agent-stats { grid-template-columns: 1fr; gap: 8px; }
+  }
+
   /* Panel de notificaciones */
   .notif-panel {
     position: fixed; top: 60px; right: 18px; bottom: auto; left: auto; z-index: 1500;
