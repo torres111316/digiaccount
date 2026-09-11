@@ -6563,6 +6563,112 @@
     }
     const UNIDADES = { 'Unidad / pieza': 'und', 'Kg': 'kg', 'Gramo': 'g', 'Litro': 'L', 'Ml': 'ml', 'Metro': 'm', 'Caja': 'caja', 'Bulto': 'bulto', 'Docena': 'doc' };
 
+    /* ── El precio en dólares ────────────────────────────────────────
+       El ancla es por artículo: un abasto tiene la harina en bolívares y
+       el whisky en dólares. La conversión va a la tasa del BCV, que es la
+       que exige el SENIAT en la factura. */
+    const MONEDAS_PRECIO = ['Bolívares (Bs)', 'Dólares ($)'];
+    const monedaClave = (txt) => (/\$|d[oó]lar/i.test(String(txt || '')) ? 'USD' : 'BS');
+    const monedaTexto = (clave) => (clave === 'USD' ? MONEDAS_PRECIO[1] : MONEDAS_PRECIO[0]);
+
+    /* Los dos campos de precio cambian de etiqueta con la moneda elegida, y
+       debajo se muestra el equivalente con la tasa vigente. Se calcula a la
+       vista y no al guardar: quien carga un catálogo necesita ver el número
+       antes de confirmarlo, no después. */
+    function montarMonedaPrecio(body) {
+      if (!body) return;
+      const selMon = body.querySelector('[data-name="moneda"]');
+      const elCosto = body.querySelector('[data-name="costo"]');
+      const elPrecio = body.querySelector('[data-name="precio"]');
+      const nota = body.querySelector('#artEquiv');
+      if (!selMon || !elCosto || !elPrecio) return;
+
+      const lblDe = (el) => {
+        const campo = el.closest('.fm-field');
+        return campo ? campo.querySelector('.fm-lbl') : null;
+      };
+      const fmtBs = (n) => Number(n || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+      function pintar() {
+        const esUsd = monedaClave(selMon.value) === 'USD';
+        const uni = esUsd ? '($)' : '(Bs)';
+        const lc = lblDe(elCosto), lp = lblDe(elPrecio);
+        if (lc) lc.textContent = 'Costo ' + uni + ' por unidad';
+        if (lp) lp.textContent = 'Precio venta ' + uni + ' por unidad';
+
+        if (!nota) return;
+        const tasa = Number(window.__bcvRate) || 0;
+        if (!esUsd) {
+          nota.innerHTML = 'El precio queda fijo en bolívares. Para que siga a la tasa del día, '
+            + 'elige <strong>Dólares</strong>.';
+          return;
+        }
+        if (!(tasa > 0)) {
+          nota.innerHTML = '<span style="color:var(--da-danger);">No hay tasa del BCV cargada todavía, '
+            + 'así que no puedo mostrarte el equivalente en bolívares.</span>';
+          return;
+        }
+        const c = Number(elCosto.value) || 0, p = Number(elPrecio.value) || 0;
+        nota.innerHTML = 'A la tasa de hoy (<strong>Bs ' + fmtBs(tasa) + '</strong> por $): '
+          + 'costo <strong>Bs ' + fmtBs(c * tasa) + '</strong> · '
+          + 'venta <strong>Bs ' + fmtBs(p * tasa) + '</strong>.'
+          + '<br>Se guarda el precio en dólares; los bolívares se recalculan con la tasa de cada día.';
+      }
+
+      selMon.addEventListener('change', pintar);
+      elCosto.addEventListener('input', pintar);
+      elPrecio.addEventListener('input', pintar);
+      pintar();
+    }
+
+    /* Los campos de precio que comparten los dos formularios. `p` es el
+       artículo al editar, o nada al crear. */
+    function camposPrecio(p) {
+      const esUsd = String((p || {}).moneda_precio || 'BS') === 'USD';
+      const valCosto = esUsd ? (p || {}).costo_usd : (p || {}).costo;
+      const valPrecio = esUsd ? (p || {}).precio_usd : (p || {}).precio;
+      const uni = esUsd ? '($)' : '(Bs)';
+      return [
+        { name: 'moneda', label: 'Precio fijado en', col: 2, type: 'select',
+          options: MONEDAS_PRECIO, value: monedaTexto(esUsd ? 'USD' : 'BS') },
+        { name: 'costo', label: 'Costo ' + uni + ' por unidad', type: 'number', step: '0.01',
+          value: p ? String(Number(valCosto) || 0) : '', placeholder: '0.00' },
+        { name: 'precio', label: 'Precio venta ' + uni + ' por unidad', type: 'number', step: '0.01',
+          value: p ? String(Number(valPrecio) || 0) : '', placeholder: '0.00' },
+        { name: 'equiv', col: 2, type: 'static', label: '',
+          html: '<div id="artEquiv" style="font-size:11.5px;color:var(--fg-muted);line-height:1.55;"></div>' },
+      ];
+    }
+
+    /* Lo que se guarda. En dólares manda `*_usd` y el bolívar se deriva —el
+       disparador de la base lo vuelve a calcular al escribir, así que aquí se
+       manda ya convertido solo para que la pantalla no muestre un cero
+       mientras llega la respuesta. */
+    /* Si la base todavía no tiene las columnas del precio en dólares, se
+       guarda en bolívares y se avisa. Vale más un artículo bien registrado en
+       bolívares que un formulario que no deja guardar nada. */
+    function sinColumnasUsd(patch) {
+      const p = Object.assign({}, patch);
+      delete p.moneda_precio; delete p.costo_usd; delete p.precio_usd;
+      return p;
+    }
+    const faltaColumnaUsd = (msg) => /moneda_precio|costo_usd|precio_usd/.test(String(msg || ''));
+
+    function patchPrecio(v) {
+      const esUsd = monedaClave(v.moneda) === 'USD';
+      const c = Number(v.costo) || 0, p = Number(v.precio) || 0;
+      if (!esUsd) {
+        return { moneda_precio: 'BS', costo: c, precio: p, costo_usd: null, precio_usd: null };
+      }
+      const tasa = Number(window.__bcvRate) || 0;
+      return {
+        moneda_precio: 'USD',
+        costo_usd: c, precio_usd: p,
+        costo: tasa > 0 ? Math.round(c * tasa * 100) / 100 : 0,
+        precio: tasa > 0 ? Math.round(p * tasa * 100) / 100 : 0,
+      };
+    }
+
     // ---- Editar / eliminar artículo ----
     function editarArticulo(id) {
       const p = (window.__PRODUCTOS || []).find((x) => String(x.id) === String(id));
@@ -6577,16 +6683,23 @@
           { name: 'alic', label: 'Alícuota IVA', type: 'select', options: ['16%', '8%', 'Exento'], value: p.alicuota || '16%' },
           { name: 'stock', label: 'Stock', type: 'number', step: '0.001', value: String(Number(p.stock) || 0) },
           { name: 'min', label: 'Stock mínimo', type: 'number', step: '0.001', value: String(Number(p.stock_min) || 0) },
-          { name: 'costo', label: 'Costo (Bs) por unidad', type: 'number', step: '0.01', value: String(Number(p.costo) || 0) },
-          { name: 'precio', label: 'Precio venta (Bs) por unidad', type: 'number', step: '0.01', value: String(Number(p.precio) || 0) },
-        ],
+        ].concat(camposPrecio(p)),
+        afterRender: (body) => montarMonedaPrecio(body),
         onSave: (v) => {
           if (!v.nombre) return 'Indica el nombre del artículo.';
-          const patch = {
+          const patch = Object.assign({
             nombre: v.nombre, categoria: (v.cat || 'Otros').trim(), alicuota: v.alic, unidad: UNIDADES[v.unidad] || 'und',
-            stock: Number(v.stock) || 0, stock_min: Number(v.min) || 0, costo: Number(v.costo) || 0, precio: Number(v.precio) || 0,
-          };
+            stock: Number(v.stock) || 0, stock_min: Number(v.min) || 0,
+          }, patchPrecio(v));
           window.sb.from('productos').update(patch).eq('id', p.id).then(({ error }) => {
+            if (error && faltaColumnaUsd(error.message)) {
+              window.sb.from('productos').update(sinColumnasUsd(patch)).eq('id', p.id).then(({ error: e3 }) => {
+                if (e3) { toast('No se pudo guardar: ' + e3.message, 'error'); return; }
+                toast('Guardado en bolívares. Para fijar precios en dólares, corre sql/precio_en_dolares.sql', 'info');
+                cargarProductos();
+              });
+              return;
+            }
             if (error && /unidad/.test(error.message || '')) {
               delete patch.unidad;
               window.sb.from('productos').update(patch).eq('id', p.id).then(({ error: e2 }) => {
@@ -6623,9 +6736,8 @@
           { name: 'alic', label: 'Alícuota IVA', type: 'select', options: ['16%', '8%', 'Exento'] },
           { name: 'stock', label: 'Stock inicial', type: 'number', step: '0.001', placeholder: '0' },
           { name: 'min', label: 'Stock mínimo', type: 'number', step: '0.001', placeholder: '0' },
-          { name: 'costo', label: 'Costo prom. (Bs) por esa unidad', type: 'number', step: '0.01', placeholder: '0.00' },
-          { name: 'precio', label: 'Precio venta (Bs) por esa unidad', type: 'number', step: '0.01', placeholder: '0.00' },
-        ],
+        ].concat(camposPrecio(null)),
+        afterRender: (body) => montarMonedaPrecio(body),
         onSave: (v) => {
           if (!v.nombre) return 'Indica el nombre del artículo.';
           if (!window.sb || !window.__CUENTA_ID) return 'No hay sesión activa. Inicia sesión de nuevo.';
@@ -6639,9 +6751,17 @@
             nombre: v.nombre, sku: sku, categoria: (v.cat || 'Otros').trim(), alicuota: v.alic,
             unidad: UNI[v.unidad] || 'und',
             stock: Number(v.stock) || 0, stock_min: Number(v.min) || 0,
-            costo: Number(v.costo) || 0, precio: Number(v.precio) || 0,
           };
+          Object.assign(fila, patchPrecio(v));
           window.sb.from('productos').insert(fila).then(({ error }) => {
+            if (error && faltaColumnaUsd(error.message)) {
+              window.sb.from('productos').insert(sinColumnasUsd(fila)).then(({ error: e3 }) => {
+                if (e3) { toast('No se pudo guardar: ' + e3.message, 'error'); return; }
+                toast('Artículo creado en bolívares. Para fijar precios en dólares, corre sql/precio_en_dolares.sql', 'info');
+                cargarProductos();
+              });
+              return;
+            }
             if (error && /unidad/.test(error.message || '')) {
               // columna 'unidad' aún no existe en la BD: guarda sin ella para no bloquear
               delete fila.unidad;
