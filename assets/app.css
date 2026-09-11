@@ -5151,11 +5151,28 @@
     #printPortal .libro-print .libro-table td:nth-child(7) { width: 4.5%; }
     #printPortal .libro-print .libro-table th:nth-child(11),
     #printPortal .libro-print .libro-table td:nth-child(11) { width: 4.5%; }
-    /* Razón social (4ª col): se queda con el espacio liberado, permite salto */
+    /* Razón social (4ª col): se queda con el espacio liberado, permite salto.
+
+       Va por POSICIÓN y no solo por la clase `.primary`. La regla original
+       apuntaba únicamente a `td.primary`, pero la tabla que se arma para
+       imprimir generaba esa celda sin clase: le quedaba el `white-space:
+       nowrap` de la tabla base y, con `table-layout: fixed`, un nombre largo
+       se desbordaba encima de las columnas de Factura y Control. */
     #printPortal .libro-print .libro-table th:nth-child(4),
+    #printPortal .libro-print .libro-table td:nth-child(4),
     #printPortal .libro-print .libro-table td.primary {
-      width: 24%; white-space: normal; overflow-wrap: anywhere; line-height: 1.2;
+      width: 24%; min-width: 0;
+      white-space: normal; overflow-wrap: anywhere; word-break: break-word;
+      line-height: 1.2;
     }
+    /* Factura (5) y Control (6): ancho propio y sin partir. Son números que
+       se leen de un golpe; partirlos en dos renglones los vuelve ilegibles.
+       Sin ancho declarado se repartían lo que sobrara, y era ahí donde el
+       nombre del cliente se les venía encima. */
+    #printPortal .libro-print .libro-table:not(.libro-maquina) th:nth-child(5),
+    #printPortal .libro-print .libro-table:not(.libro-maquina) td:nth-child(5) { width: 7%; white-space: nowrap; }
+    #printPortal .libro-print .libro-table:not(.libro-maquina) th:nth-child(6),
+    #printPortal .libro-print .libro-table:not(.libro-maquina) td:nth-child(6) { width: 7%; white-space: nowrap; }
     /* Libro por Máquina Fiscal: 14 columnas — Máquina Fiscal angosta, montos anchos.
        Va después de las reglas generales para sobrescribirlas por orden de fuente. */
     #printPortal .libro-print .libro-maquina th:nth-child(1),

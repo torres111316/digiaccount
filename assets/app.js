@@ -9609,7 +9609,7 @@
            se dice "Varias" y el desglose vive en las columnas del registro. */
         const cuantas = [Number(r.base_gen) || 0, Number(r.base_red) || 0, Number(r.base_adic) || 0].filter((x) => x > 0).length;
         const alicTxt = cuantas > 1 ? 'Varias' : (alic > 0 ? (Math.round(alic * 100) + '%') : 'Ex.');
-        return '<tr' + (anulada ? ' style="opacity:.6;"' : '') + '><td>' + (i + 1) + '</td><td>' + (r.fecha || '') + '</td><td>' + (r.tercero_rif || '') + '</td><td>' + (anulada ? 'ANULADA' : (r.tercero_nombre || '')) + '</td>'
+        return '<tr' + (anulada ? ' style="opacity:.6;"' : '') + '><td>' + (i + 1) + '</td><td>' + (r.fecha || '') + '</td><td>' + (r.tercero_rif || '') + '</td><td class="primary">' + (anulada ? 'ANULADA' : (r.tercero_nombre || '')) + '</td>'
           + '<td>' + (r.numero_factura || '') + '</td><td>' + (r.numero_control || '') + '</td><td>' + (r.tipo_doc || (esCompra ? 'FC' : 'FV')) + '</td>'
           + '<td class="num">' + fmtF(tot) + '</td><td class="num">' + fmtF(ex) + '</td><td class="num">' + fmtF(base) + '</td><td>' + alicTxt + '</td><td class="num">' + fmtF(iva) + '</td>'
           + (esCompra ? '' : '<td class="num">' + fmtF(igtf) + '</td>') + '</tr>';
