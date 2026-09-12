@@ -8600,7 +8600,12 @@
         ).join('');
         doc.innerHTML =
           '<div class="fac-ticket">'
-          + '<div class="tk-head"><div class="tk-co">' + emisor.n.toUpperCase() + '</div>'
+          /* El logo tambien en el ticket. El arreglo anterior solo llego al
+             formato documento, y quien vende por mostrador usa este: su logo
+             seguia sin aparecer. */
+          + '<div class="tk-head">'
+          + ((window.__logoEmpresa && window.__logoEmpresa()) ? '<img class="tk-logo-img" src="' + window.__logoEmpresa() + '" alt="">' : '')
+          + '<div class="tk-co">' + emisor.n.toUpperCase() + '</div>'
           + '<div class="tk-line">RIF: ' + emisor.rif + '</div>'
           + (emisor.dom ? '<div class="tk-line">' + emisor.dom + '</div>' : '') + '</div>'
           + '<div class="tk-sep"></div>'

@@ -4839,7 +4839,11 @@
   }
   .recibo-overlay[data-open="true"] { opacity: 1; pointer-events: auto; }
   .recibo-modal {
-    width: 720px; max-width: 100%; max-height: 92vh;
+    /* `min-width: 0` es lo que le permite encoger. Sin esto, la barra de
+       arriba —seis botones en fila— fija un ancho mínimo mayor que la
+       pantalla del teléfono, el modal se sale y el documento aparece
+       desplazado y cortado. */
+    width: 720px; max-width: 100%; min-width: 0; max-height: 92vh;
     background: var(--da-white);
     border-radius: var(--radius-md);
     box-shadow: var(--shadow-lg);
@@ -6743,6 +6747,9 @@
     padding: 8px 14px;
   }
   .fac-ticket .tk-head { text-align: center; margin-bottom: 6px; }
+  /* El logo, centrado sobre el nombre. Alto acotado: en un rollo de 72 mm
+     un logo grande se come el ticket entero. */
+  .fac-ticket .tk-logo-img { display: block; max-width: 62%; max-height: 46px; object-fit: contain; margin: 0 auto 5px; }
   .fac-ticket .tk-co { font-weight: var(--fw-bold); font-size: 12.5px; line-height: 1.25; }
   .fac-ticket .tk-line { word-break: break-word; }
   .fac-ticket .tk-center { text-align: center; }
@@ -7512,6 +7519,26 @@
     /* La tabla de renglones se desplaza sola en vez de cortarse. */
     .fac-table { font-size: 10.5px; }
     .fac-firmas { grid-template-columns: 1fr; gap: 18px; }
+
+    /* ── La barra del visor de documentos ────────────────────────
+       Seis botones en una fila —Cobrar, Anular, Nota de crédito,
+       Despachar, Imprimir, Descargar— no caben en 380 px y, al no
+       poder envolver, empujaban el modal entero fuera de la
+       pantalla. Ahora el título va arriba y los botones debajo,
+       repartidos en las líneas que hagan falta. */
+    .recibo-modal { max-height: 94vh; }
+    .recibo-modal-bar { flex-wrap: wrap; gap: 8px; padding: 10px 12px; }
+    .recibo-modal-bar .rm-title { flex: 1 1 auto; min-width: 0; }
+    .recibo-modal-bar .rm-actions { flex-wrap: wrap; width: 100%; gap: 6px; }
+    .recibo-modal-bar .rm-actions .btn {
+      flex: 1 1 auto; min-width: 0; justify-content: center;
+      height: auto; min-height: 34px; font-size: 11.5px; padding: 6px 10px;
+    }
+    .recibo-modal-bar .rm-actions .icon-btn { flex: 0 0 auto; }
+
+    /* El ticket ocupa el ancho disponible en vez de quedarse en sus
+       300 px fijos con el resto en blanco. */
+    .fac-ticket { width: 100%; padding: 8px 10px; }
   }
 
   /* Panel de notificaciones */
