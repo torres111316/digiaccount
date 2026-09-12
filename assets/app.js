@@ -8912,11 +8912,6 @@
 
       /* Un ticket se le MANDA al cliente: el boton dice Compartir. Las
          facturas y demas documentos siguen con su Descargar de siempre. */
-      /* La libreria que dibuja el ticket se empieza a bajar YA, no cuando
-         toquen Compartir: asi ese toque no espera la descarga. */
-      if (doc.querySelector('.fac-ticket') && !window.html2canvas && typeof cargarScript === 'function') {
-        cargarScript('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js').catch(() => {});
-      }
       const dlBtn = document.getElementById('facturaDownload');
       if (dlBtn) dlBtn.innerHTML = doc.querySelector('.fac-ticket')
         ? '<i data-lucide="share-2"></i> Compartir'
@@ -9149,22 +9144,149 @@
         document.head.appendChild(sc);
       });
     }
-    /* Dibuja el ticket a ancho de rollo (272 px = 72 mm) fuera de pantalla.
-       Lo que se ve en el modal depende del ancho del telefono; el rollo no. */
+    /* ══════════════════════════════════════════════════════════════════
+       EL TICKET, PINTADO DIRECTO EN UN CANVAS
+
+       Antes se usaba html2canvas, que CLONA EL DOCUMENTO ENTERO —todas las
+       vistas de la app— y vuelve a resolver todas las hojas de estilo para
+       pintar un rectangulo de 72 mm. En un telefono eran segundos.
+
+       El navegador ya sabe donde va cada letra. Se monta el ticket fuera de
+       pantalla a ancho de rollo (272 px = 72 mm), se le pregunta la posicion
+       de cada palabra, cada borde, cada fondo y el logo, y se pinta eso.
+       ══════════════════════════════════════════════════════════════════ */
+    const ESCALA_TICKET = 3;          // 816 px en 72 mm ≈ 288 ppp: nitido en papel y en pantalla
     async function dibujarTicket(ticketEl) {
-      if (!window.html2canvas) await cargarScript('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js');
       const host = document.createElement('div');
-      host.style.cssText = 'position:fixed;left:-10000px;top:0;width:272px;background:#fff;';
+      host.style.cssText = 'position:fixed;left:-10000px;top:0;width:272px;background:#fff;pointer-events:none;';
       const clon = ticketEl.cloneNode(true);
       clon.classList.remove('ticket-print');
       clon.style.cssText = 'width:272px;max-width:none;margin:0;padding:8px 10px;box-sizing:border-box;background:#fff;';
       host.appendChild(clon);
       document.body.appendChild(host);
       try {
-        /* 2x = ~190 ppp en 72 mm, lo que imprime una termica (203 ppp). A 3x
-           tardaba el doble y no se notaba la diferencia. */
-        return await window.html2canvas(clon, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false });
+        /* Fuentes y logo listos, pero con TOPE: una espera que no termina
+           dejaria el boton colgado. Pasado el tope se pinta con lo que haya. */
+        const conTope = (pr, ms) => Promise.race([Promise.resolve(pr).catch(() => {}), new Promise((ok) => setTimeout(ok, ms))]);
+        if (document.fonts && document.fonts.ready) await conTope(document.fonts.ready, 1200);
+        const imgs = Array.from(clon.querySelectorAll('img'));
+        await conTope(Promise.all(imgs.map((im) => (im.complete && im.naturalWidth ? null : (im.decode ? im.decode() : null)))), 1200);
+
+        const base = clon.getBoundingClientRect();
+        const W = 272, H = Math.ceil(base.height);
+        const cv = document.createElement('canvas');
+        cv.width = W * ESCALA_TICKET; cv.height = H * ESCALA_TICKET;
+        const ctx = cv.getContext('2d');
+        ctx.scale(ESCALA_TICKET, ESCALA_TICKET);
+        ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
+        const X = (r) => r.left - base.left, Y = (r) => r.top - base.top;
+        const visible = (c) => c.display !== 'none' && c.visibility !== 'hidden' && parseFloat(c.opacity) !== 0;
+        const hayColor = (c) => c && c !== 'transparent' && !/rgba\(.*,\s*0\)$/.test(c);
+
+        // 1 · Fondos, bordes e imagenes, en orden de documento
+        const els = [clon].concat(Array.from(clon.querySelectorAll('*')));
+        for (const el of els) {
+          const c = getComputedStyle(el);
+          if (!visible(c)) continue;
+          const r = el.getBoundingClientRect();
+          if (!r.width || !r.height) continue;
+          const x = X(r), y = Y(r);
+          if (el !== clon && hayColor(c.backgroundColor)) {
+            ctx.fillStyle = c.backgroundColor; ctx.fillRect(x, y, r.width, r.height);
+          }
+          [['Top', x, y, x + r.width, y], ['Bottom', x, y + r.height, x + r.width, y + r.height],
+           ['Left', x, y, x, y + r.height], ['Right', x + r.width, y, x + r.width, y + r.height]].forEach(([lado, x1, y1, x2, y2]) => {
+            const bw = parseFloat(c['border' + lado + 'Width']) || 0;
+            const bs = c['border' + lado + 'Style'];
+            if (!bw || bs === 'none' || bs === 'hidden' || !hayColor(c['border' + lado + 'Color'])) return;
+            ctx.save();
+            ctx.strokeStyle = c['border' + lado + 'Color']; ctx.lineWidth = bw;
+            ctx.setLineDash(bs === 'dashed' ? [3, 2] : bs === 'dotted' ? [1, 2] : []);
+            const off = bw / 2, hor = y1 === y2;
+            ctx.beginPath();
+            ctx.moveTo(x1 + (hor ? 0 : (lado === 'Left' ? off : -off)), y1 + (hor ? (lado === 'Top' ? off : -off) : 0));
+            ctx.lineTo(x2 + (hor ? 0 : (lado === 'Left' ? off : -off)), y2 + (hor ? (lado === 'Top' ? off : -off) : 0));
+            ctx.stroke();
+            ctx.restore();
+          });
+          if (el.tagName === 'IMG' && el.naturalWidth) {
+            // object-fit: contain — la imagen entera, centrada en su caja
+            const k = Math.min(r.width / el.naturalWidth, r.height / el.naturalHeight);
+            const iw = el.naturalWidth * k, ih = el.naturalHeight * k;
+            try { ctx.drawImage(el, x + (r.width - iw) / 2, y + (r.height - ih) / 2, iw, ih); } catch (e) { /* imagen ajena: se omite */ }
+          }
+        }
+
+        // 2 · El texto, palabra por palabra, donde el navegador lo puso
+        const rango = document.createRange();
+        const tw = document.createTreeWalker(clon, NodeFilter.SHOW_TEXT);
+        for (let n = tw.nextNode(); n; n = tw.nextNode()) {
+          const txt = n.nodeValue;
+          if (!txt || !txt.trim()) continue;
+          const c = getComputedStyle(n.parentElement);
+          if (!visible(c)) continue;
+          ctx.font = c.fontStyle + ' ' + c.fontWeight + ' ' + c.fontSize + ' ' + c.fontFamily;
+          ctx.fillStyle = c.color;
+          ctx.textBaseline = 'alphabetic';
+          if ('letterSpacing' in ctx) ctx.letterSpacing = c.letterSpacing === 'normal' ? '0px' : c.letterSpacing;
+          const mayus = c.textTransform === 'uppercase';
+          const m = ctx.measureText('Hg');
+          const asc = m.fontBoundingBoxAscent || m.actualBoundingBoxAscent || parseFloat(c.fontSize) * 0.8;
+          const desc = m.fontBoundingBoxDescent || m.actualBoundingBoxDescent || parseFloat(c.fontSize) * 0.2;
+          const re = /\S+/g;
+          let w;
+          while ((w = re.exec(txt))) {
+            rango.setStart(n, w.index); rango.setEnd(n, w.index + w[0].length);
+            const rects = rango.getClientRects();
+            if (!rects.length) continue;
+            if (rects.length === 1) {
+              const rr = rects[0];
+              const yb = Y(rr) + (rr.height - (asc + desc)) / 2 + asc;
+              ctx.fillText(mayus ? w[0].toUpperCase() : w[0], X(rr), yb);
+            } else {
+              // Palabra partida en dos lineas (break-word): letra por letra
+              for (let i = 0; i < w[0].length; i++) {
+                rango.setStart(n, w.index + i); rango.setEnd(n, w.index + i + 1);
+                const rr = rango.getBoundingClientRect();
+                if (!rr.width) continue;
+                const ch = w[0][i];
+                ctx.fillText(mayus ? ch.toUpperCase() : ch, X(rr), Y(rr) + (rr.height - (asc + desc)) / 2 + asc);
+              }
+            }
+          }
+        }
+        return cv;
       } finally { host.remove(); }
+    }
+
+    /* Un PDF de una pagina con una imagen JPEG adentro, armado a mano.
+       Son cinco objetos y la tabla de posiciones: no hace falta una libreria
+       de 350 KB que ademas habia que bajar. La pagina mide lo que el ticket. */
+    async function pdfDeJpeg(jpeg, pxW, pxH, mmW) {
+      const img = new Uint8Array(await jpeg.arrayBuffer());
+      const ptW = mmW * 72 / 25.4, ptH = ptW * pxH / pxW;
+      const f = (n) => n.toFixed(2);
+      const cont = 'q ' + f(ptW) + ' 0 0 ' + f(ptH) + ' 0 0 cm /Im0 Do Q';
+      const enc = new TextEncoder();
+      const partes = [], offs = [];
+      let largo = 0;
+      const put = (x) => { const b = typeof x === 'string' ? enc.encode(x) : x; partes.push(b); largo += b.length; };
+      put(new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34, 0x0a, 0x25, 0xe2, 0xe3, 0xcf, 0xd3, 0x0a]));   // %PDF-1.4 + marca binaria
+      const obj = (num, cuerpo) => { offs[num] = largo; put(num + ' 0 obj\n'); cuerpo(); put('\nendobj\n'); };
+      obj(1, () => put('<< /Type /Catalog /Pages 2 0 R >>'));
+      obj(2, () => put('<< /Type /Pages /Kids [3 0 R] /Count 1 >>'));
+      obj(3, () => put('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + f(ptW) + ' ' + f(ptH) + '] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>'));
+      obj(4, () => {
+        put('<< /Type /XObject /Subtype /Image /Width ' + pxW + ' /Height ' + pxH
+          + ' /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ' + img.length + ' >>\nstream\n');
+        put(img); put('\nendstream');
+      });
+      obj(5, () => put('<< /Length ' + cont.length + ' >>\nstream\n' + cont + '\nendstream'));
+      const xref = largo;
+      let t = 'xref\n0 6\n0000000000 65535 f \n';
+      for (let i = 1; i <= 5; i++) t += String(offs[i]).padStart(10, '0') + ' 00000 n \n';
+      put(t + 'trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n' + xref + '\n%%EOF\n');
+      return new Blob(partes, { type: 'application/pdf' });
     }
 
     /* El ticket como ARCHIVO.
@@ -9173,16 +9295,10 @@
     window.__ticketArchivo = async function (ticketEl, nombre, formato) {
       const canvas = await dibujarTicket(ticketEl);
       const base = String(nombre || 'ticket').replace(/[^\w\-]+/g, '_');
-      if (formato === 'jpg') {
-        const blob = await new Promise((ok) => canvas.toBlob(ok, 'image/jpeg', 0.92));
-        return new File([blob], base + '.jpg', { type: 'image/jpeg' });
-      }
-      if (!(window.jspdf && window.jspdf.jsPDF)) await cargarScript('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js');
-      const ANCHO = 72;                                            // mm del rollo
-      const alto = Math.max(20, ANCHO * canvas.height / canvas.width);
-      const pdf = new window.jspdf.jsPDF({ unit: 'mm', format: [ANCHO, alto], orientation: alto >= ANCHO ? 'portrait' : 'landscape' });
-      pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, ANCHO, alto, undefined, 'FAST');   // comprimido: se manda por WhatsApp
-      return new File([pdf.output('blob')], base + '.pdf', { type: 'application/pdf' });
+      const jpeg = await new Promise((ok) => canvas.toBlob(ok, 'image/jpeg', 0.9));
+      if (formato === 'jpg') return new File([jpeg], base + '.jpg', { type: 'image/jpeg' });
+      const pdf = await pdfDeJpeg(jpeg, canvas.width, canvas.height, 72);
+      return new File([pdf], base + '.pdf', { type: 'application/pdf' });
     };
 
     /* Abre el menu Compartir del telefono con el archivo (WhatsApp, correo,
