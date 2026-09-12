@@ -15945,6 +15945,83 @@
       });
       renderCobrosEmp();
     };
+    /* ══════════════════════════════════════════════════════════════════
+       DE «me pagan por aqui» A «el dinero entra aqui»
+
+       Son dos cosas distintas y el sistema no las conectaba:
+
+         Metodos de cobro     los datos que se le MUESTRAN AL CLIENTE
+         Cuentas de Tesoreria las cuentas DONDE ENTRA el dinero
+
+       El selector del cobro lee las segundas. Una clienta lleno su Pago Movil
+       —banco, telefono, titular— y al cobrar solo le salia «Caja»: el sistema
+       le habia pedido los datos del banco en un sitio y esperaba que los
+       volviera a escribir en otro.
+
+       SE OFRECE, NO SE CREA SOLO. Puede que ese pago movil entre a una cuenta
+       que ya existe con otro nombre. Crear cuentas a espaldas de quien lleva
+       los numeros es como aparecen saldos que nadie sabe de donde salieron.
+       ══════════════════════════════════════════════════════════════════ */
+    async function ofrecerCuentaTesoreria(clave) {
+      /* `esc` no existe en este modulo —solo en window—, y un ReferenceError
+         aqui no lo detecta `node --check`: aparece cuando alguien pulsa el
+         interruptor. Se toma de window con un respaldo. */
+      const esc = window.esc || ((x) => String(x == null ? '' : x)
+        .replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])));
+      if (clave !== 'pagomovil' && clave !== 'transferencia') return;   // Zelle, USDT y efectivo no son cuenta de banco
+      const emp = window.__EMPRESA_ACTIVA;
+      if (!window.sb || !emp || !emp.id) return;
+
+      const campos = (COBROS_EMP[clave] || {}).campos || {};
+      const banco = String(campos.Banco || '').trim();
+      if (!banco) return;        // sin banco no hay nada que proponer todavia
+
+      const { data: cuentas } = await window.sb.from('cuentas_tesoreria')
+        .select('id, nombre, banco').eq('empresa_id', emp.id);
+      const norm = (x) => String(x || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      const yaEsta = (cuentas || []).some((cu) => norm(cu.banco) === norm(banco)
+        || norm(cu.nombre).indexOf(norm(banco)) >= 0);
+      if (yaEsta) return;
+
+      const esPm = clave === 'pagomovil';
+      const nombre = (esPm ? 'Pago Móvil · ' : 'Banco ') + banco;
+      const detalle = esPm
+        ? (campos['Teléfono'] ? ('Teléfono ' + campos['Teléfono']) : '')
+        : (campos['Nº de cuenta'] ? ('Cuenta ' + campos['Nº de cuenta']) : '');
+
+      window.openFormModal && window.openFormModal({
+        title: 'Falta dónde entra ese dinero',
+        saveLabel: 'Crear la cuenta',
+        fields: [
+          { name: 'nombre', label: 'Nombre de la cuenta', col: 2, value: nombre },
+        ],
+        afterRender: (b) => {
+          const aviso = document.createElement('div');
+          aviso.style.cssText = 'font-size:12.5px;line-height:1.6;color:var(--fg-body);margin-bottom:14px;';
+          aviso.innerHTML = 'Acabas de activar <strong>' + esc(METODOS_EMP[clave].label)
+            + '</strong> con el <strong>' + esc(banco) + '</strong>'
+            + (detalle ? ' (' + esc(detalle) + ')' : '') + '.<br><br>'
+            + 'Esos son los datos que verá tu cliente para pagarte. Pero al registrar el cobro '
+            + 'hay que decir <strong>en qué cuenta entró</strong> el dinero, y esa todavía no existe: '
+            + 'solo aparecería «Caja».<br><br>'
+            + 'Si la creo ahora, la vas a tener al cobrar.';
+          b.insertBefore(aviso, b.firstChild);
+        },
+        onSave: async (v) => {
+          const n = (v.nombre || '').trim();
+          if (!n) return 'Ponle un nombre a la cuenta.';
+          const { error } = await window.sb.from('cuentas_tesoreria').insert({
+            cuenta_id: window.__CUENTA_ID, empresa_id: emp.id,
+            nombre: n, tipo: 'Banco', banco: banco, moneda: 'Bs',
+            saldo_inicial: 0, color: '#1f4e79',
+          });
+          if (error) { toast('No se pudo crear la cuenta: ' + error.message, 'error'); return; }
+          toast('Cuenta "' + n + '" creada · ya te aparece al registrar un cobro', 'success');
+          if (window.cargarTesoreria) window.cargarTesoreria();
+        },
+      });
+    }
+
     const cobrosGrid = document.getElementById('cfgCobrosGrid');
     function renderCobrosEmp() {
       if (!cobrosGrid) return;
@@ -15961,6 +16038,9 @@
       cobrosGrid.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => configCobro(b.dataset.edit)));
       cobrosGrid.querySelectorAll('input[data-m]').forEach((c) => c.addEventListener('change', () => {
         COBROS_EMP[c.dataset.m].activo = c.checked;
+        /* Si el metodo entra por banco, se ofrece crear la cuenta de tesoreria
+           que le corresponde. Ver `ofrecerCuentaTesoreria`. */
+        if (c.checked) setTimeout(() => ofrecerCuentaTesoreria(c.dataset.m), 400);
         c.closest('.cobro-card').classList.toggle('off', !c.checked);
         guardarCobrosEmp();
         toast(METODOS_EMP[c.dataset.m].label + (c.checked ? ' activado' : ' desactivado') + ' como método de cobro', c.checked ? 'success' : 'info');
