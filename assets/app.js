@@ -4505,9 +4505,20 @@
       const usd = (n) => (tasa > 0
         ? '$' + Number(n / tasa).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
         : '');
+      /* DOS formas de mostrar un monto, y la diferencia no es de estilo:
+
+         `linea` es para lo que YA OCURRIO —la venta, el abono de hoy—: paso a
+         una tasa concreta, su bolivar es un hecho y se imprime.
+
+         `lineaUsd` es para lo que TODAVIA SE DEBE. Ese monto no tiene tasa
+         aun, porque se pagara a la del dia en que paguen. Imprimir un saldo
+         en bolivares seria entregarle al cliente una cifra que caduca esa
+         misma noche, y de la que se va a agarrar cuando vuelva. */
       const linea = (rot, bs, fuerte) => '<div class="tk-row' + (fuerte ? ' tk-total' : '') + '"><span>' + rot + '</span>'
         + '<span>' + fmt(bs) + '</span></div>'
         + (tasa > 0 ? '<div class="tk-item-usd">' + usd(bs) + '</div>' : '');
+      const lineaUsd = (rot, bs, fuerte) => '<div class="tk-row' + (fuerte ? ' tk-total' : '') + '"><span>' + rot + '</span>'
+        + '<span>' + (tasa > 0 ? usd(bs) : fmt(bs)) + '</span></div>';
 
       const logo = (window.__logoEmpresa && window.__logoEmpresa()) || '';
       const html = '<div class="fac-ticket">'
@@ -4530,12 +4541,17 @@
         + '<div class="tk-sep dashed"></div>'
         /* El saldo va ENMARCADO: es el número por el que el cliente va a
            volver, y tiene que encontrarse sin leer el resto. */
-        + (fac ? (linea('TOTAL DEL RECIBO Bs', total)
-          + linea('ABONADO EN TOTAL Bs', acum)
-          + '<div class="tk-saldo">' + linea('SALDO PENDIENTE Bs', saldo, true) + '</div>')
+        + (fac ? (lineaUsd('TOTAL DEL RECIBO', total)
+          + lineaUsd('ABONADO EN TOTAL', acum)
+          + '<div class="tk-saldo">' + lineaUsd('SALDO', saldo, true) + '</div>')
           : '<div class="tk-line tk-center">Cobro sin recibo de venta asociado</div>')
+        + (tasa > 0 ? '<div class="tk-line tk-center tk-tasa">Abono recibido a Bs ' + fmt(tasa) + ' por $</div>' : '')
+        /* Se dice explicitamente, porque es la fuente de discusion numero uno
+           entre quien vende a plazos y quien paga. */
+        + (fac && saldo > 0.01
+          ? '<div class="tk-line tk-center tk-nota-tasa">El saldo se paga a la tasa del día en que se cancele.</div>'
+          : '')
         + '<div class="tk-sep doble"></div>'
-        + (tasa > 0 ? '<div class="tk-line tk-center tk-tasa">Tasa BCV del día: Bs ' + fmt(tasa) + ' por $</div>' : '')
         + '<div class="tk-sep dashed"></div>'
         + (fac && saldo <= 0.01
           ? '<div class="tk-cancelado">CANCELADO EN SU TOTALIDAD</div>'
