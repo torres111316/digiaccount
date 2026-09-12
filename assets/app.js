@@ -8898,6 +8898,13 @@
          existe. Devolver mercancia ya pagada es el caso mas comun de todos. */
       if (notaBtn) notaBtn.hidden = !(esVentaViva && _esFactura);
 
+      /* Un ticket se le MANDA al cliente: el boton dice Compartir. Las
+         facturas y demas documentos siguen con su Descargar de siempre. */
+      const dlBtn = document.getElementById('facturaDownload');
+      if (dlBtn) dlBtn.innerHTML = doc.querySelector('.fac-ticket')
+        ? '<i data-lucide="share-2"></i> Compartir'
+        : '<i data-lucide="download"></i> Descargar';
+
       overlay.dataset.open = 'true';
       drawIcons();
     }
@@ -9125,46 +9132,89 @@
         document.head.appendChild(sc);
       });
     }
+    /* Dibuja el ticket a ancho de rollo (272 px = 72 mm) fuera de pantalla.
+       Lo que se ve en el modal depende del ancho del telefono; el rollo no. */
+    async function dibujarTicket(ticketEl) {
+      if (!window.html2canvas) await cargarScript('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js');
+      const host = document.createElement('div');
+      host.style.cssText = 'position:fixed;left:-10000px;top:0;width:272px;background:#fff;';
+      const clon = ticketEl.cloneNode(true);
+      clon.classList.remove('ticket-print');
+      clon.style.cssText = 'width:272px;max-width:none;margin:0;padding:8px 10px;box-sizing:border-box;background:#fff;';
+      host.appendChild(clon);
+      document.body.appendChild(host);
+      try {
+        return await window.html2canvas(clon, { scale: 3, backgroundColor: '#ffffff', useCORS: true, logging: false });
+      } finally { host.remove(); }
+    }
+
+    /* El ticket como ARCHIVO.
+         pdf  · 72 mm de ancho y el alto exacto: para imprimir o archivar
+         jpg  · una imagen: WhatsApp la muestra en el chat sin abrir nada */
+    window.__ticketArchivo = async function (ticketEl, nombre, formato) {
+      const canvas = await dibujarTicket(ticketEl);
+      const base = String(nombre || 'ticket').replace(/[^\w\-]+/g, '_');
+      if (formato === 'jpg') {
+        const blob = await new Promise((ok) => canvas.toBlob(ok, 'image/jpeg', 0.92));
+        return new File([blob], base + '.jpg', { type: 'image/jpeg' });
+      }
+      if (!(window.jspdf && window.jspdf.jsPDF)) await cargarScript('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js');
+      const ANCHO = 72;                                            // mm del rollo
+      const alto = Math.max(20, ANCHO * canvas.height / canvas.width);
+      const pdf = new window.jspdf.jsPDF({ unit: 'mm', format: [ANCHO, alto], orientation: alto >= ANCHO ? 'portrait' : 'landscape' });
+      pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, ANCHO, alto, undefined, 'FAST');   // comprimido: se manda por WhatsApp
+      return new File([pdf.output('blob')], base + '.pdf', { type: 'application/pdf' });
+    };
+
+    /* Abre el menu Compartir del telefono con el archivo (WhatsApp, correo,
+       la app de la impresora...). Donde no hay menu Compartir, se descarga. */
+    async function compartirOdescargar(file) {
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        try { await navigator.share({ files: [file], title: file.name }); return; }
+        catch (e) { if (e && e.name === 'AbortError') return; /* sin permiso: se descarga */ }
+      }
+      const url = URL.createObjectURL(file);
+      const a = document.createElement('a');
+      a.href = url; a.download = file.name; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+      if (window.toast) window.toast('Descargado: ' + file.name, 'success');
+    }
+
     window.__ticketPDF = async function (ticketEl, nombre) {
       if (window.toast) window.toast('Preparando el ticket…', 'info');
-      try {
-        if (!window.html2canvas) await cargarScript('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js');
-        if (!(window.jspdf && window.jspdf.jsPDF)) await cargarScript('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js');
+      try { await compartirOdescargar(await window.__ticketArchivo(ticketEl, nombre, 'pdf')); }
+      catch (err) { if (window.toast) window.toast('No se pudo armar el ticket: ' + (err && err.message ? err.message : err), 'error'); }
+    };
 
-        // Se dibuja FUERA de pantalla, a ancho fijo: lo que se ve en el modal
-        // depende del ancho del telefono; el rollo no.
-        const host = document.createElement('div');
-        host.style.cssText = 'position:fixed;left:-10000px;top:0;width:272px;background:#fff;';
-        const clon = ticketEl.cloneNode(true);
-        clon.classList.remove('ticket-print');
-        clon.style.cssText = 'width:272px;max-width:none;margin:0;padding:8px 10px;box-sizing:border-box;background:#fff;';
-        host.appendChild(clon);
-        document.body.appendChild(host);
-        let canvas;
-        try {
-          canvas = await window.html2canvas(clon, { scale: 3, backgroundColor: '#ffffff', useCORS: true, logging: false });
-        } finally { host.remove(); }
-
-        const ANCHO = 72;                                            // mm del rollo
-        const alto = Math.max(20, ANCHO * canvas.height / canvas.width);
-        const pdf = new window.jspdf.jsPDF({ unit: 'mm', format: [ANCHO, alto], orientation: alto >= ANCHO ? 'portrait' : 'landscape' });
-        pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, ANCHO, alto, undefined, 'FAST');   // comprimido: se manda por WhatsApp
-        const archivo = String(nombre || 'ticket').replace(/[^\w\-]+/g, '_') + '.pdf';
-        const blob = pdf.output('blob');
-
-        const file = new File([blob], archivo, { type: 'application/pdf' });
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
-          try { await navigator.share({ files: [file], title: archivo }); return; }
-          catch (e) { if (e && e.name === 'AbortError') return; /* sin permiso: se descarga */ }
-        }
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url; a.download = archivo; document.body.appendChild(a); a.click(); a.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 30000);
-        if (window.toast) window.toast('Ticket descargado: ' + archivo, 'success');
-      } catch (err) {
-        if (window.toast) window.toast('No se pudo armar el ticket: ' + (err && err.message ? err.message : err), 'error');
-      }
+    /* ENVIAR EL RECIBO AL CLIENTE: se elige el formato y se comparte.
+       Se pregunta ANTES de dibujar: el toque en la opcion es el que le da
+       permiso al navegador para abrir el menu Compartir. */
+    window.__compartirTicket = function (ticketEl, nombre) {
+      const viejo = document.getElementById('tkShare');
+      if (viejo) viejo.remove();
+      const scrim = document.createElement('div');
+      scrim.id = 'tkShare';
+      scrim.className = 'tk-share-scrim';
+      scrim.innerHTML = '<div class="tk-share-sheet" role="dialog" aria-label="Enviar el recibo">'
+        + '<div class="tk-share-tt">Enviar el recibo</div>'
+        + '<div class="tk-share-sub">Por WhatsApp, correo o la app que prefieras</div>'
+        + '<button type="button" class="tk-share-op" data-fmt="jpg"><i data-lucide="image"></i><span><strong>Imagen (JPG)</strong><small>Se ve directo en el chat de WhatsApp</small></span></button>'
+        + '<button type="button" class="tk-share-op" data-fmt="pdf"><i data-lucide="file-text"></i><span><strong>PDF</strong><small>Para imprimir o archivar · tamaño ticket</small></span></button>'
+        + '<button type="button" class="tk-share-cancel">Cancelar</button>'
+        + '</div>';
+      document.body.appendChild(scrim);
+      if (window.lucide) window.lucide.createIcons();
+      const cerrar = () => scrim.remove();
+      scrim.addEventListener('click', async (e) => {
+        if (e.target === scrim || e.target.closest('.tk-share-cancel')) return cerrar();
+        const op = e.target.closest('.tk-share-op');
+        if (!op) return;
+        scrim.querySelectorAll('button').forEach((b) => { b.disabled = true; });
+        op.querySelector('small').textContent = 'Preparando…';
+        try { await compartirOdescargar(await window.__ticketArchivo(ticketEl, nombre, op.dataset.fmt)); }
+        catch (err) { if (window.toast) window.toast('No se pudo preparar el recibo: ' + (err && err.message ? err.message : err), 'error'); }
+        cerrar();
+      });
     };
 
     const pr = document.getElementById('facturaPrint');
@@ -9224,6 +9274,12 @@
     });
     const dl = document.getElementById('facturaDownload');
     if (dl) dl.addEventListener('click', () => {
+      const tk = doc.querySelector('.fac-ticket');
+      if (tk) {
+        const ref = (tk.textContent || '').match(/REC-\d+/);
+        window.__compartirTicket(tk, ref ? ref[0] : 'recibo-venta');
+        return;
+      }
       const blob = new Blob([lastText], { type: 'text/plain;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
