@@ -6789,6 +6789,30 @@
   .fac-ticket .tk-total { display: flex; justify-content: space-between; gap: 10px; font-weight: var(--fw-bold); font-size: 14px; }
   /* El equivalente en dolares de cada renglon y del total. Mas chico y en
      gris: el bolivar manda, el dolar acompaña. */
+  /* ── El recibo de COBRO se distingue del de VENTA a un metro ─────
+     La diferencia es de FORMA, no de color: una impresora térmica es
+     monocroma, así que cualquier distinción por color se vería en la
+     pantalla y desaparecería en el papel, que es donde hace falta.
+
+     Tres recursos que sí sobreviven al rollo:
+       · el título en negativo, blanco sobre negro
+       · separadores dobles en vez de simples
+       · el saldo dentro de un marco */
+  .fac-ticket .tk-doc.tk-cobro {
+    background: #1a1a1a; color: #fff;
+    padding: 4px 0; margin: 6px 0 8px; letter-spacing: 0.12em;
+  }
+  .fac-ticket .tk-sep.doble { border-top: 3px double #1a1a1a; }
+  .fac-ticket .tk-saldo {
+    border: 2px solid #1a1a1a; padding: 5px 8px; margin: 6px 0;
+  }
+  .fac-ticket .tk-saldo .tk-row { font-weight: var(--fw-bold); font-size: 13px; }
+  .fac-ticket .tk-saldo .tk-item-usd { font-size: 11px; color: #1a1a1a; }
+  /* Cuando ya no debe nada, se dice con un sello y no con una línea más. */
+  .fac-ticket .tk-cancelado {
+    border: 2px solid #1a1a1a; text-align: center; font-weight: var(--fw-extrabold);
+    letter-spacing: 0.14em; padding: 6px 0; margin: 8px 0; font-size: 12px;
+  }
   .fac-ticket .tk-item-usd { text-align: right; font-size: 10px; color: #666; margin-top: 1px; }
   .fac-ticket .tk-total.tk-total-usd { font-size: 12px; color: #444; margin-top: 2px; }
   .fac-ticket .tk-tasa { font-size: 9.5px; color: #666; margin-top: 3px; }
@@ -6802,6 +6826,15 @@
     /* Ticket fiscal: rollo angosto */
     /* El rollo no tiene margenes de hoja: el ticket ocupa los 72 mm. */
     #printPortal .ticket-print { width: 100% !important; max-width: none; font-size: 9px; padding: 0; margin: 0; }
+    /* SIN ESTO el titulo en negativo del recibo de cobro sale blanco sobre
+       blanco: los navegadores no imprimen fondos salvo que se les exija. Un
+       encabezado invisible en el papel es peor que no haberlo puesto. */
+    #printPortal .ticket-print,
+    #printPortal .ticket-print * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    #printPortal .ticket-print .tk-doc.tk-cobro { padding: 3px 0; margin: 4px 0 6px; }
+    #printPortal .ticket-print .tk-saldo { padding: 4px 6px; margin: 4px 0; }
+    #printPortal .ticket-print .tk-saldo .tk-row { font-size: 10.5px; }
+    #printPortal .ticket-print .tk-cancelado { font-size: 10px; padding: 4px 0; margin: 6px 0; }
     #printPortal .ticket-print .tk-logo-img { max-height: 38px; margin-bottom: 4px; }
     #printPortal .ticket-print .tk-item-usd { font-size: 8px; }
     #printPortal .ticket-print .tk-total.tk-total-usd { font-size: 9.5px; }

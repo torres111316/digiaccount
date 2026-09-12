@@ -4516,8 +4516,10 @@
         + '<div class="tk-co">' + esc(String(emp.n || emp.nombre || 'Empresa').toUpperCase()) + '</div>'
         + '<div class="tk-line">RIF: ' + esc(emp.rif || '—') + '</div>'
         + '</div>'
-        + '<div class="tk-sep"></div>'
-        + '<div class="tk-doc">RECIBO DE COBRO</div>'
+        + '<div class="tk-sep doble"></div>'
+        /* En negativo y a todo el ancho: es lo primero que ve quien recibe el
+           papel, y lo que impide confundirlo con el recibo de la venta. */
+        + '<div class="tk-doc tk-cobro">RECIBO DE COBRO</div>'
         + '<div class="tk-row"><span>FECHA</span><span>' + esc(mov.fecha || '') + '</span></div>'
         + '<div class="tk-line">CLIENTE: ' + esc(mov.tercero_nombre || '—') + '</div>'
         + (mov.tercero_rif ? '<div class="tk-line">RIF/CI: ' + esc(mov.tercero_rif) + '</div>' : '')
@@ -4526,15 +4528,17 @@
         + '<div class="tk-sep dashed"></div>'
         + linea('ABONA HOY Bs', abono, true)
         + '<div class="tk-sep dashed"></div>'
+        /* El saldo va ENMARCADO: es el número por el que el cliente va a
+           volver, y tiene que encontrarse sin leer el resto. */
         + (fac ? (linea('TOTAL DEL RECIBO Bs', total)
           + linea('ABONADO EN TOTAL Bs', acum)
-          + linea('SALDO PENDIENTE Bs', saldo, true))
+          + '<div class="tk-saldo">' + linea('SALDO PENDIENTE Bs', saldo, true) + '</div>')
           : '<div class="tk-line tk-center">Cobro sin recibo de venta asociado</div>')
-        + '<div class="tk-sep"></div>'
+        + '<div class="tk-sep doble"></div>'
         + (tasa > 0 ? '<div class="tk-line tk-center tk-tasa">Tasa BCV del día: Bs ' + fmt(tasa) + ' por $</div>' : '')
         + '<div class="tk-sep dashed"></div>'
         + (fac && saldo <= 0.01
-          ? '<div class="tk-thanks">RECIBO CANCELADO EN SU TOTALIDAD</div>'
+          ? '<div class="tk-cancelado">CANCELADO EN SU TOTALIDAD</div>'
           : '<div class="tk-line tk-center">Este documento deja constancia del abono recibido.</div>')
         + '<div class="tk-line tk-center">Documento no fiscal · no constituye una factura</div>'
         + '<div class="tk-line tk-center">Generado por DigiAccount</div>'
