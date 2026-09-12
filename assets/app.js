@@ -4563,6 +4563,14 @@
         + '<div class="tk-line tk-center">Generado por DigiAccount</div>'
         + '</div>';
 
+      /* En el telefono, el mismo PDF de 72 mm que el recibo de venta. */
+      if (window.__esTelefono && window.__esTelefono() && window.__ticketPDF) {
+        const tmp = document.createElement('div');
+        tmp.innerHTML = html;
+        window.__ticketPDF(tmp.firstChild, 'cobro-' + (ref || mov.fecha || ''));
+        return;
+      }
+
       /* Se imprime por el mismo portal que el resto de documentos, con el
          rollo de 72 mm: es el mismo papel del recibo de venta. */
       let portal = document.getElementById('printPortal');
@@ -9093,9 +9101,80 @@
     });
     overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && overlay.dataset.open === 'true') close(); });
+    /* ══════════════════════════════════════════════════════════════════
+       EL TICKET EN EL TELEFONO: un PDF que ya mide 72 mm
+
+       En la PC, Chrome obedece el @page de 72 mm y la hoja sale del tamaño
+       del rollo. En ANDROID no: el dialogo del sistema ignora el tamaño que
+       pide la pagina y usa el de la impresora elegida («Guardar como PDF» =
+       Carta). Ninguna regla de CSS lo cambia.
+
+       Por eso en el telefono no se llama a window.print(): se dibuja el
+       ticket y se arma un PDF de 72 mm de ancho y EXACTAMENTE el alto del
+       ticket. Ese archivo se comparte —a la app de la impresora termica, a
+       WhatsApp— o se descarga. La hoja es el ticket.
+
+       Las librerias se cargan solo la primera vez que alguien lo usa.
+       ══════════════════════════════════════════════════════════════════ */
+    window.__esTelefono = () => /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+    function cargarScript(src) {
+      return new Promise((ok, mal) => {
+        if (document.querySelector('script[src="' + src + '"]')) return ok();
+        const sc = document.createElement('script');
+        sc.src = src; sc.onload = () => ok(); sc.onerror = () => mal(new Error('No se pudo cargar ' + src));
+        document.head.appendChild(sc);
+      });
+    }
+    window.__ticketPDF = async function (ticketEl, nombre) {
+      if (window.toast) window.toast('Preparando el ticket…', 'info');
+      try {
+        if (!window.html2canvas) await cargarScript('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js');
+        if (!(window.jspdf && window.jspdf.jsPDF)) await cargarScript('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js');
+
+        // Se dibuja FUERA de pantalla, a ancho fijo: lo que se ve en el modal
+        // depende del ancho del telefono; el rollo no.
+        const host = document.createElement('div');
+        host.style.cssText = 'position:fixed;left:-10000px;top:0;width:272px;background:#fff;';
+        const clon = ticketEl.cloneNode(true);
+        clon.classList.remove('ticket-print');
+        clon.style.cssText = 'width:272px;max-width:none;margin:0;padding:8px 10px;box-sizing:border-box;background:#fff;';
+        host.appendChild(clon);
+        document.body.appendChild(host);
+        let canvas;
+        try {
+          canvas = await window.html2canvas(clon, { scale: 3, backgroundColor: '#ffffff', useCORS: true, logging: false });
+        } finally { host.remove(); }
+
+        const ANCHO = 72;                                            // mm del rollo
+        const alto = Math.max(20, ANCHO * canvas.height / canvas.width);
+        const pdf = new window.jspdf.jsPDF({ unit: 'mm', format: [ANCHO, alto], orientation: alto >= ANCHO ? 'portrait' : 'landscape' });
+        pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, ANCHO, alto, undefined, 'FAST');   // comprimido: se manda por WhatsApp
+        const archivo = String(nombre || 'ticket').replace(/[^\w\-]+/g, '_') + '.pdf';
+        const blob = pdf.output('blob');
+
+        const file = new File([blob], archivo, { type: 'application/pdf' });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          try { await navigator.share({ files: [file], title: archivo }); return; }
+          catch (e) { if (e && e.name === 'AbortError') return; /* sin permiso: se descarga */ }
+        }
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = archivo; document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 30000);
+        if (window.toast) window.toast('Ticket descargado: ' + archivo, 'success');
+      } catch (err) {
+        if (window.toast) window.toast('No se pudo armar el ticket: ' + (err && err.message ? err.message : err), 'error');
+      }
+    };
+
     const pr = document.getElementById('facturaPrint');
     if (pr) pr.addEventListener('click', () => {
       const isTicket = !!doc.querySelector('.fac-ticket');
+      if (isTicket && window.__esTelefono()) {
+        const ref = ((doc.querySelector('.fac-ticket') || {}).textContent || '').match(/REC-\d+/);
+        window.__ticketPDF(doc.querySelector('.fac-ticket'), ref ? ref[0] : 'recibo-venta');
+        return;
+      }
       const isElec = !!doc.querySelector('.fac-e');
       const facEl = doc.querySelector('.fac-ticket, .fac') || doc;
       let portal = document.getElementById('printPortal');
