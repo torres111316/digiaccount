@@ -8912,6 +8912,11 @@
 
       /* Un ticket se le MANDA al cliente: el boton dice Compartir. Las
          facturas y demas documentos siguen con su Descargar de siempre. */
+      /* La libreria que dibuja el ticket se empieza a bajar YA, no cuando
+         toquen Compartir: asi ese toque no espera la descarga. */
+      if (doc.querySelector('.fac-ticket') && !window.html2canvas && typeof cargarScript === 'function') {
+        cargarScript('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js').catch(() => {});
+      }
       const dlBtn = document.getElementById('facturaDownload');
       if (dlBtn) dlBtn.innerHTML = doc.querySelector('.fac-ticket')
         ? '<i data-lucide="share-2"></i> Compartir'
@@ -9156,7 +9161,9 @@
       host.appendChild(clon);
       document.body.appendChild(host);
       try {
-        return await window.html2canvas(clon, { scale: 3, backgroundColor: '#ffffff', useCORS: true, logging: false });
+        /* 2x = ~190 ppp en 72 mm, lo que imprime una termica (203 ppp). A 3x
+           tardaba el doble y no se notaba la diferencia. */
+        return await window.html2canvas(clon, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false });
       } finally { host.remove(); }
     }
 
@@ -9353,11 +9360,26 @@
           + ' data-stock="' + (Number(p.stock) || 0) + '" data-nombre="' + String(p.nombre || '').replace(/"/g, '&quot;') + '">' + (p.nombre || '') + ' (stock ' + (Number(p.stock) || 0) + ')</option>').join('');
         const row = document.createElement('div');
         row.className = 'fv-line';
+        /* Cantidad y precio van con su TITULO y la cantidad con − y +.
+           En la PC los titulos y los botones se esconden (CSS): la fila sigue
+           en una linea. En el telefono cada producto es una tarjeta. */
         row.innerHTML = '<select class="fv-desc">' + opts + '</select>'
-          + '<input type="number" class="fv-cant" placeholder="0" step="any">'
-          + '<input type="number" class="fv-precio" placeholder="0.00" step="0.01">'
+          + '<div class="fv-cant-box"><span class="fv-ll">Cantidad</span>'
+          + '<div class="fv-step"><button type="button" class="fv-menos" aria-label="Restar uno">−</button>'
+          + '<input type="number" class="fv-cant" placeholder="0" step="any" inputmode="decimal">'
+          + '<button type="button" class="fv-mas" aria-label="Sumar uno">+</button></div></div>'
+          + '<div class="fv-precio-box"><span class="fv-ll fv-ll-precio">Precio</span>'
+          + '<input type="number" class="fv-precio" placeholder="0.00" step="0.01" inputmode="decimal"></div>'
           + '<span class="fv-monto">Bs 0,00</span>'
-          + '<button class="fv-del" title="Eliminar"><i data-lucide="trash-2"></i></button>';
+          + '<button type="button" class="fv-del" title="Eliminar"><i data-lucide="trash-2"></i></button>';
+        const cantEl = row.querySelector('.fv-cant');
+        const pasoCant = (d) => {
+          const v = parseFloat(cantEl.value) || 0;
+          cantEl.value = Math.max(1, Math.round((v + d) * 1000) / 1000);
+          recalc();
+        };
+        row.querySelector('.fv-menos').addEventListener('click', () => pasoCant(-1));
+        row.querySelector('.fv-mas').addEventListener('click', () => pasoCant(1));
         const sel = row.querySelector('.fv-desc');
         sel.addEventListener('change', () => {
           const o = sel.options[sel.selectedIndex];
@@ -9378,12 +9400,18 @@
           if (capturaUsd) precio = enUsd ? pUsd : (tasa > 0 ? pBs / tasa : 0);
           else precio = enUsd ? (tasa > 0 ? pUsd * tasa : 0) : pBs;
           row.querySelector('.fv-precio').value = precio ? Math.round(precio * 100) / 100 : '';
+          // Elegido el producto, lo normal es vender uno: se arranca en 1.
+          if (sel.value && !(parseFloat(cantEl.value) > 0)) cantEl.value = 1;
           recalc();
         });
         row.querySelector('.fv-del').addEventListener('click', () => { row.remove(); recalc(); });
         row.querySelectorAll('input').forEach((i) => i.addEventListener('input', recalc));
         linesEl.appendChild(row);
         drawIcons();
+        // En el telefono el renglon nuevo queda abajo: se baja hasta el.
+        if (linesEl.children.length > 1 && window.matchMedia('(max-width: 560px)').matches) {
+          row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
       }
       /* En qué moneda se están escribiendo los precios de ESTE recibo. */
       function monedaCaptura() {
@@ -9435,6 +9463,7 @@
            nadie teclee dólares creyendo que son bolívares. */
         const th = document.querySelector('.fv-lines-head span:nth-child(3)');
         if (th) th.textContent = 'P. unitario (' + (usd ? '$' : 'Bs') + ')';
+        linesEl.querySelectorAll('.fv-ll-precio').forEach((l) => { l.textContent = 'Precio (' + (usd ? '$' : 'Bs') + ')'; });
       }
       function open() {
         clientes = (window.__clientes ? window.__clientes() : []);

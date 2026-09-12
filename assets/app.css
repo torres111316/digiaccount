@@ -6490,7 +6490,12 @@
   .fv-newcli:hover { background: var(--da-cyan-100); }
   .fv-newcli i { width: 14px; height: 14px; }
 
-  .fv-lines-head, .fv-line { display: grid; grid-template-columns: 1fr 80px 110px 110px 36px; gap: 8px; align-items: center; }
+  .fv-lines-head, .fv-line { display: grid; grid-template-columns: minmax(0, 1fr) 80px 110px 110px 36px; gap: 8px; align-items: center; }
+  /* Titulos y botones − + del renglon: solo existen en el telefono. */
+  .fv-line .fv-ll, .fv-line .fv-menos, .fv-line .fv-mas { display: none; }
+  .fv-line .fv-cant-box, .fv-line .fv-precio-box, .fv-line .fv-step { min-width: 0; }
+  .fv-line .fv-step { display: flex; }
+  .fv-line .fv-cant, .fv-line .fv-precio { width: 100%; min-width: 0; box-sizing: border-box; }
   /* El monto del renglón lleva debajo su equivalente en la otra moneda. En
      Venezuela un precio se piensa en dólares y se cobra en bolívares: ver los
      dos a la vez evita la calculadora al lado del teclado. */
@@ -7518,19 +7523,39 @@
     /* ── Líneas de la factura de venta ──────────────────────────
        descripción · cantidad · precio · monto · quitar */
     .fv-lines-head { display: none; }
+    /* minmax(0, 1fr) y no 1fr: con 1fr la columna mide como minimo lo que
+       mide la opcion mas larga del selector de productos, y el cuadro se
+       salia de la pantalla. Esa era la rodada de lado a lado. */
     .fv-line {
-      grid-template-columns: 1fr auto;
-      gap: 8px;
-      padding: 10px;
-      margin-bottom: 10px;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      grid-template-areas: "desc desc" "cant precio" "monto del";
+      gap: 10px;
+      padding: 12px;
+      margin-bottom: 12px;
       border: 1px solid var(--border-default);
-      border-radius: var(--radius-sm);
+      border-radius: var(--radius-md, 10px);
       background: var(--bg-surface-alt);
     }
-    .fv-line .fv-desc { grid-column: 1 / -1; height: 44px; font-size: 16px; }
-    .fv-line .fv-cant, .fv-line .fv-precio { height: 44px; font-size: 16px; }
-    .fv-line .fv-monto { align-self: center; text-align: right; white-space: nowrap; }
-    .fv-line .fv-del { grid-column: 1 / -1; width: 100%; height: 34px; }
+    .fv-line .fv-desc { grid-area: desc; width: 100%; height: 48px; font-size: 16px; font-weight: var(--fw-semibold); }
+    .fv-line .fv-cant-box { grid-area: cant; }
+    .fv-line .fv-precio-box { grid-area: precio; }
+    .fv-line .fv-ll {
+      display: block; margin-bottom: 4px; font-size: 10.5px; font-weight: var(--fw-semibold);
+      color: var(--fg-muted); text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    .fv-line .fv-cant, .fv-line .fv-precio { height: 48px; font-size: 16px; }
+    .fv-line .fv-step .fv-cant { text-align: center; border-radius: 0; border-left: 0; border-right: 0; padding: 0 4px; }
+    .fv-line .fv-menos, .fv-line .fv-mas {
+      display: inline-flex; align-items: center; justify-content: center; flex: none;
+      width: 40px; height: 48px; border: 1px solid var(--border-default); background: var(--da-white);
+      color: var(--da-cyan-700); font-size: 22px; font-weight: 700; line-height: 1; cursor: pointer; padding: 0;
+      font-family: inherit; touch-action: manipulation;
+    }
+    .fv-line .fv-menos { border-radius: var(--radius-sm) 0 0 var(--radius-sm); }
+    .fv-line .fv-mas { border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+    .fv-line .fv-menos:active, .fv-line .fv-mas:active { background: var(--da-cyan-50); }
+    .fv-line .fv-monto { grid-area: monto; align-self: center; align-items: flex-start; text-align: left; font-size: 15px; white-space: nowrap; }
+    .fv-line .fv-del { grid-area: del; justify-self: end; width: 44px; height: 44px; }
     .fv-grid { grid-template-columns: 1fr; }
     .fv-body { padding: 14px; max-height: 68vh; }
 
