@@ -4467,6 +4467,7 @@
             + '<td class="num">' + fmt(m.__saldo) + ' ' + clip
             + ((ing && (m.factura_ref || '').trim())
               ? '<button class="btn btn-ghost" data-teso-recibo="' + esc(m.id) + '" title="Recibo de cobro" style="height:22px;font-size:10px;padding:0 6px;color:var(--da-cyan-700);"><i data-lucide="receipt" style="width:11px;height:11px;"></i></button> '
+                + '<button class="btn btn-ghost" data-teso-compartir="' + esc(m.id) + '" title="Compartir el recibo de cobro" style="height:22px;font-size:10px;padding:0 6px;color:var(--da-cyan-700);"><i data-lucide="share-2" style="width:11px;height:11px;"></i></button> '
               : '')
             + '<button class="btn btn-ghost" data-teso-delmov="' + esc(m.id) + '" title="Eliminar" style="height:22px;font-size:10px;padding:0 6px;color:#c0392b;"><i data-lucide="x" style="width:11px;height:11px;"></i></button></td></tr>';
         }).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--fg-muted);padding:16px;">Sin movimientos. Usa "Registrar movimiento".</td></tr>';
@@ -4489,7 +4490,7 @@
        `pagadoDe`, el mismo que alimenta la pantalla. Dos cálculos paralelos
        del mismo saldo terminan discrepando el día que uno se toca.
        ══════════════════════════════════════════════════════════════════ */
-    window.__reciboDeCobro = function (movId) {
+    window.__reciboDeCobro = function (movId, accion) {
       const mov = _movs.find((m) => String(m.id) === String(movId));
       if (!mov) { if (window.toast) window.toast('No encuentro ese movimiento.', 'error'); return; }
       const ref = (mov.factura_ref || '').trim();
@@ -4562,6 +4563,15 @@
         + '<div class="tk-line tk-center">Documento no fiscal · no constituye una factura</div>'
         + '<div class="tk-line tk-center">Generado por DigiAccount</div>'
         + '</div>';
+
+      /* COMPARTIR: la misma hoja del recibo de venta — imagen JPG o PDF de
+         72 mm — y el menu Compartir del telefono. */
+      if (accion === 'compartir' && window.__compartirTicket) {
+        const tmpS = document.createElement('div');
+        tmpS.innerHTML = html;
+        window.__compartirTicket(tmpS.firstChild, 'cobro-' + (ref || mov.fecha || ''));
+        return;
+      }
 
       /* En el telefono, el mismo PDF de 72 mm que el recibo de venta. */
       if (window.__esTelefono && window.__esTelefono() && window.__ticketPDF) {
@@ -4667,6 +4677,8 @@
          entrar ahí hay que haber pulsado ESE otro botón. */
       const rb = e.target.closest('[data-teso-recibo]');
       if (rb) { window.__reciboDeCobro(rb.dataset.tesoRecibo); return; }
+      const rs = e.target.closest('[data-teso-compartir]');
+      if (rs) { window.__reciboDeCobro(rs.dataset.tesoCompartir, 'compartir'); return; }
       if (vc) {
         const { data, error } = await window.sb.storage.from('comprobantes-tesoreria').createSignedUrl(vc.dataset.tesoVercomp, 120);
         if (error || !data) { toast('No se pudo abrir el comprobante: ' + (error && error.message), 'error'); return; }
