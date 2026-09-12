@@ -6835,8 +6835,14 @@
   /* Impresión de la factura en MEDIA CARTA (half letter, vertical) */
   @media print {
     /* Ticket fiscal: rollo angosto */
-    /* El rollo no tiene margenes de hoja: el ticket ocupa los 72 mm. */
-    #printPortal .ticket-print { width: 100% !important; max-width: none; font-size: 9px; padding: 0; margin: 0; }
+    /* El ticket MIDE 72 mm, sea cual sea la hoja.
+       En la PC, Chrome respeta el @page de 72 mm y el ticket llena el rollo.
+       En ANDROID el dialogo de impresion ignora ese @page: el papel lo decide
+       la impresora elegida («Guardar como PDF» = Carta). Con width 100% el
+       ticket se estiraba a lo ancho de la carta. Con el tope de 72 mm sale
+       del tamano de un ticket en cualquier papel, y en el rollo sigue igual.
+       Solo toca .ticket-print: libros, facturas y recibos no se enteran. */
+    #printPortal .ticket-print { width: 100% !important; max-width: 72mm !important; box-sizing: border-box; font-size: 9px; padding: 0; margin: 0 auto !important; }
     /* SIN ESTO el titulo en negativo del recibo de cobro sale blanco sobre
        blanco: los navegadores no imprimen fondos salvo que se les exija. Un
        encabezado invisible en el papel es peor que no haberlo puesto. */
