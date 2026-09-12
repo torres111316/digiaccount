@@ -86,6 +86,50 @@
     return String(d).padStart(2, '0') + '/' + String(m).padStart(2, '0') + '/' + aa.slice(-2);
   };
 
+  /* ════════════════════════════════════════════════════════════════════
+     LA TASA BCV DE UN MOMENTO
+
+     Un recibo se cotizo con la tasa vigente CUANDO SE EMITIO. Para
+     reconstruir su dolar exacto —hoy o dentro de un año— hace falta esa
+     tasa, no la de hoy. Se carga el historial una vez (son pocas filas) y
+     se busca la ultima fecha valor <= el dia de ese momento en Venezuela.
+     Es la misma regla con que la app fija la tasa vigente del dia.
+
+     __tasaUSDEn(momento)  momento = ISO/timestamp, o 'ahora'.
+                           Devuelve 0 si no hay con que responder: quien
+                           la usa NO inventa una conversion.
+     ════════════════════════════════════════════════════════════════════ */
+  window.__TASAS_USD = null;
+  let _cargaTasasUSD = null;
+  window.__cargarTasasUSD = function () {
+    if (window.__TASAS_USD) return Promise.resolve(window.__TASAS_USD);
+    if (_cargaTasasUSD) return _cargaTasasUSD;
+    if (!window.sb || !window.__sbAll) return Promise.resolve(null);
+    _cargaTasasUSD = window.__sbAll((q) => q.eq('moneda', 'USD').order('fecha', { ascending: true }), 'tasas_cambio', 'fecha, tasa')
+      .then(({ data, error }) => {
+        _cargaTasasUSD = null;
+        if (error || !data || !data.length) return null;
+        window.__TASAS_USD = data.map((r) => ({ f: String(r.fecha).slice(0, 10), t: parseFloat(r.tasa) }))
+          .filter((r) => r.t > 0).sort((a, b) => (a.f < b.f ? -1 : a.f > b.f ? 1 : 0));
+        return window.__TASAS_USD;
+      })
+      .catch(() => { _cargaTasasUSD = null; return null; });
+    return _cargaTasasUSD;
+  };
+  window.__tasaUSDEn = function (momento) {
+    const lista = window.__TASAS_USD;
+    if (!lista || !lista.length || !momento) return 0;
+    const d = momento === 'ahora' ? new Date() : new Date(momento);
+    if (isNaN(d.getTime())) return 0;
+    const dia = d.toLocaleDateString('en-CA', { timeZone: 'America/Caracas' });
+    let lo = 0, hi = lista.length - 1, r = 0;
+    while (lo <= hi) {
+      const m = (lo + hi) >> 1;
+      if (lista[m].f <= dia) { r = lista[m].t; lo = m + 1; } else hi = m - 1;
+    }
+    return r;
+  };
+
   window.__hoyISO = function () {
     const d = new Date();
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -4412,11 +4456,11 @@
         // Movimientos pueden superar 1000 filas → paginado (evita el tope de PostgREST)
         window.__sbAll((q) => q.eq('empresa_id', emp.id), 'movimientos_tesoreria', '*'),
         // Ventas = RECIBOS emitidos (control de cobros), por empresa. NO el libro de ventas (ese es solo para declarar).
-        window.__sbAll((q) => q.eq('tipo', 'venta').eq('empresa_id', emp.id), 'facturas', 'numero, cliente_nombre, cliente_rif, total, fecha, estado, condicion'),
+        window.__sbAll((q) => q.eq('tipo', 'venta').eq('empresa_id', emp.id), 'facturas', 'numero, cliente_nombre, cliente_rif, total, fecha, estado, condicion, emitida_en, creado_en'),
       ]);
       if (r1.error) { console.warn('[DigiAccount] Tesorería:', r1.error.message); }
       _cuentas = r1.data || []; _movs = r2.data || [];
-      const ventas = (r3.data || []).filter((f) => !/anulada/i.test(f.estado || '')).map((f) => ({ ref: f.numero, tercero_nombre: f.cliente_nombre, tercero_rif: f.cliente_rif, total: f.total, fecha: f.fecha, tipo: 'venta', condicion: f.condicion, estado: f.estado }));
+      const ventas = (r3.data || []).filter((f) => !/anulada/i.test(f.estado || '')).map((f) => ({ ref: f.numero, tercero_nombre: f.cliente_nombre, tercero_rif: f.cliente_rif, total: f.total, fecha: f.fecha, tipo: 'venta', condicion: f.condicion, estado: f.estado, emitida: f.emitida_en || f.creado_en || null }));
       // Modelo de firma contable (cuenta de Luis): el Libro de Compras es SOLO para declarar
       // los impuestos de cada cliente — NO representa cuentas por pagar que la firma gestione.
       // Por eso "Compras" (Tesorería/CxP) queda separado del Libro de Compras, igual que Ventas.
@@ -4490,18 +4534,38 @@
        `pagadoDe`, el mismo que alimenta la pantalla. Dos cálculos paralelos
        del mismo saldo terminan discrepando el día que uno se toca.
        ══════════════════════════════════════════════════════════════════ */
-    window.__reciboDeCobro = function (movId, accion) {
+    window.__reciboDeCobro = function (movId, accion, yaEspero) {
+      if (!yaEspero && !window.__TASAS_USD && window.__cargarTasasUSD) {
+        window.__cargarTasasUSD().then(() => window.__reciboDeCobro(movId, accion, true));
+        return;
+      }
       const mov = _movs.find((m) => String(m.id) === String(movId));
       if (!mov) { if (window.toast) window.toast('No encuentro ese movimiento.', 'error'); return; }
       const ref = (mov.factura_ref || '').trim();
       const fac = _facturas.find((f) => (f.ref || '').trim() === ref && f.tipo === 'venta');
 
       const emp = window.__EMPRESA_ACTIVA || {};
-      const tasa = Number(window.__bcvRate) || 0;
+      const tasaEn = (x) => (window.__tasaUSDEn && window.__tasaUSDEn(x)) || 0;
+      /* La tasa del ABONO: con ella se muestra el dolar de lo que se pago hoy. */
+      const tasa = tasaEn(mov.creado_en);
       const abono = Number(mov.monto) || 0;
       const total = fac ? (Number(fac.total) || 0) : 0;
       const acum = fac ? pagadoDe(fac) : abono;
-      const saldo = Math.max(0, total - acum);
+      /* EL SALDO SE RESTA EN DOLARES, no se convierte.
+           total $   = total Bs  / tasa del momento de la venta
+           abonado $ = cada abono Bs / tasa del momento de ESE abono
+           saldo $   = total $ - abonado $
+         Convertir el saldo en bolivares con la tasa de hoy cobraria de mas o
+         de menos segun cuanto subio el dolar. Si falta alguna tasa, sale en
+         bolivares: no se inventa una conversion. */
+      const movsFac = fac ? _movs.filter((m) => m.tipo === 'ingreso' && (m.factura_ref || '').trim() === ref) : [];
+      const tVenta = fac ? tasaEn(fac.emitida) : 0;
+      const enUsd = !!fac && tasa > 0 && tVenta > 0 && movsFac.every((m) => tasaEn(m.creado_en) > 0);
+      const totalUsd = enUsd ? total / tVenta : 0;
+      const acumUsd = enUsd ? movsFac.reduce((a, m) => a + (Number(m.monto) || 0) / tasaEn(m.creado_en), 0) : 0;
+      const saldo = enUsd
+        ? Math.max(0, Math.round((totalUsd - acumUsd) * 100) / 100)
+        : Math.max(0, total - acum);
 
       const usd = (n) => (tasa > 0
         ? '$' + Number(n / tasa).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -4518,8 +4582,8 @@
       const linea = (rot, bs, fuerte) => '<div class="tk-row' + (fuerte ? ' tk-total' : '') + '"><span>' + rot + '</span>'
         + '<span>' + fmt(bs) + '</span></div>'
         + (tasa > 0 ? '<div class="tk-item-usd">' + usd(bs) + '</div>' : '');
-      const lineaUsd = (rot, bs, fuerte) => '<div class="tk-row' + (fuerte ? ' tk-total' : '') + '"><span>' + rot + '</span>'
-        + '<span>' + (tasa > 0 ? usd(bs) : fmt(bs)) + '</span></div>';
+      const lineaUsd = (rot, n, fuerte) => '<div class="tk-row' + (fuerte ? ' tk-total' : '') + '"><span>' + rot + (enUsd ? '' : ' Bs') + '</span>'
+        + '<span>' + (enUsd ? '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : fmt(n)) + '</span></div>';
 
       const logo = (window.__logoEmpresa && window.__logoEmpresa()) || '';
       const html = '<div class="fac-ticket">'
@@ -4542,8 +4606,8 @@
         + '<div class="tk-sep dashed"></div>'
         /* El saldo va ENMARCADO: es el número por el que el cliente va a
            volver, y tiene que encontrarse sin leer el resto. */
-        + (fac ? (lineaUsd('TOTAL DEL RECIBO', total)
-          + lineaUsd('ABONADO EN TOTAL', acum)
+        + (fac ? (lineaUsd('TOTAL DEL RECIBO', enUsd ? totalUsd : total)
+          + lineaUsd('ABONADO EN TOTAL', enUsd ? acumUsd : acum)
           + '<div class="tk-saldo">' + lineaUsd('SALDO', saldo, true) + '</div>')
           : '<div class="tk-line tk-center">Cobro sin recibo de venta asociado</div>')
         + (tasa > 0 ? '<div class="tk-line tk-center tk-tasa">Abono recibido a Bs ' + fmt(tasa) + ' por $</div>' : '')
@@ -6018,6 +6082,7 @@
     // USD = BCV oficial (con fecha VALOR: el sábado rige la del lunes) · USDT = paralelo/Binance.
     // Reemplaza la simulación: fija las tasas del día y detiene la variación aleatoria.
     window.cargarTasaBCV = async function () {
+      if (window.__cargarTasasUSD) window.__cargarTasasUSD();   // historial: el dolar exacto de cada recibo
       if (!window.sb) return;
       const { data, error } = await window.sb.from('tasas_cambio')
         .select('fecha, tasa, moneda')
@@ -7446,7 +7511,16 @@
       if (resto) out += hasta999(resto);
       return out.trim().replace(/\s+/g, ' ');
     }
-    function montoEnLetras(n) {
+    function montoEnLetras(n, moneda) {
+      if (moneda === 'USD') {
+        /* «un dólar», «veintiún dólares», «un millón de dólares». Los
+           bolivares no se tocan: esos documentos ya estan emitidos asi. */
+        const r = Math.round((Number(n) || 0) * 100) / 100;
+        const e = Math.floor(r), c = Math.round((r - e) * 100);
+        let pal = enLetras(e).replace(/veintiuno$/, 'veintiún').replace(/(^|\s)uno$/, '$1un');
+        if (/(millón|millones)$/.test(pal)) pal += ' de';
+        return pal + ' ' + (e === 1 ? 'dólar' : 'dólares') + ' con ' + String(c).padStart(2, '0') + '/100';
+      }
       const ent = Math.floor(n);
       const cent = Math.round((n - ent) * 100);
       return enLetras(ent) + ' bolívares con ' + String(cent).padStart(2, '0') + '/100';
@@ -8687,9 +8761,15 @@
 
     let lastText = '', lastName = 'factura.txt', currentFac = null;
 
-    function openFactura(num) {
+    function openFactura(num, yaEspero) {
       const f = DB[num];
       if (!f) return;
+      /* El dolar del recibo sale de la tasa del momento de emision: si el
+         historial aun no llego, se pinta cuando llegue (una sola espera). */
+      if (!yaEspero && f.tipo === 'venta' && !window.__TASAS_USD && window.__cargarTasasUSD) {
+        window.__cargarTasasUSD().then(() => openFactura(num, true));
+        return;
+      }
       const t = calcFactura(f);
       const emisor = f.tipo === 'venta' ? (window.__EMPRESA_ACTIVA || EMPRESA) : f.parte;
       const receptor = f.tipo === 'venta' ? f.parte : EMPRESA;
@@ -8724,21 +8804,28 @@
 
       if (_rec) {
         // ===== RECIBO DE CAJA (rollo angosto, NO fiscal) =====
-        /* El dolar al lado del bolivar: es como se piensa el precio aqui.
-           El bolivar sigue siendo el numero principal —es lo que se cobra y
-           lo que va al libro— y el dolar va debajo, con la tasa a la vista.
-           Un ticket que diga «$12» sin decir a que tasa no sirve para
-           reclamar nada al dia siguiente. */
-        const _tasaTk = Number(window.__bcvRate) || 0;
-        const _usdTk = (n) => (_tasaTk > 0
-          ? '$' + Number(n / _tasaTk).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-          : '');
+        /* EL RECIBO DE VENTA VA EN DOLARES, SIN BOLIVARES.
+
+           Un total en bolivares le da al cliente una cifra de la que
+           agarrarse: vuelve dias despues a pagar «lo que dice el papel», y
+           ese bolivar ya no vale lo mismo. El dolar pactado no cambia.
+
+           El dolar sale de la tasa del MOMENTO EN QUE SE EMITIO (f._emitida):
+           con esa tasa se convirtieron los precios, asi que es la unica que
+           devuelve el dolar exacto — no la de hoy, ni la de la fecha escrita.
+           Sin tasa para ese momento no se inventa nada: sale en bolivares. */
+        const _tasaTk = (window.__tasaUSDEn && window.__tasaUSDEn(f._emitida)) || 0;
+        const _enUsd = _tasaTk > 0;
+        const _fmtUsd = (n) => Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        const _m = (bs) => (_enUsd ? '$' + _fmtUsd(bs / _tasaTk) : fmt(bs));
+        const _n = (bs) => (_enUsd ? _fmtUsd(bs / _tasaTk) : fmt(bs));
+        const _mon = _enUsd ? '$' : 'Bs';
+        const _totalUsd = _enUsd ? Math.round((t.total / _tasaTk) * 100) / 100 : 0;
+        const _letrasTk = (_enUsd && window.__montoEnLetras) ? cap(window.__montoEnLetras(_totalUsd, 'USD')) : letras;
         const tkItems = f.items.map((it) => {
           const m = it.c * it.p;
-          const eq = _usdTk(m);
           return '<div class="tk-item"><div class="tk-item-d">' + it.d.toUpperCase() + '</div>'
-            + '<div class="tk-item-l"><span>' + it.c + ' x ' + fmt(it.p) + '</span><span>' + fmt(m) + '</span></div>'
-            + (eq ? '<div class="tk-item-usd">' + eq + '</div>' : '') + '</div>';
+            + '<div class="tk-item-l"><span>' + it.c + ' x ' + _m(it.p) + '</span><span>' + _m(m) + '</span></div></div>';
         }).join('');
         doc.innerHTML =
           '<div class="fac-ticket">'
@@ -8759,15 +8846,13 @@
           + '<div class="tk-sep dashed"></div>'
           + tkItems
           + '<div class="tk-sep dashed"></div>'
-          + (f.igtf ? '<div class="tk-row"><span>SUBTOTAL Bs</span><span>' + fmt(t.subtotal) + '</span></div>' : '')
-          + (f.igtf ? '<div class="tk-row"><span>IGTF 3% Bs</span><span>' + fmt(t.igtf) + '</span></div>' : '')
-          + '<div class="tk-total"><span>TOTAL Bs</span><span>' + fmt(t.total) + '</span></div>'
-          + (_tasaTk > 0
-            ? '<div class="tk-total tk-total-usd"><span>TOTAL $</span><span>' + _usdTk(t.total).replace('$', '') + '</span></div>'
-              + '<div class="tk-line tk-center tk-tasa">Tasa BCV del día: Bs ' + fmt(_tasaTk) + ' por $</div>'
-            : '')
+          + (f.igtf ? '<div class="tk-row"><span>SUBTOTAL ' + _mon + '</span><span>' + _n(t.subtotal) + '</span></div>' : '')
+          + (f.igtf ? '<div class="tk-row"><span>IGTF 3% ' + _mon + '</span><span>' + _n(t.igtf) + '</span></div>' : '')
+          + '<div class="tk-total"><span>TOTAL ' + _mon + '</span><span>' + (_enUsd ? _fmtUsd(_totalUsd) : fmt(t.total)) + '</span></div>'
+          /* Se dice en el papel, porque es justo la discusion que se quiere evitar. */
+          + (_enUsd ? '<div class="tk-line tk-center tk-nota-tasa">Precios en dólares. Si paga en bolívares, se calcula a la tasa BCV del día en que pague.</div>' : '')
           + '<div class="tk-sep"></div>'
-          + '<div class="tk-words">SON: ' + letras + '</div>'
+          + '<div class="tk-words">SON: ' + _letrasTk + '</div>'
           + ((window.__pagoMovilTicket && window.__pagoMovilTicket()) || '')
           + '<div class="tk-sep dashed"></div>'
           + '<div class="tk-line tk-center">Documento no fiscal · no constituye una factura</div>'
@@ -9681,7 +9766,7 @@
         const fechaRaw = document.getElementById('fvFecha').value;
         const fecha = fechaRaw ? fechaRaw.split('-').reverse().join('/') : (function () { const d = new Date(); return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear(); })();
         const alic = esRec ? 0 : (parseFloat(document.getElementById('fvAlic').value) || 0);
-        DB[num] = { tipo: 'venta', control: ctrl, fecha: fecha, parte: { n: cli.n, rif: cli.rif, dom: cli.dom || '' }, alic: alic, igtf: igtfChk.checked, cond: document.getElementById('fvCond').value, items: items };
+        DB[num] = { tipo: 'venta', control: ctrl, fecha: fecha, parte: { n: cli.n, rif: cli.rif, dom: cli.dom || '' }, alic: alic, igtf: igtfChk.checked, cond: document.getElementById('fvCond').value, items: items, _emitida: new Date().toISOString() };
         const t = calcFactura(DB[num]);
         // Guardar la factura REAL en Supabase
         if (window.sb && window.__CUENTA_ID) {
@@ -9759,7 +9844,7 @@
       const tb = document.querySelector('.ventas-tab[data-tab="facturas"] table.data-table tbody');
       if (tb) tb.innerHTML = '';
       (data || []).forEach((f) => {
-        DB[f.numero] = { tipo: 'venta', control: f.control, fecha: f.fecha, parte: { n: f.cliente_nombre, rif: f.cliente_rif, dom: f.cliente_dom || '' }, alic: Number(f.alicuota) || 0, igtf: !!f.igtf, cond: f.condicion, items: Array.isArray(f.items) ? f.items : [], _id: f.id, estado: f.estado || 'Por cobrar' };
+        DB[f.numero] = { tipo: 'venta', control: f.control, fecha: f.fecha, parte: { n: f.cliente_nombre, rif: f.cliente_rif, dom: f.cliente_dom || '' }, alic: Number(f.alicuota) || 0, igtf: !!f.igtf, cond: f.condicion, items: Array.isArray(f.items) ? f.items : [], _id: f.id, estado: f.estado || 'Por cobrar', _emitida: f.emitida_en || f.creado_en || null };
         if (tb) {
           const fc = (f.fecha || '').slice(0, 6) + (f.fecha || '').slice(8);
           const tr = document.createElement('tr');
