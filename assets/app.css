@@ -6800,7 +6800,12 @@
   /* Impresión de la factura en MEDIA CARTA (half letter, vertical) */
   @media print {
     /* Ticket fiscal: rollo angosto */
-    #printPortal .ticket-print { width: 100% !important; max-width: none; font-size: 9px; padding: 0; }
+    /* El rollo no tiene margenes de hoja: el ticket ocupa los 72 mm. */
+    #printPortal .ticket-print { width: 100% !important; max-width: none; font-size: 9px; padding: 0; margin: 0; }
+    #printPortal .ticket-print .tk-logo-img { max-height: 38px; margin-bottom: 4px; }
+    #printPortal .ticket-print .tk-item-usd { font-size: 8px; }
+    #printPortal .ticket-print .tk-total.tk-total-usd { font-size: 9.5px; }
+    #printPortal .ticket-print .tk-tasa { font-size: 8px; }
     #printPortal .ticket-print .tk-co { font-size: 10.5px; }
     #printPortal .ticket-print .tk-doc { font-size: 10.5px; }
     #printPortal .ticket-print .tk-total { font-size: 11px; }

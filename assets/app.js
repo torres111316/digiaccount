@@ -4462,7 +4462,13 @@
           const clip = m.comprobante_path ? '<button class="btn btn-ghost" data-teso-vercomp="' + esc(m.comprobante_path) + '" title="Ver comprobante" style="height:22px;font-size:10px;padding:0 6px;color:var(--da-cyan-700);"><i data-lucide="paperclip" style="width:11px;height:11px;"></i></button> ' : '';
           return '<tr><td>' + esc(m.fecha || '') + '</td><td class="primary">' + esc(m.concepto || '') + (m.comprobante_path ? ' <i data-lucide="paperclip" style="width:11px;height:11px;color:var(--da-cyan-700);vertical-align:middle;"></i>' : '') + '</td><td>' + esc(c ? c.nombre : '—') + '</td>'
             + '<td class="mono">' + esc(m.referencia || '') + '</td><td class="num" style="color:var(--da-' + (ing ? 'success' : 'danger') + ');">' + (ing ? '+ ' : '− ') + fmt(m.monto) + '</td>'
-            + '<td class="num">' + fmt(m.__saldo) + ' ' + clip + '<button class="btn btn-ghost" data-teso-delmov="' + esc(m.id) + '" title="Eliminar" style="height:22px;font-size:10px;padding:0 6px;color:#c0392b;"><i data-lucide="x" style="width:11px;height:11px;"></i></button></td></tr>';
+            /* Solo los COBROS vinculados a un recibo llevan comprobante: un
+               egreso o un movimiento suelto no tienen saldo que informar. */
+            + '<td class="num">' + fmt(m.__saldo) + ' ' + clip
+            + ((ing && (m.factura_ref || '').trim())
+              ? '<button class="btn btn-ghost" data-teso-recibo="' + esc(m.id) + '" title="Recibo de cobro" style="height:22px;font-size:10px;padding:0 6px;color:var(--da-cyan-700);"><i data-lucide="receipt" style="width:11px;height:11px;"></i></button> '
+              : '')
+            + '<button class="btn btn-ghost" data-teso-delmov="' + esc(m.id) + '" title="Eliminar" style="height:22px;font-size:10px;padding:0 6px;color:#c0392b;"><i data-lucide="x" style="width:11px;height:11px;"></i></button></td></tr>';
         }).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--fg-muted);padding:16px;">Sin movimientos. Usa "Registrar movimiento".</td></tr>';
       }
       const cf = view.querySelector('.teso-tab[data-tab="resumen"] .table-footer .count');
@@ -4471,6 +4477,82 @@
       if (window.__poblarConcilCuentas) window.__poblarConcilCuentas();
       if (window.lucide) window.lucide.createIcons();
     }
+
+    /* ══════════════════════════════════════════════════════════════════
+       RECIBO DE COBRO · lo que abonó y lo que sigue debiendo
+
+       El vendedor a plazos necesita dejarle constancia a su cliente de cada
+       abono. Hasta aquí el sistema sabía todo eso —lo muestra en Cuentas por
+       Cobrar— pero no había papel que entregar.
+
+       Los números NO se recalculan por otro camino: el acumulado sale de
+       `pagadoDe`, el mismo que alimenta la pantalla. Dos cálculos paralelos
+       del mismo saldo terminan discrepando el día que uno se toca.
+       ══════════════════════════════════════════════════════════════════ */
+    window.__reciboDeCobro = function (movId) {
+      const mov = _movs.find((m) => String(m.id) === String(movId));
+      if (!mov) { if (window.toast) window.toast('No encuentro ese movimiento.', 'error'); return; }
+      const ref = (mov.factura_ref || '').trim();
+      const fac = _facturas.find((f) => (f.ref || '').trim() === ref && f.tipo === 'venta');
+
+      const emp = window.__EMPRESA_ACTIVA || {};
+      const tasa = Number(window.__bcvRate) || 0;
+      const abono = Number(mov.monto) || 0;
+      const total = fac ? (Number(fac.total) || 0) : 0;
+      const acum = fac ? pagadoDe(fac) : abono;
+      const saldo = Math.max(0, total - acum);
+
+      const usd = (n) => (tasa > 0
+        ? '$' + Number(n / tasa).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        : '');
+      const linea = (rot, bs, fuerte) => '<div class="tk-row' + (fuerte ? ' tk-total' : '') + '"><span>' + rot + '</span>'
+        + '<span>' + fmt(bs) + '</span></div>'
+        + (tasa > 0 ? '<div class="tk-item-usd">' + usd(bs) + '</div>' : '');
+
+      const logo = (window.__logoEmpresa && window.__logoEmpresa()) || '';
+      const html = '<div class="fac-ticket">'
+        + '<div class="tk-head">'
+        + (logo ? '<img class="tk-logo-img" src="' + logo + '" alt="">' : '')
+        + '<div class="tk-co">' + esc(String(emp.n || emp.nombre || 'Empresa').toUpperCase()) + '</div>'
+        + '<div class="tk-line">RIF: ' + esc(emp.rif || '—') + '</div>'
+        + '</div>'
+        + '<div class="tk-sep"></div>'
+        + '<div class="tk-doc">RECIBO DE COBRO</div>'
+        + '<div class="tk-row"><span>FECHA</span><span>' + esc(mov.fecha || '') + '</span></div>'
+        + '<div class="tk-line">CLIENTE: ' + esc(mov.tercero_nombre || '—') + '</div>'
+        + (mov.tercero_rif ? '<div class="tk-line">RIF/CI: ' + esc(mov.tercero_rif) + '</div>' : '')
+        + '<div class="tk-line">POR EL RECIBO: ' + esc(ref || '—') + '</div>'
+        + (mov.referencia ? '<div class="tk-line">REF. PAGO: ' + esc(mov.referencia) + '</div>' : '')
+        + '<div class="tk-sep dashed"></div>'
+        + linea('ABONA HOY Bs', abono, true)
+        + '<div class="tk-sep dashed"></div>'
+        + (fac ? (linea('TOTAL DEL RECIBO Bs', total)
+          + linea('ABONADO EN TOTAL Bs', acum)
+          + linea('SALDO PENDIENTE Bs', saldo, true))
+          : '<div class="tk-line tk-center">Cobro sin recibo de venta asociado</div>')
+        + '<div class="tk-sep"></div>'
+        + (tasa > 0 ? '<div class="tk-line tk-center tk-tasa">Tasa BCV del día: Bs ' + fmt(tasa) + ' por $</div>' : '')
+        + '<div class="tk-sep dashed"></div>'
+        + (fac && saldo <= 0.01
+          ? '<div class="tk-thanks">RECIBO CANCELADO EN SU TOTALIDAD</div>'
+          : '<div class="tk-line tk-center">Este documento deja constancia del abono recibido.</div>')
+        + '<div class="tk-line tk-center">Documento no fiscal · no constituye una factura</div>'
+        + '<div class="tk-line tk-center">Generado por DigiAccount</div>'
+        + '</div>';
+
+      /* Se imprime por el mismo portal que el resto de documentos, con el
+         rollo de 72 mm: es el mismo papel del recibo de venta. */
+      let portal = document.getElementById('printPortal');
+      if (!portal) { portal = document.createElement('div'); portal.id = 'printPortal'; document.body.appendChild(portal); }
+      portal.innerHTML = html;
+      const t = portal.querySelector('.fac-ticket');
+      if (t) t.classList.add('ticket-print');
+      let st = document.getElementById('facPageSize');
+      if (!st) { st = document.createElement('style'); st.id = 'facPageSize'; document.head.appendChild(st); }
+      st.textContent = '@media print{@page{size:72mm auto;margin:3mm;}}';
+      document.body.classList.add('printing-comp');
+      window.print();
+    };
 
     // Cuánto se ha cobrado/pagado de una factura: suma de movimientos vinculados por factura_ref
     function pagadoDe(fac) {
@@ -4549,6 +4631,11 @@
       const dc = e.target.closest('[data-teso-delcuenta]');
       const dm = e.target.closest('[data-teso-delmov]');
       const vc = e.target.closest('[data-teso-vercomp]');
+      /* El recibo de cobro va aquí arriba, con los demás. Estaba dentro de la
+         rama del botón de eliminar, así que no se alcanzaba nunca: para
+         entrar ahí hay que haber pulsado ESE otro botón. */
+      const rb = e.target.closest('[data-teso-recibo]');
+      if (rb) { window.__reciboDeCobro(rb.dataset.tesoRecibo); return; }
       if (vc) {
         const { data, error } = await window.sb.storage.from('comprobantes-tesoreria').createSignedUrl(vc.dataset.tesoVercomp, 120);
         if (error || !data) { toast('No se pudo abrir el comprobante: ' + (error && error.message), 'error'); return; }
@@ -8998,40 +9085,34 @@
       // forma libre (media carta). Chrome ignora un @page nuevo cuando ya existe otro
       // @page en conflicto, así que se cambia el size de TODAS las reglas @page vía CSSOM.
       let size = '5.5in 8.5in', margin = '9mm';
-      if (isTicket) { size = '72mm 200mm'; margin = '4mm'; }
+      /* Alto AUTOMATICO: un rollo no tiene hoja, tiene metros. Con 200 mm
+         fijos un ticket de cuatro renglones sacaba veinte centimetros de
+         papel en blanco, y uno largo se partia en dos. */
+      if (isTicket) { size = '72mm auto'; margin = '3mm'; }
       else if (isElec) { size = '8.5in 11in'; margin = '12mm'; }
       setFacturaPageSize(size, margin);
       document.body.classList.add('printing-comp');
       window.print();
     });
-    // Cambia/restaura el size de todas las reglas @page (CSSOM) para la impresión de factura/ticket
+    /* El tamaño de papel de la impresión.
+
+       ANTES esto recorría las hojas de estilo y le asignaba `size` a cada
+       regla @page vía CSSOM. No funcionaba: Chrome NO permite escribir
+       `size` en `CSSPageRule.style` —la asignación se ignora sin dar
+       error— y el ticket terminaba saliendo en el tamaño carta del @page
+       general. Se imprimía un rollo de 72 mm en media resma.
+
+       Ahora se inyecta una hoja al final del <head>: el último @page que
+       declara `size` es el que manda, sin depender de una API que el
+       navegador no implementa. Al terminar de imprimir se retira. */
     function setFacturaPageSize(sizeVal, marginVal) {
-      const sheets = document.styleSheets;
-      for (let i = 0; i < sheets.length; i++) {
-        let rules;
-        try { rules = sheets[i].cssRules; } catch (e) { continue; }
-        if (!rules) continue;
-        for (let j = 0; j < rules.length; j++) {
-          const r = rules[j];
-          if (r.type === CSSRule.MEDIA_RULE && /print/.test(r.media && r.media.mediaText || '')) {
-            for (let k = 0; k < r.cssRules.length; k++) {
-              const pr = r.cssRules[k];
-              if (pr.type === CSSRule.PAGE_RULE) {
-                if (sizeVal) {
-                  if (pr.__origSize === undefined) { pr.__origSize = pr.style.size || ''; pr.__origMargin = pr.style.margin || ''; }
-                  pr.style.size = sizeVal;
-                  pr.style.margin = marginVal;
-                } else if (pr.__origSize !== undefined) {
-                  pr.style.size = pr.__origSize;
-                  pr.style.margin = pr.__origMargin || '';
-                  pr.__origSize = undefined;
-                }
-              }
-            }
-          }
-        }
-      }
+      const ID = 'facPageSize';
+      let st = document.getElementById(ID);
+      if (!sizeVal) { if (st) st.remove(); return; }
+      if (!st) { st = document.createElement('style'); st.id = ID; document.head.appendChild(st); }
+      st.textContent = '@media print{@page{size:' + sizeVal + ';margin:' + (marginVal || '0') + ';}}';
     }
+
     window.addEventListener('afterprint', () => {
       document.body.classList.remove('printing-comp');
       const portal = document.getElementById('printPortal');
