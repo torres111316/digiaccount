@@ -4556,6 +4556,9 @@
         + (fac && saldo <= 0.01
           ? '<div class="tk-cancelado">CANCELADO EN SU TOTALIDAD</div>'
           : '<div class="tk-line tk-center">Este documento deja constancia del abono recibido.</div>')
+        /* Solo cuando queda saldo: a quien ya pagó todo no hay que decirle
+           por dónde seguir pagando. */
+        + ((fac && saldo > 0.01 && window.__pagoMovilTicket) ? (window.__pagoMovilTicket() || '') : '')
         + '<div class="tk-line tk-center">Documento no fiscal · no constituye una factura</div>'
         + '<div class="tk-line tk-center">Generado por DigiAccount</div>'
         + '</div>';
@@ -8745,6 +8748,7 @@
             : '')
           + '<div class="tk-sep"></div>'
           + '<div class="tk-words">SON: ' + letras + '</div>'
+          + ((window.__pagoMovilTicket && window.__pagoMovilTicket()) || '')
           + '<div class="tk-sep dashed"></div>'
           + '<div class="tk-line tk-center">Documento no fiscal · no constituye una factura</div>'
           + '<div class="tk-thanks">¡GRACIAS POR SU COMPRA!</div>'
@@ -15920,6 +15924,40 @@
       efectivo: { activo: false, campos: { Moneda: '', Nota: '' } },
     };
     window.__COBROS_EMPRESA = COBROS_EMP;
+
+    /* Los datos del pago movil, listos para imprimir en un ticket.
+
+       El cliente se lleva el papel: si ahi esta como pagar, no hay que
+       dictarle los datos por telefono ni mandarlos por WhatsApp cada vez. En
+       el recibo de cobro importa mas todavia, porque el que queda debiendo ya
+       sabe por donde mandar el resto.
+
+       Devuelve '' si el metodo esta apagado o le faltan datos: un ticket que
+       anuncia una forma de pago a medias es peor que uno que no la anuncia.
+
+       El TITULAR no se imprime — ya encabeza el ticket con el nombre del
+       negocio, y repetirlo solo gasta papel. */
+    window.__pagoMovilTicket = function () {
+      const pm = (window.__COBROS_EMPRESA || {}).pagomovil;
+      if (!pm || !pm.activo) return '';
+      const c = pm.campos || {};
+      const banco = String(c.Banco || '').trim();
+      const tel = String(c['Teléfono'] || '').replace(/\D/g, '');
+      const ndoc = String(c['Nº de documento'] || '').replace(/\D/g, '');
+      const tipo = String(c['Tipo de documento'] || 'V').trim().charAt(0).toUpperCase() || 'V';
+      if (!banco || !tel || !ndoc) return '';
+
+      // 04126303679 -> 0412-6303679, que es como se lee y se dicta.
+      const telFmt = tel.length === 11 ? (tel.slice(0, 4) + '-' + tel.slice(4)) : tel;
+      const esc2 = window.esc || ((x) => String(x == null ? '' : x));
+      return '<div class="tk-sep dashed"></div>'
+        + '<div class="tk-pago">'
+        + '<div class="tk-pago-tt">PARA PAGAR · PAGO MÓVIL</div>'
+        + '<div class="tk-pago-l"><span>BANCO</span><span>' + esc2(banco.toUpperCase()) + '</span></div>'
+        + '<div class="tk-pago-l"><span>CI</span><span>' + esc2(tipo + '-' + ndoc) + '</span></div>'
+        + '<div class="tk-pago-l"><span>TLF</span><span>' + esc2(telFmt) + '</span></div>'
+        + '</div>';
+    };
     // Persistencia por empresa (columna jsonb empresas.metodos_cobro).
     async function guardarCobrosEmp() {
       const emp = window.__EMPRESA_ACTIVA;
