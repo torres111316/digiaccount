@@ -5149,6 +5149,7 @@
         <label class="fv-f"><span>Fecha de emisión</span><input type="date" id="fvFecha" value="2026-05-31"></label>
         <label class="fv-f"><span>Condición de pago</span><select id="fvCond"><option>Contado</option><option>Crédito 15 días</option><option>Crédito 30 días</option><option>Crédito 60 días</option></select></label>
         <label class="fv-f"><span>Alícuota IVA</span><select id="fvAlic"><option value="0.16">16% general</option><option value="0.08">8% reducida</option><option value="0">Exenta</option></select></label>
+        <label class="fv-f"><span>Precios en</span><select id="fvMoneda"><option value="BS">Bolívares (Bs)</option><option value="USD">Dólares ($)</option></select></label>
       </div>
       <div class="fv-lines-head"><span>Descripción del renglón</span><span class="num">Cant.</span><span class="num">P. unitario</span><span class="num">Monto</span><span class="del-col"></span></div>
       <div id="fvLines"></div>
@@ -5159,6 +5160,7 @@
         <div class="fv-tot-row"><span>IVA</span><strong id="fvIva">Bs 0,00</strong></div>
         <div class="fv-tot-row" id="fvIgtfRow" hidden><span>IGTF 3%</span><strong id="fvIgtfVal">Bs 0,00</strong></div>
         <div class="fv-tot-row total"><span>Total a pagar</span><strong id="fvTotal">Bs 0,00</strong></div>
+        <div class="fv-tot-row equiv" id="fvEquivRow"><span id="fvEquivLbl">Equivalente</span><strong id="fvEquiv">—</strong></div>
       </div>
     </div>
     <div class="fv-foot">

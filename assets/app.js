@@ -9070,8 +9070,14 @@
 
       function addLine() {
         const prods = (window.__getProductos ? window.__getProductos() : []);
+        /* Se llevan los DOS precios: el de bolívares y el de dólares si el
+           artículo está anclado en divisa. Así el renglón puede mostrar el
+           precio en la moneda que se esté capturando sin volver a consultar. */
         const opts = '<option value="">Elegir producto…</option>' + prods.map((p) =>
-          '<option value="' + p.id + '" data-precio="' + (Number(p.precio) || 0) + '" data-stock="' + (Number(p.stock) || 0) + '" data-nombre="' + String(p.nombre || '').replace(/"/g, '&quot;') + '">' + (p.nombre || '') + ' (stock ' + (Number(p.stock) || 0) + ')</option>').join('');
+          '<option value="' + p.id + '" data-precio="' + (Number(p.precio) || 0) + '"'
+          + ' data-precio-usd="' + (Number(p.precio_usd) || 0) + '"'
+          + ' data-moneda="' + String(p.moneda_precio || 'BS') + '"'
+          + ' data-stock="' + (Number(p.stock) || 0) + '" data-nombre="' + String(p.nombre || '').replace(/"/g, '&quot;') + '">' + (p.nombre || '') + ' (stock ' + (Number(p.stock) || 0) + ')</option>').join('');
         const row = document.createElement('div');
         row.className = 'fv-line';
         row.innerHTML = '<select class="fv-desc">' + opts + '</select>'
@@ -9085,8 +9091,20 @@
           row.dataset.pid = sel.value || '';
           row.dataset.pname = o ? (o.getAttribute('data-nombre') || '') : '';
           row.dataset.stock = o ? (o.getAttribute('data-stock') || '') : '';
-          const precio = o ? parseFloat(o.getAttribute('data-precio')) : 0;
-          row.querySelector('.fv-precio').value = precio ? precio : '';   // precio normal autocompletado (editable por recibo)
+          /* El precio se autocompleta EN LA MONEDA QUE SE ESTÁ CAPTURANDO.
+              Si el artículo nació en dólares se parte de su precio en dólares
+              y se convierte; si nació en bolívares, al revés. Convertir desde
+              el bolívar guardado de un artículo anclado en divisa arrastraría
+              la tasa del día en que se cargó, no la de hoy. */
+          const tasa = Number(window.__bcvRate) || 0;
+          const enUsd = (o ? o.getAttribute('data-moneda') : 'BS') === 'USD';
+          const pBs = o ? (parseFloat(o.getAttribute('data-precio')) || 0) : 0;
+          const pUsd = o ? (parseFloat(o.getAttribute('data-precio-usd')) || 0) : 0;
+          const capturaUsd = monedaCaptura() === 'USD';
+          let precio;
+          if (capturaUsd) precio = enUsd ? pUsd : (tasa > 0 ? pBs / tasa : 0);
+          else precio = enUsd ? (tasa > 0 ? pUsd * tasa : 0) : pBs;
+          row.querySelector('.fv-precio').value = precio ? Math.round(precio * 100) / 100 : '';
           recalc();
         });
         row.querySelector('.fv-del').addEventListener('click', () => { row.remove(); recalc(); });
@@ -9094,23 +9112,56 @@
         linesEl.appendChild(row);
         drawIcons();
       }
+      /* En qué moneda se están escribiendo los precios de ESTE recibo. */
+      function monedaCaptura() {
+        const s = document.getElementById('fvMoneda');
+        return (s && s.value === 'USD') ? 'USD' : 'BS';
+      }
+      const fmtUsd = (n) => Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
       function recalc() {
         const rec = window.__esRecibo ? window.__esRecibo() : true;
         const alic = rec ? 0 : (parseFloat(document.getElementById('fvAlic').value) || 0);
+        const usd = monedaCaptura() === 'USD';
+        const tasa = Number(window.__bcvRate) || 0;
+        const sig = usd ? '$' : 'Bs ';
+        const fmtC = (n) => (usd ? '$' + fmtUsd(n) : 'Bs ' + fmt(n));
+        /* El equivalente: si se captura en dólares se muestra en bolívares y
+           al revés. Sin tasa cargada no se inventa una conversión. */
+        const otra = (n) => {
+          if (!(tasa > 0)) return '—';
+          return usd ? ('Bs ' + fmt(n * tasa)) : ('$' + fmtUsd(n / tasa));
+        };
+
         let base = 0;
         linesEl.querySelectorAll('.fv-line').forEach((r) => {
           const c = parseFloat(r.querySelector('.fv-cant').value) || 0;
           const p = parseFloat(r.querySelector('.fv-precio').value) || 0;
           const m = c * p;
-          r.querySelector('.fv-monto').textContent = 'Bs ' + fmt(m);
+          r.querySelector('.fv-monto').innerHTML = fmtC(m)
+            + '<small class="fv-eq">' + otra(m) + '</small>';
           base += m;
         });
         const iva = base * alic, igtf = igtfChk.checked ? base * 0.03 : 0;
-        document.getElementById('fvBase').textContent = 'Bs ' + fmt(base);
-        document.getElementById('fvIva').textContent = 'Bs ' + fmt(iva);
+        const total = base + iva + igtf;
+        document.getElementById('fvBase').textContent = fmtC(base);
+        document.getElementById('fvIva').textContent = fmtC(iva);
         document.getElementById('fvIgtfRow').hidden = !igtfChk.checked;
-        document.getElementById('fvIgtfVal').textContent = 'Bs ' + fmt(igtf);
-        document.getElementById('fvTotal').textContent = 'Bs ' + fmt(base + iva + igtf);
+        document.getElementById('fvIgtfVal').textContent = fmtC(igtf);
+        document.getElementById('fvTotal').textContent = fmtC(total);
+
+        const eqLbl = document.getElementById('fvEquivLbl');
+        const eqVal = document.getElementById('fvEquiv');
+        if (eqLbl && eqVal) {
+          eqLbl.textContent = tasa > 0
+            ? ('Equivalente · BCV ' + fmt(tasa) + ' por $')
+            : 'Equivalente (sin tasa del BCV cargada)';
+          eqVal.textContent = otra(total);
+        }
+        /* La cabecera de la columna dice en qué se está escribiendo, para que
+           nadie teclee dólares creyendo que son bolívares. */
+        const th = document.querySelector('.fv-lines-head span:nth-child(3)');
+        if (th) th.textContent = 'P. unitario (' + (usd ? '$' : 'Bs') + ')';
       }
       function open() {
         clientes = (window.__clientes ? window.__clientes() : []);
@@ -9132,6 +9183,28 @@
       });
       document.getElementById('fvAlic').addEventListener('change', recalc);
       igtfChk.addEventListener('change', recalc);
+      /* Al cambiar de moneda se CONVIERTE lo ya escrito, no se deja el mismo
+         numero con otro signo: 100 bolivares no son 100 dolares, y dejarlo
+         igual convertiria un recibo de cien en uno de ochenta mil sin que
+         nadie lo note. */
+      const selMoneda = document.getElementById('fvMoneda');
+      if (selMoneda) {
+        let monedaPrev = selMoneda.value;
+        selMoneda.addEventListener('change', () => {
+          const tasa = Number(window.__bcvRate) || 0;
+          const aUsd = selMoneda.value === 'USD';
+          if (tasa > 0 && monedaPrev !== selMoneda.value) {
+            linesEl.querySelectorAll('.fv-line').forEach((row) => {
+              const el = row.querySelector('.fv-precio');
+              const v = parseFloat(el.value) || 0;
+              if (!v) return;
+              el.value = Math.round((aUsd ? v / tasa : v * tasa) * 100) / 100;
+            });
+          }
+          monedaPrev = selMoneda.value;
+          recalc();
+        });
+      }
       document.getElementById('fvAddLine').addEventListener('click', addLine);
       document.getElementById('fvClose').addEventListener('click', close);
       document.getElementById('fvCancel').addEventListener('click', close);
@@ -9142,13 +9215,22 @@
         msgEl.classList.remove('error'); msgEl.textContent = '';
         const cli = clientes[parseInt(selCli.value, 10)];
         if (!cli) return setMsg('Selecciona un cliente.');
+        /* El recibo se GUARDA EN BOLIVARES, siempre: es la moneda de curso
+           legal y la que va al libro. Si se capturo en dolares, aqui es donde
+           se convierte, con la tasa del dia. */
+        const _usdCap = monedaCaptura() === 'USD';
+        const _tasaCap = Number(window.__bcvRate) || 0;
+        if (_usdCap && !(_tasaCap > 0)) {
+          return setMsg('No hay tasa del BCV cargada, así que no puedo convertir los dólares a bolívares. Carga la tasa o escribe los precios en bolívares.');
+        }
         const items = [];
         let stockError = '';
         linesEl.querySelectorAll('.fv-line').forEach((r) => {
           const pid = r.dataset.pid || '';
           const d = (r.dataset.pname || '').trim();
           const c = parseFloat(r.querySelector('.fv-cant').value) || 0;
-          const p = parseFloat(r.querySelector('.fv-precio').value) || 0;
+          const pCap = parseFloat(r.querySelector('.fv-precio').value) || 0;
+          const p = _usdCap ? Math.round(pCap * _tasaCap * 100) / 100 : pCap;
           if (d && c > 0 && p > 0) {
             if (pid && r.dataset.stock !== '' && r.dataset.stock != null && c > parseFloat(r.dataset.stock)) {
               stockError = 'No hay stock suficiente de "' + d + '" (disponible: ' + parseFloat(r.dataset.stock) + ').';

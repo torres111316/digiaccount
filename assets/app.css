@@ -6461,6 +6461,14 @@
   .fv-newcli i { width: 14px; height: 14px; }
 
   .fv-lines-head, .fv-line { display: grid; grid-template-columns: 1fr 80px 110px 110px 36px; gap: 8px; align-items: center; }
+  /* El monto del renglón lleva debajo su equivalente en la otra moneda. En
+     Venezuela un precio se piensa en dólares y se cobra en bolívares: ver los
+     dos a la vez evita la calculadora al lado del teclado. */
+  .fv-line .fv-monto { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.25; }
+  .fv-line .fv-monto .fv-eq { font-size: 10px; color: var(--fg-muted); font-weight: 400; }
+  .fv-tot-row.equiv { border-top: 1px dashed var(--border-strong); margin-top: 4px; padding-top: 6px; }
+  .fv-tot-row.equiv span { font-size: 10.5px; color: var(--fg-muted); }
+  .fv-tot-row.equiv strong { font-size: 12.5px; color: var(--fg-muted); font-weight: var(--fw-semibold); }
   .fv-lines-head { padding: 0 2px 6px; }
   .fv-lines-head span { font-size: 10px; font-weight: var(--fw-semibold); color: var(--fg-muted); text-transform: uppercase; letter-spacing: 0.04em; }
   .fv-lines-head span.num { text-align: right; }
