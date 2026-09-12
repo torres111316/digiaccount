@@ -4466,6 +4466,7 @@
       // Por eso "Compras" (Tesorería/CxP) queda separado del Libro de Compras, igual que Ventas.
       _facturas = ventas;
       render();
+      if (window.__cargarSaldosTerceros) window.__cargarSaldosTerceros();   // la columna Saldo de Terceros
     }
     window.cargarTesoreria = cargarTesoreria;
     // Cuánto se ha cobrado de un recibo (suma de ingresos vinculados por factura_ref). Lo usa el botón "Cobrar".
@@ -14542,11 +14543,84 @@
       if (t.prov) return '<span class="tag warn">Proveedor</span>';
       return '<span class="tag slate">Otro</span>';
     }
+    /* ════════════════════════════════════════════════════════════════
+       EL SALDO DE CADA TERCERO, CALCULADO
+
+       Antes se leian `terceros.cxc` y `terceros.cxp`: campos que nada
+       actualiza. Siempre 0, la columna siempre «—», aunque hubiera
+       recibos pendientes.
+
+       Ahora sale de la misma fuente que el Panel, repartida por RIF:
+         Te debe  · recibos de venta menos sus cobros, EN DOLARES con la
+                    tasa de cada momento (el mismo calculo del recibo de
+                    cobro). Sin tasa para algun momento: en bolivares.
+         Le debes · compras del libro menos sus pagos, en bolivares.
+       En modo libro no se llevan cuentas por cobrar ni por pagar.
+       ════════════════════════════════════════════════════════════════ */
+    let SALDOS = null;              // { RIF: { cxcUsd, cxcBs, cxp } } · { __libro: true }
+    let _saldosSeq = 0;
+    function calcularSaldos(ventas, compras, movs, tasaEn) {
+      const out = {};
+      const de = (rif) => (out[normRif(rif)] = out[normRif(rif)] || { cxcUsd: 0, cxcBs: 0, cxp: 0 });
+      const porRef = (tipo) => {
+        const o = {};
+        movs.filter((m) => m.tipo === tipo).forEach((m) => {
+          const r = (m.factura_ref || '').trim();
+          if (r) (o[r] = o[r] || []).push(m);
+        });
+        return o;
+      };
+      const cobros = porRef('ingreso'), pagos = porRef('egreso');
+      ventas.filter((f) => !/anulada/i.test(f.estado || '')).forEach((f) => {
+        const lista = cobros[(f.numero || '').trim()] || [];
+        const total = Number(f.total) || 0;
+        const tv = tasaEn(f.emitida_en || f.creado_en);
+        if (tv > 0 && lista.every((m) => tasaEn(m.creado_en) > 0)) {
+          const s = total / tv - lista.reduce((a, m) => a + (Number(m.monto) || 0) / tasaEn(m.creado_en), 0);
+          if (s > 0.005) de(f.cliente_rif).cxcUsd += s;
+        } else {
+          const s = total - lista.reduce((a, m) => a + (Number(m.monto) || 0), 0);
+          if (s > 0.01) de(f.cliente_rif).cxcBs += s;
+        }
+      });
+      compras.forEach((f) => {
+        const lista = pagos[(f.numero_factura || '').trim()] || [];
+        const s = (Number(f.total) || 0) - lista.reduce((a, m) => a + (Number(m.monto) || 0), 0);
+        if (s > 0.01) de(f.tercero_rif).cxp += s;
+      });
+      return out;
+    }
+    async function cargarSaldosTerceros() {
+      const seq = ++_saldosSeq;
+      const emp = window.__EMPRESA_ACTIVA;
+      if (!window.sb || !window.__sbAll || !emp || !emp.id) { SALDOS = null; render(); return; }
+      if (emp.fiscalActivo || emp.modo === 'libro') { SALDOS = { __libro: true }; render(); return; }
+      const [rf, rl, rm] = await Promise.all([
+        window.__sbAll((q) => q.eq('tipo', 'venta').eq('empresa_id', emp.id), 'facturas', 'numero, cliente_rif, total, estado, emitida_en, creado_en'),
+        window.__sbAll((q) => q.eq('tipo', 'compra').eq('empresa_id', emp.id), 'libro_fiscal', 'numero_factura, tercero_rif, total'),
+        window.__sbAll((q) => q.eq('empresa_id', emp.id), 'movimientos_tesoreria', 'tipo, monto, factura_ref, creado_en'),
+        window.__cargarTasasUSD ? window.__cargarTasasUSD() : null,
+      ]);
+      if (seq !== _saldosSeq) return;          // cambio la empresa mientras llegaban los datos
+      if (rf.error || rl.error || rm.error) { console.warn('[DigiAccount] Saldos de terceros:', (rf.error || rl.error || rm.error).message); return; }
+      const tasaEn = (x) => (window.__tasaUSDEn && window.__tasaUSDEn(x)) || 0;
+      SALDOS = calcularSaldos(rf.data || [], rl.data || [], rm.data || [], tasaEn);
+      render();
+    }
+    window.__cargarSaldosTerceros = cargarSaldosTerceros;
+
     function saldoCell(t) {
+      const nada = '<span style="color:var(--fg-muted);">—</span>';
+      if (!SALDOS) return nada;
+      if (SALDOS.__libro) return '<span style="color:var(--fg-muted);" title="En modo libro no se llevan cuentas por cobrar ni por pagar">—</span>';
+      const s = SALDOS[normRif(t.rif)];
+      if (!s) return nada;
+      const usd = (n) => '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
       const parts = [];
-      if (t.cxc > 0) parts.push('<span style="color:var(--da-success);">+' + fmt(t.cxc) + '</span>');
-      if (t.cxp > 0) parts.push('<span style="color:#8a5410;">−' + fmt(t.cxp) + '</span>');
-      return parts.length ? parts.join('<br>') : '<span style="color:var(--fg-muted);">—</span>';
+      if (s.cxcUsd > 0.005) parts.push('<span class="ter-saldo" style="color:var(--da-success);"><small>Te debe</small> ' + usd(s.cxcUsd) + '</span>');
+      if (s.cxcBs > 0.01) parts.push('<span class="ter-saldo" style="color:var(--da-success);"><small>Te debe</small> Bs ' + fmt(s.cxcBs) + '</span>');
+      if (s.cxp > 0.01) parts.push('<span class="ter-saldo" style="color:#8a5410;"><small>Le debes</small> Bs ' + fmt(s.cxp) + '</span>');
+      return parts.length ? parts.join('<br>') : nada;
     }
     // Tipo de RIF venezolano (V, E, J, P, G, C) derivado del prefijo
     const prefijoTipo = (tipo) => { const m = (tipo || '').match(/\(([A-Z])\)/); return m ? m[1] : ''; };
@@ -14712,6 +14786,7 @@
       (data || []).forEach((r) => DB.push(fromRow(r)));
       console.log('[DigiAccount] Terceros cargados:', DB.length);
       render(); updateKPIs();
+      cargarSaldosTerceros();
     }
     window.cargarTerceros = cargarTerceros;
     // Getter para que otros módulos (Fiscal) ofrezcan los terceros como autocompletado

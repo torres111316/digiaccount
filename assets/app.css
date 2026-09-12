@@ -8150,3 +8150,28 @@ table.suc-tabla td.c-mat { text-align: center; }
   border-color: var(--da-cyan-500); color: var(--da-cyan-600);
 }
 .fecha-atajos button:focus-visible { outline: 2px solid var(--da-cyan-500); outline-offset: 1px; }
+
+/* =========================================================
+   TERCEROS EN EL TELEFONO · sin rodar de lado
+   La tabla pedia 1040 px: habia que desplazarse para llegar al boton de
+   la Ficha, y una clienta no encontro como editar. En el telefono queda
+   el nombre, el saldo y los botones; RIF, tipo, rol, condicion fiscal y
+   telefono siguen en la Ficha. En la PC no cambia nada.
+   ========================================================= */
+.ter-saldo { white-space: nowrap; background: transparent !important; padding: 0 !important; }   /* sin el fondo verde heredado: «Le debes» en marron sobre verde confundia */
+.ter-saldo small { font-size: 10px; opacity: 0.8; margin-right: 2px; }
+@media (max-width: 560px) {
+  #tercerosTable { min-width: 0 !important; width: 100%; }
+  #tercerosTable th:nth-child(n+2):nth-child(-n+6),
+  #tercerosTable td:nth-child(n+2):nth-child(-n+6) { display: none; }
+  #tercerosTable .prod-cell .sku,
+  #tercerosTable .prod-cell .prod-thumb { display: none; }
+  #tercerosTable td:first-child,
+  #tercerosTable .prod-cell .n { white-space: normal; word-break: break-word; }
+  #tercerosTable th, #tercerosTable td { padding-left: 8px; padding-right: 8px; }
+  #tercerosTable .ter-saldo { display: inline-block; line-height: 1.25; }
+  /* Ficha y eliminar, lado a lado: el boton de icono es de bloque y caia debajo. */
+  #tercerosTable td:last-child { white-space: nowrap; }
+  #tercerosTable td:last-child .btn,
+  #tercerosTable td:last-child .icon-btn { display: inline-flex; align-items: center; justify-content: center; vertical-align: middle; }
+}
