@@ -1769,6 +1769,19 @@
     transition: opacity var(--dur-base) var(--ease-out);
     z-index: 300;
     display: grid; place-items: center;
+    /* `grid-template-columns: minmax(0, 1fr)` es lo que impide que este
+       cuadro se salga de la pantalla.
+
+       Con `place-items: center` sobre una columna `auto`, el hijo se
+       dimensiona por su CONTENIDO y la columna crece con él: ni
+       `max-width: 100%` ni `min-width: 0` en el hijo lo evitan, porque el
+       porcentaje se resuelve contra una celda que ya creció. El `minmax(0,
+       1fr)` ata la columna al ancho real disponible y obliga al contenido a
+       acomodarse dentro.
+
+       Es la causa de que en el teléfono el documento saliera cortado y de
+       que en el registro de empresa no se alcanzaran los botones. */
+    grid-template-columns: minmax(0, 1fr);
     padding: 24px;
   }
   .wiz-scrim[data-open="true"] { opacity: 1; pointer-events: auto; }
@@ -4835,6 +4848,19 @@
     transition: opacity var(--dur-base) var(--ease-out);
     z-index: 300;
     display: grid; place-items: center;
+    /* `grid-template-columns: minmax(0, 1fr)` es lo que impide que este
+       cuadro se salga de la pantalla.
+
+       Con `place-items: center` sobre una columna `auto`, el hijo se
+       dimensiona por su CONTENIDO y la columna crece con él: ni
+       `max-width: 100%` ni `min-width: 0` en el hijo lo evitan, porque el
+       porcentaje se resuelve contra una celda que ya creció. El `minmax(0,
+       1fr)` ata la columna al ancho real disponible y obliga al contenido a
+       acomodarse dentro.
+
+       Es la causa de que en el teléfono el documento saliera cortado y de
+       que en el registro de empresa no se alcanzaran los botones. */
+    grid-template-columns: minmax(0, 1fr);
     padding: 24px;
   }
   .recibo-overlay[data-open="true"] { opacity: 1; pointer-events: auto; }
@@ -6761,6 +6787,11 @@
   .fac-ticket .tk-item-d { line-height: 1.25; }
   .fac-ticket .tk-item-l { display: flex; justify-content: space-between; gap: 10px; }
   .fac-ticket .tk-total { display: flex; justify-content: space-between; gap: 10px; font-weight: var(--fw-bold); font-size: 14px; }
+  /* El equivalente en dolares de cada renglon y del total. Mas chico y en
+     gris: el bolivar manda, el dolar acompaña. */
+  .fac-ticket .tk-item-usd { text-align: right; font-size: 10px; color: #666; margin-top: 1px; }
+  .fac-ticket .tk-total.tk-total-usd { font-size: 12px; color: #444; margin-top: 2px; }
+  .fac-ticket .tk-tasa { font-size: 9.5px; color: #666; margin-top: 3px; }
   .fac-ticket .tk-words { text-align: center; margin-top: 5px; font-size: 10.5px; line-height: 1.35; }
   .fac-ticket .tk-fiscal { text-align: center; margin: 6px 0; }
   .fac-ticket .tk-logo { font-weight: var(--fw-bold); font-size: 15px; letter-spacing: 0.2em; margin-bottom: 3px; }
@@ -7539,6 +7570,10 @@
     /* El ticket ocupa el ancho disponible en vez de quedarse en sus
        300 px fijos con el resto en blanco. */
     .fac-ticket { width: 100%; padding: 8px 10px; }
+
+    /* 24 px a cada lado es un lujo en una pantalla de 380. */
+    .recibo-overlay, .wiz-scrim { padding: 10px; }
+    .wiz { max-height: 94vh; }
   }
 
   /* Panel de notificaciones */

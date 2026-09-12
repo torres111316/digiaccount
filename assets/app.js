@@ -8594,10 +8594,22 @@
 
       if (_rec) {
         // ===== RECIBO DE CAJA (rollo angosto, NO fiscal) =====
-        const tkItems = f.items.map((it) =>
-          '<div class="tk-item"><div class="tk-item-d">' + it.d.toUpperCase() + '</div>'
-          + '<div class="tk-item-l"><span>' + it.c + ' x ' + fmt(it.p) + '</span><span>' + fmt(it.c * it.p) + '</span></div></div>'
-        ).join('');
+        /* El dolar al lado del bolivar: es como se piensa el precio aqui.
+           El bolivar sigue siendo el numero principal —es lo que se cobra y
+           lo que va al libro— y el dolar va debajo, con la tasa a la vista.
+           Un ticket que diga «$12» sin decir a que tasa no sirve para
+           reclamar nada al dia siguiente. */
+        const _tasaTk = Number(window.__bcvRate) || 0;
+        const _usdTk = (n) => (_tasaTk > 0
+          ? '$' + Number(n / _tasaTk).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+          : '');
+        const tkItems = f.items.map((it) => {
+          const m = it.c * it.p;
+          const eq = _usdTk(m);
+          return '<div class="tk-item"><div class="tk-item-d">' + it.d.toUpperCase() + '</div>'
+            + '<div class="tk-item-l"><span>' + it.c + ' x ' + fmt(it.p) + '</span><span>' + fmt(m) + '</span></div>'
+            + (eq ? '<div class="tk-item-usd">' + eq + '</div>' : '') + '</div>';
+        }).join('');
         doc.innerHTML =
           '<div class="fac-ticket">'
           /* El logo tambien en el ticket. El arreglo anterior solo llego al
@@ -8620,6 +8632,10 @@
           + (f.igtf ? '<div class="tk-row"><span>SUBTOTAL Bs</span><span>' + fmt(t.subtotal) + '</span></div>' : '')
           + (f.igtf ? '<div class="tk-row"><span>IGTF 3% Bs</span><span>' + fmt(t.igtf) + '</span></div>' : '')
           + '<div class="tk-total"><span>TOTAL Bs</span><span>' + fmt(t.total) + '</span></div>'
+          + (_tasaTk > 0
+            ? '<div class="tk-total tk-total-usd"><span>TOTAL $</span><span>' + _usdTk(t.total).replace('$', '') + '</span></div>'
+              + '<div class="tk-line tk-center tk-tasa">Tasa BCV del día: Bs ' + fmt(_tasaTk) + ' por $</div>'
+            : '')
           + '<div class="tk-sep"></div>'
           + '<div class="tk-words">SON: ' + letras + '</div>'
           + '<div class="tk-sep dashed"></div>'
