@@ -8669,7 +8669,18 @@
           + (medio === 'electronica' ? '<div class="fac-e-band"><i data-lucide="shield-check"></i> DOCUMENTO ELECTRÓNICO CERTIFICADO · SENIAT</div>' : '')
           + '<div class="fac-head">'
           + '<div class="fac-emisor">'
-          + (medio === 'electronica' ? '<div class="fac-logo">' + (emisor.n.replace(/[^A-Za-zÁÉÍÓÚÑ ]/g, '').trim().split(/\s+/).slice(0, 2).map((w) => w.charAt(0)).join('').toUpperCase() || 'AV') + '</div>' : '')
+          /* El logo de la empresa, si lo subio. Va en los DOS medios: una
+             forma libre tambien lleva el logo de quien la emite. Si no hay
+             logo se mantienen las iniciales del modo electronico, que es
+             como se venia viendo. */
+          + (function () {
+            const logo = (window.__logoEmpresa && window.__logoEmpresa()) || '';
+            if (logo) return '<img class="fac-logo-img" src="' + logo + '" alt="">';
+            if (medio !== 'electronica') return '';
+            return '<div class="fac-logo">'
+              + (emisor.n.replace(/[^A-Za-zÁÉÍÓÚÑ ]/g, '').trim().split(/\s+/).slice(0, 2).map((w) => w.charAt(0)).join('').toUpperCase() || 'AV')
+              + '</div>';
+          })()
           + '<div class="fac-emisor-txt"><div class="fac-co">' + emisor.n + '</div>'
           + '<div class="fac-meta"><span class="mono">RIF ' + emisor.rif + '</span>' + (emisor.cond ? ' · ' + emisor.cond : '') + '<br>' + emisor.dom + '</div></div></div>'
           + '<div class="fac-num"><div class="t">' + tituloDoc + '</div>'
@@ -15480,11 +15491,25 @@
     if (logoFile) logoFile.addEventListener('change', () => {
       const f = logoFile.files && logoFile.files[0];
       if (!f) return;
+      /* Hasta aquí esto solo pintaba una vista previa y decía «se usará en
+         tus documentos». No guardaba nada: al recargar, el logo se perdía.
+         Ahora se guarda en empresa_firma, el mismo sitio donde lo deja el
+         formulario de Firma y sello. */
+      if (f.size > 500 * 1024) {
+        toast('Esa imagen pesa ' + Math.round(f.size / 1024) + ' KB. Recórtala: un logo no debería pasar de 500 KB.', 'error');
+        logoFile.value = ''; return;
+      }
       logoName.textContent = f.name;
       const reader = new FileReader();
-      reader.onload = (e) => { logoPrev.innerHTML = '<img src="' + e.target.result + '" alt="logo">'; };
+      reader.onload = async (e) => {
+        const dataUrl = e.target.result;
+        logoPrev.innerHTML = '<img src="' + dataUrl + '" alt="logo">';
+        if (!window.__guardarLogoEmpresa) { toast('Logo cargado (no se pudo guardar: recarga la página)', 'error'); return; }
+        const { error } = await window.__guardarLogoEmpresa(dataUrl);
+        if (error) { toast('No se pudo guardar el logo: ' + error.message, 'error'); return; }
+        toast('Logo guardado · ya sale en el encabezado de tus documentos', 'success');
+      };
       reader.readAsDataURL(f);
-      toast('Logo cargado · se usará en tus documentos', 'success');
     });
 
     // La tasa de cambio se comparte con Cobros y los recibos (window.__BCV)
@@ -18424,6 +18449,25 @@
        cargado o si decidió no estampar — y entonces el comprobante sale con la
        línea en blanco, como siempre. */
     window.__firmaEmpresa = () => (FIRMA && FIRMA.estampar ? FIRMA : null);
+
+    /* El LOGO va aparte de la firma, y a proposito: `estampar` decide si se
+       imprime la rubrica en los comprobantes, pero quien sube un logo lo
+       quiere ver en su documento aunque no firme nada. Atarlos era la razon
+       de que un logo cargado no apareciera. */
+    window.__logoEmpresa = () => ((FIRMA && FIRMA.logo_img) ? FIRMA.logo_img : '');
+
+    /* Para que Configuracion > Identidad visual guarde en el MISMO sitio.
+       Habia dos formularios prometiendo lo mismo y solo uno cumplia. */
+    window.__guardarLogoEmpresa = async function (dataUrl) {
+      if (!window.sb || !emp().id) return { error: { message: 'No hay empresa activa.' } };
+      const fila = {
+        empresa_id: emp().id, cuenta_id: window.__CUENTA_ID,
+        logo_img: dataUrl || null, actualizado_en: new Date().toISOString(),
+      };
+      const { error } = await window.sb.from('empresa_firma').upsert(fila, { onConflict: 'empresa_id' });
+      if (!error) { if (FIRMA) FIRMA.logo_img = dataUrl || null; else FIRMA = fila; }
+      return { error: error };
+    };
 
     window.__cargarFirma = async function () {
       FIRMA = null;

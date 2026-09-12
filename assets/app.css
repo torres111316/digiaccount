@@ -6654,6 +6654,13 @@
     color: var(--da-white); display: flex; align-items: center; justify-content: center;
     font-family: var(--font-display); font-weight: var(--fw-extrabold); font-size: 18px; letter-spacing: 0.02em;
   }
+  /* El logo que subió la empresa. Se muestra completo dentro de su caja
+     —`contain`, no `cover`— porque un logo recortado deja de ser el logo.
+     Comparte sitio con el recuadro de iniciales: si hay imagen, manda. */
+  .fac-logo-img {
+    flex: none; width: 46px; height: 46px; border-radius: 9px;
+    object-fit: contain; background: transparent;
+  }
   .fac-num { text-align: right; min-width: 150px; border-left: 1px dashed var(--border-strong); padding-left: 12px; }
   .fac-num .t { font-family: var(--font-display); font-weight: var(--fw-bold); font-size: 12px; color: var(--fg-muted); letter-spacing: 0.06em; }
   /* "N°" a la izquierda del número, en una sola línea */
@@ -7466,6 +7473,37 @@
     .op-row { align-items: flex-start; gap: 12px; }
     .op-row .mono,
     .op-row strong { white-space: nowrap; text-align: right; }
+
+    /* ── El documento de venta (factura y recibo) ────────────────
+       El contenedor trae `overflow: hidden`, así que lo que no cabe
+       no se desplaza: se CORTA. En una pantalla de 380 px el
+       encabezado a dos columnas y la rejilla de datos del cliente a
+       cuatro se salen, y el documento aparecía recortado.
+
+       Aquí NO se reacomoda el papel —el documento impreso conserva
+       su formato—: se adapta solo lo que se ve en el teléfono. */
+    .recibo-scroll { padding: 10px; }
+    .recibo-doc { max-width: 100%; overflow-x: auto; }
+
+    /* Emisor arriba, número del documento debajo: en columna caben
+       los dos, en fila no cabía ninguno. */
+    .fac-head { flex-direction: column; gap: 10px; padding: 10px; }
+    .fac-num {
+      text-align: left; min-width: 0;
+      border-left: 0; border-top: 1px dashed var(--border-strong);
+      padding-left: 0; padding-top: 8px;
+    }
+    .fac-num .r, .fac-num .c { justify-content: flex-start; }
+    .fac-emisor { align-items: flex-start; }
+    .fac-emisor .fac-co { font-size: 13px; }
+
+    /* Datos del cliente: de cuatro columnas a dos. */
+    .fac-cliente .fc-grid, .gd-transp .fc-grid { grid-template-columns: 1fr 1fr; }
+    .fac-cliente .fc-f.wide { grid-column: 1 / -1; }
+
+    /* La tabla de renglones se desplaza sola en vez de cortarse. */
+    .fac-table { font-size: 10.5px; }
+    .fac-firmas { grid-template-columns: 1fr; gap: 18px; }
   }
 
   /* Panel de notificaciones */
