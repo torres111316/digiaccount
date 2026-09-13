@@ -8996,7 +8996,10 @@
       /* En un recibo el boton es ELIMINAR (no fiscal: se borra y se hace de
          nuevo). Se muestra aunque tenga cobros: antes se escondia y nadie
          entendia por que no estaba — ahora esta y dice que falta. */
-      if (anularBtn) anularBtn.hidden = !(esVentaViva && !_esFactura);
+      /* En CUALQUIER recibo: tambien el anulado —que es el que mas se quiere
+         borrar— y el que ya tiene cobros. Antes se pedia `esVentaViva`, que
+         excluye los anulados, y el boton desaparecia sin explicar por que. */
+      if (anularBtn) anularBtn.hidden = !(f.tipo === 'venta' && f._id && !_esFactura);
       /* La nota SI se puede emitir aunque la factura tenga cobros: para eso
          existe. Devolver mercancia ya pagada es el caso mas comun de todos. */
       if (notaBtn) notaBtn.hidden = !(esVentaViva && _esFactura);
@@ -9043,47 +9046,57 @@
       if (!currentFac || !currentFac.f || !currentFac.f._id) return;
       const num = currentFac.num, f = currentFac.f;
       const cobrado = window.__cobradoDe ? window.__cobradoDe(num) : 0;
-      if (cobrado > 0.01) {
-        window.alert('El recibo ' + num + ' tiene cobros registrados.\n\n'
-          + 'Elimina primero el cobro en Tesorería → Movimientos (el botón rojo de la fila). '
-          + 'Ahí se genera el reverso contable y el recibo vuelve a quedar por cobrar; '
-          + 'después puedes eliminar el recibo.');
-        return;
-      }
-      const ok = window.confirm('¿ELIMINAR el recibo ' + num + '?\n\n'
+      /* Si ya estaba ANULADO, el stock se repuso al anularlo. */
+      const anuladoYa = /anulada/i.test(f.estado || '');
+      const ok = window.confirm('¿ELIMINAR el recibo ' + num + '?'
+        + (anuladoYa ? ' (está anulado)' : '') + '\n\n'
         + '· Se borra de la base y de la lista de ventas\n'
-        + '· Vuelve el stock de los productos\n'
-        + '· Se elimina su asiento contable\n'
+        + (cobrado > 0.01
+          ? '· Se borran también sus COBROS por Bs ' + fmt(cobrado) + ' (ese dinero sale de Tesorería)\n'
+          : '')
+        + (anuladoYa
+          ? '· El stock NO se toca: ya se repuso al anularlo\n'
+          : '· Vuelve el stock de los productos\n')
+        + '· Se eliminan sus asientos contables\n'
         + '· El número ' + num + ' queda libre para el próximo recibo\n\n'
         + 'No se puede deshacer.');
       if (!ok) return;
 
+      const empId = (window.__EMPRESA_ACTIVA && window.__EMPRESA_ACTIVA.id) || null;
+      /* Los cobros primero: si algo falla despues, queda el recibo con su
+         cobro —coherente— y no un cobro suelto sin documento. */
+      /* Se intenta SIEMPRE, sepamos o no de cobros: `__cobradoDe` lee la lista
+         de Tesoreria, y si ese modulo no se ha cargado devuelve 0. Un cobro
+         suelto sin documento es peor que un borrado de mas que no borra nada. */
+      if (empId) {
+        const { error: eM } = await window.sb.from('movimientos_tesoreria').delete()
+          .eq('empresa_id', empId).eq('factura_ref', num);
+        if (eM) { if (window.toast) window.toast('No se pudieron eliminar los cobros: ' + eM.message, 'error'); return; }
+      }
+
       const { error } = await window.sb.from('facturas').delete().eq('id', f._id);
       if (error) { if (window.toast) window.toast('No se pudo eliminar: ' + error.message, 'error'); return; }
 
-      /* El asiento de ESTA venta. Se acota por descripcion ademas de por
-         referencia: los cobros de un recibo se contabilizan con la misma
-         referencia, y un borrado ancho se llevaria por delante asientos de
-         dinero que si ocurrio. */
+      /* TODOS los asientos de este documento: venta, cobro, anulacion y
+         reversos llevan su numero como referencia, y el documento entero
+         deja de existir. */
       const _modo = (window.__EMPRESA_ACTIVA && window.__EMPRESA_ACTIVA.modo) || 'recibos';
-      if (window.sb && _modo !== 'libro' && window.__EMPRESA_ACTIVA && window.__EMPRESA_ACTIVA.id) {
+      if (window.sb && _modo !== 'libro' && empId) {
         const { error: eA } = await window.sb.from('asientos').delete()
-          .eq('empresa_id', window.__EMPRESA_ACTIVA.id)
-          .eq('referencia', num)
-          .like('descripcion', 'Venta s/%');
-        if (eA) console.warn('[DigiAccount] No se pudo eliminar el asiento de ' + num + ':', eA.message);
+          .eq('empresa_id', empId).eq('referencia', num);
+        if (eA) console.warn('[DigiAccount] No se pudieron eliminar los asientos de ' + num + ':', eA.message);
         if (window.cargarAsientos) window.cargarAsientos();
       }
 
       // Reponer el stock de los productos del recibo
-      const ups = (f.items || []).filter((it) => it.pid).map((it) => {
+      const ups = (anuladoYa ? [] : (f.items || [])).filter((it) => it.pid).map((it) => {
         const prod = (window.__getProductos ? window.__getProductos() : []).find((x) => x.id === it.pid);
         const nuevo = (Number(prod ? prod.stock : 0) || 0) + (Number(it.c) || 0);
         return window.sb.from('productos').update({ stock: nuevo }).eq('id', it.pid);
       });
       if (ups.length) Promise.all(ups).then(() => { if (window.cargarProductos) window.cargarProductos(); });
       close();
-      if (window.toast) window.toast('Recibo ' + num + ' eliminado · stock repuesto', 'success');
+      if (window.toast) window.toast('Recibo ' + num + ' eliminado' + (anuladoYa ? '' : ' · stock repuesto'), 'success');
       if (window.cargarFacturas) window.cargarFacturas();
       if (window.cargarTesoreria) window.cargarTesoreria();
       if (window.cargarDashboard) window.cargarDashboard();
