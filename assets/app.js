@@ -8991,7 +8991,10 @@
       const notaBtn = document.getElementById('facturaNota');
       const cobrado2 = window.__cobradoDe ? window.__cobradoDe(num) : 0;
       const esVentaViva = f.tipo === 'venta' && !anulada && f._id;
-      if (anularBtn) anularBtn.hidden = !(esVentaViva && cobrado2 < 0.01 && !_esFactura);
+      /* En un recibo el boton es ELIMINAR (no fiscal: se borra y se hace de
+         nuevo). Se muestra aunque tenga cobros: antes se escondia y nadie
+         entendia por que no estaba — ahora esta y dice que falta. */
+      if (anularBtn) anularBtn.hidden = !(esVentaViva && !_esFactura);
       /* La nota SI se puede emitir aunque la factura tenga cobros: para eso
          existe. Devolver mercancia ya pagada es el caso mas comun de todos. */
       if (notaBtn) notaBtn.hidden = !(esVentaViva && _esFactura);
@@ -9017,29 +9020,59 @@
       if (window.__registrarCobro) window.__registrarCobro(pre);
       else if (window.toast) window.toast('Abre el módulo de Tesorería para registrar el cobro.', 'error');
     });
-    // Anular: deja el recibo sin efecto (estado Anulada) con reverso contable y
-    // reposición del stock. Solo si NO tiene cobros (si los tiene, primero se reversan).
+    /* ══════════════════════════════════════════════════════════════════
+       ELIMINAR EL RECIBO · anular es de la factura fiscal
+
+       Una factura autorizada no se borra: el numero queda usado y el
+       documento debe seguir existiendo, anulado. Un recibo no es fiscal;
+       si salio con un error se borra y se hace de nuevo, y su numero vuelve
+       a quedar libre porque el correlativo sale del mayor emitido.
+
+       Se va el asiento de la venta y vuelve el stock. El asiento se ELIMINA
+       en vez de reversarse: el documento deja de existir, y un reverso que
+       apunta a un recibo inexistente no le sirve a nadie.
+
+       CON COBROS NO SE BORRA. Primero se elimina el cobro en Tesoreria —que
+       hace su propio reverso—. Borrar la venta dejando el dinero colgando de
+       un documento que ya no existe es como aparecen los descuadres.
+       ══════════════════════════════════════════════════════════════════ */
     const anularBtnEl = document.getElementById('facturaAnular');
     if (anularBtnEl) anularBtnEl.addEventListener('click', async () => {
       if (!currentFac || !currentFac.f || !currentFac.f._id) return;
       const num = currentFac.num, f = currentFac.f;
       const cobrado = window.__cobradoDe ? window.__cobradoDe(num) : 0;
-      if (cobrado > 0.01) { if (window.toast) window.toast('Este recibo tiene cobros registrados — no se puede anular directo.', 'error'); return; }
-      const ok = window.confirm('¿ANULAR el recibo ' + num + '?\n\nQuedará sin efecto: se reversa el asiento de la venta y se repone el stock de los productos. Esta acción no se puede deshacer.');
-      if (!ok) return;
-      const { error } = await window.sb.from('facturas').update({ estado: 'Anulada' }).eq('id', f._id);
-      if (error) { if (window.toast) window.toast('No se pudo anular: ' + error.message, 'error'); return; }
-      // Reverso contable (solo en modo recibos; en modo libro contabiliza el Libro de Ventas)
-      const t = calcFactura(f);
-      const _modo = (window.__EMPRESA_ACTIVA && window.__EMPRESA_ACTIVA.modo) || 'recibos';
-      if (window.__postAsiento && _modo !== 'libro') {
-        const ln = [{ cta: '4.1.1.01 · Venta de mercancía', debe: t.subtotal, haber: 0 }];
-        if (t.iva > 0.005) ln.push({ cta: '2.1.3.01 · IVA débito fiscal', debe: t.iva, haber: 0 });
-        if (t.igtf > 0.005) ln.push({ cta: '2.1.4.03 · IGTF por pagar', debe: t.igtf, haber: 0 });
-        ln.push({ cta: '1.1.2.01 · Cuentas por cobrar comerciales', debe: 0, haber: t.total });
-        window.__postAsiento('Anulación recibo ' + num + ' · ' + (f.parte ? f.parte.n : ''), num, ln, 'auto')
-          .then((r) => { if (r && r.error) console.warn('[DigiAccount] Reverso de anulación:', r.error.message); });
+      if (cobrado > 0.01) {
+        window.alert('El recibo ' + num + ' tiene cobros registrados.\n\n'
+          + 'Elimina primero el cobro en Tesorería → Movimientos (el botón rojo de la fila). '
+          + 'Ahí se genera el reverso contable y el recibo vuelve a quedar por cobrar; '
+          + 'después puedes eliminar el recibo.');
+        return;
       }
+      const ok = window.confirm('¿ELIMINAR el recibo ' + num + '?\n\n'
+        + '· Se borra de la base y de la lista de ventas\n'
+        + '· Vuelve el stock de los productos\n'
+        + '· Se elimina su asiento contable\n'
+        + '· El número ' + num + ' queda libre para el próximo recibo\n\n'
+        + 'No se puede deshacer.');
+      if (!ok) return;
+
+      const { error } = await window.sb.from('facturas').delete().eq('id', f._id);
+      if (error) { if (window.toast) window.toast('No se pudo eliminar: ' + error.message, 'error'); return; }
+
+      /* El asiento de ESTA venta. Se acota por descripcion ademas de por
+         referencia: los cobros de un recibo se contabilizan con la misma
+         referencia, y un borrado ancho se llevaria por delante asientos de
+         dinero que si ocurrio. */
+      const _modo = (window.__EMPRESA_ACTIVA && window.__EMPRESA_ACTIVA.modo) || 'recibos';
+      if (window.sb && _modo !== 'libro' && window.__EMPRESA_ACTIVA && window.__EMPRESA_ACTIVA.id) {
+        const { error: eA } = await window.sb.from('asientos').delete()
+          .eq('empresa_id', window.__EMPRESA_ACTIVA.id)
+          .eq('referencia', num)
+          .like('descripcion', 'Venta s/%');
+        if (eA) console.warn('[DigiAccount] No se pudo eliminar el asiento de ' + num + ':', eA.message);
+        if (window.cargarAsientos) window.cargarAsientos();
+      }
+
       // Reponer el stock de los productos del recibo
       const ups = (f.items || []).filter((it) => it.pid).map((it) => {
         const prod = (window.__getProductos ? window.__getProductos() : []).find((x) => x.id === it.pid);
@@ -9048,7 +9081,7 @@
       });
       if (ups.length) Promise.all(ups).then(() => { if (window.cargarProductos) window.cargarProductos(); });
       close();
-      if (window.toast) window.toast('Recibo ' + num + ' ANULADO · asiento reversado y stock repuesto', 'success');
+      if (window.toast) window.toast('Recibo ' + num + ' eliminado · stock repuesto', 'success');
       if (window.cargarFacturas) window.cargarFacturas();
       if (window.cargarTesoreria) window.cargarTesoreria();
       if (window.cargarDashboard) window.cargarDashboard();
