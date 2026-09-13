@@ -8175,3 +8175,27 @@ table.suc-tabla td.c-mat { text-align: center; }
   #tercerosTable td:last-child .btn,
   #tercerosTable td:last-child .icon-btn { display: inline-flex; align-items: center; justify-content: center; vertical-align: middle; }
 }
+
+/* =========================================================
+   VENTAS EN EL TELEFONO · el recibo se abre sin rodar la tabla
+   Ver quedo junto al numero (ver index.html). Aqui se esconden ademas
+   N° Control —que es de la factura fiscal; en un recibo va vacio— y el
+   RIF, que esta en la ficha del cliente. En la PC no cambia nada.
+   ========================================================= */
+@media (max-width: 560px) {
+  .ventas-tab[data-tab="facturas"] table.data-table { min-width: 0 !important; width: 100%; }
+  .ventas-tab[data-tab="facturas"] table.data-table th:nth-child(5),
+  .ventas-tab[data-tab="facturas"] table.data-table td:nth-child(5),
+  .ventas-tab[data-tab="facturas"] table.data-table th:nth-child(6),
+  .ventas-tab[data-tab="facturas"] table.data-table td:nth-child(6) { display: none; }
+  /* Seis columnas en 390 px: letra y margenes mas justos para que el estado
+     entre entero. Y el nombre parte por los espacios, no a media palabra
+     («CARME N VILARO» no se lee). */
+  .ventas-tab[data-tab="facturas"] table.data-table th,
+  .ventas-tab[data-tab="facturas"] table.data-table td { padding-left: 6px; padding-right: 6px; font-size: 11px; }
+  .ventas-tab[data-tab="facturas"] table.data-table td.primary { white-space: normal; word-break: normal; overflow-wrap: break-word; line-height: 1.25; }
+  /* La etiqueta se parte en dos lineas antes que salirse: «POR COBRAR» es
+     lo que dice si ese recibo esta cobrado o no, y cortado no se entiende. */
+  .ventas-tab[data-tab="facturas"] table.data-table .tag { font-size: 9px; padding: 2px 5px; white-space: normal; text-align: center; line-height: 1.2; }
+  .ventas-tab[data-tab="facturas"] table.data-table .btn { font-size: 11px !important; padding: 0 7px !important; }
+}

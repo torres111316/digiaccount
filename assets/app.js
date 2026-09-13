@@ -2694,7 +2694,9 @@
       const rows = [];
       rows.push([...table.querySelectorAll('thead th')].map((th) => th.textContent.trim()).filter((x) => x));
       table.querySelectorAll('tbody tr').forEach((tr) => {
-        const c = [...tr.querySelectorAll('td')].slice(0, 7).map((td) => td.textContent.replace(/\s+/g, ' ').trim());
+        /* Sin la columna del boton: «Ver» no es un dato de la factura. */
+        const c = [...tr.querySelectorAll('td')].filter((td) => !td.querySelector('[data-ver-factura]'))
+          .slice(0, 7).map((td) => td.textContent.replace(/\s+/g, ' ').trim());
         rows.push(c);
       });
       const csv = rows.map((r) => r.map((c) => '"' + String(c).replace(/"/g, '""') + '"').join(';')).join('\r\n');
@@ -9837,10 +9839,12 @@
         if (tb) {
           const fc = fecha.slice(0, 6) + fecha.slice(8); // dd/mm/yy
           const tr = document.createElement('tr');
-          tr.innerHTML = '<td>' + fc + '</td><td class="mono">' + num + '</td><td class="mono">' + ctrl + '</td>'
-            + '<td class="primary">' + cli.n + '</td><td class="mono">' + cli.rif + '</td>'
-            + '<td class="num">' + fmt(t.total) + '</td><td><span class="tag cyan">Por cobrar</span></td>'
-            + '<td><button class="btn btn-ghost" data-ver-factura="' + num + '" style="height:26px;font-size:11px;padding:0 9px;white-space:nowrap;"><i data-lucide="eye"></i> Ver</button></td>';
+          /* Ver va junto al numero: es lo que mas se toca en esta pantalla y
+             al final de la fila obligaba a rodar la tabla entera. */
+          tr.innerHTML = '<td>' + fc + '</td><td class="mono">' + num + '</td>'
+            + '<td class="col-ver"><button class="btn btn-ghost" data-ver-factura="' + num + '" style="height:26px;font-size:11px;padding:0 9px;white-space:nowrap;"><i data-lucide="eye"></i> Ver</button></td>'
+            + '<td class="primary">' + cli.n + '</td><td class="mono">' + cli.rif + '</td><td class="mono">' + ctrl + '</td>'
+            + '<td class="num">' + fmt(t.total) + '</td><td><span class="tag cyan">Por cobrar</span></td>';
           tb.insertBefore(tr, tb.firstChild);
           tr.querySelector('[data-ver-factura]').addEventListener('click', () => openFactura(num));
           drawIcons();
@@ -9882,10 +9886,10 @@
         if (tb) {
           const fc = (f.fecha || '').slice(0, 6) + (f.fecha || '').slice(8);
           const tr = document.createElement('tr');
-          tr.innerHTML = '<td>' + fc + '</td><td class="mono">' + f.numero + '</td><td class="mono">' + (f.control || '') + '</td>'
-            + '<td class="primary">' + (f.cliente_nombre || '') + '</td><td class="mono">' + (f.cliente_rif || '') + '</td>'
-            + '<td class="num">' + fmt(Number(f.total) || 0) + '</td><td><span class="tag ' + (/anulada/i.test(f.estado || '') ? 'danger' : /cobrada|pagada/i.test(f.estado || '') ? 'success' : /abonada/i.test(f.estado || '') ? 'warn' : 'cyan') + '">' + (f.estado || 'Por cobrar') + '</span></td>'
-            + '<td><button class="btn btn-ghost" data-ver-factura="' + f.numero + '" style="height:26px;font-size:11px;padding:0 9px;white-space:nowrap;"><i data-lucide="eye"></i> Ver</button></td>';
+          tr.innerHTML = '<td>' + fc + '</td><td class="mono">' + f.numero + '</td>'
+            + '<td class="col-ver"><button class="btn btn-ghost" data-ver-factura="' + f.numero + '" style="height:26px;font-size:11px;padding:0 9px;white-space:nowrap;"><i data-lucide="eye"></i> Ver</button></td>'
+            + '<td class="primary">' + (f.cliente_nombre || '') + '</td><td class="mono">' + (f.cliente_rif || '') + '</td><td class="mono">' + (f.control || '') + '</td>'
+            + '<td class="num">' + fmt(Number(f.total) || 0) + '</td><td><span class="tag ' + (/anulada/i.test(f.estado || '') ? 'danger' : /cobrada|pagada/i.test(f.estado || '') ? 'success' : /abonada/i.test(f.estado || '') ? 'warn' : 'cyan') + '">' + (f.estado || 'Por cobrar') + '</span></td>';
           tb.appendChild(tr);
           tr.querySelector('[data-ver-factura]').addEventListener('click', () => openFactura(f.numero));
         }
