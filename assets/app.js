@@ -4706,7 +4706,12 @@
        la tasa de alguna de esas fechas, la fila se queda en bolivares. */
     const _tasaEn = (x) => ((window.__tasaUSDEn && window.__tasaUSDEn(x)) || 0);
     function _tasaDocumento(f) {
-      if (f.emitida) return _tasaEn(f.emitida);
+      /* LA VENTA se cotizo AL EMITIRSE: su dolar sale del momento de emision.
+         LA COMPRA se cotizo en la FECHA DE SU FACTURA, que puede ser de hace
+         meses; usar el momento en que se cargo le aplica la tasa de hoy y le
+         cambia la deuda al que compro. Una compra de 74,50 $ aparecia como
+         65,27 $ por esto. */
+      if (f.tipo === 'venta' && f.emitida) return _tasaEn(f.emitida);
       const p = String(f.fecha || '').split('/');       // dd/mm/aa del libro
       if (p.length !== 3) return 0;
       const aa = p[2].length === 2 ? '20' + p[2] : p[2];
