@@ -4475,6 +4475,12 @@
         window.__sbAll((q) => q.eq('tipo', 'venta').eq('empresa_id', emp.id), 'facturas', 'numero, cliente_nombre, cliente_rif, total, fecha, estado, condicion, emitida_en, creado_en'),
         _modoLibro ? Promise.resolve({ data: [] })
           : window.__sbAll((q) => q.eq('tipo', 'compra').eq('empresa_id', emp.id), 'libro_fiscal', 'id, numero_factura, tercero_nombre, tercero_rif, total, fecha, tipo_doc, creado_en'),
+        /* El historial de tasas se espera AQUI, con el resto.
+
+           Antes se pedia por su cuenta y la tabla se pintaba sin el: sin tasa
+           cada fila cae al bolivar —correcto, no se inventa una conversion—
+           pero nadie volvia a pintarla. El dolar no aparecia nunca. */
+        window.__cargarTasasUSD ? window.__cargarTasasUSD() : null,
       ]);
       if (r1.error) { console.warn('[DigiAccount] Tesorería:', r1.error.message); }
       _cuentas = r1.data || []; _movs = r2.data || [];
@@ -4753,7 +4759,11 @@
         if (r.pend > 0.01) {
           accion = ' <button class="btn btn-ghost" data-cx-accion="' + (esVenta ? 'cobrar' : 'pagar') + '" data-ref="' + esc(r.f.ref || '') + '" data-terc="' + esc(r.f.tercero_nombre || '') + '" data-pend="' + r.pend.toFixed(2) + '" style="height:22px;font-size:10px;padding:0 9px;margin-left:6px;">' + (esVenta ? 'Cobrar' : 'Pagar') + '</button>';
         }
-        // Compras: editar/eliminar la factura registrada (sin necesidad del módulo Fiscal)
+        // Compras: eliminar la compra registrada (sin necesidad del módulo Fiscal)
+        if (!esVenta && r.f._id) {
+          accion += ' <button class="btn btn-ghost" data-cx-del="' + esc(r.f._id) + '" data-ref="' + esc(r.f.ref || '') + '" data-terc="' + esc(r.f.tercero_nombre || '') + '" title="Eliminar esta compra" style="height:22px;font-size:10px;padding:0 7px;margin-left:4px;color:#c0392b;">&#10005;</button>';
+        }
+        // Compras: editar la factura registrada (sin necesidad del módulo Fiscal)
         if (!esVenta && r.f._id) {
           accion += ' <button class="btn btn-ghost" data-cx-edit="' + esc(r.f._id) + '" title="Editar o eliminar esta compra" style="height:22px;font-size:10px;padding:0 7px;margin-left:4px;"><i data-lucide="pencil" style="width:11px;height:11px;"></i></button>';
         }
@@ -5441,11 +5451,45 @@
       });
     })();
     // Botones "Cobrar" (CxC en Ventas) y "Pagar" (CxP en Compras): abren el movimiento prefilleado
-    document.addEventListener('click', (e) => {
+    document.addEventListener('click', async (e) => {
       const b = e.target.closest('[data-cx-accion]');
       if (b) { registrarMovimiento({ tipo: b.dataset.cxAccion === 'cobrar' ? 'ingreso' : 'egreso', tercero: b.dataset.terc, factura: b.dataset.ref, monto: b.dataset.pend }); return; }
       const ed = e.target.closest('[data-cx-edit]');
-      if (ed && window.__editLibroFiscal) window.__editLibroFiscal(ed.dataset.cxEdit, 'compra');
+      if (ed && window.__editLibroFiscal) { window.__editLibroFiscal(ed.dataset.cxEdit, 'compra'); return; }
+      /* ELIMINAR UNA COMPRA desde Compras y CxP.
+
+         Se lleva lo que cuelga de ella: sus pagos —ese dinero salio por este
+         documento— y sus asientos. Igual que el recibo de venta: un pago
+         colgando de un documento que ya no existe descuadra la caja. */
+      const dl = e.target.closest('[data-cx-del]');
+      if (dl) {
+        const ref = (dl.dataset.ref || '').trim(), terc = dl.dataset.terc || '';
+        const pagos = _movs.filter((m) => m.tipo === 'egreso' && (m.factura_ref || '').trim() === ref);
+        const sumaPagos = pagos.reduce((a, m) => a + (Number(m.monto) || 0), 0);
+        const aviso = ['\u00bfELIMINAR la compra ' + (ref || 'sin n\u00famero') + ' de ' + (terc || '\u2014') + '?', '',
+          '\u00b7 Se borra de Compras y del libro'];
+        if (sumaPagos > 0.01) aviso.push('\u00b7 Se borran tambi\u00e9n sus PAGOS por Bs ' + fmt(sumaPagos) + ' (ese dinero vuelve a Tesorer\u00eda)');
+        aviso.push('\u00b7 Se eliminan sus asientos contables', '', 'No se puede deshacer.');
+        if (!window.confirm(aviso.join('\n'))) return;
+        const empAct = window.__EMPRESA_ACTIVA || {};
+        if (ref && empAct.id) {
+          const { error: eM } = await window.sb.from('movimientos_tesoreria').delete()
+            .eq('empresa_id', empAct.id).eq('factura_ref', ref);
+          if (eM) { toast('No se pudieron eliminar los pagos: ' + eM.message, 'error'); return; }
+        }
+        const { error: eC } = await window.sb.from('libro_fiscal').delete().eq('id', dl.dataset.cxDel);
+        if (eC) { toast('No se pudo eliminar: ' + eC.message, 'error'); return; }
+        if (ref && empAct.id) {
+          const { error: eA } = await window.sb.from('asientos').delete().eq('empresa_id', empAct.id).eq('referencia', ref);
+          if (eA) console.warn('[DigiAccount] Asientos de la compra ' + ref + ':', eA.message);
+          if (window.cargarAsientos) window.cargarAsientos();
+        }
+        toast('Compra ' + ref + ' eliminada', 'success');
+        cargarTesoreria();
+        if (window.cargarLibroFiscal) window.cargarLibroFiscal('compra');
+        if (window.cargarDashboard) window.cargarDashboard();
+        return;
+      }
     });
     cargarTesoreria();
   })();
