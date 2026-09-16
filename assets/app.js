@@ -130,6 +130,41 @@
     return r;
   };
 
+  /* ════════════════════════════════════════════════════════════════════
+     EL DOLAR DE UN DOCUMENTO — un solo calculo para toda la app
+
+     Primero lo GUARDADO: si el documento se escribio en dolares, ese numero
+     es el bueno y no se recalcula nunca. 10 $ son 10 $ el año que viene.
+
+     Solo si no lo tiene —los documentos anteriores a esta columna— se
+     reconstruye con la tasa de SU fecha, que es lo unico honesto que se
+     puede hacer con ellos.
+
+     La fecha que manda depende del documento:
+       venta   · el momento en que se EMITIO (ahi se cotizo el precio)
+       compra  · la FECHA DE SU FACTURA, que puede ser de hace meses
+
+     Escrito dos veces, esto ya discrepo: una pantalla mostraba 74,50 $ y
+     otra 65,27 $ del mismo documento.
+     ════════════════════════════════════════════════════════════════════ */
+  window.__tasaDocFecha = function (doc) {
+    if (!doc) return 0;
+    const en = (x) => ((window.__tasaUSDEn && window.__tasaUSDEn(x)) || 0);
+    if (doc.tipo === 'venta' && (doc.emitida || doc.emitida_en)) return en(doc.emitida || doc.emitida_en);
+    const p = String(doc.fecha || '').split('/');           // dd/mm/aa(aa) del libro
+    if (p.length !== 3) return doc.emitida ? en(doc.emitida) : 0;
+    const aa = p[2].length === 2 ? '20' + p[2] : p[2];
+    return en(aa + '-' + p[1].padStart(2, '0') + '-' + p[0].padStart(2, '0') + 'T12:00:00');
+  };
+  window.__usdDoc = function (doc) {
+    if (!doc) return 0;
+    const guardado = Number(doc.total_usd != null ? doc.total_usd : doc.usd) || 0;
+    if (guardado > 0) return guardado;                      // se escribio en dolares
+    const bs = Number(doc.total) || 0;
+    const tasa = Number(doc.tasa) || window.__tasaDocFecha(doc);
+    return tasa > 0 ? Math.round((bs / tasa) * 100) / 100 : 0;
+  };
+
   window.__hoyISO = function () {
     const d = new Date();
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -4472,9 +4507,9 @@
         // Movimientos pueden superar 1000 filas → paginado (evita el tope de PostgREST)
         window.__sbAll((q) => q.eq('empresa_id', emp.id), 'movimientos_tesoreria', '*'),
         // Ventas = RECIBOS emitidos (control de cobros), por empresa. NO el libro de ventas (ese es solo para declarar).
-        window.__sbAll((q) => q.eq('tipo', 'venta').eq('empresa_id', emp.id), 'facturas', 'numero, cliente_nombre, cliente_rif, total, fecha, estado, condicion, emitida_en, creado_en'),
+        window.__sbAll((q) => q.eq('tipo', 'venta').eq('empresa_id', emp.id), 'facturas', 'numero, cliente_nombre, cliente_rif, total, total_usd, tasa, moneda, fecha, estado, condicion, emitida_en, creado_en'),
         _modoLibro ? Promise.resolve({ data: [] })
-          : window.__sbAll((q) => q.eq('tipo', 'compra').eq('empresa_id', emp.id), 'libro_fiscal', 'id, numero_factura, tercero_nombre, tercero_rif, total, fecha, tipo_doc, creado_en'),
+          : window.__sbAll((q) => q.eq('tipo', 'compra').eq('empresa_id', emp.id), 'libro_fiscal', 'id, numero_factura, tercero_nombre, tercero_rif, total, total_usd, tasa, moneda, fecha, tipo_doc, creado_en'),
         /* El historial de tasas se espera AQUI, con el resto.
 
            Antes se pedia por su cuenta y la tabla se pintaba sin el: sin tasa
@@ -4484,12 +4519,14 @@
       ]);
       if (r1.error) { console.warn('[DigiAccount] Tesorería:', r1.error.message); }
       _cuentas = r1.data || []; _movs = r2.data || [];
-      const ventas = (r3.data || []).filter((f) => !/anulada/i.test(f.estado || '')).map((f) => ({ ref: f.numero, tercero_nombre: f.cliente_nombre, tercero_rif: f.cliente_rif, total: f.total, fecha: f.fecha, tipo: 'venta', condicion: f.condicion, estado: f.estado, emitida: f.emitida_en || f.creado_en || null }));
+      const ventas = (r3.data || []).filter((f) => !/anulada/i.test(f.estado || '')).map((f) => ({ ref: f.numero, tercero_nombre: f.cliente_nombre, tercero_rif: f.cliente_rif, total: f.total, fecha: f.fecha, tipo: 'venta', condicion: f.condicion, estado: f.estado, emitida: f.emitida_en || f.creado_en || null,
+        total_usd: f.total_usd, tasa: f.tasa, moneda: f.moneda }));
       /* Las compras del negocio: lo que le debe a cada proveedor. Su pago se
          registra igual que un cobro, vinculado por el número del documento. */
       const compras = (r4.data || []).map((f) => ({
         ref: f.numero_factura || '', tercero_nombre: f.tercero_nombre, tercero_rif: f.tercero_rif,
         total: f.total, fecha: f.fecha, tipo: 'compra', tipo_doc: f.tipo_doc || 'FC',
+        total_usd: f.total_usd, tasa: f.tasa, moneda: f.moneda,
         _id: f.id, emitida: f.creado_en || null,
       }));
       _facturas = ventas.concat(compras);
@@ -4590,7 +4627,7 @@
       const movsFac = fac ? _movs.filter((m) => m.tipo === 'ingreso' && (m.factura_ref || '').trim() === ref) : [];
       const tVenta = fac ? tasaEn(fac.emitida) : 0;
       const enUsd = !!fac && tasa > 0 && tVenta > 0 && movsFac.every((m) => tasaEn(m.creado_en) > 0);
-      const totalUsd = enUsd ? total / tVenta : 0;
+      const totalUsd = enUsd ? ((window.__usdDoc && window.__usdDoc(fac)) || (total / tVenta)) : 0;
       const acumUsd = enUsd ? movsFac.reduce((a, m) => a + (Number(m.monto) || 0) / tasaEn(m.creado_en), 0) : 0;
       const saldo = enUsd
         ? Math.max(0, Math.round((totalUsd - acumUsd) * 100) / 100)
@@ -4700,23 +4737,12 @@
        Quien compra y vende en divisas no debe «54.972,18 Bs»: debe 74,50 $.
        El bolivar de esa deuda cambia cada dia; el dolar pactado, no.
 
-       Cada documento se lleva a dolares con la tasa de SU fecha y cada pago
-       con la de la suya, asi que el pendiente es una resta en dolares —no una
-       conversion del saldo de hoy, que cobraria de mas o de menos—. Si falta
-       la tasa de alguna de esas fechas, la fila se queda en bolivares. */
+       El dolar del documento lo da `window.__usdDoc` —el mismo para toda la
+       app—: primero lo GUARDADO, y solo si no lo tiene se reconstruye con la
+       tasa de su fecha. Cada pago se lleva a dolares con la tasa del dia en
+       que se pago, asi que el pendiente es una resta en dolares. */
     const _tasaEn = (x) => ((window.__tasaUSDEn && window.__tasaUSDEn(x)) || 0);
-    function _tasaDocumento(f) {
-      /* LA VENTA se cotizo AL EMITIRSE: su dolar sale del momento de emision.
-         LA COMPRA se cotizo en la FECHA DE SU FACTURA, que puede ser de hace
-         meses; usar el momento en que se cargo le aplica la tasa de hoy y le
-         cambia la deuda al que compro. Una compra de 74,50 $ aparecia como
-         65,27 $ por esto. */
-      if (f.tipo === 'venta' && f.emitida) return _tasaEn(f.emitida);
-      const p = String(f.fecha || '').split('/');       // dd/mm/aa del libro
-      if (p.length !== 3) return 0;
-      const aa = p[2].length === 2 ? '20' + p[2] : p[2];
-      return _tasaEn(aa + '-' + p[1].padStart(2, '0') + '-' + p[0].padStart(2, '0') + 'T12:00:00');
-    }
+
     function _movsDe(f) {
       const ref = (f.ref || '').trim(); if (!ref) return [];
       const quiere = f.tipo === 'venta' ? 'ingreso' : 'egreso';
@@ -4730,10 +4756,9 @@
         // Presunción de pago (modo libro): si no hay pagos reales registrados, se toma como pagada.
         const pag = (f.presuntoPagado && pagReal <= 0.01) ? total : pagReal;
         const pend = Math.max(0, total - pag);
-        const tDoc = _tasaDocumento(f);
         const lista = _movsDe(f);
-        const enUsd = tDoc > 0 && lista.every((m) => _tasaEn(m.creado_en) > 0);
-        const totalUsd = enUsd ? total / tDoc : 0;
+        const totalUsd = (window.__usdDoc && window.__usdDoc(f)) || 0;
+        const enUsd = totalUsd > 0 && lista.every((m) => _tasaEn(m.creado_en) > 0);
         const pagUsd = enUsd
           ? (f.presuntoPagado && pagReal <= 0.01 ? totalUsd : lista.reduce((a, m) => a + (Number(m.monto) || 0) / _tasaEn(m.creado_en), 0))
           : 0;
@@ -8934,13 +8959,16 @@
            con esa tasa se convirtieron los precios, asi que es la unica que
            devuelve el dolar exacto — no la de hoy, ni la de la fecha escrita.
            Sin tasa para ese momento no se inventa nada: sale en bolivares. */
-        const _tasaTk = (window.__tasaUSDEn && window.__tasaUSDEn(f._emitida)) || 0;
+        /* La tasa CON LA QUE SE EMITIO, guardada en el documento. Solo los
+           recibos anteriores a esa columna la reconstruyen por su fecha. */
+        const _tasaTk = Number(f._tasa) || ((window.__tasaUSDEn && window.__tasaUSDEn(f._emitida)) || 0);
         const _enUsd = _tasaTk > 0;
         const _fmtUsd = (n) => Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         const _m = (bs) => (_enUsd ? '$' + _fmtUsd(bs / _tasaTk) : fmt(bs));
         const _n = (bs) => (_enUsd ? _fmtUsd(bs / _tasaTk) : fmt(bs));
         const _mon = _enUsd ? '$' : 'Bs';
-        const _totalUsd = _enUsd ? Math.round((t.total / _tasaTk) * 100) / 100 : 0;
+        const _totalUsd = Number(f._usd) > 0 ? Number(f._usd)
+          : (_enUsd ? Math.round((t.total / _tasaTk) * 100) / 100 : 0);
         const _letrasTk = (_enUsd && window.__montoEnLetras) ? cap(window.__montoEnLetras(_totalUsd, 'USD')) : letras;
         const tkItems = f.items.map((it) => {
           const m = it.c * it.p;
@@ -9932,7 +9960,8 @@
         const fechaRaw = document.getElementById('fvFecha').value;
         const fecha = fechaRaw ? fechaRaw.split('-').reverse().join('/') : (function () { const d = new Date(); return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear(); })();
         const alic = esRec ? 0 : (parseFloat(document.getElementById('fvAlic').value) || 0);
-        DB[num] = { tipo: 'venta', control: ctrl, fecha: fecha, parte: { n: cli.n, rif: cli.rif, dom: cli.dom || '' }, alic: alic, igtf: igtfChk.checked, cond: document.getElementById('fvCond').value, items: items, _emitida: new Date().toISOString() };
+        DB[num] = { tipo: 'venta', control: ctrl, fecha: fecha, parte: { n: cli.n, rif: cli.rif, dom: cli.dom || '' }, alic: alic, igtf: igtfChk.checked, cond: document.getElementById('fvCond').value, items: items, _emitida: new Date().toISOString(),
+          _usd: _usdCap ? Math.round((calcFactura({ items: items, alic: alic, igtf: igtfChk.checked }).total / _tasaCap) * 100) / 100 : null, _tasa: _tasaCap || null };
         const t = calcFactura(DB[num]);
         // Guardar la factura REAL en Supabase
         if (window.sb && window.__CUENTA_ID) {
@@ -9941,6 +9970,11 @@
             cliente_nombre: cli.n, cliente_rif: cli.rif, cliente_dom: cli.dom || '',
             alicuota: alic, igtf: igtfChk.checked, condicion: document.getElementById('fvCond').value,
             items: items, subtotal: t.subtotal, iva: t.iva, igtf_monto: t.igtf, total: t.total, estado: 'Por cobrar',
+            /* Si el recibo se escribio en dolares, ese es SU monto para
+               siempre: el bolivar de hoy no vuelve a decidirlo. */
+            moneda: _usdCap ? 'USD' : 'BS',
+            tasa: _tasaCap || null,
+            total_usd: _usdCap ? Math.round((t.total / _tasaCap) * 100) / 100 : null,
           }).then(({ error }) => {
             if (error) { console.warn('[DigiAccount] No se pudo guardar la factura:', error.message); if (window.toast) window.toast('No se pudo guardar en la base: ' + error.message, 'error'); return; }
             // Asiento contable de la venta: Debe CxC / Haber Ingresos (+ IVA débito / IGTF por pagar).
@@ -10012,7 +10046,7 @@
       const tb = document.querySelector('.ventas-tab[data-tab="facturas"] table.data-table tbody');
       if (tb) tb.innerHTML = '';
       (data || []).forEach((f) => {
-        DB[f.numero] = { tipo: 'venta', control: f.control, fecha: f.fecha, parte: { n: f.cliente_nombre, rif: f.cliente_rif, dom: f.cliente_dom || '' }, alic: Number(f.alicuota) || 0, igtf: !!f.igtf, cond: f.condicion, items: Array.isArray(f.items) ? f.items : [], _id: f.id, estado: f.estado || 'Por cobrar', _emitida: f.emitida_en || f.creado_en || null };
+        DB[f.numero] = { tipo: 'venta', control: f.control, fecha: f.fecha, parte: { n: f.cliente_nombre, rif: f.cliente_rif, dom: f.cliente_dom || '' }, alic: Number(f.alicuota) || 0, igtf: !!f.igtf, cond: f.condicion, items: Array.isArray(f.items) ? f.items : [], _id: f.id, estado: f.estado || 'Por cobrar', _emitida: f.emitida_en || f.creado_en || null, _usd: f.total_usd, _tasa: f.tasa };
         if (tb) {
           const fc = (f.fecha || '').slice(0, 6) + (f.fecha || '').slice(8);
           const tr = document.createElement('tr');
@@ -12366,6 +12400,9 @@
           if (_mon === 'USD' && !(_tasaF > 0)) {
             return 'No tengo la tasa del BCV para la fecha de esa factura, así que no puedo convertir los dólares a bolívares. Revisa la fecha o escribe los montos en bolívares.';
           }
+          /* El total TAL COMO SE ESCRIBIO, antes de convertir: es el que se
+             guarda y el que se vuelve a mostrar siempre. */
+          const _totalUsdCap = _mon === 'USD' ? Math.round((Number(M.total) || 0) * 100) / 100 : null;
           if (_tasaF !== 1) {
             ['exento', 'base_gen', 'iva_gen', 'base_red', 'iva_red', 'base_adic', 'iva_adic', 'base', 'iva', 'total']
               .forEach((k) => { M[k] = Math.round((Number(M[k]) || 0) * _tasaF * 100) / 100; });
@@ -12388,6 +12425,8 @@
             sucursal_id: sucursalDe(v.sucursal),
             tercero_nombre: v.nombre, tercero_rif: normRif(v.rif), numero_factura: v.numFactura, numero_control: v.numControl,
             tipo_doc: (v.tipoDoc || (esCompra ? 'FC' : 'FV')).slice(0, 2), exento: exento, base: base, alicuota: alic, iva: iva, igtf: igtf, total: total,
+            // Lo escrito en dolares se guarda en dolares: no se recalcula nunca mas.
+            moneda: _mon, tasa: _tasaF !== 1 ? _tasaF : null, total_usd: _totalUsdCap,
             // Desglose por renglón de la Forma 30. 'base' e 'iva' siguen siendo
             // los TOTALES, así que las retenciones y los asientos no cambian.
             base_gen: M.base_gen, iva_gen: M.iva_gen,
@@ -13372,6 +13411,7 @@
           if (_mon === 'USD' && !(_tasaF > 0)) {
             return 'No tengo la tasa del BCV para la fecha de esa factura, así que no puedo convertir los dólares a bolívares. Revisa la fecha o escribe los montos en bolívares.';
           }
+          const _totalUsdCap = _mon === 'USD' ? Math.round((Number(M.total) || 0) * 100) / 100 : null;
           if (_tasaF !== 1) {
             ['exento', 'base_gen', 'iva_gen', 'base_red', 'iva_red', 'base_adic', 'iva_adic', 'base', 'iva', 'total']
               .forEach((k) => { M[k] = Math.round((Number(M[k]) || 0) * _tasaF * 100) / 100; });
@@ -13385,6 +13425,8 @@
           const igtf = leerIgtf(v);   // el monto, no un porcentaje del total
           window.sb.from('libro_fiscal').update({
             fecha: fechaOk, periodo: perNuevo, tipo_doc: (v.tipoDoc || '').slice(0, 2), tercero_nombre: v.nombre,
+            // Lo escrito en dolares se guarda en dolares, tambien al editar.
+            moneda: _mon, tasa: _tasaF !== 1 ? _tasaF : null, total_usd: _totalUsdCap,
             sucursal_id: sucursalDe(v.sucursal),
             tercero_rif: (v.rif || '').toUpperCase().replace(/[\s.\-]/g, ''), numero_factura: v.numFactura, numero_control: v.numControl,
             exento: exento, base: base, alicuota: alic, iva: iva, igtf: igtf, total: total,
@@ -14911,9 +14953,9 @@
       ventas.filter((f) => !/anulada/i.test(f.estado || '')).forEach((f) => {
         const lista = cobros[(f.numero || '').trim()] || [];
         const total = Number(f.total) || 0;
-        const tv = tasaEn(f.emitida_en || f.creado_en);
-        if (tv > 0 && lista.every((m) => tasaEn(m.creado_en) > 0)) {
-          const s = total / tv - lista.reduce((a, m) => a + (Number(m.monto) || 0) / tasaEn(m.creado_en), 0);
+        const enUsd = (window.__usdDoc && window.__usdDoc(Object.assign({ tipo: 'venta' }, f))) || 0;
+        if (enUsd > 0 && lista.every((m) => tasaEn(m.creado_en) > 0)) {
+          const s = enUsd - lista.reduce((a, m) => a + (Number(m.monto) || 0) / tasaEn(m.creado_en), 0);
           if (s > 0.005) de(f.cliente_rif).cxcUsd += s;
         } else {
           const s = total - lista.reduce((a, m) => a + (Number(m.monto) || 0), 0);
@@ -14926,9 +14968,9 @@
       compras.forEach((f) => {
         const lista = pagos[(f.numero_factura || '').trim()] || [];
         const total = Number(f.total) || 0;
-        const tv = tasaEn(fechaLibroISO(f.fecha));
-        if (tv > 0 && lista.every((m) => tasaEn(m.creado_en) > 0)) {
-          const s = total / tv - lista.reduce((a, m) => a + (Number(m.monto) || 0) / tasaEn(m.creado_en), 0);
+        const enUsd = (window.__usdDoc && window.__usdDoc(Object.assign({ tipo: 'compra' }, f))) || 0;
+        if (enUsd > 0 && lista.every((m) => tasaEn(m.creado_en) > 0)) {
+          const s = enUsd - lista.reduce((a, m) => a + (Number(m.monto) || 0) / tasaEn(m.creado_en), 0);
           if (s > 0.005) de(f.tercero_rif).cxpUsd += s;
         } else {
           const s = total - lista.reduce((a, m) => a + (Number(m.monto) || 0), 0);
@@ -14943,8 +14985,8 @@
       if (!window.sb || !window.__sbAll || !emp || !emp.id) { SALDOS = null; render(); return; }
       if (emp.fiscalActivo || emp.modo === 'libro') { SALDOS = { __libro: true }; render(); return; }
       const [rf, rl, rm] = await Promise.all([
-        window.__sbAll((q) => q.eq('tipo', 'venta').eq('empresa_id', emp.id), 'facturas', 'numero, cliente_rif, total, estado, emitida_en, creado_en'),
-        window.__sbAll((q) => q.eq('tipo', 'compra').eq('empresa_id', emp.id), 'libro_fiscal', 'numero_factura, tercero_rif, total'),
+        window.__sbAll((q) => q.eq('tipo', 'venta').eq('empresa_id', emp.id), 'facturas', 'numero, cliente_rif, total, total_usd, tasa, estado, emitida_en, creado_en'),
+        window.__sbAll((q) => q.eq('tipo', 'compra').eq('empresa_id', emp.id), 'libro_fiscal', 'numero_factura, tercero_rif, total, total_usd, tasa, fecha'),
         window.__sbAll((q) => q.eq('empresa_id', emp.id), 'movimientos_tesoreria', 'tipo, monto, factura_ref, creado_en'),
         window.__cargarTasasUSD ? window.__cargarTasasUSD() : null,
       ]);
