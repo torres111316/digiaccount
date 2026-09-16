@@ -4453,20 +4453,40 @@
       _cxPage.venta = 1; _cxPage.compra = 1; // vuelve a la página 1 al (re)cargar la vista
       const rifEl = document.getElementById('tesoRif'); if (rifEl) rifEl.textContent = (emp && emp.rif) || '—';
       if (!window.sb || !emp || !emp.id) { _cuentas = []; _movs = []; _facturas = []; render(); return; }
-      const [r1, r2, r3] = await Promise.all([
+      /* EN UN NEGOCIO, LA COMPRA *ES* UNA CUENTA POR PAGAR.
+
+         En una firma contable no: ahí el Libro de Compras es de cada cliente
+         y solo sirve para declararle sus impuestos, no es plata que la firma
+         deba. Por eso las compras no se cargaban aquí.
+
+         Pero una empresa que lleva su propio control —un emprendimiento, sin
+         módulo fiscal— registra la compra porque la tiene que PAGAR. Se
+         cargaba, y no aparecía por ningún lado: ni en Compras ni en
+         Tesorería, solo como saldo en la ficha del proveedor.
+
+         La regla es la misma que ya usa el Panel: en modo libro no hay CxP;
+         en modo recibos, sí. */
+      const _modoLibro = !!(emp.fiscalActivo || emp.modo === 'libro');
+      const [r1, r2, r3, r4] = await Promise.all([
         window.sb.from('cuentas_tesoreria').select('*').eq('empresa_id', emp.id).order('creado_en'),
         // Movimientos pueden superar 1000 filas → paginado (evita el tope de PostgREST)
         window.__sbAll((q) => q.eq('empresa_id', emp.id), 'movimientos_tesoreria', '*'),
         // Ventas = RECIBOS emitidos (control de cobros), por empresa. NO el libro de ventas (ese es solo para declarar).
         window.__sbAll((q) => q.eq('tipo', 'venta').eq('empresa_id', emp.id), 'facturas', 'numero, cliente_nombre, cliente_rif, total, fecha, estado, condicion, emitida_en, creado_en'),
+        _modoLibro ? Promise.resolve({ data: [] })
+          : window.__sbAll((q) => q.eq('tipo', 'compra').eq('empresa_id', emp.id), 'libro_fiscal', 'id, numero_factura, tercero_nombre, tercero_rif, total, fecha, tipo_doc, creado_en'),
       ]);
       if (r1.error) { console.warn('[DigiAccount] Tesorería:', r1.error.message); }
       _cuentas = r1.data || []; _movs = r2.data || [];
       const ventas = (r3.data || []).filter((f) => !/anulada/i.test(f.estado || '')).map((f) => ({ ref: f.numero, tercero_nombre: f.cliente_nombre, tercero_rif: f.cliente_rif, total: f.total, fecha: f.fecha, tipo: 'venta', condicion: f.condicion, estado: f.estado, emitida: f.emitida_en || f.creado_en || null }));
-      // Modelo de firma contable (cuenta de Luis): el Libro de Compras es SOLO para declarar
-      // los impuestos de cada cliente — NO representa cuentas por pagar que la firma gestione.
-      // Por eso "Compras" (Tesorería/CxP) queda separado del Libro de Compras, igual que Ventas.
-      _facturas = ventas;
+      /* Las compras del negocio: lo que le debe a cada proveedor. Su pago se
+         registra igual que un cobro, vinculado por el número del documento. */
+      const compras = (r4.data || []).map((f) => ({
+        ref: f.numero_factura || '', tercero_nombre: f.tercero_nombre, tercero_rif: f.tercero_rif,
+        total: f.total, fecha: f.fecha, tipo: 'compra', tipo_doc: f.tipo_doc || 'FC',
+        _id: f.id, emitida: f.creado_en || null,
+      }));
+      _facturas = ventas.concat(compras);
       render();
       if (window.__cargarSaldosTerceros) window.__cargarSaldosTerceros();   // la columna Saldo de Terceros
     }
