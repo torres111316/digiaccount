@@ -12258,7 +12258,16 @@
             base_adic: M.base_adic, iva_adic: M.iva_adic,
           }).select('id').then(({ data: guardado, error }) => {
             if (saveBtnEl) saveBtnEl.disabled = false;
-            if (error) { toast('No se pudo guardar: ' + error.message, 'error'); return; }
+            if (error) {
+              /* 23514 = la regla de la base sobre `tipo_doc`. Pasa cuando la
+                 empresa todavia no ha corrido `sql/compras_recibo.sql`: el
+                 mensaje crudo de Postgres no le dice a nadie que hacer. */
+              const esRegla = error.code === '23514' && /tipo_doc/.test(error.message || '');
+              toast(esRegla
+                ? 'Esta base todavía no acepta RECIBO como tipo de documento. Corre sql/compras_recibo.sql en Supabase (una sola vez) y vuelve a intentarlo.'
+                : ('No se pudo guardar: ' + error.message), 'error');
+              return;
+            }
             recordarSucursal(sucursalDe(v.sucursal));
             /* Se recuerda lo último que se registró para poder volver a
                corregirlo sin cerrar el formulario. Al cargar cincuenta
