@@ -4689,6 +4689,29 @@
       return _movs.filter((m) => m.tipo === wantTipo && (m.factura_ref || '').trim() === ref).reduce((s, m) => s + (Number(m.monto) || 0), 0);
     }
     function badge(txt, color, bg) { return '<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;color:' + color + ';background:' + bg + ';">' + txt + '</span>'; }
+    /* LA DEUDA SE PIENSA EN DOLARES.
+
+       Quien compra y vende en divisas no debe «54.972,18 Bs»: debe 74,50 $.
+       El bolivar de esa deuda cambia cada dia; el dolar pactado, no.
+
+       Cada documento se lleva a dolares con la tasa de SU fecha y cada pago
+       con la de la suya, asi que el pendiente es una resta en dolares —no una
+       conversion del saldo de hoy, que cobraria de mas o de menos—. Si falta
+       la tasa de alguna de esas fechas, la fila se queda en bolivares. */
+    const _tasaEn = (x) => ((window.__tasaUSDEn && window.__tasaUSDEn(x)) || 0);
+    function _tasaDocumento(f) {
+      if (f.emitida) return _tasaEn(f.emitida);
+      const p = String(f.fecha || '').split('/');       // dd/mm/aa del libro
+      if (p.length !== 3) return 0;
+      const aa = p[2].length === 2 ? '20' + p[2] : p[2];
+      return _tasaEn(aa + '-' + p[1].padStart(2, '0') + '-' + p[0].padStart(2, '0') + 'T12:00:00');
+    }
+    function _movsDe(f) {
+      const ref = (f.ref || '').trim(); if (!ref) return [];
+      const quiere = f.tipo === 'venta' ? 'ingreso' : 'egreso';
+      return _movs.filter((m) => m.tipo === quiere && (m.factura_ref || '').trim() === ref);
+    }
+
     function renderCxList(tipo, bodyId, totalId, countId, tabCountId) {
       const body = document.getElementById(bodyId); if (!body) return;
       const rows = _facturas.filter((f) => f.tipo === tipo).map((f) => {
@@ -4696,12 +4719,27 @@
         // Presunción de pago (modo libro): si no hay pagos reales registrados, se toma como pagada.
         const pag = (f.presuntoPagado && pagReal <= 0.01) ? total : pagReal;
         const pend = Math.max(0, total - pag);
-        return { f: f, total: total, pag: pag, pend: pend, presunto: f.presuntoPagado && pagReal <= 0.01 };
+        const tDoc = _tasaDocumento(f);
+        const lista = _movsDe(f);
+        const enUsd = tDoc > 0 && lista.every((m) => _tasaEn(m.creado_en) > 0);
+        const totalUsd = enUsd ? total / tDoc : 0;
+        const pagUsd = enUsd
+          ? (f.presuntoPagado && pagReal <= 0.01 ? totalUsd : lista.reduce((a, m) => a + (Number(m.monto) || 0) / _tasaEn(m.creado_en), 0))
+          : 0;
+        return { f: f, total: total, pag: pag, pend: pend, presunto: f.presuntoPagado && pagReal <= 0.01,
+          enUsd: enUsd, totalUsd: totalUsd, pagUsd: pagUsd,
+          pendUsd: enUsd ? Math.max(0, Math.round((totalUsd - pagUsd) * 100) / 100) : 0 };
       }).sort((a, b) => b.pend - a.pend);
       const esVenta = tipo === 'venta';
       // Totales SIEMPRE sobre TODAS las facturas (la paginación es solo visual, igual que en el Libro Fiscal)
-      let totalPend = 0, pendientes = 0;
-      rows.forEach((r) => { if (r.pend > 0.01) { pendientes++; totalPend += r.pend; } });
+      let totalPend = 0, pendientes = 0, totalPendUsd = 0, todoEnUsd = true;
+      rows.forEach((r) => {
+        if (r.pend > 0.01) {
+          pendientes++; totalPend += r.pend; totalPendUsd += r.pendUsd;
+          if (!r.enUsd) todoEnUsd = false;          // con una sola fila sin tasa, el total va en bolivares
+        }
+      });
+      const _sumaUsd = todoEnUsd && pendientes > 0;
       // Paginación: 20 facturas por página (igual que el Libro de Ventas/Compras en Fiscal)
       const PAG_FILAS = 20;
       const totalPag = Math.max(1, Math.ceil(rows.length / PAG_FILAS));
@@ -4719,12 +4757,17 @@
         if (!esVenta && r.f._id) {
           accion += ' <button class="btn btn-ghost" data-cx-edit="' + esc(r.f._id) + '" title="Editar o eliminar esta compra" style="height:22px;font-size:10px;padding:0 7px;margin-left:4px;"><i data-lucide="pencil" style="width:11px;height:11px;"></i></button>';
         }
+        /* El dolar es el numero grande; el bolivar del documento va debajo,
+           en pequeno, porque es lo que se declara y lo que se paga. */
+        const cifra = (bs, usd) => (r.enUsd
+          ? '$ ' + fmt(usd) + '<div class="cx-bs">Bs ' + fmt(bs) + '</div>'
+          : 'Bs ' + fmt(bs));
         return '<tr><td class="primary">' + esc(r.f.tercero_nombre || '—') + '</td><td class="mono">' + esc(r.f.tercero_rif || '') + '</td><td>' + esc(r.f.ref || '') + '</td><td>' + esc(r.f.fecha || '') + '</td>'
-          + '<td class="num">' + fmt(r.total) + '</td><td class="num" style="color:#0a7a44;">' + fmt(r.pag) + '</td>'
-          + '<td class="num" style="font-weight:700;' + (r.pend > 0.01 ? 'color:#b42318;' : 'color:var(--fg-muted);') + '">' + fmt(r.pend) + '</td><td style="white-space:nowrap;">' + estado + accion + '</td></tr>';
+          + '<td class="num">' + cifra(r.total, r.totalUsd) + '</td><td class="num" style="color:#0a7a44;">' + cifra(r.pag, r.pagUsd) + '</td>'
+          + '<td class="num" style="font-weight:700;' + (r.pend > 0.01 ? 'color:#b42318;' : 'color:var(--fg-muted);') + '">' + cifra(r.pend, r.pendUsd) + '</td><td style="white-space:nowrap;">' + estado + accion + '</td></tr>';
       });
       body.innerHTML = html.length ? html.join('') : '<tr><td colspan="8" style="text-align:center;color:var(--fg-muted);padding:24px;">' + (esVenta ? 'Sin recibos de venta emitidos.' : 'Sin facturas de compra registradas.') + '</td></tr>';
-      const tEl = document.getElementById(totalId); if (tEl) tEl.textContent = 'Bs ' + fmt(totalPend);
+      const tEl = document.getElementById(totalId); if (tEl) tEl.textContent = (_sumaUsd ? '$ ' + fmt(totalPendUsd) : 'Bs ' + fmt(totalPend));
       const cEl = document.getElementById(countId);
       if (cEl) {
         const pagerHtml = totalPag > 1
@@ -4739,7 +4782,12 @@
       const tc = document.getElementById(tabCountId); if (tc) { tc.textContent = String(pendientes); tc.style.display = pendientes > 0 ? '' : 'none'; }
       // KPI de la vista Compras y CxP
       if (!esVenta) {
-        const k = document.getElementById('cxpKpiTotal'); if (k) k.textContent = fmt(totalPend);
+        const k = document.getElementById('cxpKpiTotal');
+        if (k) {
+          k.textContent = fmt(_sumaUsd ? totalPendUsd : totalPend);
+          const moneda = k.parentElement && k.parentElement.querySelector('.currency');
+          if (moneda) moneda.textContent = _sumaUsd ? '$' : 'Bs';
+        }
         const km = document.getElementById('cxpKpiMeta'); if (km) km.textContent = pendientes + ' factura' + (pendientes === 1 ? '' : 's') + ' pendiente' + (pendientes === 1 ? '' : 's');
       }
     }
@@ -11373,7 +11421,27 @@
         if (r) r.querySelector('.lf-monto').focus();
       });
       if (elCheck) elCheck.addEventListener('input', recalcular);
-      if (selMoneda) selMoneda.addEventListener('change', recalcular);
+      /* Al cambiar de moneda se CONVIERTE lo ya escrito, no se deja el mismo
+         numero con otro signo. Una compra guardada esta en bolivares: pasar
+         el selector a dolares sin convertir tomaria esos bolivares por
+         dolares y al guardar los multiplicaria por la tasa. */
+      if (selMoneda) {
+        let monedaPrev = selMoneda.value;
+        selMoneda.addEventListener('change', () => {
+          const tsa = tasaFactura();
+          const aUsd = selMoneda.value === 'USD';
+          if (tsa > 0 && monedaPrev !== selMoneda.value && rengRows) {
+            rengRows.querySelectorAll('.lf-monto').forEach((el) => {
+              const v = parseFloat(el.value) || 0;
+              if (v) el.value = Math.round((aUsd ? v / tsa : v * tsa) * 100) / 100;
+            });
+            const decl = parseFloat(elCheck && elCheck.value);
+            if (elCheck && decl) elCheck.value = Math.round((aUsd ? decl / tsa : decl * tsa) * 100) / 100;
+          }
+          monedaPrev = selMoneda.value;
+          recalcular();
+        });
+      }
       if (fechaEl) fechaEl.addEventListener('change', recalcular);
       // El historial de tasas puede no haber llegado todavia: se repinta al llegar.
       if (window.__cargarTasasUSD) window.__cargarTasasUSD().then(() => recalcular()).catch(() => {});
@@ -13109,9 +13177,17 @@
       });
     }
 
-    function editLibroFiscal(id, tipo) {
-      const r = (_libroData[tipo] || []).find((x) => String(x.id) === String(id));
-      if (!r) return;
+    async function editLibroFiscal(id, tipo) {
+      let r = (_libroData[tipo] || []).find((x) => String(x.id) === String(id));
+      /* Puede no estar en memoria: en una empresa SIN modulo Fiscal el libro
+         nunca se carga, y el lapiz de «Compras y CxP» no hacia nada — sin
+         error, sin aviso, sin nada que mirar. */
+      if (!r && window.sb) {
+        const { data, error } = await window.sb.from('libro_fiscal').select('*').eq('id', id).maybeSingle();
+        if (error) { if (window.toast) window.toast('No se pudo abrir el registro: ' + error.message, 'error'); return; }
+        r = data || null;
+      }
+      if (!r) { if (window.toast) window.toast('No encuentro ese registro.', 'error'); return; }
       /* Un reporte Z no se edita con el formulario de facturas: no tiene
          cliente ni N° de factura, y sí tiene máquina, N° de Z y rango de
          comprobantes que aquí no se verían. */
@@ -14766,7 +14842,14 @@
     let _saldosSeq = 0;
     function calcularSaldos(ventas, compras, movs, tasaEn) {
       const out = {};
-      const de = (rif) => (out[normRif(rif)] = out[normRif(rif)] || { cxcUsd: 0, cxcBs: 0, cxp: 0 });
+      const de = (rif) => (out[normRif(rif)] = out[normRif(rif)] || { cxcUsd: 0, cxcBs: 0, cxp: 0, cxpUsd: 0 });
+      /* dd/mm/aa del libro → la fecha con la que se busca su tasa. */
+      const fechaLibroISO = (f) => {
+        const p = String(f || '').split('/');
+        if (p.length !== 3) return null;
+        const aa = p[2].length === 2 ? '20' + p[2] : p[2];
+        return aa + '-' + p[1].padStart(2, '0') + '-' + p[0].padStart(2, '0') + 'T12:00:00';
+      };
       const porRef = (tipo) => {
         const o = {};
         movs.filter((m) => m.tipo === tipo).forEach((m) => {
@@ -14788,10 +14871,20 @@
           if (s > 0.01) de(f.cliente_rif).cxcBs += s;
         }
       });
+      /* Al proveedor tambien se le debe en DOLARES: la compra se hizo a una
+         tasa y cada pago a la suya, asi que el saldo es una resta en dolares.
+         Sin alguna de esas tasas, esa compra se queda en bolivares. */
       compras.forEach((f) => {
         const lista = pagos[(f.numero_factura || '').trim()] || [];
-        const s = (Number(f.total) || 0) - lista.reduce((a, m) => a + (Number(m.monto) || 0), 0);
-        if (s > 0.01) de(f.tercero_rif).cxp += s;
+        const total = Number(f.total) || 0;
+        const tv = tasaEn(fechaLibroISO(f.fecha));
+        if (tv > 0 && lista.every((m) => tasaEn(m.creado_en) > 0)) {
+          const s = total / tv - lista.reduce((a, m) => a + (Number(m.monto) || 0) / tasaEn(m.creado_en), 0);
+          if (s > 0.005) de(f.tercero_rif).cxpUsd += s;
+        } else {
+          const s = total - lista.reduce((a, m) => a + (Number(m.monto) || 0), 0);
+          if (s > 0.01) de(f.tercero_rif).cxp += s;
+        }
       });
       return out;
     }
@@ -14824,6 +14917,7 @@
       const parts = [];
       if (s.cxcUsd > 0.005) parts.push('<span class="ter-saldo" style="color:var(--da-success);"><small>Te debe</small> ' + usd(s.cxcUsd) + '</span>');
       if (s.cxcBs > 0.01) parts.push('<span class="ter-saldo" style="color:var(--da-success);"><small>Te debe</small> Bs ' + fmt(s.cxcBs) + '</span>');
+      if (s.cxpUsd > 0.005) parts.push('<span class="ter-saldo" style="color:#8a5410;"><small>Le debes</small> ' + usd(s.cxpUsd) + '</span>');
       if (s.cxp > 0.01) parts.push('<span class="ter-saldo" style="color:#8a5410;"><small>Le debes</small> Bs ' + fmt(s.cxp) + '</span>');
       return parts.length ? parts.join('<br>') : nada;
     }

@@ -8218,3 +8218,7 @@ table.suc-tabla td.c-mat { text-align: center; }
   .lf-moneda { width: 100%; justify-content: space-between; }
   .lf-moneda select { height: 40px; font-size: 15px; }
 }
+
+/* El bolívar del documento, debajo del dólar, en las cuentas por cobrar y
+   por pagar: el dólar es lo que se debe; el bolívar, lo que se declaró. */
+.cx-bs { font-size: 10px; color: var(--fg-muted); font-weight: 400; line-height: 1.2; margin-top: 1px; }
