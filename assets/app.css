@@ -8199,3 +8199,22 @@ table.suc-tabla td.c-mat { text-align: center; }
   .ventas-tab[data-tab="facturas"] table.data-table .tag { font-size: 9px; padding: 2px 5px; white-space: normal; text-align: center; line-height: 1.2; }
   .ventas-tab[data-tab="facturas"] table.data-table .btn { font-size: 11px !important; padding: 0 7px !important; }
 }
+
+/* =========================================================
+   LIBRO DE COMPRAS · moneda de la factura
+   Se escribe en Bs o en $; el libro se guarda siempre en bolívares, a la
+   tasa del BCV de la fecha de la factura (esa línea se muestra al lado).
+   ========================================================= */
+.lf-moneda-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+.lf-moneda { display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: var(--fw-semibold);
+  color: var(--fg-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.lf-moneda select { height: 32px; border: 1px solid var(--border-default); border-radius: var(--radius-sm);
+  padding: 0 9px; font-size: 12.5px; font-family: inherit; color: var(--fg-primary); background: var(--da-white);
+  text-transform: none; letter-spacing: 0; }
+.lf-tasa { font-size: 11.5px; color: var(--fg-body); }
+.lf-tasa .mal { color: var(--da-danger); font-weight: var(--fw-semibold); }
+.lf-reng .ic-row .lf-alic:disabled { background: var(--bg-surface-alt); color: var(--fg-muted); cursor: not-allowed; }
+@media (max-width: 560px) {
+  .lf-moneda { width: 100%; justify-content: space-between; }
+  .lf-moneda select { height: 40px; font-size: 15px; }
+}

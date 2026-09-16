@@ -11155,7 +11155,14 @@
     function montosHTML() {
       return '<div class="fm-numbox" id="lfMontos">'
         + '<div class="lf-reng">'
-        + '<div class="ic-head"><span>Monto (Bs)</span><span>Alícuota</span><span>IVA</span><span></span></div>'
+        /* La moneda de captura. El libro SIEMPRE se guarda en bolivares —es
+           la moneda de la declaracion—, pero aqui se compra en divisas todos
+           los dias y obligar a convertir a mano es pedir errores. */
+        + '<div class="lf-moneda-row">'
+        + '<label class="lf-moneda">Moneda de la factura'
+        + '<select id="lfMoneda"><option value="BS">Bolívares (Bs)</option><option value="USD">Dólares ($)</option></select>'
+        + '</label><span class="lf-tasa" id="lfTasa"></span></div>'
+        + '<div class="ic-head"><span id="lfMontoLbl">Monto (Bs)</span><span>Alícuota</span><span>IVA</span><span></span></div>'
         + '<div id="lfRengRows"></div>'
         + '<button type="button" class="btn btn-ghost" id="lfRengAdd" style="height:30px;font-size:12px;margin-top:2px;">'
         + '<i data-lucide="plus" style="width:14px;height:14px;"></i> Agregar renglón</button>'
@@ -11181,6 +11188,27 @@
          porción realmente cobrada en divisas — una factura puede cobrarse
          mitad en bolívares, y un reporte Z lo hace casi siempre. */
       const rengRows = body.querySelector('#lfRengRows');
+      /* ══════════════════════════════════════════════════════════════
+         LA MONEDA DE LA FACTURA
+
+         Se escribe en bolivares o en dolares; al guardar SIEMPRE se
+         convierte a bolivares, porque el libro es lo que se declara.
+
+         La tasa es la del BCV vigente en la FECHA DE LA FACTURA —no la de
+         hoy—: es la que rige la operacion. Por eso se vuelve a calcular
+         cuando cambia esa fecha, y se muestra antes de guardar junto al
+         equivalente en bolivares. Sin tasa para esa fecha, `onSave` se
+         niega a guardar en vez de inventar una conversion.
+         ══════════════════════════════════════════════════════════════ */
+      const selMoneda = body.querySelector('#lfMoneda');
+      const elTasa = body.querySelector('#lfTasa');
+      const elMontoLbl = body.querySelector('#lfMontoLbl');
+      const fechaEl = body.querySelector('[data-name="fecha"]');
+      const moneda = () => (selMoneda && selMoneda.value === 'USD' ? 'USD' : 'BS');
+      function tasaFactura() {
+        const f = fechaEl && fechaEl.value ? fechaEl.value + 'T12:00:00' : 'ahora';
+        return (window.__tasaUSDEn && window.__tasaUSDEn(f)) || 0;
+      }
       const elBase = document.getElementById('numResBase');
       const elEx = document.getElementById('numResEx');
       const elIva = document.getElementById('numResIva');
@@ -11213,10 +11241,20 @@
 
       function recalcular() {
         const t = leer();
-        if (elBase) elBase.textContent = 'Bs ' + fmtF(t.base);
-        if (elEx) elEx.textContent = 'Bs ' + fmtF(t.exento);
-        if (elIva) elIva.textContent = 'Bs ' + fmtF(t.iva);
-        if (elTotal) elTotal.textContent = 'Bs ' + fmtF(t.total);
+        const usd = moneda() === 'USD';
+        const sig = usd ? '$ ' : 'Bs ';
+        if (elMontoLbl) elMontoLbl.textContent = 'Monto (' + (usd ? '$' : 'Bs') + ')';
+        if (elTasa) {
+          const tsa = usd ? tasaFactura() : 0;
+          elTasa.innerHTML = !usd ? ''
+            : (tsa > 0
+              ? 'Tasa BCV de la fecha de la factura: <strong>Bs ' + fmtF(tsa) + '</strong> por $ · se guardará como <strong>Bs ' + fmtF(t.total * tsa) + '</strong>'
+              : '<span class="mal">Sin tasa del BCV para esa fecha: no podré convertir. Revisa la fecha o carga los montos en bolívares.</span>');
+        }
+        if (elBase) elBase.textContent = sig + fmtF(t.base);
+        if (elEx) elEx.textContent = sig + fmtF(t.exento);
+        if (elIva) elIva.textContent = sig + fmtF(t.iva);
+        if (elTotal) elTotal.textContent = sig + fmtF(t.total);
         // El IVA de cada renglón, para cotejarlo contra el papel línea por línea
         (rengRows ? [...rengRows.querySelectorAll('.ic-row')] : []).forEach((r) => {
           const monto = parseFloat(r.querySelector('.lf-monto').value) || 0;
@@ -11230,7 +11268,7 @@
           const decl = parseFloat(elCheck.value);
           if (!elCheck.value || isNaN(decl)) { elDif.textContent = ''; elDif.className = 'lf-dif'; }
           else if (Math.abs(decl - t.total) <= 0.02) { elDif.textContent = '✓ Cuadra con la factura'; elDif.className = 'lf-dif ok'; }
-          else { elDif.textContent = '✗ Diferencia de Bs ' + fmtF(Math.abs(decl - t.total)) + ' — revisa los montos'; elDif.className = 'lf-dif mal'; }
+          else { elDif.textContent = '✗ Diferencia de ' + (moneda() === 'USD' ? '$ ' : 'Bs ') + fmtF(Math.abs(decl - t.total)) + ' — revisa los montos'; elDif.className = 'lf-dif mal'; }
         }
       }
 
@@ -11281,11 +11319,47 @@
         recalcular();
       }
 
+      /* UN RECIBO NO DA CREDITO FISCAL.
+
+         No es una factura: su IVA no se puede declarar como credito. Al
+         elegir «RE (Recibo)» los renglones pasan a exento y la alicuota se
+         bloquea. Permitir lo contrario seria cargar un credito que en una
+         fiscalizacion no existe. */
+      function soloExento(on) {
+        if (!rengRows) return;
+        rengRows.querySelectorAll('.ic-row').forEach((r) => {
+          const sel = r.querySelector('.lf-alic');
+          if (!sel) return;
+          /* La alicuota previa se guarda UNA sola vez: al agregar un renglon
+             se vuelve a aplicar el bloqueo, y sin esta guarda el valor
+             guardado pasaba a ser «exento» — al volver a factura, el IVA no
+             regresaba nunca. */
+          if (on) {
+            if (!sel.dataset.previo && sel.value !== 'exento') sel.dataset.previo = sel.value;
+            sel.value = 'exento'; sel.disabled = true;
+          }
+          else { sel.disabled = false; if (sel.dataset.previo) { sel.value = sel.dataset.previo; delete sel.dataset.previo; } }
+        });
+        const caja = body.querySelector('#lfMontos');
+        if (caja) caja.dataset.soloExento = on ? 'true' : 'false';
+        recalcular();
+      }
+
       const addBtn = body.querySelector('#lfRengAdd');
-      if (addBtn) addBtn.addEventListener('click', () => { const r = agregar('', 'gen'); if (r) r.querySelector('.lf-monto').focus(); });
+      if (addBtn) addBtn.addEventListener('click', () => {
+        const r = agregar('', 'gen');
+        const caja = body.querySelector('#lfMontos');
+        if (caja && caja.dataset.soloExento === 'true') soloExento(true);   // el renglon nuevo tambien
+        if (r) r.querySelector('.lf-monto').focus();
+      });
       if (elCheck) elCheck.addEventListener('input', recalcular);
+      if (selMoneda) selMoneda.addEventListener('change', recalcular);
+      if (fechaEl) fechaEl.addEventListener('change', recalcular);
+      // El historial de tasas puede no haber llegado todavia: se repinta al llegar.
+      if (window.__cargarTasasUSD) window.__cargarTasasUSD().then(() => recalcular()).catch(() => {});
       reiniciar(inicial);
-      return { leer: leer, agregar: agregar, reiniciar: reiniciar, recalcular: recalcular };
+      return { leer: leer, agregar: agregar, reiniciar: reiniciar, recalcular: recalcular,
+        moneda: moneda, tasa: tasaFactura, soloExento: soloExento };
     }
 
     /* Registrar un REPORTE Z de máquina fiscal.
@@ -11863,7 +11937,7 @@
           // Solo COMPRAS: el crédito se declara en el período en que llega la factura (puede diferir de su fecha).
           { name: 'periodo', label: 'Período de declaración (si la factura es de un período anterior, elige aquel en que la declaras)', type: 'select', options: _opcionesPeriodo(), value: _periodoActualValor() },
         ] : []).concat([
-          { name: 'tipoDoc', label: 'Tipo de documento', type: 'select', options: esCompra ? ['FC (Factura)', 'NC (Nota de crédito)', 'ND (Nota de débito)'] : ['FV (Factura de venta)', 'NC (Nota de crédito)', 'ND (Nota de débito)'] },
+          { name: 'tipoDoc', label: 'Tipo de documento', type: 'select', options: esCompra ? ['FC (Factura)', 'RE (Recibo)', 'NC (Nota de crédito)', 'ND (Nota de débito)'] : ['FV (Factura de venta)', 'NC (Nota de crédito)', 'ND (Nota de débito)'] },
           { name: 'nombre', label: (esCompra ? 'Proveedor' : 'Cliente') + ' (escribe las iniciales y elige)', col: 2, type: 'datalist', options: terceros.map((t) => t.nombre), placeholder: 'Ej. Sum… → Suministros Lara, C.A.' },
           { name: 'rif', label: 'RIF / C.I. (mayúscula, sin guiones — también busca por RIF)', upper: true, placeholder: 'J123456789', type: 'datalist', options: terceros.filter((t) => t.rif).map((t) => ({ value: normRif(t.rif), label: t.nombre })) },
           { name: 'numFactura', label: 'N° de Factura', placeholder: 'F-00000000' },
@@ -12075,6 +12149,25 @@
              alícuota, así que tocaba partir la factura en varios registros. */
           const montos = montarMontos(body);
           bodyRef.__montos = montos;
+          /* Recibo → sin crédito fiscal (ver `soloExento`). */
+          const tdEl = body.querySelector('[data-name="tipoDoc"]');
+          if (tdEl && esCompra) {
+            const aplicarTipoDoc = () => {
+              const esRecibo = /^RE/.test(tdEl.value || '');
+              montos.soloExento(esRecibo);
+              let av = body.querySelector('#lfAvisoRecibo');
+              if (esRecibo && !av) {
+                av = document.createElement('div');
+                av.id = 'lfAvisoRecibo';
+                av.className = 'lf-reng-hint';
+                av.style.cssText = 'margin-top:6px;color:#8a5410;';
+                av.textContent = 'Un recibo no es una factura: no da derecho a crédito fiscal, así que su monto se registra como exento / no gravado.';
+                const caja = body.querySelector('#lfMontos'); if (caja) caja.appendChild(av);
+              } else if (!esRecibo && av) { av.remove(); }
+            };
+            tdEl.addEventListener('change', aplicarTipoDoc);
+            aplicarTipoDoc();
+          }
           // Reposición de inventario (solo compras): suma cantidades al stock de los productos
           if (esCompra) {
             invBox = document.createElement('div');
@@ -12127,6 +12220,19 @@
              porque una factura puede traer varias alícuotas a la vez. */
           const M = (!esAnulada && bodyRef && bodyRef.__montos) ? bodyRef.__montos.leer()
             : { exento: 0, base_gen: 0, iva_gen: 0, base_red: 0, iva_red: 0, base_adic: 0, iva_adic: 0, base: 0, iva: 0, total: 0 };
+          /* DE DOLARES A BOLIVARES, con la tasa de la FECHA DE LA FACTURA.
+             El libro se declara en bolivares; si no hay tasa para ese día no
+             se guarda nada, porque una conversión inventada se convierte en
+             una declaración equivocada. */
+          const _mon = (bodyRef && bodyRef.__montos && bodyRef.__montos.moneda) ? bodyRef.__montos.moneda() : 'BS';
+          const _tasaF = _mon === 'USD' ? ((bodyRef.__montos.tasa && bodyRef.__montos.tasa()) || 0) : 1;
+          if (_mon === 'USD' && !(_tasaF > 0)) {
+            return 'No tengo la tasa del BCV para la fecha de esa factura, así que no puedo convertir los dólares a bolívares. Revisa la fecha o escribe los montos en bolívares.';
+          }
+          if (_tasaF !== 1) {
+            ['exento', 'base_gen', 'iva_gen', 'base_red', 'iva_red', 'base_adic', 'iva_adic', 'base', 'iva', 'total']
+              .forEach((k) => { M[k] = Math.round((Number(M[k]) || 0) * _tasaF * 100) / 100; });
+          }
           const base = M.base, exento = M.exento, iva = M.iva, total = M.total;
           /* 'alicuota' se conserva por compatibilidad con lo ya cargado y con las
              pantallas que aún la leen. Con varias alícuotas en la misma factura
@@ -12222,8 +12328,13 @@
                   if (!cProd || !cCant) return;
                   const nombre = (cProd.value || '').trim();
                   const cant = parseFloat(cCant.value) || 0;
-                  const costo = cCosto ? (parseFloat(cCosto.value) || 0) : 0;
-                  if (nombre && cant > 0) lineasInv.push({ nombre: nombre, cant: cant, costo: costo });
+                  /* El costo se escribió en la moneda de la factura: al
+                     inventario va en bolívares, y si la compra fue en dólares
+                     el artículo se queda además con su costo en dólares, que
+                     es el que no se desactualiza. */
+                  const costoCap = cCosto ? (parseFloat(cCosto.value) || 0) : 0;
+                  const costo = Math.round(costoCap * _tasaF * 100) / 100;
+                  if (nombre && cant > 0) lineasInv.push({ nombre: nombre, cant: cant, costo: costo, costoUsd: _mon === 'USD' ? costoCap : 0 });
                 });
                 if (lineasInv.length) {
                   const prods = window.__getProductos ? window.__getProductos() : [];
@@ -12242,10 +12353,12 @@
                         nombre: li.nombre, sku: 'SKU-' + String(Date.now()).slice(-5) + '-' + Math.floor(Math.random() * 90 + 10),
                         categoria: 'Otros', alicuota: '16%',
                         stock: li.cant, stock_min: 0, costo: li.costo || 0, precio: 0,
+                        costo_usd: li.costoUsd || null,
                       });
                     }
                     const patch = { stock: (Number(pr.stock) || 0) + li.cant };
                     if (li.costo > 0) patch.costo = li.costo;
+                    if (li.costoUsd > 0) patch.costo_usd = li.costoUsd;
                     return window.sb.from('productos').update(patch).eq('id', pr.id);
                   });
                   Promise.all(ups).then((rs) => {
@@ -12975,7 +13088,7 @@
          comprobantes que aquí no se verían. */
       if (String(r.numero_zeta || '').trim()) { editarZeta(r); return; }
       const esCompra = tipo === 'compra';
-      const tdMap = { FC: 'FC (Factura)', FV: 'FV (Factura de venta)', NC: 'NC (Nota de crédito)', ND: 'ND (Nota de débito)' };
+      const tdMap = { FC: 'FC (Factura)', RE: 'RE (Recibo)', FV: 'FV (Factura de venta)', NC: 'NC (Nota de crédito)', ND: 'ND (Nota de débito)' };
       let editMontos = null; // la caja de renglones, montada en afterRender
       /* Los mismos terceros que ofrece el formulario de REGISTRAR. Al editar
          el campo era texto pelado, así que completar el cliente de una
@@ -12991,7 +13104,7 @@
         ].concat(esCompra ? [
           { name: 'periodo', label: 'Período de declaración', type: 'select', options: _opcionesPeriodo(), value: r.periodo || _periodoActualKey() },
         ] : []).concat([
-          { name: 'tipoDoc', label: 'Tipo de documento', type: 'select', options: esCompra ? ['FC (Factura)', 'NC (Nota de crédito)', 'ND (Nota de débito)'] : ['FV (Factura de venta)', 'NC (Nota de crédito)', 'ND (Nota de débito)'], value: tdMap[r.tipo_doc] || (esCompra ? 'FC (Factura)' : 'FV (Factura de venta)') },
+          { name: 'tipoDoc', label: 'Tipo de documento', type: 'select', options: esCompra ? ['FC (Factura)', 'RE (Recibo)', 'NC (Nota de crédito)', 'ND (Nota de débito)'] : ['FV (Factura de venta)', 'NC (Nota de crédito)', 'ND (Nota de débito)'], value: tdMap[r.tipo_doc] || (esCompra ? 'FC (Factura)' : 'FV (Factura de venta)') },
           { name: 'nombre', label: (esCompra ? 'Proveedor' : 'Cliente') + ' (escribe las iniciales y elige)', col: 2, type: 'datalist', options: tercerosEd.map((t) => t.nombre), value: r.tercero_nombre || '' },
           { name: 'rif', label: 'RIF', upper: true, value: r.tercero_rif || '' },
           { name: 'numFactura', label: 'N° de Factura', value: r.numero_factura || '' },
@@ -13096,6 +13209,19 @@
           if (!v.nombre) return 'Indica el ' + (esCompra ? 'proveedor' : 'cliente') + '.';
           const M = editMontos ? editMontos.leer()
             : { exento: 0, base_gen: 0, iva_gen: 0, base_red: 0, iva_red: 0, base_adic: 0, iva_adic: 0, base: 0, iva: 0, total: 0 };
+          /* DE DOLARES A BOLIVARES, con la tasa de la FECHA DE LA FACTURA.
+             El libro se declara en bolivares; si no hay tasa para ese día no
+             se guarda nada, porque una conversión inventada se convierte en
+             una declaración equivocada. */
+          const _mon = (editMontos && editMontos.moneda) ? editMontos.moneda() : 'BS';
+          const _tasaF = _mon === 'USD' ? ((editMontos.tasa && editMontos.tasa()) || 0) : 1;
+          if (_mon === 'USD' && !(_tasaF > 0)) {
+            return 'No tengo la tasa del BCV para la fecha de esa factura, así que no puedo convertir los dólares a bolívares. Revisa la fecha o escribe los montos en bolívares.';
+          }
+          if (_tasaF !== 1) {
+            ['exento', 'base_gen', 'iva_gen', 'base_red', 'iva_red', 'base_adic', 'iva_adic', 'base', 'iva', 'total']
+              .forEach((k) => { M[k] = Math.round((Number(M[k]) || 0) * _tasaF * 100) / 100; });
+          }
           const base = M.base, exento = M.exento, iva = M.iva, total = M.total;
           // 'alicuota' se conserva por compatibilidad; con varias en la misma
           // factura deja de tener un único valor y manda la de mayor peso.
