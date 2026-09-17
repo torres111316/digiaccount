@@ -2481,7 +2481,12 @@
       // SOLO las retenciones que comparten el mismo N° de comprobante (varias facturas en uno);
       // por defecto cada retención = su propio comprobante con su propio número.
       const ncomp = (r.comprobante || '').trim();
-      let grupo = (ncomp ? _retData.filter((x) => x.tipo === r.tipo && x.direccion === r.direccion && (x.comprobante || '').trim() === ncomp) : []);
+      /* Un comprobante es de UN proveedor: se exige tambien el RIF. Sin eso,
+         dos proveedores a los que por error se les puso el mismo numero
+         saldrian mezclados en un mismo documento. */
+      const rifG = (x) => String(x.tercero_rif || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      let grupo = (ncomp ? _retData.filter((x) => x.tipo === r.tipo && x.direccion === r.direccion
+        && (x.comprobante || '').trim() === ncomp && rifG(x) === rifG(r)) : []);
       if (!grupo.length) grupo = [r];
       grupo.sort((a, b) => ((a.fecha || '').split('/').reverse().join('')).localeCompare((b.fecha || '').split('/').reverse().join('')));
       // Lookup de las facturas del período (montos exactos)
