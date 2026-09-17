@@ -151,11 +151,31 @@
     if (!doc) return 0;
     const en = (x) => ((window.__tasaUSDEn && window.__tasaUSDEn(x)) || 0);
     if (doc.tipo === 'venta' && (doc.emitida || doc.emitida_en)) return en(doc.emitida || doc.emitida_en);
-    const p = String(doc.fecha || '').split('/');           // dd/mm/aa(aa) del libro
-    if (p.length !== 3) return doc.emitida ? en(doc.emitida) : 0;
-    const aa = p[2].length === 2 ? '20' + p[2] : p[2];
-    return en(aa + '-' + p[1].padStart(2, '0') + '-' + p[0].padStart(2, '0') + 'T12:00:00');
+    const iso = window.__fechaISO12 ? window.__fechaISO12(doc.fecha) : '';
+    if (!iso) return doc.emitida ? en(doc.emitida) : 0;
+    return en(iso);
   };
+  /* LA FECHA DE UN FORMULARIO, EN UN FORMATO QUE ENTIENDA LA TASA.
+
+     Registrar usa un campo de fecha (aaaa-mm-dd) y EDITAR uno de texto
+     (dd/mm/aa). Solo se contemplaba el primero: al editar, la fecha no se
+     entendia, no habia tasa, y el guardado se negaba con «no tengo la tasa
+     del BCV para la fecha de esa factura» sin que hubiera nada que corregir.
+
+     El mediodia evita el otro clasico: 'aaaa-mm-dd' a secas se lee como
+     medianoche UTC, que en Venezuela es el dia anterior. */
+  window.__fechaISO12 = function (txt) {
+    const t = String(txt || '').trim();
+    if (!t) return '';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t + 'T12:00:00';
+    const p = t.split('/');
+    if (p.length === 3) {
+      const aa = p[2].length === 2 ? '20' + p[2] : p[2];
+      return aa + '-' + p[1].padStart(2, '0') + '-' + p[0].padStart(2, '0') + 'T12:00:00';
+    }
+    return '';
+  };
+
   window.__usdDoc = function (doc) {
     if (!doc) return 0;
     const guardado = Number(doc.total_usd != null ? doc.total_usd : doc.usd) || 0;
@@ -11555,8 +11575,11 @@
       let tasaGuardada = 0, fechaGuardada = null;
       function tasaFactura() {
         if (tasaGuardada > 0 && fechaEl && fechaEl.value === fechaGuardada) return tasaGuardada;
-        const f = fechaEl && fechaEl.value ? fechaEl.value + 'T12:00:00' : 'ahora';
-        return (window.__tasaUSDEn && window.__tasaUSDEn(f)) || 0;
+        const iso = window.__fechaISO12 ? window.__fechaISO12(fechaEl && fechaEl.value) : '';
+        const t = (window.__tasaUSDEn && window.__tasaUSDEn(iso || 'ahora')) || 0;
+        /* Si la fecha no da tasa pero el documento trae la suya, manda la
+           suya: un documento guardado no se queda sin poder editarse. */
+        return t || tasaGuardada || 0;
       }
       const elBase = document.getElementById('numResBase');
       const elEx = document.getElementById('numResEx');
