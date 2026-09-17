@@ -2632,9 +2632,44 @@
             monto = base * pct / 100;
           }
           const dir = /practicada/i.test(v.direccion) ? 'practicada' : 'sufrida';
+          /* ══════════════════════════════════════════════════════════════
+             EL PERIODO SIGUE A LA CORRECCION
+
+             Antes se guardaba la fecha nueva y `periodo` se quedaba con el
+             viejo. Una retencion cargada por error en agosto seguia en
+             agosto por mucho que se corrigiera el dia: en pantalla parecia
+             que el formulario no guardaba nada.
+
+             En IVA el periodo lo manda el COMPROBANTE —sus seis primeros
+             digitos son año y mes, asi lo define el SENIAT y es lo que se
+             declara—. En ISLR, la fecha del documento.
+             ══════════════════════════════════════════════════════════════ */
+          const pf = String(fechaOk || '').split('/');        // dd/mm/aa
+          const periodoFecha = pf.length === 3 ? ('20' + pf[2].slice(-2) + '-' + pf[1]) : null;
+          let compOk = (v.comprobante || '').trim();
+          const periodoOk = periodoFecha;
+          if (!esIslr) {
+            /* El numero del comprobante se revisa TAMBIEN al editar: antes no
+               se miraba, y se podia dejar uno de 13 digitos o con letras que
+               despues rebota el portal. */
+            const rev = revisarCompIva(compOk, (pf.length === 3 ? ('20' + pf[2].slice(-2) + '-' + pf[1] + '-' + pf[0]) : ''));
+            if (rev.error) return rev.error;
+            compOk = rev.valor;
+            /* El comprobante TIENE que ir con el periodo de la retencion: sus
+               seis primeros digitos son ese año y ese mes. Si no coinciden, se
+               para aqui y se dice que hay que cambiar — declarar un
+               comprobante de otro mes es un archivo rebotado. */
+            const espera = periodoOk ? periodoOk.replace('-', '') : '';
+            if (espera && rev.valor.slice(0, 6) !== espera) {
+              return 'La retención es del ' + fechaOk + ', así que su comprobante debe empezar por '
+                + espera + ' y el que tiene empieza por ' + rev.valor.slice(0, 6) + '. '
+                + 'Corrige el comprobante (por ejemplo ' + espera + rev.correlativo + ') o la fecha.';
+            }
+          }
           window.sb.from('retenciones').update({
             direccion: dir, tipo: (v.tipo || 'IVA').toLowerCase(), fecha: fechaOk,
-            comprobante: v.comprobante, tercero_nombre: v.nombre, tercero_rif: normRif(v.rif),
+            ...(periodoOk ? { periodo: periodoOk } : {}),
+            comprobante: compOk, tercero_nombre: v.nombre, tercero_rif: normRif(v.rif),
             factura: v.factura, numero_control: v.numControl || null, base: base, pct: pct, monto: monto,
             concepto: esIslr ? v.concepto : null, concepto_codigo: esIslr ? cod : null, sujeto: esIslr ? suj : null, sustraendo: sust,
             // El campo solo existe en quien entera por quincena; si no está,
@@ -2643,7 +2678,9 @@
           }).eq('id', id).then(({ error }) => {
             if (error) { if (window.toast) window.toast('No se pudo actualizar: ' + error.message, 'error'); return; }
             if (window.cargarRetenciones) window.cargarRetenciones();
-            if (window.toast) window.toast('Retención actualizada · Bs ' + fmt(monto), 'success');
+            if (window.__invalidarArrastres) window.__invalidarArrastres();   // cambiar de periodo mueve lo declarado
+            if (window.toast) window.toast('Retención actualizada · Bs ' + fmt(monto)
+              + (periodoOk ? ' · período ' + periodoOk : ''), 'success');
           });
         },
         onDelete: (closeModal) => {
