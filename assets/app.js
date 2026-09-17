@@ -11325,6 +11325,12 @@
         + '<div class="fm-numbox-sum-row"><span>Exento / no gravado</span><strong class="mono" id="numResEx">Bs 0,00</strong></div>'
         + '<div class="fm-numbox-sum-row"><span>IVA</span><strong class="mono" id="numResIva">Bs 0,00</strong></div>'
         + '<div class="fm-numbox-sum-row total"><span>Total de la factura</span><strong class="mono" id="numResTotal">Bs 0,00</strong></div>'
+        /* El IGTF no entra en el total del libro —es otro impuesto y tiene su
+           columna—, pero SI esta en el papel: la cinta de una maquina fiscal
+           cobra el dia con el IGTF adentro. Sin estas dos lineas, el total
+           impreso nunca cuadraba. */
+        + '<div class="fm-numbox-sum-row" id="numResIgtfRow" hidden><span>IGTF cobrado en divisas</span><strong class="mono" id="numResIgtf">Bs 0,00</strong></div>'
+        + '<div class="fm-numbox-sum-row total" id="numResTotIgtfRow" hidden><span>Total con IGTF <small>(lo que dice el papel)</small></span><strong class="mono" id="numResTotIgtf">Bs 0,00</strong></div>'
         + '<div class="fm-numbox-sum-row lf-check"><span>Total impreso en la factura <small>(opcional, para comprobar)</small></span>'
         + '<input id="numResCheck" type="number" step="0.01" placeholder="0,00"></div>'
         + '<div class="lf-dif" id="numResDif"></div>'
@@ -11366,6 +11372,23 @@
       const elTotal = document.getElementById('numResTotal');
       const elCheck = document.getElementById('numResCheck');
       const elDif = document.getElementById('numResDif');
+      const elIgtf = document.getElementById('numResIgtf');
+      const elIgtfRow = document.getElementById('numResIgtfRow');
+      const elTotIgtf = document.getElementById('numResTotIgtf');
+      const elTotIgtfRow = document.getElementById('numResTotIgtfRow');
+      /* El IGTF vive en sus propios campos (`camposIgtf`), fuera de esta caja.
+         Se lee de ahi con la MISMA formula de `leerIgtf`, para que la pantalla
+         no pueda decir una cosa y el guardado otra. */
+      function igtfDelFormulario() {
+        const val = (n) => {
+          const el = body.querySelector('[data-name="' + n + '"]');
+          return el ? parseFloat(el.value) : NaN;
+        };
+        const p = val('igtfPct');
+        const pct = (p > 0 && p < 100) ? p / 100 : 0.03;
+        const base = val('igtfBase') || 0;
+        return val('igtfMonto') || (base > 0 ? base * pct : 0);
+      }
 
       // Suma los renglones y los reparte en los cuatro cubos de la Forma 30.
       function leer() {
@@ -11406,6 +11429,17 @@
         if (elEx) elEx.textContent = sig + fmtF(t.exento);
         if (elIva) elIva.textContent = sig + fmtF(t.iva);
         if (elTotal) elTotal.textContent = sig + fmtF(t.total);
+        /* El IGTF se escribe SIEMPRE en bolivares (asi lo cobra la maquina).
+           Si la factura se esta capturando en dolares, aqui se muestra
+           convertido para poder sumarlo con el resto. */
+        const igtfBs = igtfDelFormulario();
+        const tsaIgtf = usd ? tasaFactura() : 1;
+        const igtfEnMoneda = usd ? (tsaIgtf > 0 ? igtfBs / tsaIgtf : 0) : igtfBs;
+        const hayIgtf = igtfBs > 0.005 && (!usd || tsaIgtf > 0);
+        if (elIgtfRow) elIgtfRow.hidden = !hayIgtf;
+        if (elTotIgtfRow) elTotIgtfRow.hidden = !hayIgtf;
+        if (elIgtf) elIgtf.textContent = sig + fmtF(igtfEnMoneda);
+        if (elTotIgtf) elTotIgtf.textContent = sig + fmtF(t.total + igtfEnMoneda);
         // El IVA de cada renglón, para cotejarlo contra el papel línea por línea
         (rengRows ? [...rengRows.querySelectorAll('.ic-row')] : []).forEach((r) => {
           const monto = parseFloat(r.querySelector('.lf-monto').value) || 0;
@@ -11417,8 +11451,12 @@
            cincuenta facturas seguidas decide si lo usa. */
         if (elCheck && elDif) {
           const decl = parseFloat(elCheck.value);
+          const conIgtf = t.total + igtfEnMoneda;
           if (!elCheck.value || isNaN(decl)) { elDif.textContent = ''; elDif.className = 'lf-dif'; }
-          else if (Math.abs(decl - t.total) <= 0.02) { elDif.textContent = '✓ Cuadra con la factura'; elDif.className = 'lf-dif ok'; }
+          /* El papel puede traer el total CON IGTF —la cinta de una maquina
+             fiscal siempre lo trae— o sin el. Cualquiera de los dos cuadra. */
+          else if (hayIgtf && Math.abs(decl - conIgtf) <= 0.02) { elDif.textContent = '✓ Cuadra con el papel (total con IGTF)'; elDif.className = 'lf-dif ok'; }
+          else if (Math.abs(decl - t.total) <= 0.02) { elDif.textContent = '✓ Cuadra con la factura' + (hayIgtf ? ' (sin el IGTF)' : ''); elDif.className = 'lf-dif ok'; }
           else { elDif.textContent = '✗ Diferencia de ' + (moneda() === 'USD' ? '$ ' : 'Bs ') + fmtF(Math.abs(decl - t.total)) + ' — revisa los montos'; elDif.className = 'lf-dif mal'; }
         }
       }
@@ -11504,6 +11542,11 @@
         if (r) r.querySelector('.lf-monto').focus();
       });
       if (elCheck) elCheck.addEventListener('input', recalcular);
+      // El IGTF esta fuera de esta caja: hay que enterarse de que lo escriben.
+      ['igtfPct', 'igtfBase', 'igtfMonto'].forEach((n) => {
+        const el = body.querySelector('[data-name="' + n + '"]');
+        if (el) { el.addEventListener('input', recalcular); el.addEventListener('change', recalcular); }
+      });
       /* Al cambiar de moneda se CONVIERTE lo ya escrito, no se deja el mismo
          numero con otro signo. Una compra guardada esta en bolivares: pasar
          el selector a dolares sin convertir tomaria esos bolivares por
