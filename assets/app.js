@@ -13691,6 +13691,12 @@
             if (error) { toast('No se pudo actualizar: ' + error.message, 'error'); return; }
             if (window.__invalidarArrastres) window.__invalidarArrastres();
             cargarLibroFiscal(tipo);
+            /* Y lo que depende de este documento: Compras y CxP, el saldo del
+               proveedor en Terceros —que viaja con Tesoreria— y el Panel.
+               Antes solo se recargaba el libro: se corregia una compra a
+               630,70 $ y las otras pantallas seguian diciendo 624,64. */
+            if (window.cargarTesoreria) window.cargarTesoreria();
+            if (window.cargarDashboard) window.cargarDashboard();
             toast((esCompra ? 'Compra' : 'Venta') + ' actualizada · Bs ' + fmtF(total), 'success');
           });
         },
