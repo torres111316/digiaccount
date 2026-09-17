@@ -165,6 +165,31 @@
     return tasa > 0 ? Math.round((bs / tasa) * 100) / 100 : 0;
   };
 
+  /* ════════════════════════════════════════════════════════════════════
+     PERIODO CERRADO: SE AVISA, NO SE IMPIDE
+
+     Antes esto era un muro: un registro de un periodo declarado no se podia
+     editar, ni anular, ni eliminar. Y los errores aparecen justo ahi —una
+     fecha mal puesta se descubre al revisar lo declarado—, asi que el
+     sistema terminaba impidiendo lo unico que quedaba por hacer.
+
+     Ahora se dice lo que esta en juego y decide quien lleva la
+     contabilidad. Devuelve true si se puede seguir.
+     ════════════════════════════════════════════════════════════════════ */
+  window.__confirmarPeriodoCerrado = function (periodo, accion) {
+    if (!window.__periodoCerrado || !window.__periodoCerrado(periodo)) return true;
+    return window.confirm([
+      'El período ' + periodo + ' está CERRADO: ya fue declarado.',
+      '',
+      (accion || 'Vas a modificar un registro de ese período') + '.',
+      '',
+      'Si sigues, lo declarado y lo registrado dejan de coincidir. Tendrás que',
+      'sustituir la declaración, o reabrir el período y volver a cerrarlo.',
+      '',
+      '¿Continuar?',
+    ].join('\n'));
+  };
+
   window.__hoyISO = function () {
     const d = new Date();
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -2299,7 +2324,8 @@
             const y = _yaRetenida[(esIslr ? 'islr' : 'iva')];
             return 'La factura ' + nfac + ' YA tiene retención de ' + (esIslr ? 'ISLR' : 'IVA')
               + (y.comprobante ? ' (comprobante ' + y.comprobante + ')' : '')
-              + ' por Bs ' + fmt(Number(y.monto) || 0) + '. Cargarla otra vez duplicaría el monto en la declaración.';
+              + ' por Bs ' + fmt(Number(y.monto) || 0) + '. Cargarla otra vez duplicaría el monto en la declaración. '
+              + 'Si esa retención está mal, ábrela en Retenciones y corrígela: allí puedes cambiarle la fecha, el comprobante y el monto.';
           }
 
           let compFinal = comp;
@@ -2659,11 +2685,13 @@
                seis primeros digitos son ese año y ese mes. Si no coinciden, se
                para aqui y se dice que hay que cambiar — declarar un
                comprobante de otro mes es un archivo rebotado. */
+            /* Si el comprobante no empieza por el año y mes de la retención
+               se AVISA y se guarda igual: el número puede venir así del
+               documento del proveedor, y quien declara es quien sabe. */
             const espera = periodoOk ? periodoOk.replace('-', '') : '';
-            if (espera && rev.valor.slice(0, 6) !== espera) {
-              return 'La retención es del ' + fechaOk + ', así que su comprobante debe empezar por '
-                + espera + ' y el que tiene empieza por ' + rev.valor.slice(0, 6) + '. '
-                + 'Corrige el comprobante (por ejemplo ' + espera + rev.correlativo + ') o la fecha.';
+            if (espera && rev.valor.slice(0, 6) !== espera && window.toast) {
+              window.toast('Ojo: la retención es del ' + fechaOk + ' y su comprobante empieza por '
+                + rev.valor.slice(0, 6) + ', no por ' + espera + '. Se guardó igual; revísalo antes de declarar.', 'warn');
             }
           }
           window.sb.from('retenciones').update({
@@ -11974,7 +12002,7 @@
           const fp = (v.fecha || '').split('-');
           if (fp.length !== 3) return 'Indica la fecha del reporte.';
           const periodo = fp[0] + '-' + fp[1];
-          if (window.__periodoCerrado && window.__periodoCerrado(periodo)) return 'El período de ese reporte está CERRADO. Reábrelo con el botón del período en Fiscal.';
+          if (!window.__confirmarPeriodoCerrado(periodo, 'Vas a registrar un reporte Z en ese período')) return 'No se registró: decidiste no tocar el período cerrado.';
           /* La quincena de una VENTA sí sale del día: la máquina emite el
              reporte el día que lo emite. No existe aquí el caso de la compra
              recibida tarde, que es el que obliga a preguntarla. */
@@ -12463,7 +12491,7 @@
           const diaV = parseInt(fP[2], 10);
           const quincena = !esEsp ? null
             : (esCompra ? elegido.quincena : (diaV && diaV > 15 ? 2 : 1));
-          if (window.__periodoCerrado && window.__periodoCerrado(periodo)) return '🔒 El período de declaración elegido está CERRADO. Reábrelo con el botón del período en Fiscal si necesitas registrar.';
+          if (!window.__confirmarPeriodoCerrado(periodo, 'Vas a registrar en un período ya declarado')) return 'No se registró: decidiste no tocar el período cerrado.';
           const esAnulada = !esCompra && /^s[ií]/i.test(v.anularVenta || '');
           if (esAnulada) { v = Object.assign({}, v, { nombre: 'ANULADA', rif: '', igtfBase: '', igtfMonto: '' }); }
           if (!v.nombre) return 'Indica el ' + (esCompra ? 'proveedor' : 'cliente') + '.';
@@ -13478,7 +13506,8 @@
           let perNuevo;
           if (esCompra) perNuevo = v.periodo || r.periodo || _periodoActualKey();
           else { const fp = fechaOk.split('/'); perNuevo = '20' + fp[2] + '-' + fp[1]; }
-          if (window.__periodoCerrado && (window.__periodoCerrado(r.periodo) || window.__periodoCerrado(perNuevo))) return '🔒 Este registro pertenece a un período CERRADO (declarado). Reábrelo en Fiscal para modificarlo.';
+          const _cerrado = [r.periodo, perNuevo].find((p) => window.__periodoCerrado && window.__periodoCerrado(p));
+          if (_cerrado && !window.__confirmarPeriodoCerrado(_cerrado, 'Vas a modificar un registro ya declarado')) return 'No se guardó: decidiste no tocar el período cerrado.';
           if (!v.nombre) return 'Indica el ' + (esCompra ? 'proveedor' : 'cliente') + '.';
           const M = editMontos ? editMontos.leer()
             : { exento: 0, base_gen: 0, iva_gen: 0, base_red: 0, iva_red: 0, base_adic: 0, iva_adic: 0, base: 0, iva: 0, total: 0 };
@@ -13522,10 +13551,7 @@
         },
         extraLabel: 'Anular',
         onExtra: /anulada/i.test(r.tercero_nombre || '') ? null : async () => {
-          if (window.__periodoCerrado && window.__periodoCerrado(r.periodo)) {
-            toast('🔒 Este registro pertenece a un período CERRADO (declarado). Reábrelo en Fiscal para reabrirlo.', 'error');
-            return;
-          }
+          if (!window.__confirmarPeriodoCerrado(r.periodo, 'Vas a ANULAR un registro ya declarado')) return;
           const { data: pgs } = await window.sb.from('movimientos_tesoreria')
             .select('id').eq('factura_ref', r.numero_factura || '').eq('tipo', esCompra ? 'egreso' : 'ingreso').limit(1);
           if (pgs && pgs.length) {
@@ -13561,10 +13587,7 @@
           });
         },
         onDelete: async (closeModal) => {
-          if (window.__periodoCerrado && window.__periodoCerrado(r.periodo)) {
-            toast('🔒 Este registro pertenece a un período CERRADO (declarado). Reábrelo en Fiscal para eliminarlo.', 'error');
-            return;
-          }
+          if (!window.__confirmarPeriodoCerrado(r.periodo, 'Vas a ELIMINAR un registro ya declarado')) return;
           // Si tiene pagos/cobros vinculados, primero hay que reversarlos en Tesorería
           const { data: pgs } = await window.sb.from('movimientos_tesoreria')
             .select('id').eq('factura_ref', r.numero_factura || '').eq('tipo', esCompra ? 'egreso' : 'ingreso').limit(1);
