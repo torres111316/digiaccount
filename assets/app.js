@@ -4813,6 +4813,18 @@
        que se pago, asi que el pendiente es una resta en dolares. */
     const _tasaEn = (x) => ((window.__tasaUSDEn && window.__tasaUSDEn(x)) || 0);
 
+    /* dd/mm/aa(aa) → un numero comparable (aaaammdd). Si no hay fecha, se
+       usa el momento en que se cargo, que al menos respeta el orden real. */
+    function _claveFecha(f) {
+      const p = String((f && f.fecha) || '').split('/');
+      if (p.length === 3) {
+        const aa = p[2].length === 2 ? '20' + p[2] : p[2];
+        return parseInt(aa + p[1].padStart(2, '0') + p[0].padStart(2, '0'), 10) || 0;
+      }
+      const d = new Date((f && (f.emitida || f.creado_en)) || 0);
+      return isNaN(d.getTime()) ? 0 : Math.floor(d.getTime() / 86400000);
+    }
+
     function _movsDe(f) {
       const ref = (f.ref || '').trim(); if (!ref) return [];
       const quiere = f.tipo === 'venta' ? 'ingreso' : 'egreso';
@@ -4835,7 +4847,9 @@
         return { f: f, total: total, pag: pag, pend: pend, presunto: f.presuntoPagado && pagReal <= 0.01,
           enUsd: enUsd, totalUsd: totalUsd, pagUsd: pagUsd,
           pendUsd: enUsd ? Math.max(0, Math.round((totalUsd - pagUsd) * 100) / 100) : 0 };
-      }).sort((a, b) => b.pend - a.pend);
+      /* Por FECHA, lo mas reciente arriba: es como se busca un documento.
+         Antes se ordenaba por monto pendiente y nadie busca por ahi. */
+      }).sort((a, b) => _claveFecha(b.f) - _claveFecha(a.f));
       const esVenta = tipo === 'venta';
       // Totales SIEMPRE sobre TODAS las facturas (la paginación es solo visual, igual que en el Libro Fiscal)
       let totalPend = 0, pendientes = 0, totalPendUsd = 0, todoEnUsd = true;
@@ -4906,7 +4920,13 @@
       renderCxList('compra', 'cxpBody', 'cxpTotalSum', 'cxpCount', 'cxpTabCount');
     }
 
-    view.addEventListener('click', async (e) => {
+    /* EN EL DOCUMENTO, no en la pantalla de Tesoreria.
+
+       La tabla de Cuentas por Pagar vive en la pantalla de COMPRAS, y este
+       manejador estaba atado a `view-tesoreria`: ahi dentro los botones
+       existian y no hacian nada —el paginador, Pagar, el lapiz y la
+       papelera—. Los selectores son propios, asi que no pisan a nadie. */
+    document.addEventListener('click', async (e) => {
       const pb = e.target.closest('button[data-cxp-lp]');
       if (pb && !pb.disabled) {
         const tipo = pb.dataset.cxpLp;
@@ -6377,7 +6397,7 @@
      ========================================================= */
   (function dashboardKpis() {
     const fmtBs = (n) => Number(n || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    const setKpi = (id, bs) => { const el = document.getElementById(id); if (el) { el.dataset.bs = bs; el.innerHTML = '<span class="currency">Bs</span> ' + fmtBs(bs); } };
+    const setKpi = (id, bs, moneda) => { const el = document.getElementById(id); if (el) { el.dataset.bs = bs; el.innerHTML = '<span class="currency">' + (moneda || 'Bs') + '</span> ' + fmtBs(bs); } };
     const setVal = (id, bs) => { const el = document.getElementById(id); if (el) { el.dataset.bs = bs; el.textContent = (el.dataset.prefix || '') + fmtBs(bs); } };
     const setTxt = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
     async function cargar() {
@@ -6393,9 +6413,9 @@
       const modoLibro = !!(emp.fiscalActivo || emp.modo === 'libro');
       const [rc, rm, rf, rlc, rlv] = await Promise.all([
         window.sb.from('cuentas_tesoreria').select('id, nombre, banco, numero, tipo, color, saldo_inicial, moneda').eq('empresa_id', emp.id),
-        window.__sbAll((q) => q.eq('empresa_id', emp.id), 'movimientos_tesoreria', 'cuenta_teso_id, tipo, monto, factura_ref'),
-        window.__sbAll((q) => q.eq('tipo', 'venta').eq('empresa_id', emp.id), 'facturas', 'numero, total, estado'),
-        window.__sbAll((q) => q.eq('tipo', 'compra').eq('empresa_id', emp.id), 'libro_fiscal', 'numero_factura, total, periodo, fecha'),
+        window.__sbAll((q) => q.eq('empresa_id', emp.id), 'movimientos_tesoreria', 'cuenta_teso_id, tipo, monto, factura_ref, creado_en'),
+        window.__sbAll((q) => q.eq('tipo', 'venta').eq('empresa_id', emp.id), 'facturas', 'numero, total, total_usd, tasa, fecha, estado, emitida_en, creado_en'),
+        window.__sbAll((q) => q.eq('tipo', 'compra').eq('empresa_id', emp.id), 'libro_fiscal', 'numero_factura, total, total_usd, tasa, periodo, fecha'),
         window.__sbAll((q) => q.eq('tipo', 'venta').eq('empresa_id', emp.id), 'libro_fiscal', 'numero_factura, total, periodo, fecha'),
       ]);
       const cuentas = rc.data || [], movs = rm.data || [], compras = rlc.data || [];
@@ -6407,11 +6427,46 @@
       const sumBy = (tipo) => { const o = {}; movs.filter((m) => m.tipo === tipo).forEach((m) => { const r = (m.factura_ref || '').trim(); if (r) o[r] = (o[r] || 0) + (Number(m.monto) || 0); }); return o; };
       const cobros = sumBy('ingreso'), pagos = sumBy('egreso');
       let cxc = 0, cxcN = 0, cxp = 0, cxpN = 0;
+      /* LO QUE SE DEBE, EN DOLARES — el mismo calculo que las listas.
+
+         El Panel sumaba bolivares mientras Compras mostraba dolares: dos
+         numeros distintos para la misma deuda. Aqui se repite el criterio de
+         `renderCxList`: el dolar del documento lo da `__usdDoc` y cada cobro
+         o pago se lleva a dolares con la tasa del dia en que ocurrio.
+
+         Si a algun documento pendiente le falta su tasa, estas dos tarjetas
+         se quedan en bolivares en vez de mezclar monedas en una suma. */
+      if (window.__cargarTasasUSD) await window.__cargarTasasUSD();
+      const tasaEnD = (x) => ((window.__tasaUSDEn && window.__tasaUSDEn(x)) || 0);
+      const movsDe = (ref, tipo) => movs.filter((m) => m.tipo === tipo && (m.factura_ref || '').trim() === String(ref || '').trim());
+      let cxcUsd = 0, cxpUsd = 0, todoCxcUsd = true, todoCxpUsd = true;
       if (!modoLibro) {
         // Modo recibos: CxC/CxP reales según cobros/pagos registrados
-        recibos.forEach((f) => { const p = Math.max(0, (Number(f.total) || 0) - (cobros[(f.numero || '').trim()] || 0)); if (p > 0.01) cxcN++; cxc += p; });
-        compras.forEach((f) => { const p = Math.max(0, (Number(f.total) || 0) - (pagos[(f.numero_factura || '').trim()] || 0)); if (p > 0.01) cxpN++; cxp += p; });
+        recibos.forEach((f) => {
+          const p = Math.max(0, (Number(f.total) || 0) - (cobros[(f.numero || '').trim()] || 0));
+          if (p > 0.01) cxcN++;
+          cxc += p;
+          if (p <= 0.01) return;
+          const lista = movsDe(f.numero, 'ingreso');
+          const usdDoc = (window.__usdDoc && window.__usdDoc(Object.assign({ tipo: 'venta', emitida: f.emitida_en || f.creado_en }, f))) || 0;
+          if (usdDoc > 0 && lista.every((m) => tasaEnD(m.creado_en) > 0)) {
+            cxcUsd += Math.max(0, usdDoc - lista.reduce((a, m) => a + (Number(m.monto) || 0) / tasaEnD(m.creado_en), 0));
+          } else { todoCxcUsd = false; }
+        });
+        compras.forEach((f) => {
+          const p = Math.max(0, (Number(f.total) || 0) - (pagos[(f.numero_factura || '').trim()] || 0));
+          if (p > 0.01) cxpN++;
+          cxp += p;
+          if (p <= 0.01) return;
+          const lista = movsDe(f.numero_factura, 'egreso');
+          const usdDoc = (window.__usdDoc && window.__usdDoc(Object.assign({ tipo: 'compra' }, f))) || 0;
+          if (usdDoc > 0 && lista.every((m) => tasaEnD(m.creado_en) > 0)) {
+            cxpUsd += Math.max(0, usdDoc - lista.reduce((a, m) => a + (Number(m.monto) || 0) / tasaEnD(m.creado_en), 0));
+          } else { todoCxpUsd = false; }
+        });
       }
+      const cxcEnUsd = !modoLibro && todoCxcUsd && cxcN > 0;
+      const cxpEnUsd = !modoLibro && todoCxpUsd && cxpN > 0;
       // Ventas: libro fiscal en modo libro; recibos en modo recibos
       const ventas = modoLibro
         ? ventasLibro.reduce((s, f) => s + window.__montoDoc(f), 0)
@@ -6419,7 +6474,10 @@
       const ventasCount = modoLibro ? ventasLibro.length : recibos.length;
       const ingresos = movs.filter((m) => m.tipo === 'ingreso').reduce((s, m) => s + (Number(m.monto) || 0), 0);
       const egresos = movs.filter((m) => m.tipo === 'egreso').reduce((s, m) => s + (Number(m.monto) || 0), 0);
-      setKpi('dashBanco', disp); setKpi('dashCxc', cxc); setKpi('dashCxp', cxp); setKpi('dashVentas', ventas);
+      setKpi('dashBanco', disp);
+      setKpi('dashCxc', cxcEnUsd ? cxcUsd : cxc, cxcEnUsd ? '$' : 'Bs');
+      setKpi('dashCxp', cxpEnUsd ? cxpUsd : cxp, cxpEnUsd ? '$' : 'Bs');
+      setKpi('dashVentas', ventas);
       setTxt('dashBancoCuentas', cuentas.length);
       setTxt('dashCxcCount', modoLibro ? 'Cobrado (presunción de banco)' : cxcN);
       setTxt('dashCxpCount', modoLibro ? 'Pagado (presunción de banco)' : cxpN);
@@ -11435,6 +11493,30 @@
         + '</div></div>';
     }
 
+    /* RE (Recibo) → sin crédito fiscal, en LOS DOS formularios.
+
+       Estaba escrito solo en el de registrar: al editar volvía a aparecer el
+       IVA y había que quitarlo a mano cada vez. */
+    function engancharRecibo(body, montos, esCompra) {
+      const tdEl = body.querySelector('[data-name="tipoDoc"]');
+      if (!tdEl || !esCompra || !montos || !montos.soloExento) return;
+      const aplicar = () => {
+        const esRecibo = /^RE/.test(tdEl.value || '');
+        montos.soloExento(esRecibo);
+        let av = body.querySelector('#lfAvisoRecibo');
+        if (esRecibo && !av) {
+          av = document.createElement('div');
+          av.id = 'lfAvisoRecibo';
+          av.className = 'lf-reng-hint';
+          av.style.cssText = 'margin-top:6px;color:#8a5410;';
+          av.textContent = 'Un recibo no es una factura: no da derecho a crédito fiscal, así que su monto se registra como exento / no gravado.';
+          const caja = body.querySelector('#lfMontos'); if (caja) caja.appendChild(av);
+        } else if (!esRecibo && av) { av.remove(); }
+      };
+      tdEl.addEventListener('change', aplicar);
+      aplicar();
+    }
+
     /* Monta la caja y devuelve su API. `inicial` es una fila de libro_fiscal
        (al editar) o nada (al registrar). */
     function montarMontos(body, inicial) {
@@ -11460,7 +11542,19 @@
       const elMontoLbl = body.querySelector('#lfMontoLbl');
       const fechaEl = body.querySelector('[data-name="fecha"]');
       const moneda = () => (selMoneda && selMoneda.value === 'USD' ? 'USD' : 'BS');
+      /* LA TASA DEL DOCUMENTO MANDA MIENTRAS NO SE CAMBIE SU FECHA.
+
+         Al editar una compra escrita en dolares se reconvertia con la tasa de
+         la fecha, que no tiene por que ser la que se uso al registrarla —una
+         factura cargada tarde, una fecha corregida despues—. Abrir y guardar
+         sin tocar nada le cambiaba los bolivares: Bs 51.517,45 se volvian
+         52.740,05. Un documento cerrado no puede moverse solo.
+
+         Si se cambia la fecha, se usa la tasa de la fecha nueva: ahi la
+         reconversion es lo que se esta pidiendo, y se ve en pantalla. */
+      let tasaGuardada = 0, fechaGuardada = null;
       function tasaFactura() {
+        if (tasaGuardada > 0 && fechaEl && fechaEl.value === fechaGuardada) return tasaGuardada;
         const f = fechaEl && fechaEl.value ? fechaEl.value + 'T12:00:00' : 'ahora';
         return (window.__tasaUSDEn && window.__tasaUSDEn(f)) || 0;
       }
@@ -11588,14 +11682,26 @@
       function reiniciar(fila) {
         if (rengRows) rengRows.innerHTML = '';
         const f = fila || {};
-        const ex = Number(f.exento) || 0;
-        let bg = Number(f.base_gen) || 0, br = Number(f.base_red) || 0, ba = Number(f.base_adic) || 0;
+        /* SE ABRE EN LA MONEDA EN QUE SE CARGO.
+
+           Una compra escrita en dolares se guarda en bolivares —el libro se
+           declara en bolivares—, pero al corregirla hay que ver el numero que
+           se escribio, no su conversion. Se divide por SU tasa, la que quedo
+           guardada con el documento, no por la de hoy. */
+        const divMon = (String(f.moneda || '') === 'USD' && Number(f.tasa) > 0) ? Number(f.tasa) : 1;
+        if (selMoneda) selMoneda.value = divMon !== 1 ? 'USD' : 'BS';
+        // La tasa con la que se guardó, y la fecha que tenía: ver `tasaFactura`.
+        tasaGuardada = divMon !== 1 ? divMon : 0;
+        fechaGuardada = fechaEl ? fechaEl.value : null;
+        const dv = (n) => Math.round(((Number(n) || 0) / divMon) * 100) / 100;
+        const ex = dv(f.exento);
+        let bg = dv(f.base_gen), br = dv(f.base_red), ba = dv(f.base_adic);
         /* Filas anteriores al desglose (o sin migrar): toda su base está en
            'base' y su alícuota en 'alicuota'. Se reparte al renglón que le
            toca para que editarlas no las deje en cero. */
         if (!bg && !br && !ba && Number(f.base) > 0) {
           const al = Number(f.alicuota) || 0;
-          if (al >= 0.25) ba = Number(f.base); else if (al < 0.12 && al > 0) br = Number(f.base); else bg = Number(f.base);
+          if (al >= 0.25) ba = dv(f.base); else if (al < 0.12 && al > 0) br = dv(f.base); else bg = dv(f.base);
         }
         if (ex > 0) agregar(ex.toFixed(2), 'exento');
         if (br > 0) agregar(br.toFixed(2), 'red');
@@ -12461,25 +12567,7 @@
              alícuota, así que tocaba partir la factura en varios registros. */
           const montos = montarMontos(body);
           bodyRef.__montos = montos;
-          /* Recibo → sin crédito fiscal (ver `soloExento`). */
-          const tdEl = body.querySelector('[data-name="tipoDoc"]');
-          if (tdEl && esCompra) {
-            const aplicarTipoDoc = () => {
-              const esRecibo = /^RE/.test(tdEl.value || '');
-              montos.soloExento(esRecibo);
-              let av = body.querySelector('#lfAvisoRecibo');
-              if (esRecibo && !av) {
-                av = document.createElement('div');
-                av.id = 'lfAvisoRecibo';
-                av.className = 'lf-reng-hint';
-                av.style.cssText = 'margin-top:6px;color:#8a5410;';
-                av.textContent = 'Un recibo no es una factura: no da derecho a crédito fiscal, así que su monto se registra como exento / no gravado.';
-                const caja = body.querySelector('#lfMontos'); if (caja) caja.appendChild(av);
-              } else if (!esRecibo && av) { av.remove(); }
-            };
-            tdEl.addEventListener('change', aplicarTipoDoc);
-            aplicarTipoDoc();
-          }
+          engancharRecibo(body, montos, esCompra);
           // Reposición de inventario (solo compras): suma cantidades al stock de los productos
           if (esCompra) {
             invBox = document.createElement('div');
@@ -13468,6 +13556,7 @@
           // sus renglones, y si es anterior al desglose se reparte por su
           // alícuota única en vez de quedar en cero.
           editMontos = montarMontos(body, r);
+          engancharRecibo(body, editMontos, esCompra);
 
           /* El mismo campo que en registrar: elegir del directorio llena el
              RIF, el RIF llena el nombre, y F2 crea el que falta sin salir.
