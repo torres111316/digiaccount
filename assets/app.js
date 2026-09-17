@@ -4998,14 +4998,42 @@
         },
       });
     }
-    // Tras un cobro, actualiza el ESTADO del recibo: Cobrada (total) o Abonada (parcial)
+    /* ══════════════════════════════════════════════════════════════════
+       EL ESTADO SE DECIDE EN DOLARES
+
+       Comparaba bolivares con bolivares, y asi un recibo quedaba COBRADA
+       debiendo todavia: el REC-000002 se emitio por 107,50 $ y el cliente
+       pago dias despues el bolivar impreso, que ya solo eran 106,26 $. En
+       bolivares cuadraba; en lo que de verdad se debe, no.
+
+       El dolar del recibo lo da `__usdDoc` —lo guardado, o la tasa de su
+       emision— y cada abono se lleva a dolares con la tasa del dia en que se
+       pago. Sin alguna de esas tasas se compara en bolivares, como antes:
+       una conversion inventada decidiria mal el estado de una cuenta.
+       ══════════════════════════════════════════════════════════════════ */
     async function actualizarEstadoRecibo(ref) {
       try {
-        const { data: f } = await window.sb.from('facturas').select('id, total').eq('numero', ref).eq('tipo', 'venta').maybeSingle();
+        const { data: f } = await window.sb.from('facturas')
+          .select('id, total, total_usd, tasa, fecha, emitida_en, creado_en')
+          .eq('numero', ref).eq('tipo', 'venta').maybeSingle();
         if (!f) return;
-        const { data: movs } = await window.sb.from('movimientos_tesoreria').select('monto').eq('factura_ref', ref).eq('tipo', 'ingreso');
-        const pagado = (movs || []).reduce((s, m) => s + (Number(m.monto) || 0), 0);
-        const estado = pagado >= (Number(f.total) || 0) - 0.01 ? 'Cobrada' : (pagado > 0.01 ? 'Abonada' : 'Por cobrar');
+        const { data: movs } = await window.sb.from('movimientos_tesoreria')
+          .select('monto, creado_en').eq('factura_ref', ref).eq('tipo', 'ingreso');
+        const lista = movs || [];
+        const pagado = lista.reduce((s, m) => s + (Number(m.monto) || 0), 0);
+
+        if (window.__cargarTasasUSD) await window.__cargarTasasUSD();
+        const tasaEn = (x) => ((window.__tasaUSDEn && window.__tasaUSDEn(x)) || 0);
+        const usdRecibo = (window.__usdDoc && window.__usdDoc({
+          tipo: 'venta', total: f.total, total_usd: f.total_usd, tasa: f.tasa,
+          emitida: f.emitida_en || f.creado_en, fecha: f.fecha,
+        })) || 0;
+        const enUsd = usdRecibo > 0 && lista.every((m) => tasaEn(m.creado_en) > 0);
+        const pagadoUsd = enUsd ? lista.reduce((s, m) => s + (Number(m.monto) || 0) / tasaEn(m.creado_en), 0) : 0;
+
+        const estado = enUsd
+          ? (pagadoUsd >= usdRecibo - 0.005 ? 'Cobrada' : (pagadoUsd > 0.005 ? 'Abonada' : 'Por cobrar'))
+          : (pagado >= (Number(f.total) || 0) - 0.01 ? 'Cobrada' : (pagado > 0.01 ? 'Abonada' : 'Por cobrar'));
         await window.sb.from('facturas').update({ estado: estado }).eq('id', f.id);
         if (window.cargarFacturas) window.cargarFacturas();
       } catch (e) { console.warn('[Tesorería] No se pudo actualizar el estado del recibo:', e); }
