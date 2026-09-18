@@ -39,12 +39,16 @@ FICHAS = {
     'facturas': {
         'archivo': 'facturas.js',
         'titulo': 'FACTURAS',
-        'que': 'Las facturas de venta: su ficha, su edicion y su impresion.',
+        'que': ('El visor de la factura fiscal venezolana: la factura en pantalla y\n'
+                '   en papel, el ticket y como se comparte, y las notas de credito y de\n'
+                '   debito que la corrigen sin tocarla.'),
         'porque': ('Solo usaba dos nombres privados del bloque grande —`esc` y\n'
-                   '   `drawIcons`—, que ya viven en el nucleo.'),
+                   '   `drawIcons`—, que ya viven en el nucleo. (El tercero, `fmtF`, no lo\n'
+                   '   tenia nadie: faltaba, y por eso el boton de Notas reventaba.)'),
         'usa': ['esc', 'drawIcons'],
-        'expone': ('lo que expone lo consumen el libro de\n'
-                   '   ventas, tesoreria y el modulo fiscal'),
+        'expone': ('lo que expone —la factura, su lista, el\n'
+                   '   ticket en PDF y el compartir— lo consumen ventas, tesoreria y el\n'
+                   '   modulo fiscal'),
     },
 }
 
