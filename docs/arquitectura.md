@@ -8,19 +8,21 @@ hay que regenerarlos cuando el archivo cambie mucho (el script está en
 
 | Archivo | Líneas | Qué tiene | Cuándo se carga |
 |---|---:|---|---|
-| `assets/core.js` | 267 | El núcleo: fechas, tasas, el dólar de un documento, la sesión, `esc` y `drawIcons`. | Primero |
-| `assets/app.js` | 16714 | El bloque grande con el resto de los módulos. | Después del núcleo |
+| `assets/core.js` | 266 | El núcleo: fechas, tasas, el dólar de un documento, la sesión, `esc` y `drawIcons`. | Primero |
+| `assets/app.js` | 15609 | El bloque grande con el resto de los módulos. | Después del núcleo |
 | `assets/retenciones.js` | 1875 | Retenciones de IVA e ISLR: practicadas, sufridas, comprobante y quincena. | Después de app.js |
-| `assets/nomina.js` | 1531 | Empleados, recibos, vacaciones, utilidades, liquidaciones. | Al final |
+| `assets/tesoreria.js` | 1127 | Bancos y caja, movimientos, cobros y pagos, conciliación, CxC y CxP. | Después de app.js |
+| `assets/nomina.js` | 1530 | Empleados, recibos, vacaciones, utilidades, liquidaciones. | Al final |
 
-Los cuatro se cargan en ese orden en `index.html` y los cuatro están en la copia
+Los cinco se cargan en ese orden en `index.html` y los cinco están en la copia
 sin conexión (`sw.js`). Si se agrega otro archivo, hay que ponerlo en los dos
-sitios o la app arranca a medias.
+sitios o la app arranca a medias — de eso se encarga
+`herramientas/cablear_modulo.py`, que además sube la versión de la caché.
 
 ## Lo primero que hay que saber
 
-`assets/app.js` tiene **16714 líneas** y todavía está escrito como **un solo bloque** 
-(una función que se ejecuta sola) con **75 módulos adentro**, más ocho
+`assets/app.js` tiene **15609 líneas** y todavía está escrito como **un solo bloque** 
+(una función que se ejecuta sola) con **74 módulos adentro**, más ocho
 bloques sueltos al final. Cada módulo es otra función que se ejecuta sola
 y se comunica con las demás por `window.*`.
 
@@ -174,21 +176,43 @@ Estas no están en el código de pantalla y conviene no romperlas:
 3. ~~**El segundo módulo grande**~~ — HECHO (`retenciones.js`, 1.851 líneas).
    Dependía de las mismas dos funciones, que ya estaban en el núcleo: por eso
    salió sin tocar una sola línea de su cuerpo.
-4. **Repetir módulo por módulo**, del más independiente al más entrelazado.
+4. ~~**El primero que no arrastra nada**~~ — HECHO (`tesoreria.js`, 1.109 líneas).
+   No usaba ningún nombre privado del bloque grande.
+5. **Repetir módulo por módulo**, del más independiente al más entrelazado.
    `fiscalActions` (3.200 líneas) va de último: es el más grande y el que
-   más toca. Los siguientes candidatos, ya medidos con
-   `herramientas/mapa_modulos.py`, salen igual de limpios:
+   más toca. Los siguientes candidatos ya están medidos y salen limpios:
 
    | Módulo | Líneas | Qué usa del bloque grande |
    |---|---:|---|
-   | `tesoreriaModule` | 1.106 | nada |
    | `facturas` | 1.261 | `esc`, `drawIcons` (ya en el núcleo) |
    | `contaActions` | 1.024 | `drawIcons` (ya en el núcleo) |
    | `inventoryActions` | 570 | `esc` (ya en el núcleo) |
    | `tercerosModule` | 506 | `esc` (ya en el núcleo) |
-5. **Cada paso se verifica** antes de seguir: que el archivo resultante sea
-   idéntico al unir las partes, que la app arranque, y que las pruebas de
-   lo que toca dinero e impuestos pasen.
+6. **Cada paso se verifica** antes de seguir: que el cuerpo mudado sea
+   idéntico línea por línea al que estaba, que la app arranque en un
+   navegador de verdad sin errores, que las piezas compartidas respondan,
+   y que las pruebas de lo que toca dinero e impuestos pasen.
+
+## Las herramientas del corte
+
+Para no hacerlo a mano cada vez:
+
+| Herramienta | Qué hace |
+|---|---|
+| `herramientas/variables_libres.py` | Lista los nombres que un módulo usa y no define: los que haya que mudar al núcleo antes de cortarlo. |
+| `herramientas/mapa_modulos.py` | Lista los módulos de `app.js` con su tamaño y su ubicación. |
+| `herramientas/sacar_modulo.py` | Corta un módulo y lo envuelve en su propio archivo. |
+| `herramientas/cablear_modulo.py` | Lo pone en `index.html`, en `sw.js` (subiendo la caché) y en las pruebas. |
+
+La comprobación que decide si un módulo se puede sacar es **el barrido de
+variables libres**: se listan todos los nombres que el módulo usa y no
+define. Si solo quedan globales del navegador y cosas de `window`, sale
+limpio. Si aparece un nombre privado del bloque grande, ese nombre hay que
+mudarlo al núcleo primero, o el módulo se rompe al separarse.
+
+Ese barrido tiene que mirar **también dentro de las plantillas de texto**
+(`` `...${ aquí hay código }...` ``): una dependencia que solo se use ahí es
+igual de real, y es justo la que se escapa de una revisión a ojo.
 
 No hay prisa en terminarlo: hay prisa en no romperlo. Un módulo por sesión
 es un ritmo sano.
