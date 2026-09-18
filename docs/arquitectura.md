@@ -4,9 +4,21 @@ Generado a partir del propio `assets/app.js`: los números son reales y
 hay que regenerarlos cuando el archivo cambie mucho (el script está en
 `herramientas/mapa_modulos.py`).
 
+## Cómo está dividido hoy
+
+| Archivo | Líneas | Qué tiene | Cuándo se carga |
+|---|---:|---|---|
+| `assets/core.js` | 267 | El núcleo: fechas, tasas, el dólar de un documento, la sesión, `esc` y `drawIcons`. | Primero |
+| `assets/app.js` | 18565 | El bloque grande con el resto de los módulos. | Después del núcleo |
+| `assets/nomina.js` | 1531 | Empleados, recibos, vacaciones, utilidades, liquidaciones. | Al final |
+
+Los tres se cargan en ese orden en `index.html` y los tres están en la copia
+sin conexión (`sw.js`). Si se agrega otro archivo, hay que ponerlo en los dos
+sitios o la app arranca a medias.
+
 ## Lo primero que hay que saber
 
-`assets/app.js` tiene **20274 líneas** y está escrito como **un solo bloque** 
+`assets/app.js` tiene **18565 líneas** y todavía está escrito como **un solo bloque** 
 (una función que se ejecuta sola) con **76 módulos adentro**, más ocho
 bloques sueltos al final. Cada módulo es otra función que se ejecuta sola
 y se comunica con las demás por `window.*`.
@@ -152,11 +164,12 @@ Estas no están en el código de pantalla y conviene no romperlas:
 
 ## Plan para partir el archivo (en este orden)
 
-1. **Sacar las utilidades compartidas** (`fmt`, `esc`, `toast`,
+1. ~~**Sacar las utilidades compartidas**~~ — HECHO (`core.js`).
+1. **Antes decía:** sacar las utilidades compartidas (`fmt`, `esc`, `toast`,
    `openFormModal`, los ayudantes de fecha y tasa) a `assets/core.js`,
    exponiéndolas en `window`. Sin esto, cualquier corte rompe.
-2. **Mover un módulo grande y aislado** —`payroll` es buen candidato— a su
-   propio archivo y comprobar que todo sigue igual.
+2. ~~**Mover un módulo grande y aislado**~~ — HECHO (`nomina.js`, 1.509 líneas).
+   Solo dependía de dos funciones del bloque grande, que se movieron al núcleo.
 3. **Repetir módulo por módulo**, del más independiente al más entrelazado.
    `fiscalActions` (3.200 líneas) va de último: es el más grande y el que
    más toca.
