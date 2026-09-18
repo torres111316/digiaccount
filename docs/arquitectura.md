@@ -9,21 +9,24 @@ hay que regenerarlos cuando el archivo cambie mucho (el script está en
 | Archivo | Líneas | Qué tiene | Cuándo se carga |
 |---|---:|---|---|
 | `assets/core.js` | 266 | El núcleo: fechas, tasas, el dólar de un documento, la sesión, `esc` y `drawIcons`. | Primero |
-| `assets/app.js` | 14359 | El bloque grande con el resto de los módulos. | Después del núcleo |
+| `assets/app.js` | 12259 | El bloque grande con el resto de los módulos. | Después del núcleo |
 | `assets/retenciones.js` | 1875 | Retenciones de IVA e ISLR: practicadas, sufridas, comprobante y quincena. | Después de app.js |
 | `assets/tesoreria.js` | 1127 | Bancos y caja, movimientos, cobros y pagos, conciliación, CxC y CxP. | Después de app.js |
 | `assets/facturas.js` | 1295 | El visor de la factura fiscal: la factura, el ticket, y las notas de crédito y débito. | Después de app.js |
+| `assets/contabilidad.js` | 1047 | Asientos, libro diario, plan de cuentas, activos fijos y ejercicio. | Después de app.js |
+| `assets/inventario.js` | 592 | Artículos, materia prima, servicios, órdenes de compra, descuento de existencias. | Después de app.js |
+| `assets/terceros.js` | 527 | El registro único de clientes y proveedores, con sus saldos. | Después de app.js |
 | `assets/nomina.js` | 1530 | Empleados, recibos, vacaciones, utilidades, liquidaciones. | Al final |
 
-Los seis se cargan en ese orden en `index.html` y los seis están en la copia
+Los nueve se cargan en ese orden en `index.html` y los nueve están en la copia
 sin conexión (`sw.js`). Si se agrega otro archivo, hay que ponerlo en los dos
 sitios o la app arranca a medias — de eso se encarga
 `herramientas/cablear_modulo.py`, que además sube la versión de la caché.
 
 ## Lo primero que hay que saber
 
-`assets/app.js` tiene **14359 líneas** y todavía está escrito como **un solo bloque** 
-(una función que se ejecuta sola) con **72 módulos adentro**, más ocho
+`assets/app.js` tiene **12259 líneas** y todavía está escrito como **un solo bloque** 
+(una función que se ejecuta sola) con **69 módulos adentro**, más ocho
 bloques sueltos al final. Cada módulo es otra función que se ejecuta sola
 y se comunica con las demás por `window.*`.
 
@@ -182,18 +185,15 @@ Estas no están en el código de pantalla y conviene no romperlas:
 5. ~~**El visor de la factura**~~ — HECHO (`facturas.js`, 1.272 líneas).
    Aquí apareció el error de las notas de crédito: usaba una `fmtF` que en
    su alcance no existía. Se arregló antes de mover nada.
-6. **Repetir módulo por módulo**, del más independiente al más entrelazado.
-   `fiscalActions` (3.200 líneas) va de último: es el más grande y el que
-   más toca. Los siguientes candidatos ya están medidos y salen limpios:
-
-   | Módulo | Líneas | Qué usa del bloque grande |
-   |---|---:|---|
-   | `contaActions` | 1.024 | `drawIcons` (ya en el núcleo) |
-   | `inventoryActions` | 570 | `esc` (ya en el núcleo) |
-   | `tercerosModule` | 506 | `esc` (ya en el núcleo) |
-   | `configModule` | 417 | por medir |
-   | `authModule` | 361 | por medir |
-7. **Cada paso se verifica** antes de seguir: que el cuerpo mudado sea
+6. ~~**Tres de un tirón**~~ — HECHO: `contabilidad.js` (1.027),
+   `inventario.js` (573) y `terceros.js` (509). Cada uno arrastraba un
+   solo nombre, y ya estaba en el núcleo.
+7. **Lo que queda.** `fiscalActions` (3.200 líneas) es el último y el más
+   entrelazado: conviene medirlo con calma antes de tocarlo. Después de él,
+   lo que sobra son módulos de pocos cientos de líneas —`configModule`,
+   `authModule`, `fundadorModule`— que quizá no valga la pena separar:
+   partir por partir no mejora nada.
+8. **Cada paso se verifica** antes de seguir: que el cuerpo mudado sea
    idéntico línea por línea al que estaba, que la app arranque en un
    navegador de verdad sin errores, que las piezas compartidas respondan,
    y que las pruebas de lo que toca dinero e impuestos pasen.
