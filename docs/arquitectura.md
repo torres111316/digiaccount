@@ -9,20 +9,21 @@ hay que regenerarlos cuando el archivo cambie mucho (el script está en
 | Archivo | Líneas | Qué tiene | Cuándo se carga |
 |---|---:|---|---|
 | `assets/core.js` | 266 | El núcleo: fechas, tasas, el dólar de un documento, la sesión, `esc` y `drawIcons`. | Primero |
-| `assets/app.js` | 15609 | El bloque grande con el resto de los módulos. | Después del núcleo |
+| `assets/app.js` | 14359 | El bloque grande con el resto de los módulos. | Después del núcleo |
 | `assets/retenciones.js` | 1875 | Retenciones de IVA e ISLR: practicadas, sufridas, comprobante y quincena. | Después de app.js |
 | `assets/tesoreria.js` | 1127 | Bancos y caja, movimientos, cobros y pagos, conciliación, CxC y CxP. | Después de app.js |
+| `assets/facturas.js` | 1295 | El visor de la factura fiscal: la factura, el ticket, y las notas de crédito y débito. | Después de app.js |
 | `assets/nomina.js` | 1530 | Empleados, recibos, vacaciones, utilidades, liquidaciones. | Al final |
 
-Los cinco se cargan en ese orden en `index.html` y los cinco están en la copia
+Los seis se cargan en ese orden en `index.html` y los seis están en la copia
 sin conexión (`sw.js`). Si se agrega otro archivo, hay que ponerlo en los dos
 sitios o la app arranca a medias — de eso se encarga
 `herramientas/cablear_modulo.py`, que además sube la versión de la caché.
 
 ## Lo primero que hay que saber
 
-`assets/app.js` tiene **15609 líneas** y todavía está escrito como **un solo bloque** 
-(una función que se ejecuta sola) con **74 módulos adentro**, más ocho
+`assets/app.js` tiene **14359 líneas** y todavía está escrito como **un solo bloque** 
+(una función que se ejecuta sola) con **72 módulos adentro**, más ocho
 bloques sueltos al final. Cada módulo es otra función que se ejecuta sola
 y se comunica con las demás por `window.*`.
 
@@ -178,17 +179,21 @@ Estas no están en el código de pantalla y conviene no romperlas:
    salió sin tocar una sola línea de su cuerpo.
 4. ~~**El primero que no arrastra nada**~~ — HECHO (`tesoreria.js`, 1.109 líneas).
    No usaba ningún nombre privado del bloque grande.
-5. **Repetir módulo por módulo**, del más independiente al más entrelazado.
+5. ~~**El visor de la factura**~~ — HECHO (`facturas.js`, 1.272 líneas).
+   Aquí apareció el error de las notas de crédito: usaba una `fmtF` que en
+   su alcance no existía. Se arregló antes de mover nada.
+6. **Repetir módulo por módulo**, del más independiente al más entrelazado.
    `fiscalActions` (3.200 líneas) va de último: es el más grande y el que
    más toca. Los siguientes candidatos ya están medidos y salen limpios:
 
    | Módulo | Líneas | Qué usa del bloque grande |
    |---|---:|---|
-   | `facturas` | 1.261 | `esc`, `drawIcons` (ya en el núcleo) |
    | `contaActions` | 1.024 | `drawIcons` (ya en el núcleo) |
    | `inventoryActions` | 570 | `esc` (ya en el núcleo) |
    | `tercerosModule` | 506 | `esc` (ya en el núcleo) |
-6. **Cada paso se verifica** antes de seguir: que el cuerpo mudado sea
+   | `configModule` | 417 | por medir |
+   | `authModule` | 361 | por medir |
+7. **Cada paso se verifica** antes de seguir: que el cuerpo mudado sea
    idéntico línea por línea al que estaba, que la app arranque en un
    navegador de verdad sin errores, que las piezas compartidas respondan,
    y que las pruebas de lo que toca dinero e impuestos pasen.
@@ -213,6 +218,35 @@ mudarlo al núcleo primero, o el módulo se rompe al separarse.
 Ese barrido tiene que mirar **también dentro de las plantillas de texto**
 (`` `...${ aquí hay código }...` ``): una dependencia que solo se use ahí es
 igual de real, y es justo la que se escapa de una revisión a ojo.
+
+### El barrido encuentra errores, no solo dependencias
+
+Un nombre que un módulo usa y **nadie** le da no es un obstáculo para
+separarlo: es un error que ya estaba ahí. Al correrlo sobre los 79 módulos
+aparecieron dos, los dos en pantallas que la gente usa:
+
+- **Notas de crédito y débito** (`facturas`): usaba `fmtF`, que en su
+  alcance no existe. El botón reventaba antes de abrir el modal.
+- **Comprobante de IVA/ISLR** (`compToggle`): usaba `fmt`. Al elegir un
+  proveedor, la lista de sus facturas reventaba a mitad y el desplegable
+  se quedaba vacío.
+
+Las dos por lo mismo: las `fmt` del archivo viven dentro de **otros**
+módulos, y desde un cierre no se ve lo que se declaró en otro. El módulo de
+Libros ya lo había sufrido y dejó su propia copia, con un comentario
+explicando la razón; a estos dos se les había olvidado.
+
+## La otra comprobación: el contrato de `window`
+
+Los módulos se hablan por `window.__loquesea`. Eso es un contrato sin
+nadie que lo vigile: si alguien escribe mal un nombre, **no falla, no hace
+nada**. Conviene contrastar lo que se publica contra lo que se pide.
+
+Hoy son 175 nombres publicados y 158 pedidos. La primera vez que se hizo
+apareció uno pedido que nadie publicaba: `__aplicarConfigInventario`. Como
+la llamada iba protegida con un `if`, no daba error — la configuración de
+inventario se guardaba y la app seguía usando en memoria los valores
+viejos hasta recargar. La función buena se llamaba `__cargarInvConfig`.
 
 No hay prisa en terminarlo: hay prisa en no romperlo. Un módulo por sesión
 es un ritmo sano.
