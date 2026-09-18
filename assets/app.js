@@ -15138,7 +15138,12 @@
           .upsert(fila, { onConflict: 'empresa_id' });
         if (error) { toast('No se pudo guardar: ' + error.message, 'error'); return; }
         toast('Configuración de inventario guardada ✓', 'success');
-        if (window.__aplicarConfigInventario) { try { window.__aplicarConfigInventario(); } catch (e) {} }
+        /* Se vuelve a leer la configuracion recien guardada. Antes se llamaba
+           aqui a `__aplicarConfigInventario`, que no existe en ninguna parte:
+           como la llamada iba protegida con un `if`, no daba error — no hacia
+           nada. La app seguia usando en memoria los valores viejos hasta que
+           uno recargara. La que si existe, y hace justo esto, es esta. */
+        if (window.__cargarInvConfig) { try { await window.__cargarInvConfig(); } catch (e) {} }
       });
 
       if (window.lucide) window.lucide.createIcons();
