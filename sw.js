@@ -16,6 +16,7 @@ const ASSETS = [
   './assets/app.css',
   './assets/digiaccount.css',
   './assets/fonts.css',
+  './assets/core.js',
   './assets/app.js',
   './assets/lucide.min.js',
   './assets/isotipo.png',
