@@ -1945,6 +1945,12 @@
      COMPROBANTE IVA / ISLR toggle
      ========================================================= */
   (function compToggle() {
+    /* El formateo de numero, por la misma razon que en Facturas: las `fmt` del
+       archivo viven dentro de OTROS modulos y desde este cierre no se ven.
+       Faltaba, y se notaba: al elegir un proveedor, armar la lista de sus
+       facturas reventaba a mitad de camino, asi que el desplegable de facturas
+       se quedaba vacio y desactivado. */
+    const fmt = (n) => Number(n || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const toggle = document.getElementById('compToggle');
     if (toggle) {
       toggle.querySelectorAll('button').forEach((btn) => {
@@ -4462,6 +4468,14 @@
     const doc = document.getElementById('facturaDoc');
     const modalTitle = document.getElementById('facturaModalTitle');
     if (!overlay || !doc) return;
+
+    /* El formateo de numero. Faltaba aqui: `emitirNota` lo usaba para armar el
+       modal, pero las unicas dos `fmtF` del archivo estan dentro de OTROS
+       modulos (Libros y Fiscal), y desde este cierre no se ven. Resultado: el
+       boton de Notas reventaba antes de abrir, y no se podia emitir ninguna
+       nota de credito ni de debito. El modulo de Libros ya tenia la suya por
+       esta misma razon; a este se le habia olvidado. */
+    const fmtF = (n) => Number(n || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
     // Datos del emisor/receptor propios: SIEMPRE la empresa activa real (nunca quemados)
     const EMPRESA = {
