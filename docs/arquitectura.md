@@ -9,17 +9,18 @@ hay que regenerarlos cuando el archivo cambie mucho (el script está en
 | Archivo | Líneas | Qué tiene | Cuándo se carga |
 |---|---:|---|---|
 | `assets/core.js` | 267 | El núcleo: fechas, tasas, el dólar de un documento, la sesión, `esc` y `drawIcons`. | Primero |
-| `assets/app.js` | 18565 | El bloque grande con el resto de los módulos. | Después del núcleo |
+| `assets/app.js` | 16714 | El bloque grande con el resto de los módulos. | Después del núcleo |
+| `assets/retenciones.js` | 1875 | Retenciones de IVA e ISLR: practicadas, sufridas, comprobante y quincena. | Después de app.js |
 | `assets/nomina.js` | 1531 | Empleados, recibos, vacaciones, utilidades, liquidaciones. | Al final |
 
-Los tres se cargan en ese orden en `index.html` y los tres están en la copia
+Los cuatro se cargan en ese orden en `index.html` y los cuatro están en la copia
 sin conexión (`sw.js`). Si se agrega otro archivo, hay que ponerlo en los dos
 sitios o la app arranca a medias.
 
 ## Lo primero que hay que saber
 
-`assets/app.js` tiene **18565 líneas** y todavía está escrito como **un solo bloque** 
-(una función que se ejecuta sola) con **76 módulos adentro**, más ocho
+`assets/app.js` tiene **16714 líneas** y todavía está escrito como **un solo bloque** 
+(una función que se ejecuta sola) con **75 módulos adentro**, más ocho
 bloques sueltos al final. Cada módulo es otra función que se ejecuta sola
 y se comunica con las demás por `window.*`.
 
@@ -170,10 +171,22 @@ Estas no están en el código de pantalla y conviene no romperlas:
    exponiéndolas en `window`. Sin esto, cualquier corte rompe.
 2. ~~**Mover un módulo grande y aislado**~~ — HECHO (`nomina.js`, 1.509 líneas).
    Solo dependía de dos funciones del bloque grande, que se movieron al núcleo.
-3. **Repetir módulo por módulo**, del más independiente al más entrelazado.
+3. ~~**El segundo módulo grande**~~ — HECHO (`retenciones.js`, 1.851 líneas).
+   Dependía de las mismas dos funciones, que ya estaban en el núcleo: por eso
+   salió sin tocar una sola línea de su cuerpo.
+4. **Repetir módulo por módulo**, del más independiente al más entrelazado.
    `fiscalActions` (3.200 líneas) va de último: es el más grande y el que
-   más toca.
-4. **Cada paso se verifica** antes de seguir: que el archivo resultante sea
+   más toca. Los siguientes candidatos, ya medidos con
+   `herramientas/mapa_modulos.py`, salen igual de limpios:
+
+   | Módulo | Líneas | Qué usa del bloque grande |
+   |---|---:|---|
+   | `tesoreriaModule` | 1.106 | nada |
+   | `facturas` | 1.261 | `esc`, `drawIcons` (ya en el núcleo) |
+   | `contaActions` | 1.024 | `drawIcons` (ya en el núcleo) |
+   | `inventoryActions` | 570 | `esc` (ya en el núcleo) |
+   | `tercerosModule` | 506 | `esc` (ya en el núcleo) |
+5. **Cada paso se verifica** antes de seguir: que el archivo resultante sea
    idéntico al unir las partes, que la app arranque, y que las pruebas de
    lo que toca dinero e impuestos pasen.
 
