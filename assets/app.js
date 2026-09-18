@@ -210,6 +210,28 @@
     ].join('\n'));
   };
 
+  /* EL AVISO DE POR QUE NO SE PUDO ENTRAR.
+
+     Vive aqui, suelto, para poder probarlo sin pantalla: es el mensaje que
+     decide si alguien vuelve a escribir su clave o llama por telefono. */
+  window.__avisoLogin = function (error) {
+    const msg = String((error && error.message) || '');
+    const cod = Number((error && error.status) || 0);
+    if (/invalid login credentials/i.test(msg)) {
+      return 'Correo o contraseña incorrectos. Revisa el correo y vuelve a escribir la clave.';
+    }
+    if (/email not confirmed/i.test(msg)) {
+      return 'Tu correo aún no está confirmado. Busca el mensaje de confirmación en tu bandeja (revisa también el correo no deseado).';
+    }
+    if (cod === 429 || /rate limit|too many/i.test(msg)) {
+      return 'Demasiados intentos seguidos. Espera un minuto y vuelve a intentar: tu clave puede estar bien.';
+    }
+    if ((error && error.__red) || cod === 0 || /fetch|network|timeout|failed|load/i.test(msg)) {
+      return 'No pude conectar con el servidor. Revisa tu conexión y vuelve a intentar — no es tu contraseña.';
+    }
+    return 'No se pudo entrar (' + (cod || 'error') + '): ' + msg;
+  };
+
   window.__hoyISO = function () {
     const d = new Date();
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -672,6 +694,74 @@
 
   // Atrás y adelante del navegador, y cualquier cambio de dirección.
   window.addEventListener('hashchange', () => { _abrirDesdeRuta(); });
+
+  /* ════════════════════════════════════════════════════════════════════
+     LA FLECHA DE ATRAS CIERRA EL CUADRO, NO LA APLICACION
+
+     Cambiar de pantalla si deja huella en el historial, pero los cuadros que
+     se abren encima —registrar una compra, ver un recibo, cobrar— no dejaban
+     ninguna. En un telefono, la flecha de atras con un cuadro abierto sacaba
+     de la aplicacion, y eso se siente como si se hubiera caido.
+
+     Al abrirse un cuadro se agrega una entrada al historial; la flecha la
+     consume cerrando ese cuadro. Se cierra PULSANDO SU PROPIO BOTON de
+     cerrar, no escondiendolo a la fuerza: asi corre la logica del modulo
+     —limpiar, refrescar, avisar— en vez de dejarlo a medias.
+     ════════════════════════════════════════════════════════════════════ */
+  (function atrasCierraCuadros() {
+    const SEL = ['.form-modal-overlay', '.fv-overlay', '.ter-overlay', '.recibo-overlay',
+      '.ret-recibo-overlay', '.asiento-overlay', '.ag-auto-overlay', '.tk-share-scrim',
+      '.pay-scrim', '.rec-scrim', '.onb-scrim', '.wiz-scrim',
+      '#facturaOverlay', '#despachoOverlay'].join(',');
+
+    const visible = (el) => !!el && !el.hidden && el.dataset.open !== 'false'
+      && getComputedStyle(el).display !== 'none' && getComputedStyle(el).visibility !== 'hidden';
+    const abiertos = () => Array.from(document.querySelectorAll(SEL)).filter(visible);
+
+    function cerrar(el) {
+      /* Por su propio boton, en este orden: la X, «Cancelar», «Cerrar». Si no
+         tiene ninguno, se esconde — es mejor que quedarse trabado. */
+      const btn = el.querySelector('[data-cerrar], .icon-btn[title="Cerrar"], .tb-close')
+        || Array.from(el.querySelectorAll('button')).find((b) => /^(cancelar|cerrar|volver)$/i.test((b.textContent || '').trim()))
+        || el.querySelector('[id$="Close"], [id$="Cancel"]');
+      if (btn) { btn.click(); return; }
+      if (el.hasAttribute('hidden') || el.dataset.open !== undefined) {
+        el.hidden = true; if (el.dataset.open !== undefined) el.dataset.open = 'false';
+      } else { el.style.display = 'none'; }
+    }
+
+    let marcas = 0;                        // entradas de historial nuestras, sin consumir
+    function marcar() {
+      marcas += 1;
+      try { history.pushState({ daModal: marcas }, ''); } catch (e) { marcas -= 1; }
+    }
+
+    /* Se vigila la apertura en vez de tocar los veinte modulos que abren
+       cuadros: cualquiera que aparezca queda cubierto, incluso los que se
+       escriban mañana. */
+    let ultimos = 0;
+    const observador = new MutationObserver(() => {
+      const n = abiertos().length;
+      if (n > ultimos) marcar();
+      ultimos = n;
+    });
+    observador.observe(document.body, {
+      subtree: true, childList: true,
+      attributes: true, attributeFilter: ['hidden', 'style', 'class', 'data-open'],
+    });
+
+    window.addEventListener('popstate', (ev) => {
+      const lista = abiertos();
+      if (!lista.length) { marcas = 0; return; }   // sin cuadros: navegacion normal
+      if (marcas > 0) marcas -= 1;
+      cerrar(lista[lista.length - 1]);             // el de mas arriba primero
+      ultimos = abiertos().length;
+      /* Si quedan cuadros abiertos debajo, se repone una entrada para que la
+         proxima flecha cierre ese y tampoco salga de la app. */
+      if (ultimos > 0) marcar();
+      if (ev && ev.state && ev.state.v) { /* era una vista: ya se pinto sola */ }
+    });
+  })();
 
   /* VOLVER, dentro de la app.
 
@@ -14982,9 +15072,34 @@
       const pass = document.getElementById('loginPass').value;
       if (!email) return toast('Ingresa tu correo electrónico', 'error');
       if (!pass) return toast('Ingresa tu contraseña', 'error');
-      // Autenticación REAL contra Supabase Auth
-      const { data, error } = await window.sb.auth.signInWithPassword({ email: email, password: pass });
-      if (error) { toast('Correo o contraseña incorrectos', 'error'); return; }
+      /* ══════════════════════════════════════════════════════════════
+         LO QUE DE VERDAD PASO AL ENTRAR
+
+         Antes, CUALQUIER error mostraba «Correo o contraseña incorrectos»:
+         una conexion caida, la base despertando, el telefono cambiando de
+         red, un limite de intentos. La app acusaba al usuario de escribir
+         mal su clave y lo dejaba repitiendo lo mismo sin salida.
+
+         Una clave mala y una conexion mala piden cosas distintas: la
+         primera, revisar lo escrito; la segunda, volver a intentar. */
+      const btnEntrar = e.target.querySelector('button[type="submit"]');
+      const rotulo = btnEntrar ? btnEntrar.innerHTML : '';
+      if (btnEntrar) { btnEntrar.disabled = true; btnEntrar.innerHTML = 'Entrando…'; }
+      let data = null, error = null;
+      try {
+        const r = await window.sb.auth.signInWithPassword({ email: email, password: pass });
+        data = r.data; error = r.error;
+      } catch (ex) {
+        error = { message: String((ex && ex.message) || ex), __red: true };
+      }
+      if (btnEntrar) { btnEntrar.disabled = false; btnEntrar.innerHTML = rotulo; }
+      if (error) {
+        const msg = String(error.message || '');
+        const cod = Number(error.status || 0);
+        console.warn('[DigiAccount] No se pudo entrar:', cod || '', msg);
+        toast(window.__avisoLogin(error), 'error');
+        return;
+      }
       window.__marcarActividad();
       // Recarga completa: contexto 100% LIMPIO para esta sesión (sin residuos en memoria
       // de otra cuenta usada antes en la misma pestaña). El arranque con sesión hace el resto.
