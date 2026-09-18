@@ -17487,7 +17487,7 @@
       if (!window.sb || !window.__ES_FUNDADOR) return;
       const { data: cuentas, error } = await window.sb
         .from('cuentas')
-        .select('id, nombre, tipo, segmento, estado, trial_termina_en, planes(nombre)');
+        .select('id, nombre, tipo, segmento, estado, trial_termina_en, planes(nombre), ciclo, plan_desde, proximo_cobro, cortesia_hasta, exenta, exenta_motivo, email_contacto');
       if (error) { console.warn('[Fundador] No se pudieron cargar las cuentas:', error.message); return; }
       const { data: perfiles } = await window.sb.from('perfiles').select('cuenta_id, nombre, rol');
       const { data: emps } = await window.sb.from('empresas').select('cuenta_id');
@@ -17504,11 +17504,36 @@
           trialDias = Math.ceil((new Date(c.trial_termina_en) - new Date()) / 86400000);
           if (trialDias < 0) { est = 'Vencida'; trialDias = 0; }
         }
+        /* LA SITUACION DE COBRO, en una sola palabra.
+           Exenta > cortesía vigente > su próximo cobro > sin plan. El orden
+           importa: una cuenta exenta no «vence» aunque tenga fecha vieja. */
+        const hoy0 = new Date(); hoy0.setHours(0, 0, 0, 0);
+        const dia = (f) => { if (!f) return null; const d = new Date(String(f) + 'T12:00:00'); return isNaN(d.getTime()) ? null : d; };
+        const cort = dia(c.cortesia_hasta), prox = dia(c.proximo_cobro);
+        const diasPara = (d) => Math.ceil((d - hoy0) / 86400000);
+        let cobro, cobroTono, cobroDias = null;
+        if (c.exenta) { cobro = 'Exenta'; cobroTono = 'navy'; }
+        else if (cort && cort >= hoy0) { cobroDias = diasPara(cort); cobro = 'Cortesía · ' + cobroDias + ' d'; cobroTono = 'cyan'; }
+        else if (prox) {
+          cobroDias = diasPara(prox);
+          cobro = cobroDias < 0 ? 'Vencido hace ' + Math.abs(cobroDias) + ' d'
+            : cobroDias === 0 ? 'Cobrar HOY' : 'En ' + cobroDias + ' d';
+          cobroTono = cobroDias < 0 ? 'danger' : cobroDias <= 5 ? 'warn' : 'success';
+        } else { cobro = 'Sin ciclo'; cobroTono = 'slate'; }
+        /* El MRR cuenta lo que SE COBRA. Una cuenta exenta o en cortesía no
+           es ingreso: sumarla era contar plata que nadie va a pagar. */
+        const cobrable = !c.exenta && !(cort && cort >= hoy0);
         return {
           id: c.id, cuenta: c.nombre, admin: adminBy[c.id] || '—',
+          correo: c.email_contacto || '',
+          exenta: !!c.exenta, exentaMotivo: c.exenta_motivo || '', cortesiaHasta: c.cortesia_hasta || null,
+          planDesde: c.plan_desde || null, proximoCobro: c.proximo_cobro || null,
+          ciclo: c.ciclo === 'anual' ? 'anual' : 'mensual',
+          cobro: cobro, cobroTono: cobroTono, cobroDias: cobroDias, cobrable: cobrable,
+          precio: pl.precio || 0,
           tipo: (c.segmento || c.tipo) === 'contador' ? 'Firma Contable' : 'Empresa',
           plan: planNombre, empresas: empsBy[c.id] || 0, usuarios: usersBy[c.id] || 0,
-          estado: est, trialDias: trialDias, mrr: est === 'Activa' ? (pl.precio || 0) : 0,
+          estado: est, trialDias: trialDias, mrr: (est === 'Activa' && cobrable) ? (pl.precio || 0) : 0,
           alta: est === 'Prueba' ? ('Prueba · ' + trialDias + ' día' + (trialDias === 1 ? '' : 's')) : '—',
         };
       });
@@ -17580,6 +17605,7 @@
           + '<td><span class="tag" style="background:' + pc.color + '1f;color:' + pc.color + ';font-weight:700;">' + c.plan + '</span></td>'
           + '<td class="num">' + c.empresas + '</td><td class="num">' + c.usuarios + '</td>'
           + '<td><span class="tag ' + (estadoTag[c.estado] || 'slate') + '">' + c.estado + '</span></td>'
+          + '<td><span class="tag ' + c.cobroTono + '" title="' + esc(c.exenta ? (c.exentaMotivo || 'Exenta') : (c.proximoCobro ? 'Próximo cobro: ' + c.proximoCobro : '')) + '">' + c.cobro + '</span></td>'
           + '<td class="num mono">$' + c.mrr + '</td>'
           + '<td style="white-space:nowrap;"><button class="btn btn-ghost" data-cuenta="' + CUENTAS.indexOf(c) + '" style="height:26px;font-size:11px;padding:0 9px;"><i data-lucide="eye"></i> Ver</button>'
           + (['Pendiente', 'Prueba', 'Vencida'].indexOf(c.estado) >= 0
@@ -17587,12 +17613,14 @@
               : c.estado === 'Activa'
               ? '<button class="btn btn-ghost" data-suspender="' + CUENTAS.indexOf(c) + '" style="height:26px;font-size:11px;padding:0 9px;margin-left:4px;color:#e06b5e;"><i data-lucide="ban"></i> Suspender</button>'
               : '<button class="btn btn-ghost" data-activar="' + CUENTAS.indexOf(c) + '" style="height:26px;font-size:11px;padding:0 9px;margin-left:4px;"><i data-lucide="rotate-ccw"></i> Reactivar</button>')
+          + '<button class="btn btn-ghost" data-cobro="' + CUENTAS.indexOf(c) + '" title="Cobro, cortesía y exención" style="height:26px;font-size:11px;padding:0 9px;margin-left:4px;"><i data-lucide="calendar-clock" style="width:13px;height:13px;"></i> Cobro</button>'
           + '<button class="btn btn-ghost" data-eliminar="' + CUENTAS.indexOf(c) + '" title="Eliminar cuenta" style="height:26px;font-size:11px;padding:0 8px;margin-left:4px;color:#c0392b;"><i data-lucide="trash-2"></i></button>'
           + '</td></tr>';
       }).join('');
       tb.querySelectorAll('[data-cuenta]').forEach((b) => b.addEventListener('click', () => verCuenta(CUENTAS[parseInt(b.dataset.cuenta, 10)])));
       tb.querySelectorAll('[data-activar]').forEach((b) => b.addEventListener('click', () => cambiarEstado(CUENTAS[parseInt(b.dataset.activar, 10)], 'activa')));
       tb.querySelectorAll('[data-suspender]').forEach((b) => b.addEventListener('click', () => cambiarEstado(CUENTAS[parseInt(b.dataset.suspender, 10)], 'suspendida')));
+      tb.querySelectorAll('[data-cobro]').forEach((b) => b.addEventListener('click', () => gestionarCobro(CUENTAS[parseInt(b.dataset.cobro, 10)])));
       tb.querySelectorAll('[data-eliminar]').forEach((b) => b.addEventListener('click', () => eliminarCuenta(CUENTAS[parseInt(b.dataset.eliminar, 10)])));
       const sh = document.getElementById('cuentasShown'); if (sh) sh.textContent = vis.length;
       if (window.lucide) window.lucide.createIcons();
@@ -17604,7 +17632,134 @@
       set('saasKpiMrr', fmt0(activas.reduce((a, c) => a + c.mrr, 0)));
       set('saasKpiEmpresas', fmt0(CUENTAS.reduce((a, c) => a + c.empresas, 0)));
       set('saasKpiUsuarios', fmt0(CUENTAS.reduce((a, c) => a + c.usuarios, 0)));
+      /* Lo que toca cobrar: vencidas y las que vencen dentro de 7 días. Es el
+         numero por el que uno entra a esta pantalla. */
+      const porCobrar = CUENTAS.filter((c) => c.cobrable && typeof c.cobroDias === 'number' && c.cobroDias <= 7);
+      const elC = document.getElementById('saasKpiMrr');
+      if (elC && elC.parentElement) {
+        let nota = document.getElementById('saasKpiCobrar');
+        if (!nota) {
+          nota = document.createElement('div');
+          nota.id = 'saasKpiCobrar';
+          nota.className = 'kpi-sub';
+          elC.parentElement.appendChild(nota);
+        }
+        const vencidas = porCobrar.filter((c) => c.cobroDias < 0).length;
+        nota.innerHTML = porCobrar.length
+          ? '<span class="meta" style="color:' + (vencidas ? '#b42318' : '#9a6700') + ';">'
+            + porCobrar.length + ' por cobrar' + (vencidas ? ' · ' + vencidas + ' vencida' + (vencidas === 1 ? '' : 's') : '') + '</span>'
+          : '<span class="meta">Nadie por cobrar esta semana</span>';
+      }
     }
+    /* ══════════════════════════════════════════════════════════════════
+       COBRO, CORTESIA Y EXENCION — todo desde aqui
+
+       Cinco acciones, una sola pantalla. Cada una deja su registro en
+       `beneficios_cuenta`: quien, cuando, cuanto y POR QUE. Un favor sin
+       motivo escrito, dentro de un año, no lo recuerda nadie — y es
+       exactamente lo que uno necesita saber cuando el favor se acaba.
+       ══════════════════════════════════════════════════════════════════ */
+    function gestionarCobro(c) {
+      const hoyISO = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Caracas' });
+      const sumarMeses = (desdeISO, meses) => {
+        const d = new Date((desdeISO || hoyISO()) + 'T12:00:00');
+        const dia = d.getDate();
+        d.setMonth(d.getMonth() + meses);
+        if (d.getDate() < dia) d.setDate(0);      // 31 de enero + 1 mes = 28/29 de febrero
+        return d.toLocaleDateString('en-CA');
+      };
+      const situacion = c.exenta
+        ? '<strong>Exenta</strong> — no se le cobra.' + (c.exentaMotivo ? '<br>Motivo: ' + esc(c.exentaMotivo) : '')
+        : (c.cortesiaHasta && new Date(c.cortesiaHasta + 'T12:00:00') >= new Date(hoyISO() + 'T12:00:00'))
+          ? '<strong>En cortesía</strong> hasta el ' + c.cortesiaHasta + '.'
+          : c.proximoCobro
+            ? '<strong>Próximo cobro:</strong> ' + c.proximoCobro + ' (' + c.ciclo + ')'
+            : '<strong>Sin ciclo de cobro.</strong> Todavía no tiene fecha.';
+
+      window.openFormModal && window.openFormModal({
+        title: 'Cobro · ' + c.cuenta,
+        saveLabel: 'Aplicar',
+        fields: [
+          { name: 'sit', label: ' ', col: 2, type: 'static', html:
+            '<div style="font-size:12.5px;line-height:1.7;color:var(--fg-body);background:var(--bg-surface-alt);padding:10px 12px;border-radius:8px;">'
+            + situacion + '<br><span style="color:var(--fg-muted);">Plan ' + esc(c.plan) + ' · $' + (c.precio || 0) + '/mes'
+            + (c.planDesde ? ' · desde ' + c.planDesde : '') + '</span></div>' },
+          { name: 'accion', label: '¿Qué vas a hacer?', col: 2, type: 'select', options: [
+            'Registrar un pago recibido',
+            'Dar meses de cortesía',
+            'Exonerar — no se le cobra nunca',
+            'Quitar la exención y volver al ciclo',
+            'Cambiar el ciclo (mensual / anual)',
+          ] },
+          { name: 'meses', label: 'Meses (para pago o cortesía)', type: 'number', step: '1', value: '1' },
+          { name: 'ciclo', label: 'Ciclo', type: 'select', options: ['mensual', 'anual'], value: c.ciclo },
+          { name: 'desde', label: 'Cobrar a partir de (dd/mm/aaaa o aaaa-mm-dd)', type: 'date', value: hoyISO() },
+          { name: 'motivo', label: 'Motivo o referencia — queda registrado', col: 2,
+            placeholder: 'Ej. Pago móvil 0412 ref. 004512 · o: colega que ayuda a probar el producto' },
+        ],
+        onSave: async (v) => {
+          if (!window.sb) return 'Sin conexión.';
+          const acc = String(v.accion || '');
+          const meses = Math.max(1, parseInt(v.meses, 10) || 1);
+          const motivo = (v.motivo || '').trim();
+          const patch = {};
+          let anota = null;
+
+          if (/pago recibido/i.test(acc)) {
+            if (!motivo) return 'Escribe la referencia del pago: es lo que permite comprobarlo después.';
+            const base = (c.proximoCobro && c.proximoCobro >= hoyISO()) ? c.proximoCobro : hoyISO();
+            const paso = c.ciclo === 'anual' ? 12 * meses : meses;
+            patch.proximo_cobro = sumarMeses(base, paso);
+            patch.plan_desde = c.planDesde || hoyISO();
+            patch.estado = 'activa';
+            patch.exenta = false;
+            anota = { tipo: 'pago', meses: meses, hasta: patch.proximo_cobro };
+          } else if (/cortesía|cortesia/i.test(acc)) {
+            if (!motivo) return 'Escribe por qué le das la cortesía. Dentro de un año, eso es lo único que lo explica.';
+            const base = (c.cortesiaHasta && c.cortesiaHasta >= hoyISO()) ? c.cortesiaHasta : hoyISO();
+            patch.cortesia_hasta = sumarMeses(base, meses);
+            patch.proximo_cobro = patch.cortesia_hasta;
+            patch.exenta = false;
+            patch.estado = 'activa';
+            anota = { tipo: 'cortesia', meses: meses, hasta: patch.cortesia_hasta };
+          } else if (/^Exonerar/i.test(acc)) {
+            if (!motivo) return 'Escribe el motivo de la exención: es una decisión, no un olvido.';
+            patch.exenta = true;
+            patch.exenta_motivo = motivo;
+            patch.proximo_cobro = null;
+            patch.cortesia_hasta = null;
+            patch.estado = 'activa';
+            anota = { tipo: 'exencion', meses: null, hasta: null };
+          } else if (/Quitar la exención/i.test(acc)) {
+            patch.exenta = false;
+            patch.exenta_motivo = null;
+            patch.proximo_cobro = v.desde || hoyISO();
+            patch.plan_desde = c.planDesde || (v.desde || hoyISO());
+            anota = { tipo: 'ajuste', meses: null, hasta: patch.proximo_cobro };
+          } else {
+            patch.ciclo = v.ciclo === 'anual' ? 'anual' : 'mensual';
+            anota = { tipo: 'ajuste', meses: null, hasta: c.proximoCobro };
+          }
+
+          const { error } = await window.sb.from('cuentas').update(patch).eq('id', c.id);
+          if (error) return 'No se pudo guardar: ' + error.message;
+          if (anota) {
+            const { error: eB } = await window.sb.from('beneficios_cuenta').insert({
+              cuenta_id: c.id, tipo: anota.tipo, meses: anota.meses, hasta: anota.hasta,
+              motivo: motivo || acc, otorgado_por: window.__USER_EMAIL || 'fundador',
+            });
+            if (eB) console.warn('[Fundador] No se pudo registrar el beneficio:', eB.message);
+          }
+          if (window.toast) {
+            window.toast(patch.exenta ? c.cuenta + ' queda EXENTA de cobro'
+              : patch.proximo_cobro ? c.cuenta + ' · próximo cobro ' + patch.proximo_cobro
+              : c.cuenta + ' actualizada', 'success');
+          }
+          cargarCuentas();
+        },
+      });
+    }
+
     function verCuenta(c) {
       const pl = PLANES[c.plan] || {};
       window.openFormModal && window.openFormModal({
