@@ -6099,6 +6099,41 @@
       const periodo = (pf.aa && pf.mm) ? ('20' + pf.aa + pf.mm)
         : (periodoDe(rows[0] && rows[0].fecha) || '').replace('-', '');
       const quin = window.__retQuincenaActual ? window.__retQuincenaActual() : 0;
+
+      /* EL COMPROBANTE TIENE QUE SER DEL PERIODO QUE SE DECLARA.
+
+         Sus seis primeros digitos son el año y el mes. Si no coinciden con el
+         periodo, el portal responde «El año o el mes del numero de
+         comprobante es diferente al periodo a declarar» y solo dice el numero
+         de linea: hay que ir a contarlas a mano en el archivo.
+
+         Paso de verdad: una retencion cargada por error con fecha de agosto
+         quedo con el comprobante 20260800000121 entre ocho de septiembre.
+
+         Se AVISA con nombre y apellido, y se deja seguir: quien declara sabe
+         si ese numero es el que trae el documento del proveedor. */
+      const deOtroMes = rows.map((r, i) => ({ i: i + 1, r: r }))
+        .filter((x) => {
+          const c = String(x.r.comprobante || '').replace(/\D/g, '');
+          return c.length >= 6 && periodo && c.slice(0, 6) !== periodo;
+        });
+      if (deOtroMes.length) {
+        const detalle = deOtroMes.slice(0, 6).map((x) => '  · Línea ' + x.i + ' · ' + (x.r.tercero_nombre || x.r.tercero_rif || '')
+          + ' · factura ' + (x.r.factura || '') + ' · comprobante ' + x.r.comprobante).join('\n');
+        const seguir = window.confirm([
+          'El portal va a rechazar ' + (deOtroMes.length === 1 ? 'esta línea' : 'estas ' + deOtroMes.length + ' líneas') + '.',
+          '',
+          'Declaras el período ' + periodo.slice(0, 4) + '-' + periodo.slice(4) + ' y su comprobante es de otro mes:',
+          detalle,
+          deOtroMes.length > 6 ? '  … y ' + (deOtroMes.length - 6) + ' más' : '',
+          '',
+          'Corrígelo en Retenciones (el N° de comprobante) y vuelve a generar.',
+          '',
+          '¿Generar el archivo de todos modos?',
+        ].filter(Boolean).join('\n'));
+        if (!seguir) return;
+      }
+
       const lineas = rows.map((r) => {
         const f = facMap[(r.factura || '').trim() + '|' + norm(r.tercero_rif)] || null;
         const ivaDoc = Number(r.base) || 0;   // en IVA, r.base guarda el IVA del documento
