@@ -10437,13 +10437,15 @@
       window.__marcarActividad();
       // Recarga completa: contexto 100% LIMPIO para esta sesión (sin residuos en memoria
       // de otra cuenta usada antes en la misma pestaña). El arranque con sesión hace el resto.
-      window.location.reload();
-      if (perfil) {
-        const plan = perfil.cuentas && perfil.cuentas.planes ? perfil.cuentas.planes.nombre : '';
-        toast('Bienvenido, ' + String(perfil.nombre || '').split(' ')[0] + (plan ? ' · ' + plan : ''), 'success');
-      } else {
-        toast('Bienvenido a DigiAccount', 'success');
-      }
+      /* Aqui terminaba con un saludo por nombre. Se quito: `reload()` no corta
+         la ejecucion, asi que esas lineas SI corrian, y leian una variable
+         —`perfil`— que en este punto ya no existe. Resultado: cada entrada
+         correcta dejaba un error en la consola, y el saludo no se veia nunca
+         porque la recarga se lo llevaba por delante.
+
+         Si alguna vez se quiere saludar por nombre, el sitio es el arranque
+         CON sesion —despues de la recarga—, que es donde el perfil ya esta
+         cargado. Aqui no puede funcionar. */
     });
     // Acceso con Google — simulado en el prototipo (será Supabase Auth OAuth en producción)
     screen.querySelectorAll('.auth-sso').forEach((b) => b.addEventListener('click', () => {
