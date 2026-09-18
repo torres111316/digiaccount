@@ -247,4 +247,20 @@
     const d = new Date();
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   };
+
+  /* DOS AYUDANTES QUE USA TODO EL MUNDO.
+
+     `esc` limpia lo que se va a pintar como HTML: sin esto, un nombre con un
+     «&» o un «<» rompe la pantalla —o peor, mete etiquetas que nadie
+     escribio—. `drawIcons` repinta los iconos despues de cambiar el HTML.
+
+     Estan aqui porque son lo primero que necesita cualquier modulo que se
+     separe. La app las sigue llamando por su nombre corto. */
+  window.__esc = function (s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+  window.__drawIcons = function () { if (window.lucide) window.lucide.createIcons(); };
+
 })();
