@@ -50,6 +50,39 @@ FICHAS = {
                    '   ticket en PDF y el compartir— lo consumen ventas, tesoreria y el\n'
                    '   modulo fiscal'),
     },
+    'contaActions': {
+        'archivo': 'contabilidad.js',
+        'titulo': 'CONTABILIDAD',
+        'que': ('Los asientos y el libro diario, el plan de cuentas, los activos fijos\n'
+                '   y el ejercicio: de ahi salen el balance y la utilidad neta.'),
+        'porque': ('Solo usaba un nombre privado del bloque grande —`drawIcons`—, que ya\n'
+                   '   vive en el nucleo.'),
+        'usa': ['drawIcons'],
+        'expone': ('lo que expone —el balance, la utilidad\n'
+                   '   neta, el diario del mes y el asiento— lo consumen el panel y el\n'
+                   '   modulo fiscal'),
+    },
+    'inventoryActions': {
+        'archivo': 'inventario.js',
+        'titulo': 'INVENTARIO',
+        'que': ('Los articulos, la materia prima, los servicios y las ordenes de\n'
+                '   compra, con el descuento de existencias al vender.'),
+        'porque': ('Solo usaba un nombre privado del bloque grande —`esc`—, que ya vive\n'
+                   '   en el nucleo.'),
+        'usa': ['esc'],
+        'expone': ('lo que expone —la lista de productos y el\n'
+                   '   descuento de existencias— lo consumen ventas y compras'),
+    },
+    'tercerosModule': {
+        'archivo': 'terceros.js',
+        'titulo': 'TERCEROS',
+        'que': 'El registro unico de clientes y proveedores, con sus saldos.',
+        'porque': ('Solo usaba un nombre privado del bloque grande —`esc`—, que ya vive\n'
+                   '   en el nucleo.'),
+        'usa': ['esc'],
+        'expone': ('lo que expone —la lista de terceros y sus\n'
+                   '   saldos— lo consumen ventas, compras, tesoreria y retenciones'),
+    },
 }
 
 

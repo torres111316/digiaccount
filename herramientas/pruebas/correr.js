@@ -19,7 +19,7 @@ const RAIZ = path.resolve(__dirname, '..', '..');
 /* Se busca en el nucleo y en la app: al partir el archivo, cada funcion
    puede estar en cualquiera de los dos y la prueba no tiene por que saberlo. */
 const leer = (f) => { try { return fs.readFileSync(path.join(RAIZ, 'assets', f), 'utf8'); } catch (e) { return ''; } };
-const app = ['core.js', 'app.js', 'retenciones.js', 'tesoreria.js', 'facturas.js', 'nomina.js'].map(leer).join(String.fromCharCode(10));
+const app = ['core.js', 'app.js', 'retenciones.js', 'tesoreria.js', 'facturas.js', 'contabilidad.js', 'inventario.js', 'terceros.js', 'nomina.js'].map(leer).join(String.fromCharCode(10));
 
 /* Se toma el código TAL COMO ESTÁ en app.js: si alguien cambia el cálculo,
    estas pruebas prueban el cálculo nuevo, no una copia que envejece. */
