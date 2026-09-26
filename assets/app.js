@@ -6224,8 +6224,27 @@
           const fechaOk = window.__normFecha ? window.__normFecha(v.fecha) : v.fecha;
           if (!fechaOk) return 'No entiendo la fecha "' + (v.fecha || '') + '". Escríbela como 27/08/26.';
           let perNuevo;
-          if (esCompra) perNuevo = v.periodo || r.periodo || _periodoActualKey();
+          const _elegidoEd = _partirPeriodo(esCompra ? (v.periodo || r.periodo || '') : '');
+          if (esCompra) perNuevo = _elegidoEd.periodo || r.periodo || _periodoActualKey();
           else { const fp = fechaOk.split('/'); perNuevo = '20' + fp[2] + '-' + fp[1]; }
+          /* LA QUINCENA TAMBIEN SE VUELVE A CALCULAR AL EDITAR.
+             No se hacia, y por eso una factura guardada con una fecha y
+             corregida despues se quedaba con la quincena vieja. No se notaba
+             desde el codigo: el libro prefiere la quincena GUARDADA sobre la
+             deducida del dia —y con razon, porque una compra recibida tarde
+             se declara en una quincena posterior a la de su factura— asi que
+             nadie volvia a mirar el dia.
+             Lo encontro Luis: la A000023 de GATMA, del 01/09, aparecia en la
+             segunda quincena de septiembre. Una sola factura en 2.509, pero
+             en el sitio donde una factura en la quincena que no es se entera
+             en la declaracion que no es.
+             La de una COMPRA sigue siendo la que se eligio; la de una VENTA
+             sale del dia, porque la emite la empresa el dia que la emite. */
+          const _esEspEd = window.__ivaPorQuincena && window.__ivaPorQuincena();
+          const _diaEd = parseInt(fechaOk.split('/')[0], 10);
+          const _quincenaEd = !_esEspEd ? null
+            : (esCompra ? (_elegidoEd.quincena || r.quincena || null)
+              : (_diaEd && _diaEd > 15 ? 2 : 1));
           const _cerrado = [r.periodo, perNuevo].find((p) => window.__periodoCerrado && window.__periodoCerrado(p));
           if (_cerrado && !window.__confirmarPeriodoCerrado(_cerrado, 'Vas a modificar un registro ya declarado')) return 'No se guardó: decidiste no tocar el período cerrado.';
           if (!v.nombre) return 'Indica el ' + (esCompra ? 'proveedor' : 'cliente') + '.';
@@ -6253,7 +6272,8 @@
               : 0.08;
           const igtf = leerIgtf(v);   // el monto, no un porcentaje del total
           window.sb.from('libro_fiscal').update({
-            fecha: fechaOk, periodo: perNuevo, tipo_doc: (v.tipoDoc || '').slice(0, 2), tercero_nombre: v.nombre,
+            fecha: fechaOk, periodo: perNuevo, quincena: _quincenaEd,
+            tipo_doc: (v.tipoDoc || '').slice(0, 2), tercero_nombre: v.nombre,
             // Lo escrito en dolares se guarda en dolares, tambien al editar.
             moneda: _mon, tasa: _tasaF !== 1 ? _tasaF : null, total_usd: _totalUsdCap,
             sucursal_id: sucursalDe(v.sucursal),
