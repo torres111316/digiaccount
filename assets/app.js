@@ -3635,20 +3635,47 @@
       setN('f30v-subt2', pagar);        // ítem 40: sub-total tras retenciones
       setN('f30v-pagar', pagar);        // ítem 48: total a pagar (percepciones = 0)
       // KPIs del encabezado del módulo (indicadores de IVA del período)
+      const esEspecial = /especial/i.test((window.__EMPRESA_ACTIVA || {}).cond || '');
+      const periodicidad = esEspecial ? 'Quincena' : 'Mes';
+      const anterior = esEspecial ? 'la quincena anterior' : 'el mes anterior';
+
       setN('fisKpiDebito', _debF);
-      setN('fisKpiCredito', _credF);
+
+      /* EL CREDITO QUE SE ENSEÑA ES EL DISPONIBLE, no solo el del período.
+
+         Enseñaba `_credF` —el IVA de las compras de este período— y eso no
+         responde la pregunta que uno le hace a un KPI: cuanto tengo a favor
+         contra el debito. Si viene un excedente del período anterior, ese
+         credito TAMBIEN esta disponible, y la Forma 30 lo suma en su item 26.
+         Dos numeros para lo mismo en la misma pantalla —el KPI decia una cosa
+         y el cuadro de abajo otra— es de lo que hace desconfiar de los dos.
+
+         Es el mismo numero que `f30c-credTot`, a proposito: si mañana cambia
+         como se calcula el arrastre, cambian los dos juntos.
+
+         El desglose va debajo, porque el total solo no deja ver de donde sale
+         —y para declarar hacen falta las dos cifras por separado. */
+      setN('fisKpiCredito', credDisp);
+      const kCredLbl = document.getElementById('fisKpiCreditoLabel');
+      if (kCredLbl) kCredLbl.textContent = 'Crédito Fiscal · Disponible';
+      const kCredSub = document.getElementById('fisKpiCreditoSub');
+      if (kCredSub) {
+        kCredSub.textContent = _excedAnt > 0
+          ? ('Bs ' + fmtF(_credF) + ' del período + Bs ' + fmtF(_excedAnt)
+             + ' de ' + anterior)
+          : 'IVA de las compras';
+      }
+
       const kIva = document.getElementById('fisKpiIva');
       if (kIva) kIva.textContent = fmtF(exced > 0 ? exced : pagar);
       const kLbl = document.getElementById('fisKpiIvaLabel');
       const kSub = document.getElementById('fisKpiIvaSub');
-      const esEspecial = /especial/i.test((window.__EMPRESA_ACTIVA || {}).cond || '');
-      const periodicidad = esEspecial ? 'Quincena' : 'Mes';
       if (kLbl) kLbl.textContent = (exced > 0 ? 'Excedente de crédito · ' : 'IVA a pagar · ') + periodicidad;
       if (kSub) kSub.textContent = exced > 0 ? 'A favor, pasa al mes siguiente' : 'Débito − crédito − retenciones';
       // 4º KPI: retenciones de IVA del período (sufridas → reducen lo que se paga)
       setN('fisKpiRetIva', retIva);
       const kRetSub = document.getElementById('fisKpiRetSub');
-      if (kRetSub) kRetSub.textContent = _retAcumAnt > 0 ? ('+ Bs ' + fmtF(_retAcumAnt) + ' acumuladas del mes anterior') : 'IVA retenido por los clientes';
+      if (kRetSub) kRetSub.textContent = _retAcumAnt > 0 ? ('+ Bs ' + fmtF(_retAcumAnt) + ' acumuladas de ' + anterior) : 'IVA retenido por los clientes';
     }
     // Calcula los ARRASTRES del período anterior (excedente de crédito e ítem 33 de retenciones)
     // recorriendo TODOS los períodos previos de la empresa con la lógica de la Forma 30.
