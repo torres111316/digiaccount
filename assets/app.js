@@ -3637,7 +3637,18 @@
       // KPIs del encabezado del módulo (indicadores de IVA del período)
       const esEspecial = /especial/i.test((window.__EMPRESA_ACTIVA || {}).cond || '');
       const periodicidad = esEspecial ? 'Quincena' : 'Mes';
-      const anterior = esEspecial ? 'la quincena anterior' : 'el mes anterior';
+      /* «DEL PERIODO ANTERIOR», y no «del mes» ni «de la quincena».
+
+         Lo pidio Luis y es la trampa que el mismo enseño: la periodicidad es
+         de cada OBLIGACION, no de la empresa. Una Firma Personal especial
+         declara el IVA MENSUAL pero entera las retenciones POR QUINCENA, asi
+         que deducir la palabra de «es especial o no» acierta la mitad de las
+         veces — y el rotulo equivocado esta justo en la pantalla desde la que
+         se llena el formulario.
+
+         «Periodo» es cierto en los dos casos, y es la palabra que usa la
+         propia Forma 30. */
+      const anterior = 'del período anterior';
 
       setN('fisKpiDebito', _debF);
 
@@ -3662,7 +3673,7 @@
       if (kCredSub) {
         kCredSub.textContent = _excedAnt > 0
           ? ('Bs ' + fmtF(_credF) + ' del período + Bs ' + fmtF(_excedAnt)
-             + ' de ' + anterior)
+             + ' ' + anterior)
           : 'IVA de las compras';
       }
 
@@ -3675,7 +3686,7 @@
       // 4º KPI: retenciones de IVA del período (sufridas → reducen lo que se paga)
       setN('fisKpiRetIva', retIva);
       const kRetSub = document.getElementById('fisKpiRetSub');
-      if (kRetSub) kRetSub.textContent = _retAcumAnt > 0 ? ('+ Bs ' + fmtF(_retAcumAnt) + ' acumuladas de ' + anterior) : 'IVA retenido por los clientes';
+      if (kRetSub) kRetSub.textContent = _retAcumAnt > 0 ? ('+ Bs ' + fmtF(_retAcumAnt) + ' acumuladas ' + anterior) : 'IVA retenido por los clientes';
     }
     // Calcula los ARRASTRES del período anterior (excedente de crédito e ítem 33 de retenciones)
     // recorriendo TODOS los períodos previos de la empresa con la lógica de la Forma 30.
