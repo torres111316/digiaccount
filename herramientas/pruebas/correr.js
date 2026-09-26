@@ -114,5 +114,53 @@ ok('31 de enero + 1 mes = fin de febrero', sumarMeses('2026-01-31', 1), '2026-02
 ok('31 de mayo + 1 mes = 30 de junio', sumarMeses('2026-05-31', 1), '2026-06-30');
 ok('29 de febrero bisiesto + 12 meses', sumarMeses('2028-02-29', 12), '2029-02-28');
 
+
+/* ── QUE LA APP NO DEPENDA DE INTERNET PARA ABRIR ────────────────────────────
+
+   Esta no prueba un calculo: prueba que no se nos cuele otra vez lo que dejo
+   a Luis sin poder abrir la app desde el telefono.
+
+   La libreria de Supabase se cargaba de jsDelivr. Un <script> de otro dominio
+   es BLOQUEANTE: si no llega, ninguno de los de abajo se ejecuta y la pagina
+   se queda en blanco. Y el service worker no lo puede guardar, porque solo
+   cachea respuestas de este mismo dominio — asi que se pedia por internet en
+   CADA apertura, para siempre.
+
+   En el escritorio fallaba «a veces». En el telefono, nunca abria. */
+bloque('La app abre sin depender de internet');
+const _index = (() => { try { return fs.readFileSync(path.join(RAIZ, 'index.html'), 'utf8'); } catch (e) { return ''; } })();
+
+ok('el index se pudo leer', _index.length > 0, true);
+ok('ningun <script> viene de otro dominio',
+  /<script[^>]+src\s*=\s*["']https?:/i.test(_index), false);
+ok('ninguna hoja de estilos viene de otro dominio',
+  /<link[^>]+rel=["']stylesheet["'][^>]+href\s*=\s*["']https?:/i.test(_index), false);
+
+/* Y que la libreria este de verdad ahi, y se valga sola. */
+const _lib = (() => { try { return fs.readFileSync(path.join(RAIZ, 'assets', 'vendor', 'supabase.js'), 'utf8'); } catch (e) { return ''; } })();
+ok('la libreria de Supabase esta en el proyecto', _lib.length > 1000, true);
+ok('y no se trae nada de internet', /from\s*["']https?:|import\(\s*["']https?:/.test(_lib), false);
+
+/* Y que el service worker la guarde: si no esta en su lista, la primera
+   apertura sin red se queda igual de colgada que antes. */
+const _sw = (() => { try { return fs.readFileSync(path.join(RAIZ, 'sw.js'), 'utf8'); } catch (e) { return ''; } })();
+ok('el service worker la guarda', _sw.indexOf('assets/vendor/supabase.js') >= 0, true);
+
+/* Y que espere a la red con LIMITE. Sin esto, una peticion que no falla pero
+   tampoco contesta deja la app esperando para siempre. */
+ok('la espera a la red tiene limite', /ESPERA_RED/.test(_sw), true);
+
+/* Todos los archivos que el index carga tienen que estar en la lista del
+   service worker. Uno que falte arranca la app a medias sin red — y eso no se
+   descubre hasta el peor momento. */
+const _pedidos = [];
+_index.replace(/<script[^>]+src\s*=\s*["']([^"']+)["']/gi, (m, u) => { _pedidos.push(u); return m; });
+_index.replace(/<link[^>]+rel=["']stylesheet["'][^>]+href\s*=\s*["']([^"']+)["']/gi, (m, u) => { _pedidos.push(u); return m; });
+_pedidos.filter((u) => !/^https?:/i.test(u)).forEach((u) => {
+  const limpio = u.split('?')[0].replace(/^\.?\//, '');
+  ok('el sw guarda ' + limpio, _sw.indexOf(limpio) >= 0, true);
+});
+
+
 console.log('\n' + (fallas ? 'HAY ' + fallas + ' FALLA(S) de ' + total : 'TODO OK · ' + total + ' comprobaciones'));
 process.exit(fallas ? 1 : 0);

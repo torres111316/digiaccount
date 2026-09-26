@@ -9,13 +9,14 @@
    queda atascado en una versión vieja (en el teléfono no hay Ctrl+Shift+R). */
 /* Sube de número en cada cambio de estos archivos: es lo que hace que el
    navegador se traiga la versión nueva en vez de servir la del caché. */
-const CACHE = 'digiaccount-v146';
+const CACHE = 'digiaccount-v147';
 const ASSETS = [
   './',
   './index.html',
   './assets/app.css',
   './assets/digiaccount.css',
   './assets/fonts.css',
+  './assets/supabase-init.js',
   './assets/core.js',
   './assets/app.js',
   './assets/retenciones.js',
@@ -26,6 +27,7 @@ const ASSETS = [
   './assets/terceros.js',
   './assets/nomina.js',
   './assets/lucide.min.js',
+  './assets/vendor/supabase.js',
   './assets/isotipo.png',
   './assets/isotipo-on-dark.png',
   './assets/pwa-192.png',

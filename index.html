@@ -5195,7 +5195,13 @@
 </div>
 
 <!-- SDK de Supabase (backend real) + conexión -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- La libreria de Supabase vive DENTRO del proyecto, no en un CDN.
+     Es un script bloqueante: si no llega, ninguno de los de abajo se
+     ejecuta y la app se queda en blanco. Traida de internet, eso pasaba
+     cada vez que jsDelivr tardaba o no respondia — y el service worker
+     no la podia guardar, porque solo cachea lo de este dominio.
+     Version congelada: @supabase/supabase-js 2.117.2 (UMD). -->
+<script src="assets/vendor/supabase.js"></script>
 <script src="assets/supabase-init.js"></script>
 <script src="assets/core.js"></script>
 <script src="assets/app.js"></script>
