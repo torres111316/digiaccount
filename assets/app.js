@@ -7657,6 +7657,10 @@
     var _btnEntrarLogin = document.getElementById('loginBtn');
 
     async function _entrar() {
+      /* Si los campos acaban de rellenarse solos, este intento es el toque
+         que se colo al cerrarse la hoja del navegador. No se entra. */
+      if (_vieneDeUnRelleno()) return;
+
       const email = document.getElementById('loginEmail').value.trim();
       const pass = document.getElementById('loginPass').value;
       if (!email) return toast('Ingresa tu correo electrónico', 'error');
@@ -7775,12 +7779,56 @@
       });
     }
 
+    /* EL TOQUE FANTASMA
+       =================
+
+       Escuchar el puntero tampoco basto, y ahora se por que: NO es el
+       navegador quien pulsa. Es el dedo de la persona.
+
+       En Android, al elegir una credencial, Chrome muestra una hoja que sube
+       desde abajo. Al tocar la credencial la hoja se cierra — y el toque cae
+       sobre lo que quedo debajo, que es el boton «Entrar». Es un toque de
+       verdad, con sus eventos de puntero y todo. Ningun codigo puede
+       distinguirlo del toque que la persona SI quiso dar, porque es el mismo.
+
+       Lo que si se puede distinguir es CUANDO. Un toque fantasma llega en el
+       mismo instante en que se rellenaron los campos; el toque que la persona
+       quiere dar llega despues, cuando leyo lo que dice la pantalla.
+
+       Asi que: si los campos acaban de rellenarse solos, el siguiente
+       intento de entrar no cuenta. No se avisa nada — el formulario queda
+       relleno, esperando, que es lo que la persona espera ver.
+
+       COMO SE SABE QUE FUE RELLENO Y NO ESCRITURA
+       Escribir mete un caracter por vez; rellenar mete el valor entero de un
+       golpe. Un salto de mas de dos caracteres en un solo evento es un
+       relleno. Asi, escribir la clave y pulsar Enter enseguida sigue
+       funcionando — que es como entra quien no usa contraseñas guardadas. */
+    var _RATO_TRAS_RELLENAR = 900;   // milisegundos
+    var _rellenadoEn = 0;
+    var _valorPrevio = {};
+
     ['loginEmail', 'loginPass'].forEach(function (id) {
       var campo = document.getElementById(id);
-      if (campo) campo.addEventListener('keydown', function (ev) {
+      if (!campo) return;
+      _valorPrevio[id] = campo.value || '';
+
+      campo.addEventListener('input', function () {
+        var antes = _valorPrevio[id] || '';
+        var ahora = campo.value || '';
+        if (Math.abs(ahora.length - antes.length) > 2) _rellenadoEn = Date.now();
+        _valorPrevio[id] = ahora;
+      });
+
+      campo.addEventListener('keydown', function (ev) {
         if (ev.key === 'Enter') { ev.preventDefault(); _entrar(); }
       });
     });
+
+    /* La llama `_entrar` antes de hacer nada. */
+    function _vieneDeUnRelleno() {
+      return _rellenadoEn > 0 && (Date.now() - _rellenadoEn) < _RATO_TRAS_RELLENAR;
+    }
 
     /* AQUI VIVIA EL ACCESO CON GOOGLE «simulado en el prototipo».
 

@@ -334,6 +334,21 @@ ok('entrar cuelga del puntero',
   /pointerup/.test(_appSC), true);
 ok('y el teclado tambien puede entrar',
   /key === .Enter./.test(_appSC), true);
+/* Y el toque que se cuela al cerrarse la hoja del navegador no entra: llega
+   en el mismo instante del relleno, y eso SI se puede distinguir. */
+ok('un toque inmediato tras rellenar no entra',
+  /_vieneDeUnRelleno\(\)/.test(_appSC), true);
+
+/* La regla de que es relleno y que es escritura, con numeros.
+   Escribir mete un caracter por vez; rellenar mete el valor de un golpe. */
+var esRelleno = function (antes, ahora) {
+  return Math.abs((ahora || '').length - (antes || '').length) > 2;
+};
+ok('escribir una letra no es relleno', esRelleno('micorre', 'micorreo'), false);
+ok('borrar una letra tampoco', esRelleno('micorreo', 'micorre'), false);
+ok('el correo entero de golpe SI', esRelleno('', 'torres111316@gmail.com'), true);
+ok('la clave entera de golpe SI', esRelleno('', 'ClaveLarga123'), true);
+ok('dos letras de golpe no', esRelleno('ab', 'abcd'), false);
 
 
 console.log('\n' + (fallas ? 'HAY ' + fallas + ' FALLA(S) de ' + total : 'TODO OK · ' + total + ' comprobaciones'));
