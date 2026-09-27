@@ -71,13 +71,27 @@
       </div>
 
       <!-- Iniciar sesión -->
-      <form class="auth-pane" data-tab="login" data-active="true" id="loginForm">
+      <!-- ESTO NO ES UN <form>, Y ES A PROPOSITO.
+
+           Chrome en Android, al elegir una credencial guardada, rellena
+           los campos y ENVIA el formulario — y lo hace pulsando el boton
+           de enviar, asi que desde el codigo es indistinguible de un clic
+           de la persona. Se intento mirar quien provocaba el envio y no
+           sirvio: el navegador provoca un clic de verdad.
+
+           Sin <form> no hay envio que interceptar ni boton de enviar que
+           pulsar. El navegador puede seguir rellenando —eso esta bien, es
+           comodo— pero entrar lo decide la persona pulsando «Entrar».
+
+           Se conservan `id`, la clase y `data-tab` porque el resto de la
+           app y el CSS los usan; nada apunta al elemento por ser form. -->
+      <div class="auth-pane" data-tab="login" data-active="true" id="loginForm">
         <h2>Bienvenido de vuelta</h2>
         <p class="auth-sub">Ingresa a tu cuenta para continuar</p>
         <label class="auth-field"><span>Correo electrónico</span><input type="email" id="loginEmail" placeholder="tucorreo@empresa.com"></label>
         <label class="auth-field"><span>Contraseña</span><div class="auth-pass"><input type="password" id="loginPass" placeholder="••••••••"><button type="button" class="auth-eye" data-toggle="loginPass"><i data-lucide="eye"></i></button></div></label>
         <div class="auth-row"><label class="auth-check"><input type="checkbox" checked> Recordarme</label><a href="#" class="auth-link" id="forgotLink">¿Olvidaste tu contraseña?</a></div>
-        <button type="submit" class="auth-submit">Entrar <i data-lucide="arrow-right"></i></button>
+        <button type="button" class="auth-submit" id="loginBtn">Entrar <i data-lucide="arrow-right"></i></button>
         <!-- AQUI ESTABA «Continuar con Google», y era un maniqui del
              prototipo: no autenticaba nada, solo pintaba la app. Es decir,
              un boton en la pantalla de entrar que dejaba pasar SIN
@@ -88,7 +102,7 @@
              Vuelve el dia que Supabase Auth OAuth este conectado de
              verdad, no antes. Un boton que miente sobre lo que hace es
              peor que no tenerlo. -->
-      </form>
+      </div>
 
       <!-- Crear cuenta -->
       <form class="auth-pane" data-tab="signup" id="signupForm">

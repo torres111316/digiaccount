@@ -7640,18 +7640,23 @@
        Si no hay ninguna de las dos, no se entra y no se dice nada: el
        formulario queda relleno, esperando. Que es exactamente lo que la
        persona espera ver. */
-    var _loginForm = document.getElementById('loginForm');
-    var _loPidioLaPersona = false;
-    var _btnEntrarLogin = _loginForm.querySelector('button[type="submit"]');
-    if (_btnEntrarLogin) _btnEntrarLogin.addEventListener('click', function () { _loPidioLaPersona = true; });
-    _loginForm.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') _loPidioLaPersona = true; });
+    /* NO HAY `submit` QUE ESCUCHAR: el login ya no es un <form>.
 
-    _loginForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
+       Se intento antes mirar quien provocaba el envio (`e.submitter`) y no
+       sirvio. Chrome, al elegir una credencial guardada, no envia el
+       formulario por detras: PULSA EL BOTON. Desde el codigo eso es un clic
+       de verdad, indistinguible del de la persona — y por eso la guardia
+       anterior lo dejaba pasar.
 
-      var pedido = _loPidioLaPersona || !!(e && e.submitter);
-      _loPidioLaPersona = false;
-      if (!pedido) return;   // lo envio el navegador al rellenar: no se entra
+       Sin formulario no hay envio que interceptar ni boton de enviar que el
+       navegador pueda pulsar. Rellenar sigue funcionando, que es lo comodo;
+       entrar lo decide quien pulsa «Entrar».
+
+       El Enter del teclado se atiende a mano, porque sin <form> ya no lo
+       hace el navegador. */
+    var _btnEntrarLogin = document.getElementById('loginBtn');
+
+    async function _entrar() {
       const email = document.getElementById('loginEmail').value.trim();
       const pass = document.getElementById('loginPass').value;
       if (!email) return toast('Ingresa tu correo electrónico', 'error');
@@ -7666,7 +7671,7 @@
 
          Una clave mala y una conexion mala piden cosas distintas: la
          primera, revisar lo escrito; la segunda, volver a intentar. */
-      const btnEntrar = e.target.querySelector('button[type="submit"]');
+      const btnEntrar = _btnEntrarLogin;
       const rotulo = btnEntrar ? btnEntrar.innerHTML : '';
       if (btnEntrar) { btnEntrar.disabled = true; btnEntrar.innerHTML = 'Entrando…'; }
       let data = null, error = null;
@@ -7714,7 +7719,17 @@
          cargado. Aqui no puede funcionar: la recarga se lo lleva por
          delante. */
       window.location.reload();
+    }
+
+    /* Entrar: el boton, y el Enter dentro de los campos. Nada mas. */
+    if (_btnEntrarLogin) _btnEntrarLogin.addEventListener('click', _entrar);
+    ['loginEmail', 'loginPass'].forEach(function (id) {
+      var campo = document.getElementById(id);
+      if (campo) campo.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Enter') { ev.preventDefault(); _entrar(); }
+      });
     });
+
     /* AQUI VIVIA EL ACCESO CON GOOGLE «simulado en el prototipo».
 
        Hacia `showApp()` y nada mas: pintaba la app SIN autenticar a nadie.

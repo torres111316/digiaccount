@@ -290,35 +290,45 @@ ok('y ese sitio va despues de comprobar la sesion',
 
 /* ── NO SE ENTRA SIN QUE LO PIDA LA PERSONA ──────────────────────────────────
 
-   Chrome en Android rellena Y ENVIA el formulario al elegir una credencial
-   guardada («Touch to Fill»). La app recibe un `submit` que nadie pidio.
+   Chrome en Android, al elegir una credencial guardada, rellena los campos y
+   ENVIA el formulario. Y no lo envia por detras: PULSA EL BOTON de enviar.
 
-   Luis lo vio con dos cuentas guardadas: con la de un cliente el formulario
-   esperaba a que pulsara «Entrar»; con la suya, entraba sola al
-   seleccionarla. Misma pantalla, mismo codigo — lo que cambia es lo que
-   decide el navegador con cada credencial.
+   Se intento primero mirar quien provocaba el envio (`e.submitter`) y no
+   sirvio — desde el codigo ese clic es indistinguible del de la persona. Luis
+   lo comprobo: con la guardia puesta y desplegada, las dos cuentas seguian
+   entrando solas.
 
-   En una app de datos fiscales eso no es una comodidad: es que el telefono
-   desbloqueado sobre una mesa abre la contabilidad de los clientes.
+   Lo que si funciona es estructural: SIN <form> no hay envio que interceptar
+   ni boton de enviar que el navegador pueda pulsar. Rellenar sigue
+   funcionando; entrar lo decide quien pulsa «Entrar».
 
-   No se puede impedir que el navegador envie. Lo que se hace es no obedecer
-   un envio que no trae señal de haber salido de una persona. */
+   En una app con la contabilidad de los clientes, entrar sin que nadie lo
+   pida significa que el telefono desbloqueado sobre una mesa la abre. */
 bloque('No se entra sin que lo pida la persona');
 
-var _subLogin = (function () {
-  var i = app.indexOf("getElementById('loginForm')");
-  if (i < 0) i = app.indexOf('_loginForm.addEventListener');
+var _indexLogin = (function () {
+  var h = (function () { try { return fs.readFileSync(path.join(RAIZ, 'index.html'), 'utf8'); } catch (e) { return ''; } })();
+  var i = h.indexOf('id="loginForm"');
   if (i < 0) return '';
-  var j = app.indexOf('signInWithPassword', i);
-  return j > 0 ? app.slice(i, j) : '';
-})().replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/.*$/gm, '$1 ');
+  return h.slice(Math.max(0, i - 400), i + 1200);
+})();
 
-ok('se encontro el envio del login', _subLogin.length > 0, true);
-/* `submitter` es el boton que provoco el envio: lo hay al pulsar «Entrar» y
-   con el «Ir» del teclado, y NO lo hay en un envio automatico. */
-ok('mira quien provoco el envio', /submitter/.test(_subLogin), true);
-/* Y corta antes de intentar entrar si no vino de la persona. */
-ok('y no sigue si no lo pidio nadie', /if\s*\(\s*!\s*pedido\s*\)\s*return/.test(_subLogin), true);
+ok('se encontro la pantalla de entrar', _indexLogin.length > 0, true);
+/* Lo que importa: que el contenedor NO sea un formulario. */
+ok('la pantalla de entrar no es un <form>',
+  /<form[^>]*id="loginForm"/.test(_indexLogin), false);
+/* Y que el boton no sea de envio, que es lo que el navegador pulsa. */
+ok('el boton de Entrar no es de envio',
+  /<button[^>]*type="submit"[^>]*class="auth-submit"/.test(_indexLogin), false);
+
+var _appSC = app.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/.*$/gm, '$1 ');
+/* Nadie escucha `submit` en el login: si vuelve a haber uno, vuelve el
+   problema. */
+ok('nadie escucha el envio del login',
+  /loginForm'\s*\)\s*\.addEventListener\s*\(\s*'submit'/.test(_appSC), false);
+/* Y entrar cuelga de un clic en el boton. */
+ok('entrar cuelga del boton',
+  /loginBtn|_btnEntrarLogin\.addEventListener\('click'/.test(_appSC), true);
 
 
 console.log('\n' + (fallas ? 'HAY ' + fallas + ' FALLA(S) de ' + total : 'TODO OK · ' + total + ' comprobaciones'));
