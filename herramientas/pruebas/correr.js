@@ -326,9 +326,14 @@ var _appSC = app.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/.*$/gm, 
    problema. */
 ok('nadie escucha el envio del login',
   /loginForm'\s*\)\s*\.addEventListener\s*\(\s*'submit'/.test(_appSC), false);
-/* Y entrar cuelga de un clic en el boton. */
-ok('entrar cuelga del boton',
-  /loginBtn|_btnEntrarLogin\.addEventListener\('click'/.test(_appSC), true);
+/* Y entrar NO cuelga de un `click`: un clic lo fabrica el navegador. Cuelga
+   del PUNTERO, que solo lo produce un dedo o un raton. */
+ok('entrar no cuelga de un clic',
+  /_btnEntrarLogin\.addEventListener\(\s*.click./.test(_appSC), false);
+ok('entrar cuelga del puntero',
+  /pointerup/.test(_appSC), true);
+ok('y el teclado tambien puede entrar',
+  /key === .Enter./.test(_appSC), true);
 
 
 console.log('\n' + (fallas ? 'HAY ' + fallas + ' FALLA(S) de ' + total : 'TODO OK · ' + total + ' comprobaciones'));

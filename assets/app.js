@@ -7691,6 +7691,24 @@
       }
       window.__marcarActividad();
 
+      /* SE DICE A QUE CUENTA SE ENTRO, Y SE DICE ANTES DE ENTRAR.
+
+         Luis se llevo un susto: eligio su correo, toco la clave y escogio sin
+         querer la de un cliente — Chrome guarda las credenciales por PARES,
+         asi que al elegir la clave le cambio tambien el correo, y entro a la
+         cuenta del cliente.
+
+         La app hizo lo correcto: autentico el par que habia en los campos. Lo
+         que fallaba es que no habia forma de darse cuenta hasta estar dentro.
+
+         Quien lleva los libros de varios clientes tiene que VER a nombre de
+         quien va a entrar. Es una linea, y evita trabajar media hora en la
+         contabilidad equivocada. */
+      try {
+        var _quien = String(email || '').trim();
+        if (_quien && window.toast) window.toast('Entrando como ' + _quien, 'success');
+      } catch (e) {}
+
       /* LA RECARGA. Sin esta linea se entra bien y no pasa NADA.
 
          Es lo que hace que el usuario vea la app: el login deja la sesion
@@ -7721,8 +7739,42 @@
       window.location.reload();
     }
 
-    /* Entrar: el boton, y el Enter dentro de los campos. Nada mas. */
-    if (_btnEntrarLogin) _btnEntrarLogin.addEventListener('click', _entrar);
+    /* SE ENTRA CON UN TOQUE DE VERDAD, NO CON UN `click`
+       ==================================================
+
+       Quitar el <form> no basto. Chrome no solo envia formularios: PULSA el
+       boton que parece de entrar, sea del tipo que sea. Luis lo comprobo con
+       v153 ya desplegado.
+
+       Pero un clic que fabrica el navegador NO ES IGUAL que un dedo. Un dedo
+       —o un raton— produce primero `pointerdown` y `pointerup`; un
+       `element.click()` programatico dispara SOLO `click`, sin eventos de
+       puntero.
+
+       Asi que se escucha el PUNTERO y no el clic. El navegador puede seguir
+       rellenando —que es lo comodo— y puede pulsar todo lo que quiera: sin
+       dedo no hay entrada.
+
+       El teclado se atiende aparte, porque quien entra con teclado tampoco
+       produce eventos de puntero y tiene el mismo derecho a entrar. */
+    var _dedoEnElBoton = false;
+
+    if (_btnEntrarLogin) {
+      _btnEntrarLogin.addEventListener('pointerdown', function () { _dedoEnElBoton = true; });
+      _btnEntrarLogin.addEventListener('pointerup', function () {
+        if (!_dedoEnElBoton) return;
+        _dedoEnElBoton = false;
+        _entrar();
+      });
+      /* Si el puntero se va del boton antes de soltar, no cuenta — igual que
+         en cualquier boton del sistema. */
+      _btnEntrarLogin.addEventListener('pointerleave', function () { _dedoEnElBoton = false; });
+      /* Teclado: Enter o barra espaciadora sobre el boton. */
+      _btnEntrarLogin.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); _entrar(); }
+      });
+    }
+
     ['loginEmail', 'loginPass'].forEach(function (id) {
       var campo = document.getElementById(id);
       if (campo) campo.addEventListener('keydown', function (ev) {
