@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <!-- Seguridad: política de contenido (CSP) — solo recursos propios + fuentes de Google -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; connect-src 'self' https://esnicjnuymqgktqoueyq.supabase.co wss://esnicjnuymqgktqoueyq.supabase.co https://cdn.jsdelivr.net https://n8n.digiaccount.io; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; connect-src 'self' https://esnicjnuymqgktqoueyq.supabase.co wss://esnicjnuymqgktqoueyq.supabase.co https://n8n.digiaccount.io; object-src 'none'; base-uri 'self'; form-action 'self'">
 <title>DigiAccount ERP — Dashboard Central</title>
 <!-- PWA -->
 <link rel="manifest" href="manifest.json">
@@ -15,6 +15,12 @@
 <meta name="apple-mobile-web-app-title" content="DigiAccount">
 <link rel="apple-touch-icon" href="assets/pwa-192.png">
 <link rel="icon" type="image/png" href="assets/pwa-192.png">
+<!-- LO PRIMERO DE TODO: la puerta de salida.
+     Si el service worker activo impide abrir la app, el boton
+     «Actualizar» nunca aparece y no hay forma de salir del hoyo.
+     Esto atiende ?reset y, si la app no arranca en 15 segundos,
+     pinta una pantalla que lo dice con un boton para repararla. -->
+<script src="assets/rescate.js"></script>
 <link rel="stylesheet" href="assets/digiaccount.css">
 <link rel="stylesheet" href="assets/app.css?v=20260531b">
 <style>

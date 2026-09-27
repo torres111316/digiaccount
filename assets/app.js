@@ -10761,6 +10761,17 @@
   /* En la app instalada (PWA) no existe Ctrl+Shift+R: sin esto, el usuario se
      queda con la versión vieja sin enterarse. Ahora la app detecta que hay una
      versión nueva y ofrece actualizar con un botón. */
+  /* LE AVISA AL RESCATE QUE LA APP ARRANCO.
+
+     Que app.js llegue hasta aqui significa que TODOS los archivos llegaron y
+     se entendieron — que es exactamente lo que falla cuando la copia guardada
+     quedo a medias. Si no llega, el vigilante de rescate.js pinta la pantalla
+     con el boton de reparar a los quince segundos.
+
+     Va ANTES de registrar el service worker a proposito: registrarlo es lo
+     ultimo y podria fallar, y eso no significa que la app no abrio. */
+  if (window.__digiArranco) window.__digiArranco();
+
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', function () {
       navigator.serviceWorker.register('sw.js').then(function (reg) {
