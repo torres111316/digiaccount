@@ -7644,17 +7644,35 @@
         return;
       }
       window.__marcarActividad();
-      // Recarga completa: contexto 100% LIMPIO para esta sesión (sin residuos en memoria
-      // de otra cuenta usada antes en la misma pestaña). El arranque con sesión hace el resto.
-      /* Aqui terminaba con un saludo por nombre. Se quito: `reload()` no corta
-         la ejecucion, asi que esas lineas SI corrian, y leian una variable
-         —`perfil`— que en este punto ya no existe. Resultado: cada entrada
-         correcta dejaba un error en la consola, y el saludo no se veia nunca
-         porque la recarga se lo llevaba por delante.
+
+      /* LA RECARGA. Sin esta linea se entra bien y no pasa NADA.
+
+         Es lo que hace que el usuario vea la app: el login deja la sesion
+         puesta, pero la pantalla sigue siendo la de entrar. Hay que volver a
+         cargar para que corra el arranque CON sesion, que es el que pinta
+         todo.
+
+         Lo reporto Luis: «entro, no me deja, cierro la app, vuelvo a abrir y
+         me sale de una vez para escoger la empresa». Exactamente eso: al
+         reabrir, el arranque con sesion hace lo que esta llamada tenia que
+         haber hecho.
+
+         DE DONDE SALIO: aqui terminaba con un saludo por nombre que leia una
+         variable que ya no existia. Al quitar esas lineas se fue tambien el
+         `reload()` que estaba entre ellas — y el comentario que lo explicaba
+         se quedo, hablando de una recarga que ya no ocurria. Un comentario
+         que describe lo que el codigo NO hace es peor que no tener ninguno:
+         se lee, se cree, y nadie vuelve a mirar.
+
+         Y ademas deja el contexto LIMPIO: sin residuos en memoria de otra
+         cuenta usada antes en la misma pestaña. Eso era una fuga de verdad —
+         un cliente llego a ver el panel de otro.
 
          Si alguna vez se quiere saludar por nombre, el sitio es el arranque
-         CON sesion —despues de la recarga—, que es donde el perfil ya esta
-         cargado. Aqui no puede funcionar. */
+         CON sesion, despues de la recarga, que es donde el perfil ya esta
+         cargado. Aqui no puede funcionar: la recarga se lo lleva por
+         delante. */
+      window.location.reload();
     });
     // Acceso con Google — simulado en el prototipo (será Supabase Auth OAuth en producción)
     screen.querySelectorAll('.auth-sso').forEach((b) => b.addEventListener('click', () => {

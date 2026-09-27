@@ -162,5 +162,35 @@ _pedidos.filter((u) => !/^https?:/i.test(u)).forEach((u) => {
 });
 
 
+
+/* ── ENTRAR TIENE QUE LLEVAR A ALGUNA PARTE ──────────────────────────────────
+
+   Esta tampoco prueba un calculo. Prueba que el login haga algo DESPUES de
+   entrar bien.
+
+   Paso: al quitar un saludo por nombre que leia una variable muerta, se fue
+   con el el `window.location.reload()` que estaba entre esas lineas. El login
+   seguia funcionando —la sesion quedaba puesta— pero la pantalla se quedaba
+   en la de entrar. Luis lo vivio asi: «entro, no me deja; cierro la app,
+   vuelvo a abrir y ya estoy dentro».
+
+   Y el comentario que explicaba la recarga se quedo ahi, hablando de algo que
+   ya no ocurria. Un comentario que describe lo que el codigo NO hace es peor
+   que no tener ninguno: se lee, se cree, y nadie vuelve a mirar. Por eso esta
+   prueba mira el CODIGO y tira los comentarios antes de mirar. */
+bloque('Entrar lleva a alguna parte');
+var _iLogin = app.indexOf('signInWithPassword');
+var _jLogin = _iLogin < 0 ? -1 : app.indexOf('auth-sso', _iLogin);
+var _login = _iLogin < 0 ? '' : app.slice(_iLogin, _jLogin > 0 ? _jLogin : _iLogin + 3000);
+
+var _sinComent = _login
+  .replace(/\/\*[\s\S]*?\*\//g, ' ')
+  .replace(/(^|[^:])\/\/.*$/gm, '$1 ');
+
+ok('se encontro el login', _login.length > 0, true);
+ok('despues de entrar, la app va a alguna parte',
+  /location\.reload\(|location\.replace\(/.test(_sinComent), true);
+
+
 console.log('\n' + (fallas ? 'HAY ' + fallas + ' FALLA(S) de ' + total : 'TODO OK · ' + total + ' comprobaciones'));
 process.exit(fallas ? 1 : 0);
