@@ -7676,10 +7676,20 @@
          delante. */
       window.location.reload();
     });
-    // Acceso con Google — simulado en el prototipo (será Supabase Auth OAuth en producción)
-    screen.querySelectorAll('.auth-sso').forEach((b) => b.addEventListener('click', () => {
-      showApp(); toast('Acceso con Google (demo) · bienvenido', 'success');
-    }));
+    /* AQUI VIVIA EL ACCESO CON GOOGLE «simulado en el prototipo».
+
+       Hacia `showApp()` y nada mas: pintaba la app SIN autenticar a nadie.
+       En un prototipo es una maqueta; en produccion es una puerta abierta en
+       la pantalla de entrar.
+
+       Lo encontro Luis probando: tocaba el campo del correo para elegirlo de
+       los guardados por Chrome y la app entraba antes de que el pulsara
+       «Entrar». La hoja del selector se cierra y el toque cae en el boton que
+       estaba justo debajo.
+
+       No se arregla escondiendolo ni desactivandolo: se quita. Vuelve el dia
+       que Supabase Auth OAuth este conectado de verdad — y ese dia tendra que
+       hacer login, no `showApp()`. */
     document.getElementById('signupForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const name = document.getElementById('suName').value.trim();

@@ -247,5 +247,45 @@ ok('tiene el respaldo local', /scope:\s*['"]local['"]/.test(_fn), true);
 ok('borra la llave del token si hace falta', /auth-token/.test(_fn), true);
 
 
+
+/* ── SOLO SE ENTRA CON SESION ────────────────────────────────────────────────
+
+   Habia un boton «Continuar con Google» que era un maniqui del prototipo:
+   hacia `showApp()` y nada mas. Es decir, pintaba la app SIN autenticar a
+   nadie, desde la pantalla de entrar.
+
+   En un prototipo es una maqueta. En produccion es una puerta abierta.
+
+   Lo encontro Luis: tocaba el campo del correo para elegirlo de los guardados
+   por Chrome y la app entraba antes de que el pulsara «Entrar» — la hoja del
+   selector se cierra y el toque cae en el boton que estaba justo debajo.
+
+   `showApp()` solo pinta la app. Quien decide que alguien puede entrar es la
+   comprobacion de sesion, y por eso tiene que haber UNA sola llamada: la que
+   esta dentro de esa comprobacion. */
+bloque('Solo se entra con sesion');
+
+var _indexH = (function () { try { return fs.readFileSync(path.join(RAIZ, 'index.html'), 'utf8'); } catch (e) { return ''; } })();
+ok('no hay boton de acceso sin clave en el HTML', /auth-sso/.test(_indexH), false);
+
+/* Se cuentan las LLAMADAS, no la definicion ni los comentarios. */
+var _appSinComent = app
+  .replace(/\/\*[\s\S]*?\*\//g, ' ')
+  .replace(/(^|[^:])\/\/.*$/gm, '$1 ');
+var _llamadas = (_appSinComent.match(/(^|[^\w.])showApp\s*\(\s*\)/g) || []).length;
+var _defs = (_appSinComent.match(/function\s+showApp\s*\(/g) || []).length;
+
+ok('showApp esta definida una vez', _defs, 1);
+/* La definicion tambien calza el patron —lleva `function` delante pero el
+   espacio cuenta— asi que se resta. */
+ok('y solo se llama desde UN sitio', _llamadas - _defs, 1);
+
+/* Y ese sitio tiene que estar despues de comprobar la sesion. */
+var _iSesion = _appSinComent.indexOf('auth.getSession()');
+var _iShow = _appSinComent.search(/(^|[^\w.])showApp\s*\(\s*\)/m);
+ok('y ese sitio va despues de comprobar la sesion',
+  _iSesion > 0 && _iShow > _iSesion, true);
+
+
 console.log('\n' + (fallas ? 'HAY ' + fallas + ' FALLA(S) de ' + total : 'TODO OK · ' + total + ' comprobaciones'));
 process.exit(fallas ? 1 : 0);
