@@ -192,5 +192,60 @@ ok('despues de entrar, la app va a alguna parte',
   /location\.reload\(|location\.replace\(/.test(_sinComent), true);
 
 
+
+/* ── CERRAR SESION TIENE QUE CERRARLA DE VERDAD ──────────────────────────────
+
+   Luis: «cierro sesion y vuelve a ingresar sin pedirme el correo y la clave».
+   En un equipo compartido eso significa que el siguiente entra en la cuenta
+   del anterior.
+
+   LA CAUSA, comprobada leyendo la libreria: `signOut()` NO LANZA el error, lo
+   DEVUELVE. Resuelve con { error } en casi todos sus caminos de fallo — y uno
+   de ellos sale sin borrar la sesion local. El codigo viejo hacia
+
+       try { await window.sb.auth.signOut(); } catch (e) {}
+
+   en cinco sitios. El catch no atrapaba nada porque no habia nada que
+   atrapar, y el resultado se tiraba a la basura. Fallaba en silencio.
+
+   Estas pruebas cuidan las tres cosas que lo arreglan: que haya UN solo sitio
+   que cierre sesion, que ese sitio MIRE lo que devuelve, y que COMPRUEBE que
+   de verdad quedo cerrada en vez de suponerlo. */
+bloque('Cerrar sesion cierra de verdad');
+
+var _core = (function () { try { return fs.readFileSync(path.join(RAIZ, 'assets', 'core.js'), 'utf8'); } catch (e) { return ''; } })();
+var _modulos = ['app.js', 'retenciones.js', 'tesoreria.js', 'facturas.js',
+                'contabilidad.js', 'inventario.js', 'terceros.js', 'nomina.js'];
+
+ok('core.js se pudo leer', _core.length > 0, true);
+ok('hay UNA funcion que cierra sesion', /__cerrarSesionSegura\s*=/.test(_core), true);
+
+/* Nadie mas llama a signOut: si vuelve a haber copias, vuelve el catch vacio.
+   Se tiran los comentarios antes de mirar. */
+var _sueltos = _modulos.filter(function (f) {
+  var t = (function () { try { return fs.readFileSync(path.join(RAIZ, 'assets', f), 'utf8'); } catch (e) { return ''; } })();
+  t = t.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/.*$/gm, '$1 ');
+  return /auth\.signOut\s*\(/.test(t);
+});
+ok('ningun modulo llama a signOut por su cuenta', _sueltos.join(', ') || 'ninguno', 'ninguno');
+
+var _fn = (function () {
+  var i = _core.indexOf('__cerrarSesionSegura');
+  if (i < 0) return '';
+  var j = _core.indexOf('window.__drawIcons', i);
+  return _core.slice(i, j > 0 ? j : i + 3000);
+})().replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/.*$/gm, '$1 ');
+
+/* Lo que estaba mal: el error se DEVUELVE, no se lanza. Hay que leerlo. */
+ok('mira el error que DEVUELVE signOut', /\.error/.test(_fn), true);
+/* Y no confia: vuelve a preguntar si quedo sesion. */
+ok('comprueba que de verdad quedo cerrada', /getSession\s*\(/.test(_fn), true);
+/* Y si quedo, cierra en local — que no necesita red y es lo que protege el
+   aparato que uno tiene delante. */
+ok('tiene el respaldo local', /scope:\s*['"]local['"]/.test(_fn), true);
+/* Y el ultimo recurso: borrar la llave del token a mano. */
+ok('borra la llave del token si hace falta', /auth-token/.test(_fn), true);
+
+
 console.log('\n' + (fallas ? 'HAY ' + fallas + ' FALLA(S) de ' + total : 'TODO OK · ' + total + ' comprobaciones'));
 process.exit(fallas ? 1 : 0);

@@ -604,8 +604,7 @@
       if (accion === 'update') { if (window.__buscarActualizacion) window.__buscarActualizacion(true); return; }
       if (accion === 'logout') {
         if (!window.confirm('¿Cerrar sesión en DigiAccount?')) return;
-        try { if (window.sb) await window.sb.auth.signOut(); } catch (err) {}
-        try { localStorage.removeItem('da_last_activity'); } catch (err) {}
+        await window.__cerrarSesionSegura('usuario');
         window.location.reload();   // recarga = borra todo el estado en memoria
       }
     }));
@@ -7583,7 +7582,10 @@
         + '<button id="bloqueoLogout" class="btn btn-ghost" style="height:36px;font-size:13px;"><i data-lucide="log-out"></i> Cerrar sesión</button>'
         + '</div>';
       const lb = document.getElementById('bloqueoLogout');
-      if (lb) lb.addEventListener('click', async () => { try { await window.sb.auth.signOut(); } catch (e) {} window.location.reload(); });
+      if (lb) lb.addEventListener('click', async () => {
+        await window.__cerrarSesionSegura('bloqueo');
+        window.location.reload();
+      });
       if (window.lucide) window.lucide.createIcons();
     }
     window.__mostrarBloqueo = mostrarBloqueo;
@@ -7721,7 +7723,7 @@
     });
     const logoutBtn = document.getElementById('logoutBtn');
     if (logoutBtn) logoutBtn.addEventListener('click', async () => {
-      try { await window.sb.auth.signOut(); } catch (e) {}
+      await window.__cerrarSesionSegura('usuario');
       // CRÍTICO: recargar la página borra TODO el estado en memoria (datos del fundador,
       // paneles, variables) para que NADA del usuario anterior quede visible al siguiente.
       window.location.reload();
@@ -7749,8 +7751,7 @@
         // Si la sesión guardada lleva +30 min sin actividad (aunque se haya cerrado el
         // navegador), NO reingresar solo: cerrar y pedir login de nuevo.
         if (window.__sesionExpiradaPorInactividad && window.__sesionExpiradaPorInactividad()) {
-          try { await window.sb.auth.signOut(); } catch (e) {}
-          try { localStorage.removeItem('da_last_activity'); } catch (e) {}
+          await window.__cerrarSesionSegura('inactividad');
           showAuth();
           if (window.toast) setTimeout(function () { window.toast('Sesión cerrada por inactividad', 'info'); }, 800);
           return;
@@ -10861,9 +10862,7 @@
   const autenticado = () => document.body.classList.contains('authed');
   async function cerrarPorInactividad() {
     if (!autenticado()) return;
-    try { if (window.sb) await window.sb.auth.signOut(); } catch (e) {}
-    try { localStorage.removeItem('da_last_activity'); } catch (e) {}
-    try { sessionStorage.setItem('da_logout_motivo', 'inactividad'); } catch (e) {}
+    await window.__cerrarSesionSegura('inactividad');
     window.location.reload(); // recarga = borra TODO el estado en memoria
   }
   function reset() {

@@ -261,6 +261,98 @@
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
+
+  /* CERRAR SESION DE VERDAD
+     ======================
+
+     POR QUE ESTO NO ES UNA LINEA
+
+     Antes cada boton hacia lo suyo:
+
+         try { await window.sb.auth.signOut(); } catch (e) {}
+         window.location.reload();
+
+     Y eso PARECE correcto. El problema esta en el `catch` vacio: si
+     `signOut()` falla, nadie se entera y la recarga te devuelve adentro con
+     la sesion intacta.
+
+     Falla de verdad. `signOut()` por omision avisa al servidor ANTES de
+     borrar la sesion local; si ese viaje no llega —la red del local a media
+     tarde, el servidor despertando, un token ya vencido que el servidor
+     rechaza— puede tirar el error antes de haber borrado nada. Cinco sitios
+     copiaban el mismo `catch` vacio.
+
+     Lo reporto Luis: «cierro sesion y vuelve a ingresar sin pedirme el correo
+     y la clave». En un equipo compartido eso significa que el siguiente entra
+     en la cuenta del anterior.
+
+     ASI QUE AQUI SE COMPRUEBA, NO SE SUPONE
+
+     1. Se pide cerrar en el servidor.
+     2. Se MIRA si de verdad quedo cerrada.
+     3. Si quedo algo, se cierra en LOCAL — que es lo que protege el
+        dispositivo que uno tiene delante, y no necesita red.
+     4. Y si aun asi queda, se borra a mano la llave de Supabase.
+
+     El orden importa: lo que protege al usuario que esta ahi es que la sesion
+     desaparezca DE ESTE APARATO. Avisarle al servidor es bueno —invalida el
+     token en todas partes— pero no puede ser condicion para lo primero.
+
+     @param {string} motivo  'usuario' | 'inactividad' | 'bloqueo'
+     @returns {Promise<{servidor: boolean}>}  si el servidor confirmo */
+  window.__cerrarSesionSegura = async function (motivo) {
+    var servidorOk = true;
+
+    try {
+      /* EL ERROR SE DEVUELVE, NO SE LANZA. Esto es lo que estaba mal antes:
+         `signOut()` resuelve con un objeto { error } en casi todos sus
+         caminos de fallo, asi que un `try/catch` no atrapa nada — y el
+         codigo viejo tiraba el resultado a la basura. Habia que MIRARLO. */
+      var res = window.sb ? await window.sb.auth.signOut() : null;
+      if (res && res.error) {
+        servidorOk = false;
+        try { console.warn('[DigiAccount] El servidor no confirmo el cierre de sesion:', res.error.message); } catch (e2) {}
+      }
+    } catch (e) {
+      /* Y ademas puede lanzar: `signOut()` toma un candado del navegador y
+         si no lo consigue a tiempo —dos pestañas del mismo origen abiertas,
+         que es justo lo que pasa con una PWA instalada y el navegador— tira
+         antes de haber borrado nada. */
+      servidorOk = false;
+      try { console.warn('[DigiAccount] Fallo al cerrar sesion:', e && e.message); } catch (e2) {}
+    }
+
+    /* SE COMPRUEBA. Es lo unico que distingue «cerre la sesion» de «pedi que
+       se cerrara». */
+    var quedo = null;
+    try {
+      if (window.sb) {
+        var r = await window.sb.auth.getSession();
+        quedo = r && r.data && r.data.session;
+      }
+    } catch (e) {}
+
+    if (quedo) {
+      servidorOk = false;
+      try { if (window.sb) await window.sb.auth.signOut({ scope: 'local' }); } catch (e) {}
+    }
+
+    /* El ultimo recurso: la llave donde Supabase guarda el token. Se borra a
+       mano. Preferible que la libreria lo haga; imprescindible que quede
+       hecho. */
+    try {
+      for (var i = localStorage.length - 1; i >= 0; i--) {
+        var k = localStorage.key(i);
+        if (k && /^sb-.*-auth-token/.test(k)) localStorage.removeItem(k);
+      }
+    } catch (e) {}
+
+    try { localStorage.removeItem('da_last_activity'); } catch (e) {}
+    if (motivo) { try { sessionStorage.setItem('da_logout_motivo', motivo); } catch (e) {} }
+
+    return { servidor: servidorOk };
+  };
+
   window.__drawIcons = function () { if (window.lucide) window.lucide.createIcons(); };
 
 })();
