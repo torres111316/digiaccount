@@ -287,5 +287,39 @@ ok('y ese sitio va despues de comprobar la sesion',
   _iSesion > 0 && _iShow > _iSesion, true);
 
 
+
+/* ── NO SE ENTRA SIN QUE LO PIDA LA PERSONA ──────────────────────────────────
+
+   Chrome en Android rellena Y ENVIA el formulario al elegir una credencial
+   guardada («Touch to Fill»). La app recibe un `submit` que nadie pidio.
+
+   Luis lo vio con dos cuentas guardadas: con la de un cliente el formulario
+   esperaba a que pulsara «Entrar»; con la suya, entraba sola al
+   seleccionarla. Misma pantalla, mismo codigo — lo que cambia es lo que
+   decide el navegador con cada credencial.
+
+   En una app de datos fiscales eso no es una comodidad: es que el telefono
+   desbloqueado sobre una mesa abre la contabilidad de los clientes.
+
+   No se puede impedir que el navegador envie. Lo que se hace es no obedecer
+   un envio que no trae señal de haber salido de una persona. */
+bloque('No se entra sin que lo pida la persona');
+
+var _subLogin = (function () {
+  var i = app.indexOf("getElementById('loginForm')");
+  if (i < 0) i = app.indexOf('_loginForm.addEventListener');
+  if (i < 0) return '';
+  var j = app.indexOf('signInWithPassword', i);
+  return j > 0 ? app.slice(i, j) : '';
+})().replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/.*$/gm, '$1 ');
+
+ok('se encontro el envio del login', _subLogin.length > 0, true);
+/* `submitter` es el boton que provoco el envio: lo hay al pulsar «Entrar» y
+   con el «Ir» del teclado, y NO lo hay en un envio automatico. */
+ok('mira quien provoco el envio', /submitter/.test(_subLogin), true);
+/* Y corta antes de intentar entrar si no vino de la persona. */
+ok('y no sigue si no lo pidio nadie', /if\s*\(\s*!\s*pedido\s*\)\s*return/.test(_subLogin), true);
+
+
 console.log('\n' + (fallas ? 'HAY ' + fallas + ' FALLA(S) de ' + total : 'TODO OK · ' + total + ' comprobaciones'));
 process.exit(fallas ? 1 : 0);

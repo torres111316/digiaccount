@@ -7611,8 +7611,47 @@
       if (inp) inp.type = inp.type === 'password' ? 'text' : 'password';
     }));
 
-    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+    /* ENTRAR SOLO CUANDO LO PIDE LA PERSONA
+       =====================================
+
+       Chrome en Android tiene «Touch to Fill»: al tocar el campo del correo
+       muestra las credenciales guardadas y, al elegir una, rellena Y ENVIA el
+       formulario. La app recibe un `submit` que el usuario no pidio.
+
+       Lo reporto Luis: con la clave de un cliente el formulario esperaba a
+       que el pulsara «Entrar»; con la suya, entraba sola al seleccionarla.
+       Misma pantalla, mismo codigo — lo que cambia es lo que decide el
+       navegador con cada credencial guardada.
+
+       En una app de datos fiscales, entrar sin que nadie lo pida no es una
+       comodidad: es que el telefono desbloqueado sobre una mesa abre la
+       contabilidad de los clientes. Luis lo dijo asi: «deberia por lo menos
+       esperar que yo mismo permita darle Entrar».
+
+       No se puede impedir que el navegador envie. Lo que si se puede es NO
+       OBEDECER un envio que no vino de la persona:
+
+         · `e.submitter` es el boton que provoco el envio. Lo hay cuando se
+           pulsa «Entrar» y cuando se usa el «Ir» del teclado del telefono.
+           Un envio automatico del navegador no lo trae.
+         · Y por si algun navegador no lo rellena, tambien vale haber tocado
+           el boton o haber pulsado Enter dentro del formulario.
+
+       Si no hay ninguna de las dos, no se entra y no se dice nada: el
+       formulario queda relleno, esperando. Que es exactamente lo que la
+       persona espera ver. */
+    var _loginForm = document.getElementById('loginForm');
+    var _loPidioLaPersona = false;
+    var _btnEntrarLogin = _loginForm.querySelector('button[type="submit"]');
+    if (_btnEntrarLogin) _btnEntrarLogin.addEventListener('click', function () { _loPidioLaPersona = true; });
+    _loginForm.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') _loPidioLaPersona = true; });
+
+    _loginForm.addEventListener('submit', async (e) => {
       e.preventDefault();
+
+      var pedido = _loPidioLaPersona || !!(e && e.submitter);
+      _loPidioLaPersona = false;
+      if (!pedido) return;   // lo envio el navegador al rellenar: no se entra
       const email = document.getElementById('loginEmail').value.trim();
       const pass = document.getElementById('loginPass').value;
       if (!email) return toast('Ingresa tu correo electrónico', 'error');
