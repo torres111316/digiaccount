@@ -7236,6 +7236,9 @@
     padding: 48px 20px; overflow-y: auto;
   }
   .form-modal-overlay[hidden] { display: none; }
+  /* La ficha corta de producto se abre ENCIMA del formulario de compra, que
+     usa este mismo overlay. Sin este escalón quedaría debajo y no se vería. */
+  .prod-rapido-overlay { z-index: 2600; }
   .form-modal {
     background: var(--da-white); border-radius: var(--radius-lg);
     box-shadow: var(--shadow-xl); width: 100%; max-width: 560px;

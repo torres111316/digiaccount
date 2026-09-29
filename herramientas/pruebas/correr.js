@@ -397,5 +397,59 @@ ok('se leyo la clase con la que nace cada fila', _claseFila.length > 0, true);
 ok('el guardado busca exactamente esa clase', _selBucle, _claseFila);
 
 
+/* -- F2: CREAR LO QUE FALTA SIN SALIR DE DONDE ESTAS ------------------------
+
+   En los libros, F2 abre la ficha del tercero que falta sin cerrar el
+   formulario. Exigia escribir el nombre primero: quien llega con la factura
+   en la mano y sabe que el tercero no existe tenia que teclear el nombre en
+   un campo donde no iba a encontrar nada, solo para que lo dejaran seguir.
+
+   Y en la linea de inventario de una compra, F2 no existia. Faltaba un
+   producto y tocaba cancelar la compra entera.
+
+   Lo que aqui se cuida, y no se ve en pantalla: la ficha de producto NO
+   puede vivir en el modal generico, porque el formulario de compra ES ese
+   modal — abrirla ahi borraria la compra a medio cargar, que es exactamente
+   el problema que viene a resolver. */
+bloque('F2 crea lo que falta sin perder el trabajo');
+
+var _idx = (function () { try { return fs.readFileSync(path.join(RAIZ, 'index.html'), 'utf8'); } catch (e) { return ''; } })();
+
+/* El F2 de los libros ya no pide escribir nada primero. */
+ok('F2 no exige escribir el nombre antes',
+  /Escribe el nombre antes de crearlo con F2/.test(app), false);
+
+/* La ficha de producto tiene contenedor PROPIO, no el modal generico. */
+ok('la ficha de producto tiene su propio contenedor',
+  /id="prodRapidoModal"/.test(_idx), true);
+ok('y no reusa el modal del formulario de compra',
+  /prodRapidoModal[\s\S]{0,400}id="fmBody"/.test(_idx), false);
+
+var _css = (function () { try { return fs.readFileSync(path.join(RAIZ, 'assets', 'app.css'), 'utf8'); } catch (e) { return ''; } })();
+/* Y se abre POR ENCIMA: mismo overlay, un escalon mas de z-index. */
+var _zBase = Number((_css.match(/\.form-modal-overlay\s*\{[^}]*z-index:\s*(\d+)/) || [])[1] || 0);
+var _zProd = Number((_css.match(/\.prod-rapido-overlay\s*\{[^}]*z-index:\s*(\d+)/) || [])[1] || 0);
+ok('la ficha de producto se pinta encima del formulario', _zProd > _zBase, true);
+
+/* El Escape del formulario de fondo no se adelanta al de la ficha. */
+ok('el formulario de fondo cede las teclas a la ficha',
+  /prodRapidoModal'\);\s*[\r\n]+\s*if \(prodOverlay && !prodOverlay\.hidden\) return;/.test(app), true);
+
+/* F2 en la linea de inventario, y con el campo vacio tambien. */
+ok('la linea de inventario escucha F2',
+  /ev\.key !== 'F2'/.test(_appCompra), true);
+ok('y abre la ficha de producto', /__nuevoProductoRapido/.test(_appCompra), true);
+
+/* EL SILENCIO QUE SE EVITA: el producto vuelve con `id` o no vuelve.
+   Al guardar la compra el stock se suma con .eq('id', pr.id); sin id esa
+   llamada no encuentra nada, NO da error, y el inventario no se mueve. */
+ok('la ficha no devuelve un producto sin id',
+  /if \(!creado \|\| !creado\.id\)/.test(app), true);
+
+/* Y no nace con la existencia contada dos veces: la pone la compra. */
+ok('la ficha no toca el stock (lo pone la compra)',
+  /stock: 0, stock_min: 0, costo: 0,/.test(app), true);
+
+
 console.log('\n' + (fallas ? 'HAY ' + fallas + ' FALLA(S) de ' + total : 'TODO OK · ' + total + ' comprobaciones'));
 process.exit(fallas ? 1 : 0);

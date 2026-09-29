@@ -3429,8 +3429,146 @@
       // botones manden — no interceptar Escape/Guardar del formulario de fondo.
       const terOverlay = document.getElementById('terModal');
       if (terOverlay && !terOverlay.hidden) return;
+      const prodOverlay = document.getElementById('prodRapidoModal');
+      if (prodOverlay && !prodOverlay.hidden) return;
       if (e.key === 'Escape') { e.preventDefault(); close(); }
       else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveBtn.click(); }
+    });
+  })();
+
+  /* =========================================================
+     FICHA CORTA DE PRODUCTO — se abre con F2 desde una compra
+     =========================================================
+
+     Registrando una compra se llega a un producto que todavía no está en el
+     inventario. Antes eso costaba la compra entera: había que cancelarla,
+     irse a Inventario, darlo de alta y volver a escribir todo.
+
+     Es el mismo F2 de los terceros y por la misma razón. Y como el
+     formulario de compra ES el modal genérico, esta ficha no puede usarlo:
+     tiene contenedor propio y se abre por encima.
+
+     Lo que NO pregunta —existencia y costo— es tan importante como lo que
+     pregunta: eso lo pone la línea de la compra. */
+  (function fichaRapidaProducto() {
+    const overlay = document.getElementById('prodRapidoModal');
+    if (!overlay) return;
+    const get = (id) => document.getElementById(id);
+    const msg = get('prRapMsg');
+    let alGuardar = null;
+
+    function cerrar() {
+      overlay.hidden = true;
+      msg.textContent = '';
+      alGuardar = null;
+    }
+
+    /* Las categorías que ya usan los productos de esta empresa, para no
+       inventar una nueva escribiéndola distinto («Charcutería» y
+       «charcuteria» son dos categorías para la base y una sola para quien
+       mira el inventario). */
+    function categorias() {
+      const vistas = {};
+      (window.__getProductos ? window.__getProductos() : []).forEach((p) => {
+        const c = (p.categoria || '').trim();
+        if (c) vistas[c] = true;
+      });
+      return Object.keys(vistas).sort();
+    }
+
+    window.__nuevoProductoRapido = function (opt) {
+      const o = opt || {};
+      get('prRapNombre').value = o.nombre || '';
+      get('prRapCat').value = '';
+      get('prRapUnidad').value = 'und';
+      get('prRapAlic').value = '16%';
+      get('prRapPrecio').value = '';
+      get('prRapCatLista').innerHTML = categorias()
+        .map((c) => '<option value="' + (window.esc ? window.esc(c) : c) + '"></option>').join('');
+      msg.textContent = '';
+      alGuardar = o.onSaved || null;
+      overlay.hidden = false;
+      if (window.lucide) window.lucide.createIcons();
+      /* Si ya venía escrito, el foco va a la categoría: lo que falta por
+         decidir es eso, no repetir el nombre. */
+      const irA = (o.nombre || '').trim() ? get('prRapCat') : get('prRapNombre');
+      setTimeout(() => irA.focus(), 30);
+    };
+
+    async function guardar() {
+      const nombre = (get('prRapNombre').value || '').trim();
+      if (!nombre) { msg.textContent = 'Indica el nombre del producto.'; msg.className = 'fm-msg error'; return; }
+      if (!window.sb || !window.__CUENTA_ID) { msg.textContent = 'No hay sesión activa. Inicia sesión de nuevo.'; msg.className = 'fm-msg error'; return; }
+
+      /* Que no nazca repetido. Dos productos con el mismo nombre parten el
+         stock en dos y ninguno de los dos cuadra con el conteo físico. */
+      const yaEsta = (window.__getProductos ? window.__getProductos() : [])
+        .find((p) => (p.nombre || '').trim().toLowerCase() === nombre.toLowerCase());
+      if (yaEsta) { msg.textContent = 'Ese producto ya existe en el inventario — elígelo de la lista.'; msg.className = 'fm-msg error'; return; }
+
+      const fila = {
+        cuenta_id: window.__CUENTA_ID,
+        /* De QUÉ empresa es. Sin esto el producto nace huérfano y aparece
+           en todas. */
+        empresa_id: (window.__EMPRESA_ACTIVA || {}).id || null,
+        nombre: nombre,
+        sku: 'SKU-' + String(Date.now()).slice(-5) + '-' + Math.floor(Math.random() * 90 + 10),
+        categoria: (get('prRapCat').value || 'Otros').trim() || 'Otros',
+        alicuota: get('prRapAlic').value,
+        unidad: get('prRapUnidad').value,
+        /* CERO, y a propósito: la cantidad de esta compra se le suma al
+           guardar la factura. Poniéndola aquí también quedaría contada dos
+           veces. */
+        stock: 0, stock_min: 0, costo: 0,
+        precio: parseFloat(get('prRapPrecio').value) || 0,
+      };
+
+      msg.textContent = 'Guardando…'; msg.className = 'fm-msg';
+      let r = await window.sb.from('productos').insert(fila).select().single();
+      /* Si la columna `unidad` todavía no existe en la base, se guarda sin
+         ella en vez de dejar al usuario atascado en mitad de una compra. */
+      if (r.error && /unidad/.test(r.error.message || '')) {
+        const sinUnidad = Object.assign({}, fila); delete sinUnidad.unidad;
+        r = await window.sb.from('productos').insert(sinUnidad).select().single();
+      }
+      if (r.error) { msg.textContent = 'No se pudo guardar: ' + r.error.message; msg.className = 'fm-msg error'; return; }
+
+      /* HACE FALTA EL `id`, Y HACE FALTA DE VERDAD.
+
+         Al guardar la compra, la cantidad se le suma al stock con
+         `.eq('id', pr.id)`. Si el producto vuelve de aquí sin `id`, esa
+         llamada no encuentra nada, no da error, y la compra queda guardada
+         con el inventario sin mover. Nadie se entera hasta el conteo físico.
+
+         Normalmente el `id` viene en la respuesta del insert. Si por lo que
+         sea no viene, se busca el recién creado antes de seguir. */
+      let creado = r.data;
+      if (!creado || !creado.id) {
+        const b = await window.sb.from('productos').select('*').eq('nombre', fila.nombre).limit(1);
+        creado = (!b.error && b.data && b.data[0]) || null;
+      }
+      if (!creado || !creado.id) {
+        msg.textContent = 'Se guardó, pero no se pudo recuperar para usarlo aquí. Ábrelo desde Inventario.';
+        msg.className = 'fm-msg error';
+        if (window.cargarProductos) window.cargarProductos();
+        return;
+      }
+      /* Entra a la lista de esta sesión: sin esto, la línea de la compra
+         volvería a darlo por desconocido y lo crearía OTRA VEZ al guardar. */
+      if (Array.isArray(window.__PRODUCTOS)) window.__PRODUCTOS.push(creado);
+      if (window.cargarProductos) window.cargarProductos();
+      if (window.toast) window.toast('Producto "' + creado.nombre + '" creado · ya puedes usarlo en esta compra', 'success');
+      const cb = alGuardar;
+      cerrar();
+      if (cb) cb(creado);
+    }
+
+    get('prRapSave').addEventListener('click', guardar);
+    get('prRapCancel').addEventListener('click', cerrar);
+    get('prRapClose').addEventListener('click', cerrar);
+    overlay.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); cerrar(); }
+      else if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) { e.preventDefault(); guardar(); }
     });
   })();
 
@@ -4018,7 +4156,7 @@
         const hint = document.createElement('div');
         hint.className = 'fm-hint-f2';
         hint.style.cssText = 'font-size:10.5px;color:var(--fg-muted);margin-top:3px;';
-        hint.textContent = 'Escribe las primeras letras del nombre o los primeros números del RIF y elige con ↑↓ y Enter. ¿No está? F2 crea el ' + rotulo + ' sin salir de aquí.';
+        hint.textContent = 'Escribe las primeras letras del nombre o los primeros números del RIF y elige con ↑↓ y Enter. ¿No está? F2 abre la ficha del ' + rotulo + ' sin salir de aquí — con el campo vacío también.';
         wrap.appendChild(hint);
       }
 
@@ -4026,8 +4164,18 @@
         if (e.key !== 'F2') return;
         e.preventDefault();
         const val = nom.value.trim();
-        if (!val) { if (window.toast) window.toast('Escribe el nombre antes de crearlo con F2', 'error'); return; }
-        if (lista.some((t) => (t.nombre || '').toLowerCase() === val.toLowerCase())) {
+        /* F2 ABRE LA FICHA AUNQUE EL CAMPO ESTÉ VACÍO.
+
+           Antes exigía escribir el nombre primero y devolvía un aviso en
+           rojo. Pero quien va a registrar un tercero que no existe todavía
+           no tiene por qué haber escrito nada: llega con la factura en la
+           mano y lo que quiere es la ficha. Obligarlo a teclear el nombre en
+           un campo que él sabe que no va a encontrar nada es hacerle pedir
+           permiso para algo que el sistema igual le va a dar.
+
+           Si escribió algo, se aprovecha y llega escrito a la ficha. Si no,
+           la ficha abre en blanco y él la llena. */
+        if (val && lista.some((t) => (t.nombre || '').toLowerCase() === val.toLowerCase())) {
           if (window.toast) window.toast('Ese ' + rotulo + ' ya existe — selecciónalo de la lista', 'info');
           return;
         }
@@ -5269,12 +5417,63 @@
                   cajaNueva.hidden = true;
                 } else {
                   estado.className = 'ic-estado es-nuevo';
-                  estado.textContent = 'Producto nuevo — se da de alta con esta compra';
+                  estado.textContent = 'Producto nuevo — se crea con esta compra. Llena lo de abajo, o F2 para la ficha completa (IVA, unidad).';
                   cajaNueva.hidden = false;
                 }
               };
               cProd.addEventListener('input', revisar);
               cProd.addEventListener('change', revisar);
+
+              /* F2 — LA MISMA TECLA QUE EN LOS LIBROS.
+
+                 En el libro de compras y en el de ventas, F2 abre la ficha
+                 del tercero que falta sin salir del formulario. Aquí hace lo
+                 mismo con el producto: es el mismo gesto para la misma idea
+                 —«crear lo que falta aquí mismo»— y quien ya lo tiene en los
+                 dedos no aprende nada nuevo.
+
+                 Funciona con el campo VACÍO. Si hay algo escrito, llega
+                 escrito a la ficha.
+
+                 `preventDefault` importa: el F2 general de la app abre
+                 «Registrar compra» otra vez, y se frena porque comprueba
+                 `defaultPrevented`. */
+              cProd.addEventListener('keydown', (ev) => {
+                if (ev.key !== 'F2') return;
+                ev.preventDefault();
+                const escrito = (cProd.value || '').trim();
+                if (escrito && _buscarProd(escrito)) {
+                  if (window.toast) window.toast('Ese producto ya está en el inventario', 'info');
+                  return;
+                }
+                if (!window.__nuevoProductoRapido) {
+                  if (window.toast) window.toast('No se pudo abrir la ficha de producto desde aquí', 'error');
+                  return;
+                }
+                window.__nuevoProductoRapido({
+                  nombre: escrito,
+                  onSaved: (p) => {
+                    cProd.value = p.nombre;
+                    /* La lista de esta sesión del formulario y el desplegable
+                       del campo: si no, el recién creado sigue sin aparecer
+                       al escribirlo en la línea siguiente.
+
+                       `prodsCompra` ES el mismo arreglo que `window.__PRODUCTOS`
+                       —`__getProductos` devuelve la referencia, no una copia—,
+                       así que la ficha ya lo metió. Se comprueba antes de
+                       meterlo para no dejarlo dos veces. */
+                    if (!_buscarProd(p.nombre)) prodsCompra.push(p);
+                    const dl = invBox.querySelector('#fm-dl-prodcompra');
+                    if (dl) {
+                      const op = document.createElement('option');
+                      op.value = p.nombre; dl.appendChild(op);
+                    }
+                    revisar();
+                    const cc = it.querySelector('.ic-cant');
+                    if (cc) cc.focus();
+                  },
+                });
+              });
 
               it.querySelector('.ic-del').addEventListener('click', () => {
                 it.remove();
