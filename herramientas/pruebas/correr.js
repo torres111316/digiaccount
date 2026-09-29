@@ -719,5 +719,54 @@ ok('se busca solo en el cache de esta version',
 ok('mediante delCache()', /function delCache/.test(_swTxt), true);
 
 
+/* -- NINGUN NOMBRE SIN DECLARAR, EN NINGUN MODULO ---------------------------
+
+   Un parche que rehacia pintarHoja() cortaba el texto hasta la primera linea
+   en blanco. Esa linea venia justo DESPUES de `let lastReciboText = '';`, y
+   se la llevo. El codigo seguia haciendo `lastReciboText = ...`.
+
+   Sintaxis valida: `node --check` feliz. Y en el navegador, al pulsar
+   «Recibo»: ReferenceError. No se podia abrir el recibo de ningun trabajador
+   de ninguna empresa. Luis lo encontro en AGUERO.
+
+   Lo peor: la herramienta que existe para esto —variables_libres.py— tambien
+   decia «ninguno». Solo miraba nombres seguidos de ( . o [; una asignacion a
+   secas no la veia. Se le enseño, y ahora se corre AQUI, en cada pasada, en
+   vez de depender de que alguien se acuerde de correrla. */
+bloque('Ningun nombre sin declarar en los modulos');
+
+var _py = (function () {
+  var cp = require('child_process');
+  var candidatos = ['python', 'python3', 'py'];
+  for (var i = 0; i < candidatos.length; i++) {
+    try { cp.execFileSync(candidatos[i], ['--version'], { stdio: 'ignore' }); return candidatos[i]; } catch (e) {}
+  }
+  return null;
+})();
+
+if (!_py) {
+  console.log('  (sin Python: esta comprobacion se salta, no bloquea)');
+} else {
+  var _cp = require('child_process');
+  var _herr = path.join(RAIZ, 'herramientas', 'variables_libres.py');
+  ['core', 'app', 'retenciones', 'tesoreria', 'facturas', 'contabilidad',
+    'inventario', 'terceros', 'nomina', 'rescate', 'supabase-init'].forEach(function (m) {
+    var ruta = path.join(RAIZ, 'assets', m + '.js');
+    var lineas = fs.readFileSync(ruta, 'utf8').split('\n').length;
+    var salida = '';
+    try {
+      salida = _cp.execFileSync(_py, [_herr, '1', String(lineas), ruta], { encoding: 'utf8' });
+    } catch (e) { salida = 'ERROR: ' + (e.message || e); }
+    var m2 = salida.match(/\((\d+)\):\s*(.*)$/m);
+    var cuantos = m2 ? Number(m2[1]) : -1;
+    ok(m + '.js sin nombres sin declarar', cuantos === 0 ? 0 : (m2 ? m2[2].trim() : salida.trim()), 0);
+  });
+}
+
+/* Y la que se perdio, por su nombre. */
+ok('lastReciboText esta declarada en nomina.js',
+  /let lastReciboText\s*=/.test(_nom), true);
+
+
 console.log('\n' + (fallas ? 'HAY ' + fallas + ' FALLA(S) de ' + total : 'TODO OK · ' + total + ' comprobaciones'));
 process.exit(fallas ? 1 : 0);

@@ -16,6 +16,15 @@
  *     del navegador. El último trozo de la app —donde vive el pie de las
  *     listas con su paginador— quedaba debajo de esa barra, inalcanzable.
  *
+ *  4. Un parche borró `let lastReciboText = '';` en nomina.js. Sintaxis
+ *     válida, así que nada avisó; pero al pulsar «Recibo» saltaba un
+ *     ReferenceError y NO se abría el recibo de ningún trabajador. Aquí se
+ *     abre uno por el camino de verdad: botón de la tabla, clic, modal.
+ *
+ *  (el 3 sigue abajo)
+ *     del navegador. El último trozo de la app —donde vive el pie de las
+ *     listas con su paginador— quedaba debajo de esa barra, inalcanzable.
+ *
  * Ninguno da error en consola. Cómo se corre: ver el LEEME de esta carpeta.
  */
 (function () {
@@ -44,6 +53,73 @@
   setTimeout(function () {
     document.body.classList.add('authed');   // la app a la vista, como tras entrar
 
+    /* ── 0. SE ABRE EL RECIBO DE UN TRABAJADOR ───────────────────────────
+
+       Por el camino de verdad: se le da a la app un Supabase de mentira con
+       un trabajador, se carga Nomina, se pulsa «Recibo» en la tabla y se mira
+       si el modal se abre. Va PRIMERO porque las demas comprobaciones
+       rellenan todas las tablas con filas de prueba, esta incluida. */
+    var sbReal = window.sb, empresaReal = window.__EMPRESA_ACTIVA, cuentaReal = window.__CUENTA_ID;
+    var TRABAJADOR = {
+      id: 'emp-1', cuenta_id: 'c1', empresa_id: 'e1', nombre: 'TRABAJADOR DE PRUEBA',
+      cedula: 'V-1.234.567', cargo: 'Panadero', depto: 'Produccion', tipo: 'Planta',
+      ingreso: '2023-02-03', salario_mes: 7000, bono_usd: 0, bono_label: '',
+      forma_pago: 'Transferencia bancaria', frecuencia: 'semanal', color: '#0a2540',
+      ini: 'TP', activo: true, sujeto_dpp: true, transporte_usd: 0, prestamo_cuota: 0,
+      caja_ahorro_pct: 0, contingencia_bs: 0, contingencia_usd: 0,
+    };
+    function tablaFalsa(nombre) {
+      var datos = nombre === 'empleados' ? [TRABAJADOR] : [];
+      var api = {
+        select: function () { return api; }, eq: function () { return api; },
+        is: function () { return api; }, in: function () { return api; },
+        order: function () { return Promise.resolve({ data: datos, error: null }); },
+        limit: function () { return Promise.resolve({ data: datos, error: null }); },
+        single: function () { return Promise.resolve({ data: datos[0] || null, error: null }); },
+        then: function (f) { return Promise.resolve({ data: datos, error: null }).then(f); },
+        insert: function () { return Promise.resolve({ data: null, error: null }); },
+        update: function () { return api; }, delete: function () { return api; },
+      };
+      return api;
+    }
+    window.__CUENTA_ID = 'c1';
+    window.__EMPRESA_ACTIVA = { id: 'e1', n: 'EMPRESA DE PRUEBA', rif: 'J000000000' };
+    window.sb = { from: tablaFalsa, auth: { getSession: function () { return Promise.resolve({ data: { session: null } }); } } };
+
+    var erroresRecibo = [];
+    var oirErrores = function (e) { erroresRecibo.push(e.message); };
+
+    bloque('Se abre el recibo de un trabajador');
+    if (!window.cargarEmpleados) {
+      ok('existe window.cargarEmpleados', false, true);
+    } else {
+      window.cargarEmpleados();
+    }
+
+    setTimeout(function () {
+      var btnRecibo = document.querySelector('button[data-emp-idx]');
+      ok('la tabla de Nomina tiene el boton «Recibo»', !!btnRecibo, true);
+      window.addEventListener('error', oirErrores);
+      if (btnRecibo) btnRecibo.click();
+
+      setTimeout(function () {
+        window.removeEventListener('error', oirErrores);
+        var ovR = document.getElementById('reciboOverlay');
+        var hojaR = document.getElementById('reciboHoja');
+        ok('al pulsarlo no salta ningun error', erroresRecibo.length ? erroresRecibo.join(' | ') : 0, 0);
+        ok('el recibo se abre', ovR && ovR.dataset.open, 'true');
+        ok('con sus dos copias (recibo de pago)',
+          hojaR ? hojaR.querySelectorAll('.recibo-mitad').length : 0, 2);
+
+        /* Se deja todo como estaba para lo que viene detras. */
+        if (ovR) ovR.dataset.open = 'false';
+        window.sb = sbReal; window.__EMPRESA_ACTIVA = empresaReal; window.__CUENTA_ID = cuentaReal;
+        seguir();
+      }, 700);
+    }, 900);
+  }, 2000);
+
+  function seguir() {
     /* ── 1. Nadie borra los contadores del pie ──────────────────────────── */
     bloque('Los contadores del pie siguen en su sitio');
     var faltan = IDS_DEL_PIE.filter(function (id) { return !document.getElementById(id); });
@@ -177,5 +253,5 @@
       document.body.appendChild(p);
       document.title = fallas ? 'SONDA-FALLA' : 'SONDA-OK';
     }, 900);
-  }, 2000);
+  }
 })();

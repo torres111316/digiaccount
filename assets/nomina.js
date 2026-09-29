@@ -600,6 +600,19 @@
       hoja.appendChild(abajo);
     }
 
+    /* El texto del recibo para el boton «Descargar». Lo rellenan
+       openRecibo() y openReciboPago().
+
+       ESTA LINEA SE PERDIO UNA VEZ, y con ella dejo de abrirse CUALQUIER
+       recibo. Un parche que rehacia pintarHoja() cortaba hasta la primera
+       linea en blanco, y esa venia justo despues de esta declaracion: se la
+       llevo sin que nada avisara. `node --check` no lo ve —la sintaxis es
+       valida—; solo revienta al pulsar «Recibo», con un ReferenceError.
+
+       Ahora la sonda de navegador abre un recibo por el camino de verdad y
+       correr.js comprueba que esta declarada. */
+    let lastReciboText = '';
+
     function reciboRows(tab, c) {
       if (tab === 'vacaciones') {
         return [

@@ -159,7 +159,27 @@ def libres(cuerpo):
      ResizeObserver DOMParser XMLSerializer Option Range NodeFilter caches getComputedStyle'''.split())
 
     usados = set(re.findall(r'(?<![\w$.])([A-Za-z_$][\w$]*)\s*(?=[\(\.\[])', limpio))
-    return sorted(u for u in usados if u not in definidos and u not in GLOBALES)
+
+    # ASIGNACIONES A NOMBRES QUE NADIE DECLARO.
+    #
+    # Lo de arriba solo ve un nombre cuando va seguido de ( . o [ — o sea,
+    # cuando se LLAMA o se LEE por dentro. Un `x = algo` a secas no lo ve.
+    #
+    # Y ese es justo el fallo que se escapo en nomina.js: un parche borro
+    # `let lastReciboText = '';` y el codigo seguia haciendo
+    # `lastReciboText = ...`. Sintaxis valida, `node --check` feliz, esta
+    # herramienta diciendo «ninguno»… y ningun recibo se podia abrir: en modo
+    # estricto eso es un ReferenceError al ejecutar.
+    #
+    # Se cuentan: `x = `, las compuestas (`x += `, `x ||= `…) y `x++`/`++x`.
+    # No se cuentan `==`, `===` ni `=>`, que no asignan.
+    asignados = set(re.findall(
+        r'(?<![\w$.])([A-Za-z_$][\w$]*)\s*(?:\*\*|>>>|<<|>>|\|\||&&|\?\?|[+\-*/%&|^])?=(?![=>])',
+        limpio))
+    asignados |= set(re.findall(r'(?<![\w$.])([A-Za-z_$][\w$]*)\s*(?:\+\+|--)', limpio))
+    asignados |= set(re.findall(r'(?:\+\+|--)\s*([A-Za-z_$][\w$]*)', limpio))
+
+    return sorted(u for u in (usados | asignados) if u not in definidos and u not in GLOBALES)
 
 
 if __name__ == '__main__':
