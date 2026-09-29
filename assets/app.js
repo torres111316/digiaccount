@@ -11376,11 +11376,35 @@
             if (nuevo.state === 'installed' && navigator.serviceWorker.controller) ofrecer(nuevo);
           });
         });
+        /* EL AVISO QUE VOLVIA UNA Y OTRA VEZ.
+
+           Se pulsaba «Actualizar», la pantalla recargaba… y el aviso estaba
+           otra vez ahi. Luis lo pulso unas diez veces seguidas.
+
+           La culpa era de esta linea:  setTimeout(reload, 300).
+
+           `skipWaiting()` no es inmediato: le pide al navegador que la version
+           nueva tome el control, y eso tarda lo que tarde. Recargar a los 300
+           milisegundos es apostar a que ya paso. En un telefono no pasa: la
+           pagina volvia con el service worker VIEJO todavia al mando y el
+           nuevo todavia esperando, asi que al arrancar veia `reg.waiting` y
+           sacaba el aviso de nuevo. Pulsar otra vez repetia la apuesta.
+
+           Ahora no se recarga por reloj. Se avisa y se espera a
+           `controllerchange`, que es el navegador diciendo «ya esta, manda el
+           nuevo». Esa señal no puede llegar antes de tiempo.
+
+           El reloj se queda solo como red de seguridad, y a diez segundos:
+           si por lo que sea `controllerchange` no llega nunca, la app no se
+           queda con el aviso escondido y sin recargar. */
         if (btn) btn.addEventListener('click', function () {
-          if (esperando) { try { esperando.postMessage({ tipo: 'ACTIVAR_YA' }); } catch (e) {} }
           if (bar) bar.hidden = true;
-          setTimeout(function () { window.location.reload(); }, 300);
+          if (txt) txt.textContent = 'Actualizando…';
+          if (!esperando) { window.location.reload(); return; }
+          try { esperando.postMessage({ tipo: 'ACTIVAR_YA' }); } catch (e) {}
+          setTimeout(function () { if (!recargado) { recargado = true; window.location.reload(); } }, 10000);
         });
+
         // Cuando el SW nuevo toma el control, recargar una sola vez
         let recargado = false;
         navigator.serviceWorker.addEventListener('controllerchange', function () {
@@ -11401,10 +11425,32 @@
             if (manual && window.toast) window.toast('No se pudo verificar (¿sin conexión?)', 'error');
           });
         };
+        /* BUSCAR ACTUALIZACIONES, PERO NO A CADA RATO.
+
+           `visibilitychange` en un telefono salta todo el tiempo: al cambiar
+           de app, al bloquear y desbloquear, al bajar la barra de
+           notificaciones, al entrar una llamada. Cada salto pedia el
+           service worker al servidor, y si venia distinto se volvia a
+           descargar la app ENTERA —22 archivos, con el de Supabase de 218 KB
+           entre ellos—.
+
+           Con datos moviles eso es lo que hacia que todo fuera lento: no es
+           que la app pesara mas, es que se la estaba bajando una y otra vez.
+
+           Media hora entre consultas es de sobra: un despliegue nuevo no es
+           urgente al minuto, y el que quiera comprobarlo ya tiene la opcion
+           del menu, que no pasa por aqui. */
+        var UN_RATO = 30 * 60 * 1000;
+        var ultimaBusqueda = Date.now();   // acaba de arrancar: ya esta al dia
+        function buscarSiTocaYa() {
+          if (Date.now() - ultimaBusqueda < UN_RATO) return;
+          ultimaBusqueda = Date.now();
+          reg.update().catch(function () {});
+        }
         document.addEventListener('visibilitychange', function () {
-          if (!document.hidden) reg.update().catch(function () {});
+          if (!document.hidden) buscarSiTocaYa();
         });
-        setInterval(function () { reg.update().catch(function () {}); }, 30 * 60 * 1000);
+        setInterval(buscarSiTocaYa, UN_RATO);
       }).catch(function (e) { console.warn('SW no registrado:', e); });
     });
   }

@@ -43,3 +43,24 @@ enlaza — y por eso hace falta el servidor local, no vale abrir el archivo
 directamente.
 
 Los dos archivos temporales se borran siempre, incluso si Chrome falla.
+
+## `sw.py` — el service worker, con un servidor que cuenta
+
+Aparte de `correr.py`, esta carpeta tiene `sw.py`. Levanta su propio servidor
+que **apunta cada petición**, abre la app dos veces con el mismo perfil de
+Chrome, y mide qué se vuelve a bajar la segunda vez.
+
+```
+python herramientas/pruebas/navegador/sw.py
+```
+
+No necesita servidor aparte: se lo monta él.
+
+Es lo que dejó a la vista por qué la app iba lenta en el teléfono: todo iba
+«primero la red», así que cada apertura volvía a bajar el CSS, el JS y los
+218 KB de Supabase. **Medido: 25 peticiones por apertura; ahora, 1.**
+
+El servidor manda `Cache-Control: no-store` a propósito. Sin eso, Chrome se
+guarda los archivos por su cuenta y el contador marca cero aunque el service
+worker sí esté saliendo a la red — se estaría midiendo el caché del navegador
+en vez del service worker.

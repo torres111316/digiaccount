@@ -623,5 +623,69 @@ ok('la ultima esta en el traje de telefono',
 ok('y el boton mide 40px o mas', _ultima.px >= 40, true);
 
 
+/* -- EL AVISO DE «HAY UNA VERSION NUEVA» QUE NO SE IBA --------------------
+
+   Se pulsaba «Actualizar», la pantalla recargaba, y el aviso estaba otra vez
+   ahi. Luis lo pulso unas diez veces seguidas desde el telefono.
+
+   La culpa era de un `setTimeout(reload, 300)`. `skipWaiting()` no es
+   inmediato: le pide al navegador que la version nueva tome el control, y eso
+   tarda lo que tarde. Recargar a los 300 milisegundos es apostar a que ya
+   paso — en un telefono no pasa. La pagina volvia con el service worker VIEJO
+   todavia al mando y el nuevo esperando, veia `reg.waiting` y sacaba el aviso
+   de nuevo. Pulsar otra vez repetia la apuesta.
+
+   Ahora se espera a `controllerchange`, que es el navegador diciendo «ya
+   esta». Esa señal no puede llegar antes de tiempo. */
+bloque('El aviso de version nueva no se repite');
+
+var _appSW = app.replace(/\/\*[\s\S]*?\*\//g, ' ');
+
+/* Nadie recarga a los pocos cientos de milisegundos de pedir el cambio. */
+var _relojes = (_appSW.match(/setTimeout\([\s\S]{0,140}?location\.reload[\s\S]{0,80}?,\s*(\d+)\)/g) || []);
+var _cortos = _relojes.filter(function (r) {
+  var ms = Number((r.match(/,\s*(\d+)\)/) || [])[1] || 0);
+  return ms > 0 && ms < 5000;
+});
+ok('no se recarga por reloj corto tras Actualizar', _cortos.length, 0);
+ok('se espera a que el navegador avise', /addEventListener\('controllerchange'/.test(_appSW), true);
+
+/* -- Y EL TELEFONO DEJA DE PREGUNTAR A CADA RATO --------------------------
+
+   `visibilitychange` en un movil salta todo el tiempo: al cambiar de app, al
+   bloquear y desbloquear, al bajar las notificaciones. Cada salto pedia el
+   service worker al servidor. */
+ok('las consultas van con freno', /ultimaBusqueda/.test(_appSW), true);
+ok('y el freno es de media hora o mas',
+  Number((_appSW.match(/UN_RATO\s*=\s*(\d+)\s*\*\s*60\s*\*\s*1000/) || [])[1] || 0) >= 30, true);
+
+/* -- LOS ARCHIVOS SALEN DE LA COPIA, NO DE LA RED --------------------------
+
+   Iban «primero la red». En un telefono eso es volver a bajar el CSS, el JS y
+   los 218 KB de Supabase cada vez que se abre la app. Medido: 25 peticiones
+   por apertura; ahora, 1.
+
+   No hace falta pedirlos: el nombre del cache lleva el numero de version, asi
+   que dentro de una version la copia ES la version. */
+/* Los comentarios de sw.js NOMBRAN `caches.match(` para explicar por que no
+   se usa. Hay que mirar el codigo, no lo que se cuenta de el. */
+function _sinComentarios(s) { return s.replace(/\/\*[\s\S]*?\*\//g, ' '); }
+
+bloque('Los archivos de la app salen de la copia');
+
+var _swTxt = (function () { try { return fs.readFileSync(path.join(RAIZ, 'sw.js'), 'utf8'); } catch (e) { return ''; } })();
+
+ok('lo que no es navegacion sale de la copia',
+  /if \(req\.mode !== 'navigate'\)/.test(_swTxt), true);
+ok('la navegacion si va a la red (asi llega un despliegue)',
+  /ESPERA_RED/.test(_swTxt), true);
+/* Y se busca SOLO en el cache de esta version: mientras la nueva espera, los
+   dos caches conviven, y mezclarlos serviria el JS de una version dentro del
+   HTML de otra. */
+ok('se busca solo en el cache de esta version',
+  /caches\.match\(/.test(_sinComentarios(_swTxt)), false);
+ok('mediante delCache()', /function delCache/.test(_swTxt), true);
+
+
 console.log('\n' + (fallas ? 'HAY ' + fallas + ' FALLA(S) de ' + total : 'TODO OK · ' + total + ' comprobaciones'));
 process.exit(fallas ? 1 : 0);

@@ -5,6 +5,7 @@
 | Cálculos de dinero e impuestos | `node herramientas/pruebas/correr.js` | nada |
 | El motor de tablas (paginación, búsqueda) | `node herramientas/pruebas/tablas.js` | `npm install --no-save jsdom` |
 | Lo que solo se ve en un navegador | `python herramientas/pruebas/navegador/correr.py` | Chrome + servidor local |
+| Qué se vuelve a bajar al abrir la app | `python herramientas/pruebas/navegador/sw.py` | Chrome |
 | El revisor de libros | `python herramientas/revisar_libros.py herramientas/pruebas/libro_con_errores.md` | nada |
 
 `correr.js` lee el código como texto: sirve para los cálculos, donde el error
