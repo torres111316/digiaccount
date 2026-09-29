@@ -530,8 +530,75 @@
     function marcarDosPorHoja(si) {
       const ch = document.getElementById('reciboDos');
       if (ch) ch.checked = !!si;
+      pintarHoja();
     }
-    let lastReciboText = '';
+
+    /* LA HOJA QUE SE VE ES LA QUE SE IMPRIME.
+
+       Antes la vista previa mostraba un recibo suelto y la pareja se armaba
+       aparte, al imprimir. Funcionaba, pero eran dos sitios distintos
+       haciendo lo mismo: el dia que uno cambie y el otro no, lo que sale por
+       la impresora deja de parecerse a lo que se vio.
+
+       Ahora la pareja se monta AQUI, en pantalla, y al imprimir se clona
+       este mismo contenedor. No pueden diferenciarse porque no hay dos.
+
+       `#reciboDoc` sigue siendo el original y el unico que se toca: la firma,
+       el texto que se descarga y el respaldo lo leen a el. La segunda mitad
+       es un clon de usar y tirar que se rehace cada vez. */
+    function pintarHoja() {
+      const hoja = document.getElementById('reciboHoja');
+      if (!hoja) return;
+      const ch = document.getElementById('reciboDos');
+      const dos = !!(ch && ch.checked);
+
+      /* Se barre lo que se añadió la vez anterior, y el original vuelve a
+         colgar directamente de la hoja. El original NO se destruye nunca: es
+         el mismo nodo de siempre, solo cambia de sitio. Si se rehiciera, la
+         firma recién estampada se perdería. */
+      if (doc.parentElement !== hoja) hoja.appendChild(doc);
+      hoja.querySelectorAll('[data-hoja-extra]').forEach((e) => e.remove());
+      hoja.classList.toggle('recibo-par', dos);
+      if (!dos) return;
+
+      const rotulo = (texto) => {
+        const r = document.createElement('div');
+        r.className = 'rm-rotulo';
+        r.textContent = texto;
+        return r;
+      };
+      const mitad = () => {
+        const m = document.createElement('div');
+        m.className = 'recibo-mitad';
+        m.dataset.hojaExtra = '1';
+        return m;
+      };
+
+      /* ARRIBA, EL ORIGINAL — el nodo de verdad, metido en su mitad. */
+      const arriba = mitad();
+      arriba.appendChild(rotulo('Original · para el trabajador'));
+      hoja.appendChild(arriba);
+      arriba.appendChild(doc);
+
+      const corte = document.createElement('div');
+      corte.className = 'recibo-corte';
+      corte.dataset.hojaExtra = '1';
+      corte.textContent = '✂ cortar aquí';
+      hoja.appendChild(corte);
+
+      /* ABAJO, LA COPIA — un clon de usar y tirar, rehecho cada vez. */
+      const abajo = mitad();
+      abajo.appendChild(rotulo('Copia · para la empresa — firma de recibido'));
+      const copia = doc.cloneNode(true);
+      copia.removeAttribute('id');
+      /* El texto legal NO se toca aquí. Antes se acortaba en la copia, y eso
+         dejaba al ORIGINAL con el párrafo entero: la mitad de arriba se salía
+         de sus 128,5mm y perdía por abajo las firmas. Ahora los dos textos
+         van puestos desde que se pinta el recibo y manda el CSS, así que las
+         dos mitades quedan igual sin que nadie tenga que acordarse. */
+      abajo.appendChild(copia);
+      hoja.appendChild(abajo);
+    }
 
     function reciboRows(tab, c) {
       if (tab === 'vacaciones') {
@@ -610,6 +677,16 @@
         + '<div class="recibo-sign">' + ((window.__EMPRESA_ACTIVA && window.__EMPRESA_ACTIVA.firmaEmpresa) ? '<img src="' + window.__EMPRESA_ACTIVA.firmaEmpresa + '" alt="firma empresa" style="max-height:54px;display:block;margin:0 auto 2px;">' : '') + '<div class="line">Por la empresa</div></div>'
         + '<div class="recibo-sign"><div class="line">Recibí conforme · ' + emp.nombre + '</div></div>'
         + '<div class="recibo-legal">Documento generado electrónicamente por DigiAccount conforme a la Ley Orgánica del Trabajo, los Trabajadores y las Trabajadoras (LOTTT). Válido sin firma autógrafa según el Decreto-Ley sobre Mensajes de Datos y Firmas Electrónicas. Este recibo refleja el cálculo automático de los conceptos laborales; cualquier diferencia debe notificarse a Recursos Humanos.</div>'
+        /* LA MISMA BASE LEGAL, EN UNA LINEA.
+
+           Con «Dos por hoja» el parrafo completo no cabe en media hoja: la
+           primera version del recorte se comio el «Son:», las dos firmas y
+           el pie. Asi que van los dos textos puestos y el CSS enseña el que
+           toca segun el modo.
+
+           Escrito asi y no recortando el largo al vuelo: no hay nada que
+           deshacer al desmarcar la casilla, y la copia lo hereda sola. */
+        + '<div class="recibo-legal-corto">Documento generado electrónicamente por DigiAccount conforme a la LOTTT. Válido sin firma autógrafa.</div>'
         + '</div>';
 
       // texto para descarga
@@ -638,49 +715,10 @@
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && overlay && overlay.dataset.open === 'true') closeRecibo(); });
     const rp = document.getElementById('reciboPrint');
     const chkDos = document.getElementById('reciboDos');
+    /* Marcar y desmarcar cambia lo que se ve en el acto: la casilla no
+       promete algo que solo se comprobaria al imprimir. */
+    if (chkDos) chkDos.addEventListener('change', pintarHoja);
     let tituloOriginal = null; // para restaurar el título tras imprimir/guardar PDF
-
-    /* DOS RECIBOS EN UNA HOJA CARTA.
-
-       El trabajador se lleva el original y la empresa se queda con la copia
-       firmada como recibido. Antes salía una hoja por copia: dos hojas por
-       trabajador, todas las semanas.
-
-       Las dos mitades son el MISMO recibo clonado, no dos renders: así no
-       pueden decir cosas distintas. Lo único que cambia es el rótulo de
-       arriba y, en la copia, el pie de firma. */
-    function armarDosPorHoja(portal) {
-      const par = document.createElement('div');
-      par.className = 'recibo-par';
-
-      const mitad = (rotulo) => {
-        const m = document.createElement('div');
-        m.className = 'recibo-mitad';
-        const r = document.createElement('div');
-        r.className = 'rm-rotulo';
-        r.textContent = rotulo;
-        m.appendChild(r);
-        const clon = doc.cloneNode(true);
-        clon.removeAttribute('id');
-        /* El texto legal completo es el bloque más grande del recibo y dice
-           lo mismo en las dos copias. En media hoja no cabe, y lo que
-           importa de él —bajo qué artículo se emite— cabe en una línea. */
-        const legal = clon.querySelector('.recibo-legal');
-        if (legal) legal.textContent = 'Emitido conforme al Art. 106 de la LOTTT. Generado electrónicamente por DigiAccount.';
-        m.appendChild(clon);
-        return m;
-      };
-
-      par.appendChild(mitad('Original · para el trabajador'));
-
-      const corte = document.createElement('div');
-      corte.className = 'recibo-corte';
-      corte.textContent = '✂ cortar aquí';
-      par.appendChild(corte);
-
-      par.appendChild(mitad('Copia · para la empresa — firma de recibido'));
-      portal.appendChild(par);
-    }
 
     /* LA PREPARACIÓN, EN UN SOLO SITIO.
 
@@ -698,14 +736,16 @@
       if (!portal) { portal = document.createElement('div'); portal.id = 'printPortal'; document.body.appendChild(portal); }
       portal.innerHTML = '';
 
-      if (chkDos && chkDos.checked) {
-        armarDosPorHoja(portal);
-      } else {
-        const clon = doc.cloneNode(true);
-        clon.removeAttribute('id');
-        clon.classList.add('recibo-print');
-        portal.appendChild(clon);
-      }
+      /* SE CLONA LA HOJA QUE SE ESTA VIENDO, tal cual.
+
+         No se rearma nada: lo que se imprime es, literalmente, lo que hay en
+         pantalla. Es la unica forma de que la vista previa no pueda mentir. */
+      const hoja = document.getElementById('reciboHoja');
+      const clon = hoja.cloneNode(true);
+      clon.removeAttribute('id');
+      clon.querySelectorAll('[id]').forEach((e) => e.removeAttribute('id'));
+      if (!clon.classList.contains('recibo-par')) clon.classList.add('recibo-print');
+      portal.appendChild(clon);
       document.body.classList.add('printing-comp');
 
       /* "Guardar como PDF" usa el título del documento como nombre de
@@ -761,6 +801,10 @@
         const worker = signs[signs.length - 1];
         worker.innerHTML = '<img src="' + firmaUrl + '" alt="firma" style="max-height:54px;display:block;margin:0 auto 2px;"><div class="line">Recibí conforme · ' + c.emp.nombre + '</div>';
       }
+      /* La copia se rehace para que lleve la firma tambien. Sin esto, el
+         original salia firmado y la copia —la que se queda la empresa— en
+         blanco, que es justo al reves de lo que hace falta. */
+      pintarHoja();
       if (window.sb && window.__CUENTA_ID && window.__EMPRESA_ACTIVA && window.__EMPRESA_ACTIVA.id) {
         const detalle = (c.rows || []).filter((r) => r[0] !== 'sec').map((r) => ({ concepto: r[1], monto: r[3], tipo: r[0] }));
         const { error } = await window.sb.from('recibos_nomina').insert({
@@ -1049,6 +1093,16 @@
         + '<div class="recibo-sign">' + ((window.__EMPRESA_ACTIVA && window.__EMPRESA_ACTIVA.firmaEmpresa) ? '<img src="' + window.__EMPRESA_ACTIVA.firmaEmpresa + '" alt="firma empresa" style="max-height:54px;display:block;margin:0 auto 2px;">' : '') + '<div class="line">Por la empresa</div></div>'
         + '<div class="recibo-sign"><div class="line">Recibí conforme · ' + emp.nombre + '</div></div>'
         + '<div class="recibo-legal">Recibo de pago emitido conforme al Art. 106 de la LOTTT. Las deducciones de ley (IVSS y RPE, con tope de cotización, y FAOV) se aplican sobre el salario normal cotizable; el INCES del trabajador (0,5%) se retiene sobre las utilidades. El Bono de Contingencia es una asignación no salarial que no es cotizable ni incide en prestaciones, vacaciones ni utilidades. El aporte patronal corre por cuenta de la empresa y no se refleja en este recibo. Documento generado electrónicamente por DigiAccount, válido sin firma autógrafa.</div>'
+        /* LA MISMA BASE LEGAL, EN UNA LINEA.
+
+           Con «Dos por hoja» el parrafo completo no cabe en media hoja: la
+           primera version del recorte se comio el «Son:», las dos firmas y
+           el pie. Asi que van los dos textos puestos y el CSS enseña el que
+           toca segun el modo.
+
+           Escrito asi y no recortando el largo al vuelo: no hay nada que
+           deshacer al desmarcar la casilla, y la copia lo hereda sola. */
+        + '<div class="recibo-legal-corto">Recibo de pago emitido conforme al Art. 106 de la LOTTT. Generado electrónicamente por DigiAccount, válido sin firma autógrafa.</div>'
         + '</div>';
 
       lastReciboText = 'Recibo de Pago de Nomina - ' + emp.nombre + ' (' + emp.cedula + ')\r\n'

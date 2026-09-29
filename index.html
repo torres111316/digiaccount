@@ -4838,7 +4838,15 @@
       </div>
     </div>
     <div class="recibo-scroll">
-      <div class="recibo-doc" id="reciboDoc"><!-- render por JS --></div>
+      <!-- LA HOJA. Lo que se ve aqui es LO QUE SE IMPRIME: al imprimir se
+           clona este mismo contenedor, no se arma otro. Asi no pueden
+           diferenciarse — no hay dos sitios que puedan desincronizarse.
+
+           Con «Dos por hoja» marcado, el JS le pone la clase `recibo-par` y
+           le mete el rotulo, la raya de corte y la segunda copia. -->
+      <div class="recibo-hoja" id="reciboHoja">
+        <div class="recibo-doc" id="reciboDoc"><!-- render por JS --></div>
+      </div>
     </div>
   </div>
 </div>

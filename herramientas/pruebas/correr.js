@@ -471,10 +471,42 @@ ok('la preparacion cuelga de beforeprint',
 ok('y el boton llama a esa misma preparacion',
   /prepararImpresion\(\);\s*[\r\n]+\s*window\.print\(\)/.test(_nom), true);
 
-/* Las dos mitades son el MISMO recibo clonado: no pueden decir cosas
-   distintas porque no hay dos renders. */
-ok('las dos copias salen del mismo recibo',
-  (_nom.match(/doc\.cloneNode\(true\)/g) || []).length >= 2, true);
+/* LO QUE SE VE ES LO QUE SE IMPRIME.
+
+   Antes la vista previa enseñaba un recibo suelto y la pareja se armaba
+   aparte, al imprimir. Funcionaba, pero eran dos sitios distintos haciendo lo
+   mismo: el dia que uno cambie y el otro no, lo que sale por la impresora
+   deja de parecerse a lo que se vio — y nadie lo nota hasta tener el papel en
+   la mano.
+
+   Ahora la pareja se monta en pantalla y al imprimir se clona ESE contenedor.
+   No pueden diferenciarse porque no hay dos. */
+ok('se imprime clonando la hoja que se ve',
+  /const hoja = document\.getElementById\('reciboHoja'\);\s*[\r\n]+\s*const clon = hoja\.cloneNode\(true\)/.test(_nom), true);
+ok('y el clon no se lleva los id (quedarian repetidos)',
+  /clon\.querySelectorAll\('\[id\]'\)\.forEach/.test(_nom), true);
+
+/* El ORIGINAL no se rehace nunca: es el mismo nodo, solo cambia de sitio. Si
+   se reconstruyera, la firma recien estampada se perderia. */
+ok('el original se mueve, no se recrea',
+  /if \(doc\.parentElement !== hoja\) hoja\.appendChild\(doc\);/.test(_nom), true);
+
+/* LAS DOS MITADES, IDENTICAS.
+
+   El texto legal completo no cabe en media hoja. La primera version lo
+   acortaba en la COPIA… dejando al original con el parrafo entero, o sea la
+   mitad de arriba mas alta que la de abajo y perdiendo las firmas por el
+   recorte. Se vio en el navegador, no razonandolo.
+
+   Ahora los dos textos van escritos en el recibo y manda el CSS. Nadie tiene
+   que acordarse de acortar nada, y desmarcar la casilla lo devuelve solo. */
+ok('el recibo trae tambien su texto legal de una linea',
+  /class="recibo-legal-corto"/.test(_nom), true);
+ok('y nadie reescribe el texto legal a mano',
+  /legal\.textContent\s*=/.test(_nom), false);
+ok('el CSS enseña el corto y esconde el largo',
+  /\.recibo-par \.recibo-legal \{ display: none; \}/.test(_css) || /recibo-par \.recibo-legal \{[^}]*display:\s*none/.test(_css), true);
+
 
 /* LA CUENTA DE LA HOJA, CON LOS MILIMETROS DEL CSS.
 
