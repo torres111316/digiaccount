@@ -1,3 +1,24 @@
+# Las pruebas de este proyecto
+
+| Qué prueba | Cómo se corre | Necesita |
+|---|---|---|
+| Cálculos de dinero e impuestos | `node herramientas/pruebas/correr.js` | nada |
+| El motor de tablas (paginación, búsqueda) | `node herramientas/pruebas/tablas.js` | `npm install --no-save jsdom` |
+| El revisor de libros | `python herramientas/revisar_libros.py herramientas/pruebas/libro_con_errores.md` | nada |
+
+`correr.js` lee el código como texto: sirve para los cálculos, donde el error
+es un número equivocado y no rompe nada en pantalla.
+
+`tablas.js` no puede hacer eso — prueba comportamiento de pantalla: filas que
+se esconden, botones que se pulsan, un observador que se entera de que
+llegaron datos. Por eso monta un DOM de verdad con jsdom. **Si jsdom no está
+instalado no falla: avisa y sale bien**, para que no bloquee un Deploy.
+
+Los dos toman el código *tal como está* en `assets/`, no una copia: si alguien
+cambia el cálculo o el motor, se prueba lo nuevo.
+
+---
+
 # Prueba de `revisar_libros.py`
 
 `libro_con_errores.md` es un libro recortado que reproduce, con los datos

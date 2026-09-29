@@ -2170,8 +2170,11 @@
             </table>
           </div>
           <div class="table-footer">
-            <div class="count">Mostrando <strong>6</strong> de <strong>218</strong> facturas</div>
-            <div class="pager"><button><i data-lucide="chevron-left"></i></button><button data-active="true">1</button><button>2</button><button>3</button><button>…</button><button>22</button><button><i data-lucide="chevron-right"></i></button></div>
+            <!-- Sin cifras escritas a mano: las pone el motor de tablas con las
+                 filas que haya de verdad. Decia «Mostrando 6 de 218 facturas»
+                 sobre una tabla vacia, y ofrecia 22 paginas que no existian. -->
+            <div class="count">Cargando…</div>
+            <div class="pager"></div>
           </div>
         </div>
       </div>

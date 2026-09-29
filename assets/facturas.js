@@ -1272,6 +1272,12 @@
       // RIF de la empresa activa (nada de RIF quemado)
       const ventasRif = document.getElementById('ventasRif');
       if (ventasRif) ventasRif.textContent = (window.__EMPRESA_ACTIVA && window.__EMPRESA_ACTIVA.rif) || '—';
+      /* El pie de la tabla los llama por su nombre. Se fija SIEMPRE, también
+         en modo factura: es la misma tabla y el contador es de ella. */
+      const cnt = document.querySelector('.ventas-tab[data-tab="facturas"] .table-footer .count');
+      if (cnt) cnt.dataset.noun = esRec ? 'recibos' : 'facturas';
+      if (window.refreshTables) window.refreshTables();
+
       if (!esRec) return; // modo factura = textos fiscales originales
       const nb = document.getElementById('nuevaFacturaBtn'); if (nb) nb.innerHTML = '<i data-lucide="plus"></i> Nuevo recibo';
       const mb = document.getElementById('medioEmisionBtn'); if (mb) mb.style.display = 'none';

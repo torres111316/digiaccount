@@ -2573,17 +2573,22 @@
   document.querySelectorAll('.filter-chip').forEach((chip) => {
     chip.addEventListener('click', () => chip.classList.toggle('active'));
   });
-  document.querySelectorAll('.pager').forEach((pager) => {
-    const btns = [...pager.querySelectorAll('button')];
-    btns.forEach((btn) => {
-      btn.addEventListener('click', () => {
-        if (/^\d+$/.test(btn.textContent.trim())) {
-          btns.forEach((b) => b.removeAttribute('data-active'));
-          btn.dataset.active = 'true';
-        }
-      });
-    });
-  });
+  /* AQUI VIVIA UN PAGINADOR QUE NO PAGINABA NADA.
+
+     Enganchaba TODOS los `.pager` de la app y, al pulsar un numero, movia el
+     resaltado a ese boton. Nada mas. No cambiaba ni una fila.
+
+     Donde el motor de tablas si funcionaba no hacia falta —ese dibuja su
+     propio paginador—, pero donde el motor se daba por vencido quedaba solo
+     este: numeros que se encienden sobre una lista que no se mueve.
+
+     Eso es justo lo que pasaba en Recibos de venta. El pie decia «Mostrando
+     6 de 218 facturas» y ofrecia «1 2 3 … 22» —numeros escritos a mano en el
+     HTML, de cuando la pantalla era un boceto—; se pulsaba el 2, el 2 se
+     encendia, y la lista seguia igual. Parecia que faltaban recibos.
+
+     Un control que se enciende y no hace nada es peor que no tenerlo: el
+     boton apagado se entiende a la primera, este hace dudar de los datos. */
 
   /* =========================================================
      BÚSQUEDA GLOBAL (topbar) → salta a la vista relevante
@@ -3587,22 +3592,90 @@
       if (!table || table.classList.contains('libro-table')) return;
       const tbody = table.querySelector('tbody');
       if (!tbody) return;
-      const getRows = () => Array.from(tbody.children).filter((r) => r.tagName === 'TR');
-      if (getRows().length === 0) return;
+      /* LAS FILAS DE VERDAD, QUE NO SON TODOS LOS <tr>.
+
+         Se dejan fuera dos cosas que ocupan una fila sin ser un dato:
+
+         · El aviso de tabla vacia («Sin datos…», «El directorio esta
+           vacio»). Se reconoce porque es una sola celda con `colspan`.
+           Contandolo, una tabla sin nada decia «Mostrando 1 de 1».
+
+         · El paginador que algunos modulos dibujan dentro del propio tbody
+           (Terceros, Diario, Mayor, Retenciones, CxP). */
+      const esFilaDeDatos = (r) => {
+        if (r.tagName !== 'TR') return false;
+        if (r.querySelector('[colspan]')) return false;
+        return true;
+      };
+      const getRows = () => Array.from(tbody.children).filter(esFilaDeDatos);
+
+      /* CUANDO EL MODULO SE PAGINA SOLO, ESTE MOTOR SE APARTA.
+
+         Terceros, el Diario, el Mayor, Retenciones y CxP traen su propio
+         «« Anterior / Siguiente »» dentro de la tabla. Si ademas actuara
+         este, la misma lista quedaria partida por dos paginadores distintos
+         y ninguno de los dos diria la verdad.
+
+         Se reconoce por el paginador que dejan dentro del tbody, no por una
+         lista de nombres: asi el dia que otro modulo haga lo mismo, este
+         motor se aparta solo, sin que nadie se acuerde de venir a anotarlo
+         aqui. */
+      const sePaginaSola = () => {
+        /* Dos formas de dejarlo, y las dos se reconocen por la FORMA, no por
+           el nombre del atributo: un `data-soc-pagar` es el boton «Pagar» de
+           una factura, no un paginador, y por el nombre no se distinguen.
+
+           · Dentro de la tabla, una fila a todo lo ancho con botones
+             (Terceros, el Mayor, Retenciones).
+           · En el pie, botones dentro del propio contador (CxC y CxP, que
+             cuelgan ahi su «« Anterior / Siguiente »»).
+
+           Lo segundo importa mas de lo que parece: ese contador es el mismo
+           que este motor reescribe. Sin apartarse, cada vez que Tesoreria
+           repinta sus cuentas le borraria el paginador al instante. */
+        const enLaTabla = Array.from(tbody.children).some((r) =>
+          r.tagName === 'TR' && r.querySelector('[colspan]') && r.querySelector('button'));
+        const enElPie = !!(countEl && countEl.querySelector('button'));
+        return enLaTabla || enElPie;
+      };
+
+      /* YA NO SE ABANDONA LA TABLA POR ESTAR VACIA AL ABRIR.
+
+         Antes, si el tbody no tenia filas en el momento de arrancar, este
+         motor se daba por vencido y no volvia nunca. Pero las tablas que
+         traen datos de verdad —recibos, facturas, cuentas— nacen vacias: se
+         llenan segundos despues, cuando responde la base.
+
+         Resultado: justo las tablas con mas filas eran las unicas sin
+         paginador. Ahora se queda mirando el tbody y se pone a trabajar en
+         cuanto llegan las filas. */
 
       const input = wrap.querySelector('.quick-search input');
       const countEl = wrap.querySelector('.table-footer .count');
       const pager = wrap.querySelector('.pager');
       const chips = Array.from(wrap.querySelectorAll('.table-toolbar .filter-chip'))
         .filter((c) => !c.classList.contains('ret-fchip'));
-      const pageSize = pager ? 8 : 1e9;
+      /* VEINTE, COMO TODAS LAS DEMÁS LISTAS DE LA APP.
 
-      // Sustantivo del contador original ("registros", "empleados", "comprobantes"…)
+         Eran 8, de cuando estas tablas tenían seis filas de muestra. Los
+         libros fiscales, Terceros, Retenciones, el Diario y el Mayor van
+         todas de 20 en 20. Con 8, una lista de 218 recibos son 28 páginas. */
+      const pageSize = pager ? 20 : 1e9;
+
+      /* Sustantivo del contador ("registros", "empleados", "comprobantes"…).
+
+         Se toma del texto que ya traía la tabla. Pero hay listas cuyo nombre
+         depende de la empresa: mientras no esté homologada emite RECIBOS, y
+         al homologar pasan a ser FACTURAS. Por eso el módulo puede fijarlo
+         con `data-noun`, y entonces manda ese. */
       let noun = 'registros';
       if (countEl) {
         const m = countEl.textContent.trim().match(/([a-záéíóúñ]+)\s*$/i);
-        if (m && !/^total$/i.test(m[1])) noun = m[1];
+        /* «Total» y «Cargando» no son el nombre de nada: son el pie mientras
+           no hay datos. Tomandolos saldria «de 218 Cargando». */
+        if (m && !/^(total|cargando)$/i.test(m[1])) noun = m[1];
       }
+      const elNombre = () => (countEl && countEl.dataset.noun) || noun;
 
       const norm = (s) => (s || '').toLowerCase();
       let query = '', chipText = null, page = 1;
@@ -3647,6 +3720,17 @@
       }
 
       function render() {
+        if (sePaginaSola()) {
+          /* Se devuelve lo que se hubiera escondido antes de saberlo.
+
+             El modulo pinta sus filas primero y su paginador despues, en
+             dos pasos. Entre uno y otro esta tabla parece normal, y si un
+             pintado cae justo ahi se esconden filas que luego nadie vuelve
+             a mostrar: la lista queda cortada a la mitad para siempre. */
+          getRows().forEach((r) => { r.style.display = ''; });
+          if (pager) pager.innerHTML = '';
+          return;
+        }
         const vis = visibleRows();
         const pages = Math.max(1, Math.ceil(vis.length / pageSize));
         if (page > pages) page = pages;
@@ -3657,7 +3741,7 @@
         if (countEl) {
           countEl.innerHTML = vis.length === 0
             ? 'Sin resultados'
-            : 'Mostrando <strong>' + (start + 1) + '–' + (start + shown.length) + '</strong> de <strong>' + vis.length + '</strong> ' + noun;
+            : 'Mostrando <strong>' + (start + 1) + '–' + (start + shown.length) + '</strong> de <strong>' + vis.length + '</strong> ' + elNombre();
         }
         buildPager(pages);
         drawIcons();
@@ -3685,6 +3769,29 @@
       // Permite refrescar tras agregar/quitar filas dinámicamente
       window.__liveTables = window.__liveTables || [];
       window.__liveTables.push(render);
+
+      /* SE ENTERA SOLO DE LAS FILAS QUE LLEGAN DESPUES.
+
+         Existe `window.refreshTables()` para avisar a mano, pero casi ningun
+         modulo lo llama —y no se le puede pedir a cada uno que se acuerde—.
+         Mirando el tbody, la tabla se pagina sola venga de donde venga.
+
+         Se mira solo `childList`, que es poner y quitar filas. El propio
+         render cambia el `style.display` de cada fila, y eso es un cambio de
+         ATRIBUTO: si tambien se vigilara, cada pintado provocaria el
+         siguiente y no pararia nunca.
+
+         Y se junta todo en un solo pintado: rellenar 218 recibos es
+         appendChild 218 veces, o sea 218 avisos para un unico repintado. */
+      if (window.MutationObserver) {
+        let pedido = false;
+        new MutationObserver(() => {
+          if (pedido) return;
+          pedido = true;
+          (window.requestAnimationFrame || setTimeout)(() => { pedido = false; render(); }, 0);
+        }).observe(tbody, { childList: true });
+      }
+
       render();
     }
   })();
