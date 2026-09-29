@@ -3677,6 +3677,24 @@
       }
       const elNombre = () => (countEl && countEl.dataset.noun) || noun;
 
+      /* EL PIE PUEDE NO SER DE ESTE MOTOR, Y HAY QUE MIRARLO ANTES DE ESCRIBIR.
+
+         Catorce pies de tabla de la app llevan dentro elementos con `id` que
+         el modulo dueño va rellenando: `<strong id="tercerosShown">`,
+         `leadsShown`, `invShown`/`invTotal`, `despachosShown`… Este motor
+         escribia el pie con innerHTML, o sea que los BORRABA.
+
+         Mientras solo actuaba sobre tablas que ya traian filas no se notaba
+         demasiado. Al empezar a atender tambien las que nacen vacias, se
+         llevo por delante los de Contactos y Terceros: el modulo hacia
+         `document.getElementById('leadsShown').textContent = …` sobre algo
+         que ya no existia, reventaba, y con el se caia todo lo que venia
+         despues en su bloque.
+
+         Se comprueba UNA VEZ, al arrancar, antes del primer pintado — que es
+         justamente quien los borraria. */
+      const pieEsDelModulo = !!(countEl && countEl.querySelector('[id]'));
+
       const norm = (s) => (s || '').toLowerCase();
       let query = '', chipText = null, page = 1;
 
@@ -3738,7 +3756,7 @@
         const start = (page - 1) * pageSize;
         const shown = vis.slice(start, start + pageSize);
         shown.forEach((r) => { r.style.display = ''; });
-        if (countEl) {
+        if (countEl && !pieEsDelModulo) {
           countEl.innerHTML = vis.length === 0
             ? 'Sin resultados'
             : 'Mostrando <strong>' + (start + 1) + '–' + (start + shown.length) + '</strong> de <strong>' + vis.length + '</strong> ' + elNombre();

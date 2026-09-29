@@ -22,3 +22,7 @@ desktop.ini
 # Cache de Python de las herramientas
 __pycache__/
 *.pyc
+
+# Archivos de usar y tirar de la sonda de navegador
+_sonda.js
+_sonda.html

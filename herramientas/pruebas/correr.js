@@ -518,5 +518,63 @@ ok('viene marcada en el recibo de pago', /marcarDosPorHoja\(true\)/.test(_nom), 
 ok('y desmarcada en los de prestaciones', /marcarDosPorHoja\(false\)/.test(_nom), true);
 
 
+/* -- CTRL+P, EN TODA LA APP ------------------------------------------------
+
+   Todo lo que se imprime aqui se clona antes a un lienzo aparte, fuera de la
+   aplicacion; por eso sale en una hoja limpia. Esa preparacion vivia DENTRO
+   del clic de cada boton, y son quince botones. Con Ctrl+P no se pasaba por
+   ninguno: el navegador imprimia la pagina entera, repartida en varias hojas.
+
+   Luis lo encontro en el recibo de utilidades. Estaba en los quince.
+
+   En vez de tocar quince sitios se arreglo el atajo: Ctrl+P busca el boton
+   que se este viendo y lo PULSA. No imita lo que hace — pulsa el boton. Por
+   construccion no pueden dar resultados distintos, y el que se añada mañana
+   queda cubierto sin que nadie se acuerde de venir aqui. */
+bloque('Ctrl+P hace lo mismo que el boton de imprimir');
+
+var _core = (function () { try { return fs.readFileSync(path.join(RAIZ, 'assets', 'core.js'), 'utf8'); } catch (e) { return ''; } })();
+
+ok('Ctrl+P esta atendido', /!e\.ctrlKey && !e\.metaKey/.test(_core), true);
+ok('y pulsa el boton de verdad', /\.click\(\)/.test(_core), true);
+
+/* LO QUE COSTO ACERTAR: que significa «estar a la vista».
+
+   Las ventanas de esta app no se esconden con display:none; se quedan
+   puestas con opacity 0 y pointer-events none. Miradas por su TAMAÑO todas
+   parecen visibles, y con eso Ctrl+P sin nada abierto pulsaba el boton de un
+   recibo cerrado — lo vi pasar en Chrome.
+
+   `elementFromPoint` pregunta lo unico que importa: si alguien pinchara ahi,
+   ¿le daria a este boton? Y de paso descarta gratis lo que quedo tapado por
+   una ventana de encima. */
+ok('mira si el boton es PINCHABLE, no si mide',
+  /elementFromPoint/.test(_core), true);
+
+/* Sin nada abierto no se toca el atajo: el navegador imprime como siempre. */
+ok('sin nada abierto, no interfiere',
+  /if \(!vistos\.length\) return;/.test(_core), true);
+
+/* -- EL PIE DE TABLA QUE NO ES DEL MOTOR -----------------------------------
+
+   Catorce pies de tabla llevan dentro elementos con `id` que el modulo dueño
+   rellena: `tercerosShown`, `leadsShown`, `invShown`/`invTotal`,
+   `despachosShown`... El motor de tablas escribia el pie con innerHTML, o
+   sea que los BORRABA.
+
+   Mientras solo actuaba sobre tablas que ya traian filas casi no se notaba.
+   Al empezar a atender tambien las que nacen vacias se llevo por delante 13
+   de 24 —medido en Chrome— y el modulo de Contactos reventaba al escribir
+   sobre algo que ya no existia. */
+bloque('El motor de tablas no pisa el pie del modulo');
+
+ok('se comprueba de quien es el pie',
+  /pieEsDelModulo/.test(app), true);
+ok('y se comprueba ANTES del primer pintado',
+  app.indexOf('const pieEsDelModulo') < app.indexOf('if (countEl && !pieEsDelModulo)'), true);
+ok('el motor solo escribe el pie si es suyo',
+  /if \(countEl && !pieEsDelModulo\) \{/.test(app), true);
+
+
 console.log('\n' + (fallas ? 'HAY ' + fallas + ' FALLA(S) de ' + total : 'TODO OK · ' + total + ' comprobaciones'));
 process.exit(fallas ? 1 : 0);

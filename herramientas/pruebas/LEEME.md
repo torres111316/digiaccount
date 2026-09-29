@@ -4,6 +4,7 @@
 |---|---|---|
 | Cálculos de dinero e impuestos | `node herramientas/pruebas/correr.js` | nada |
 | El motor de tablas (paginación, búsqueda) | `node herramientas/pruebas/tablas.js` | `npm install --no-save jsdom` |
+| Lo que solo se ve en un navegador | `python herramientas/pruebas/navegador/correr.py` | Chrome + servidor local |
 | El revisor de libros | `python herramientas/revisar_libros.py herramientas/pruebas/libro_con_errores.md` | nada |
 
 `correr.js` lee el código como texto: sirve para los cálculos, donde el error
@@ -14,7 +15,11 @@ se esconden, botones que se pulsan, un observador que se entera de que
 llegaron datos. Por eso monta un DOM de verdad con jsdom. **Si jsdom no está
 instalado no falla: avisa y sale bien**, para que no bloquee un Deploy.
 
-Los dos toman el código *tal como está* en `assets/`, no una copia: si alguien
+La sonda de `navegador/` es la única que ve lo que depende de cómo el
+navegador **pinta**: un contador que otro código borra, un botón que mide pero
+no se puede pulsar. Tiene su propio LEEME con los dos fallos que la motivaron.
+
+Todas toman el código *tal como está* en `assets/`, no una copia: si alguien
 cambia el cálculo o el motor, se prueba lo nuevo.
 
 ---

@@ -355,4 +355,85 @@
 
   window.__drawIcons = function () { if (window.lucide) window.lucide.createIcons(); };
 
+
+  /* ═════════════════════════════════════════════════════════════════════
+     CTRL+P HACE LO MISMO QUE EL BOTON «IMPRIMIR»
+     ═════════════════════════════════════════════════════════════════════
+
+     Todo lo que se imprime en esta app —recibos, facturas, comprobantes,
+     libros, relaciones— se clona antes a un lienzo aparte (#printPortal)
+     fuera de la aplicacion, y por eso sale en una hoja limpia en vez de
+     repartido entre menus y barras laterales.
+
+     Esa preparacion vive DENTRO del clic de cada boton. Son quince botones
+     distintos. Con Ctrl+P no se pasa por ninguno: el navegador imprime la
+     pagina tal cual, con la app entera, repartida en varias hojas.
+
+     Luis lo encontro en el recibo de utilidades, pero estaba en los quince.
+     Y ese es el punto: el se entera de un fallo cuando se lo tropieza; a mi
+     me toca mirar donde mas vive el mismo.
+
+     EN VEZ DE TOCAR QUINCE SITIOS, SE ARREGLA EL ATAJO.
+     Ctrl+P busca el boton de imprimir que este a la vista y lo pulsa. No
+     imita lo que hace el boton: pulsa EL boton. Por construccion no pueden
+     dar resultados distintos, y el que se añada mañana queda cubierto sin
+     que nadie se acuerde de venir aqui.
+
+     Si no hay ninguno a la vista, no se hace nada y Ctrl+P imprime como
+     siempre. */
+  (function atajoDeImprimir() {
+
+    /* QUE SIGNIFICA «ESTAR A LA VISTA». No es tener tamaño.
+
+       Las ventanas de esta app no se esconden con `display:none`: se quedan
+       puestas con `opacity: 0` y `pointer-events: none`. Miradas por su
+       tamaño, TODAS parecen visibles — y con eso, Ctrl+P sin nada abierto
+       pulsaba el boton de un recibo cerrado.
+
+       Lo que se pregunta es otra cosa: si alguien pinchara justo ahi, ¿le
+       daria a este boton? `elementFromPoint` responde eso, y de paso resuelve
+       gratis dos problemas mas: lo que tiene `pointer-events: none` no
+       contesta, y lo que queda TAPADO por una ventana de encima tampoco. Asi
+       que el que pasa la prueba es, por definicion, el de mas arriba — sin
+       tener que ir sumando z-index por los padres. */
+    function pincharlaDaria(b) {
+      var r = b.getBoundingClientRect();
+      if (!r.width || !r.height) return false;
+      var x = r.left + (r.width / 2), y = r.top + (r.height / 2);
+      if (x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight) return false;
+      var encima = document.elementFromPoint(x, y);
+      return !!encima && (encima === b || b.contains(encima));
+    }
+
+    /* Un boton de imprimir es el que lo dice: por su `id` o por su texto. */
+    function botonesALaVista() {
+      var todos = document.querySelectorAll('button, .btn');
+      var vistos = [];
+      for (var i = 0; i < todos.length; i++) {
+        var b = todos[i];
+        var id = b.id || '';
+        var txt = (b.textContent || '').trim();
+        if (!/print/i.test(id) && !/^imprimir\b/i.test(txt)) continue;
+        if (b.disabled || b.hasAttribute('hidden')) continue;
+        if (!pincharlaDaria(b)) continue;
+        vistos.push(b);
+      }
+      return vistos;
+    }
+
+    document.addEventListener('keydown', function (e) {
+      if (e.key !== 'p' && e.key !== 'P') return;
+      if (!e.ctrlKey && !e.metaKey) return;
+      if (e.altKey || e.shiftKey) return;
+
+      var vistos = botonesALaVista();
+      if (!vistos.length) return;   // no hay nada preparado: que imprima el navegador
+
+      /* Si quedan varios de verdad pinchables, manda el ultimo del documento:
+         las ventanas estan al final del HTML, detras de las pantallas. */
+      e.preventDefault();
+      vistos[vistos.length - 1].click();
+    });
+  })();
+
 })();
