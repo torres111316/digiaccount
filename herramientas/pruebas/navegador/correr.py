@@ -40,12 +40,23 @@ assert '</body>' in pagina, 'index.html sin </body>'
 pagina = pagina.replace('</body>', '<script src="_sonda.js"></script></body>', 1)
 io.open('_sonda.html', 'w', encoding='utf-8', newline='').write(pagina)
 
-try:
-    salida = subprocess.run(
-        [chrome, '--headless', '--disable-gpu', '--window-size=1400,900',
+def mirar(ancho, alto):
+    """Abre la app a ese tamaño y devuelve lo que la sonda escribio."""
+    bruto = subprocess.run(
+        [chrome, '--headless=new', '--disable-gpu',
+         '--window-size=%d,%d' % (ancho, alto),
          '--virtual-time-budget=16000', '--dump-dom',
          'http://127.0.0.1:%s/_sonda.html' % PUERTO],
         capture_output=True, timeout=120).stdout.decode('utf-8', 'replace')
+    m = re.search(r'<pre id="SONDA">(.*?)</pre>', bruto, re.S)
+    return html.unescape(m.group(1)) if m else None
+
+
+try:
+    # Dos tamaños: la app cambia de traje en 560px, y el fallo que motivo
+    # esta prueba -no llegar al paginador- solo pasaba en el estrecho.
+    # Chrome sin ventana no baja de 500px de ancho.
+    partes = [mirar(1400, 900), mirar(500, 740)]
 finally:
     # Los dos archivos son de usar y tirar: que no queden en la carpeta ni,
     # peor, en un commit.
@@ -55,13 +66,20 @@ finally:
         except OSError:
             pass
 
-m = re.search(r'<pre id="SONDA">(.*?)</pre>', salida, re.S)
-if not m:
+if not any(partes):
     print('La sonda no llego a correr.')
     print('Levanta el servidor y vuelve a intentar:')
     print('   python -m http.server ' + PUERTO)
     sys.exit(2)
 
-texto = html.unescape(m.group(1))
-print(texto)
-sys.exit(1 if 'FALLA' in texto else 0)
+hubo = False
+for texto in partes:
+    if texto is None:
+        print('(una de las dos pasadas no devolvio nada)')
+        hubo = True
+        continue
+    print(texto)
+    print('-' * 62)
+    if 'FALLA' in texto:
+        hubo = True
+sys.exit(1 if hubo else 0)

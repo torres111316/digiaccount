@@ -14,7 +14,28 @@
   .app {
     display: grid;
     grid-template-columns: var(--sidebar-w, 260px) 1fr;
+
+    /* EL ALTO DE LA PANTALLA, MEDIDO COMO LO VE UN TELEFONO.
+
+       `100vh` en un movil NO es lo que se ve: es lo que se veria con la
+       barra del navegador escondida. Mientras la barra esta puesta —que es
+       casi siempre— el ultimo trozo de la app queda DEBAJO de ella.
+
+       Y como el `body` lleva `overflow: hidden`, la pagina no se desplaza
+       para compensarlo: lo que se desplaza es `.content`, por dentro. Se
+       llega a su final… y ese final esta fuera de la pantalla.
+
+       Justo ahi vive el pie de las listas, con el paginador. Luis no podia
+       pasar a la pagina 2 de sus recibos desde el telefono: los botones
+       estaban puestos, con su tamaño, respondiendo — solo que debajo de la
+       barra del navegador.
+
+       `dvh` es esa misma medida pero DINAMICA: lo que se ve ahora mismo.
+       Se deja `100vh` encima como respaldo para un navegador que no la
+       entienda; el que la entienda se queda con la segunda. */
     height: 100vh;
+    height: 100dvh;
+
     transition: grid-template-columns var(--dur-base) var(--ease-out);
   }
   .app[data-collapsed="true"] { --sidebar-w: 72px; }
@@ -4201,7 +4222,11 @@
     .fx-panel {
       position: fixed; top: 56px; left: 50%; right: auto;
       width: calc(100vw - 20px); max-width: 380px;
-      max-height: calc(100vh - 74px); overflow-y: auto;
+      /* Misma razon que en `.app`: en el movil, `vh` cuenta el trozo que
+         tapa la barra del navegador. Ver el comentario de `.app`. */
+      max-height: calc(100vh - 74px);
+      max-height: calc(100dvh - 74px);
+      overflow-y: auto;
       z-index: 1500;
       transform: translate(-50%, -6px);
     }
@@ -7030,7 +7055,10 @@
     box-shadow: var(--shadow-xl);
     width: 100%; max-width: 920px;
     display: flex; flex-direction: column;
+    /* Ver el comentario de `.app`: en el movil `vh` incluye lo que tapa
+       la barra del navegador, y el pie de la ventana queda debajo. */
     max-height: calc(100vh - 64px);
+    max-height: calc(100dvh - 64px);
   }
   .rrm-bar {
     display: flex; align-items: center; justify-content: space-between;
@@ -7786,6 +7814,16 @@
       height: auto; min-height: 34px; font-size: 11.5px; padding: 6px 10px;
     }
     .recibo-modal-bar .rm-actions .icon-btn { flex: 0 0 auto; }
+
+    /* EL PAGINADOR, PULSABLE CON EL DEDO.
+
+       28x28 px es un boton de raton. En un telefono la recomendacion son 44,
+       y con 28 se falla y se pulsa el numero de al lado. Ademas se envuelven
+       y se centran, que con muchas paginas se salian por el lado. */
+    .table-footer { gap: 10px; }
+    .pager { flex-wrap: wrap; justify-content: center; gap: 6px; width: 100%; }
+    .pager button { width: 40px; height: 40px; font-size: 13px; }
+    .pager button svg { width: 16px; height: 16px; }
     /* La casilla «Dos por hoja» se comporta como los botones al envolverse. */
     .recibo-modal-bar .rm-actions .rm-dos { flex: 1 1 auto; justify-content: center; min-height: 34px; height: auto; font-size: 11.5px; }
 
@@ -7805,7 +7843,9 @@
     background: var(--da-white); border: 1px solid var(--border-default);
     border-radius: var(--radius-lg); box-shadow: var(--shadow-xl);
     overflow: hidden; display: flex; flex-direction: column;
+    /* Ver el comentario de `.app`. */
     max-height: calc(100vh - 80px);
+    max-height: calc(100dvh - 80px);
     transform: none !important; /* anula el translateX del panel lateral antiguo */
   }
   .notif-panel[hidden] { display: none; }

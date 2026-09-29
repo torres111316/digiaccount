@@ -576,5 +576,52 @@ ok('el motor solo escribe el pie si es suyo',
   /if \(countEl && !pieEsDelModulo\) \{/.test(app), true);
 
 
+/* -- EL ALTO DE PANTALLA, MEDIDO COMO LO VE UN TELEFONO --------------------
+
+   `100vh` en un movil NO es lo que se ve: es lo que se veria con la barra del
+   navegador escondida. Mientras la barra esta puesta —que es casi siempre— el
+   ultimo trozo de la app queda DEBAJO de ella. Y como el `body` lleva
+   `overflow: hidden`, la pagina no se desplaza para compensarlo.
+
+   Justo ahi vive el pie de las listas, con el paginador. Luis no podia pasar
+   a la pagina 2 de sus recibos desde el telefono: los botones estaban
+   puestos, con su tamaño, respondiendo — solo que debajo de la barra.
+
+   POR QUE ESTA PRUEBA ES DE TEXTO Y NO DE NAVEGADOR
+   La sonda de navegador no puede verlo: Chrome sin ventana no TIENE barra,
+   asi que ahi `100vh` y lo que se ve valen lo mismo y el fallo no aparece.
+   Lo unico que se puede comprobar sin un telefono de verdad es que la regla
+   siga escrita. */
+bloque('El alto de pantalla se mide como lo ve un telefono');
+
+var _cssApp = (function () { try { return fs.readFileSync(path.join(RAIZ, 'assets', 'app.css'), 'utf8'); } catch (e) { return ''; } })();
+
+/* El armazon. `100vh` se queda DELANTE como respaldo para un navegador que no
+   entienda `dvh`; el que la entienda se queda con la segunda. */
+var _bloqueApp = (_cssApp.match(/\n  \.app \{([\s\S]*?)\n  \}/) || [])[1] || '';
+ok('el armazon usa dvh', /height:\s*100dvh/.test(_bloqueApp), true);
+ok('y deja 100vh de respaldo antes', _bloqueApp.indexOf('100vh') < _bloqueApp.indexOf('100dvh'), true);
+
+/* Las ventanas altas tienen el mismo problema: un modal de `100vh - N` se
+   sale por debajo de la barra igual que la app. */
+var _vhSueltos = (_cssApp.match(/max-height:\s*calc\(100vh[^)]*\)/g) || []);
+var _dvhPuestos = (_cssApp.match(/max-height:\s*calc\(100dvh[^)]*\)/g) || []);
+ok('cada ventana alta tiene su version en dvh', _dvhPuestos.length >= _vhSueltos.length, true);
+
+/* Y el paginador, pulsable con el dedo. 28px es un boton de raton: en un
+   telefono se falla y se pulsa el numero de al lado.
+
+   Se toma la ULTIMA regla `.pager button` que fija un ancho —la que gana en
+   la cascada— y se comprueba que viva dentro del traje de telefono. */
+var _reglas = [];
+var _re = /\.pager button \{[^}]*width:\s*(\d+)px/g, _m;
+while ((_m = _re.exec(_cssApp)) !== null) _reglas.push({ px: Number(_m[1]), en: _m.index });
+ok('hay una regla de tamaño para el paginador', _reglas.length > 0, true);
+var _ultima = _reglas[_reglas.length - 1] || { px: 0, en: 0 };
+ok('la ultima esta en el traje de telefono',
+  _cssApp.slice(0, _ultima.en).lastIndexOf('@media (max-width: 560px)') > -1, true);
+ok('y el boton mide 40px o mas', _ultima.px >= 40, true);
+
+
 console.log('\n' + (fallas ? 'HAY ' + fallas + ' FALLA(S) de ' + total : 'TODO OK · ' + total + ' comprobaciones'));
 process.exit(fallas ? 1 : 0);
