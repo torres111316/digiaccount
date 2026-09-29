@@ -4972,48 +4972,14 @@
   }
   .rm-dos input { width: 14px; height: 14px; margin: 0; accent-color: var(--da-cyan-500); cursor: pointer; }
 
-  /* LA HOJA EN PANTALLA — lo mismo que va a salir por la impresora.
+  /* EN PANTALLA EL RECIBO SE LEE ENTERO: un solo recibo, con su base legal
+     por renglon y su texto legal completo. La pareja con la raya de corte es
+     cosa del papel y se arma al imprimir (ver armarParaImprimir en nomina.js).
 
-     No es una imitacion: al imprimir se clona este contenedor tal cual. Por
-     eso aqui se aplican las MISMAS reglas de contenido que en el papel (sin
-     la base legal de cada renglon, con el texto legal corto). Una vista
-     previa que enseña algo distinto de lo que imprime es peor que no
-     tenerla: hace confiar en lo que no se ha visto. */
+     El recibo trae escritos los dos textos legales; en pantalla solo se ve el
+     completo. El de una linea lo enseña el CSS de impresion. */
   .recibo-hoja { display: block; }
-
-  .recibo-hoja.recibo-par {
-    background: var(--da-white);
-    border-radius: var(--radius-md);
-    overflow: hidden;
-  }
-  .recibo-hoja.recibo-par .recibo-doc {
-    border: 0; border-radius: 0; box-shadow: none; margin: 0;
-  }
-  /* El rotulo de cada mitad: quien se lleva cual. */
-  .recibo-hoja.recibo-par .rm-rotulo {
-    font-family: var(--font-display); font-size: 10px; font-weight: var(--fw-extrabold);
-    text-transform: uppercase; letter-spacing: 0.1em; color: var(--fg-muted);
-    padding: 10px 24px 6px; border-bottom: 1px solid var(--border-default);
-  }
-  /* La raya por donde se corta el papel. */
-  .recibo-hoja.recibo-par .recibo-corte {
-    border-top: 1px dashed var(--border-strong);
-    font-size: 10px; color: var(--fg-subtle); text-align: center;
-    letter-spacing: 0.14em; text-transform: uppercase;
-    padding: 7px 0 6px; background: var(--bg-surface-alt);
-  }
-  /* Lo que NO va en este modo, igual que en el papel. */
-  .recibo-hoja.recibo-par .recibo-table td .sub { display: none; }
-
-  /* El texto legal, en su version de una linea. Los dos van puestos en el
-     recibo y aqui se elige: entero cuando va una copia por hoja, corto
-     cuando van dos. Asi no hay nada que deshacer al cambiar de modo. */
-  .recibo-legal-corto {
-    grid-column: 1 / -1; font-size: 9px; color: var(--fg-subtle); line-height: 1.5;
-    padding-top: 12px; border-top: 1px dashed var(--border-default); display: none;
-  }
-  .recibo-hoja.recibo-par .recibo-legal { display: none; }
-  .recibo-hoja.recibo-par .recibo-legal-corto { display: block; }
+  .recibo-legal-corto { display: none; }
 
   /* Recibo y relación de nómina: se imprimen clonados al #printPortal (fuera de
      .app) usando el mismo sistema que comprobantes/libros → una sola hoja. */

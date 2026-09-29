@@ -530,36 +530,27 @@
     function marcarDosPorHoja(si) {
       const ch = document.getElementById('reciboDos');
       if (ch) ch.checked = !!si;
-      pintarHoja();
     }
 
-    /* LA HOJA QUE SE VE ES LA QUE SE IMPRIME.
+    /* LA PAREJA SE ARMA SOBRE LA COPIA QUE VA A LA IMPRESORA.
 
-       Antes la vista previa mostraba un recibo suelto y la pareja se armaba
-       aparte, al imprimir. Funcionaba, pero eran dos sitios distintos
-       haciendo lo mismo: el dia que uno cambie y el otro no, lo que sale por
-       la impresora deja de parecerse a lo que se vio.
+       Se probo montar las dos copias tambien en pantalla, y Luis lo dijo
+       claro: se veia mal. En pantalla el recibo se lee; la pareja con su
+       raya de corte es cosa del papel.
 
-       Ahora la pareja se monta AQUI, en pantalla, y al imprimir se clona
-       este mismo contenedor. No pueden diferenciarse porque no hay dos.
+       Asi que la pantalla no se toca —`#reciboDoc` se queda donde siempre,
+       entero, con su texto legal largo y la base legal de cada renglon— y
+       la pareja se arma aqui, sobre el CLON de la hoja que prepararImpresion()
+       manda al lienzo.
 
-       `#reciboDoc` sigue siendo el original y el unico que se toca: la firma,
-       el texto que se descarga y el respaldo lo leen a el. La segunda mitad
-       es un clon de usar y tirar que se rehace cada vez. */
-    function pintarHoja() {
-      const hoja = document.getElementById('reciboHoja');
-      if (!hoja) return;
-      const ch = document.getElementById('reciboDos');
-      const dos = !!(ch && ch.checked);
-
-      /* Se barre lo que se añadió la vez anterior, y el original vuelve a
-         colgar directamente de la hoja. El original NO se destruye nunca: es
-         el mismo nodo de siempre, solo cambia de sitio. Si se rehiciera, la
-         firma recién estampada se perdería. */
-      if (doc.parentElement !== hoja) hoja.appendChild(doc);
-      hoja.querySelectorAll('[data-hoja-extra]').forEach((e) => e.remove());
-      hoja.classList.toggle('recibo-par', dos);
-      if (!dos) return;
+       Lo que NO se pierde: las dos mitades salen del MISMO recibo que se esta
+       viendo, en el momento de imprimir. No hay un segundo render que pueda
+       decir otra cosa, y si el trabajador ya firmo, la firma va en las dos
+       sin que nadie tenga que acordarse. */
+    function armarParaImprimir(hojaClon) {
+      const original = hojaClon.querySelector('.recibo-doc');
+      if (!original) return;
+      hojaClon.classList.add('recibo-par');
 
       const rotulo = (texto) => {
         const r = document.createElement('div');
@@ -570,41 +561,33 @@
       const mitad = () => {
         const m = document.createElement('div');
         m.className = 'recibo-mitad';
-        m.dataset.hojaExtra = '1';
         return m;
       };
 
-      /* ARRIBA, EL ORIGINAL — el nodo de verdad, metido en su mitad. */
       const arriba = mitad();
       arriba.appendChild(rotulo('Original · para el trabajador'));
-      hoja.appendChild(arriba);
-      arriba.appendChild(doc);
+      arriba.appendChild(original);          // se saca de la hoja clonada
 
       const corte = document.createElement('div');
       corte.className = 'recibo-corte';
-      corte.dataset.hojaExtra = '1';
       corte.textContent = '✂ cortar aquí';
-      hoja.appendChild(corte);
 
-      /* ABAJO, LA COPIA — un clon de usar y tirar, rehecho cada vez. */
       const abajo = mitad();
       abajo.appendChild(rotulo('Copia · para la empresa — firma de recibido'));
-      const copia = doc.cloneNode(true);
-      copia.removeAttribute('id');
-      /* El texto legal NO se toca aquí. Antes se acortaba en la copia, y eso
-         dejaba al ORIGINAL con el párrafo entero: la mitad de arriba se salía
-         de sus 128,5mm y perdía por abajo las firmas. Ahora los dos textos
-         van puestos desde que se pinta el recibo y manda el CSS, así que las
-         dos mitades quedan igual sin que nadie tenga que acordarse. */
-      abajo.appendChild(copia);
-      hoja.appendChild(abajo);
+      /* El texto legal no se toca: los dos van escritos en el recibo y el CSS
+         de impresion enseña el de una linea en las dos mitades por igual. */
+      abajo.appendChild(original.cloneNode(true));
+
+      hojaClon.appendChild(arriba);
+      hojaClon.appendChild(corte);
+      hojaClon.appendChild(abajo);
     }
 
     /* El texto del recibo para el boton «Descargar». Lo rellenan
        openRecibo() y openReciboPago().
 
        ESTA LINEA SE PERDIO UNA VEZ, y con ella dejo de abrirse CUALQUIER
-       recibo. Un parche que rehacia pintarHoja() cortaba hasta la primera
+       recibo. Un parche que rehacia la funcion de la hoja cortaba hasta la primera
        linea en blanco, y esa venia justo despues de esta declaracion: se la
        llevo sin que nada avisara. `node --check` no lo ve —la sintaxis es
        valida—; solo revienta al pulsar «Recibo», con un ReferenceError.
@@ -727,10 +710,8 @@
     if (overlay) overlay.addEventListener('click', (e) => { if (e.target === overlay) closeRecibo(); });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && overlay && overlay.dataset.open === 'true') closeRecibo(); });
     const rp = document.getElementById('reciboPrint');
+    /* La casilla decide lo que sale por la IMPRESORA; la pantalla no cambia. */
     const chkDos = document.getElementById('reciboDos');
-    /* Marcar y desmarcar cambia lo que se ve en el acto: la casilla no
-       promete algo que solo se comprobaria al imprimir. */
-    if (chkDos) chkDos.addEventListener('change', pintarHoja);
     let tituloOriginal = null; // para restaurar el título tras imprimir/guardar PDF
 
     /* LA PREPARACIÓN, EN UN SOLO SITIO.
@@ -749,15 +730,14 @@
       if (!portal) { portal = document.createElement('div'); portal.id = 'printPortal'; document.body.appendChild(portal); }
       portal.innerHTML = '';
 
-      /* SE CLONA LA HOJA QUE SE ESTA VIENDO, tal cual.
-
-         No se rearma nada: lo que se imprime es, literalmente, lo que hay en
-         pantalla. Es la unica forma de que la vista previa no pueda mentir. */
+      /* SE CLONA LA HOJA QUE SE ESTA VIENDO, y sobre el clon se arma la
+         pareja si la casilla lo pide. La pantalla no se toca. */
       const hoja = document.getElementById('reciboHoja');
       const clon = hoja.cloneNode(true);
       clon.removeAttribute('id');
       clon.querySelectorAll('[id]').forEach((e) => e.removeAttribute('id'));
-      if (!clon.classList.contains('recibo-par')) clon.classList.add('recibo-print');
+      if (chkDos && chkDos.checked) armarParaImprimir(clon);
+      else clon.classList.add('recibo-print');
       portal.appendChild(clon);
       document.body.classList.add('printing-comp');
 
@@ -814,10 +794,8 @@
         const worker = signs[signs.length - 1];
         worker.innerHTML = '<img src="' + firmaUrl + '" alt="firma" style="max-height:54px;display:block;margin:0 auto 2px;"><div class="line">Recibí conforme · ' + c.emp.nombre + '</div>';
       }
-      /* La copia se rehace para que lleve la firma tambien. Sin esto, el
-         original salia firmado y la copia —la que se queda la empresa— en
-         blanco, que es justo al reves de lo que hace falta. */
-      pintarHoja();
+      /* La copia de la empresa lleva la firma sola: se arma al imprimir
+         clonando este mismo recibo, ya firmado. */
       if (window.sb && window.__CUENTA_ID && window.__EMPRESA_ACTIVA && window.__EMPRESA_ACTIVA.id) {
         const detalle = (c.rows || []).filter((r) => r[0] !== 'sec').map((r) => ({ concepto: r[1], monto: r[3], tipo: r[0] }));
         const { error } = await window.sb.from('recibos_nomina').insert({

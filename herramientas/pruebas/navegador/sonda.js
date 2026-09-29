@@ -108,8 +108,17 @@
         var hojaR = document.getElementById('reciboHoja');
         ok('al pulsarlo no salta ningun error', erroresRecibo.length ? erroresRecibo.join(' | ') : 0, 0);
         ok('el recibo se abre', ovR && ovR.dataset.open, 'true');
-        ok('con sus dos copias (recibo de pago)',
-          hojaR ? hojaR.querySelectorAll('.recibo-mitad').length : 0, 2);
+        /* En pantalla, UN recibo (asi lo pidio Luis: la pareja se veia mal). */
+        ok('en pantalla se ve un solo recibo',
+          hojaR ? hojaR.querySelectorAll('.recibo-doc').length : 0, 1);
+        /* Y al imprimir, los dos: se dispara lo mismo que dispara el navegador. */
+        window.dispatchEvent(new Event('beforeprint'));
+        var portalR = document.getElementById('printPortal');
+        ok('al imprimir salen las dos copias',
+          portalR ? portalR.querySelectorAll('.recibo-mitad .recibo-doc').length : 0, 2);
+        window.dispatchEvent(new Event('afterprint'));
+        ok('y la pantalla sigue con uno despues de imprimir',
+          hojaR ? hojaR.querySelectorAll('.recibo-doc').length : 0, 1);
 
         /* Se deja todo como estaba para lo que viene detras. */
         if (ovR) ovR.dataset.open = 'false';

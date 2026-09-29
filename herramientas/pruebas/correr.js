@@ -486,10 +486,15 @@ ok('se imprime clonando la hoja que se ve',
 ok('y el clon no se lleva los id (quedarian repetidos)',
   /clon\.querySelectorAll\('\[id\]'\)\.forEach/.test(_nom), true);
 
-/* El ORIGINAL no se rehace nunca: es el mismo nodo, solo cambia de sitio. Si
-   se reconstruyera, la firma recien estampada se perderia. */
-ok('el original se mueve, no se recrea',
-  /if \(doc\.parentElement !== hoja\) hoja\.appendChild\(doc\);/.test(_nom), true);
+/* EN PANTALLA, UN RECIBO; LA PAREJA SOLO EN EL PAPEL.
+
+   Se probo montar las dos copias tambien en pantalla y se veia mal. Ahora la
+   pantalla no se toca y la pareja se arma sobre el CLON que va al lienzo de
+   impresion — a partir del mismo recibo que se ve, asi que siguen sin poder
+   decir cosas distintas. */
+ok('la pareja se arma sobre el clon de impresion',
+  /if \(chkDos && chkDos\.checked\) armarParaImprimir\(clon\);/.test(_nom), true);
+ok('y ya nada monta la pareja en pantalla', /pintarHoja/.test(_nom), false);
 
 /* LAS DOS MITADES, IDENTICAS.
 
