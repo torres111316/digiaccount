@@ -523,6 +523,14 @@
     const overlay = document.getElementById('reciboOverlay');
     const doc = document.getElementById('reciboDoc');
     const modalTitle = document.getElementById('reciboModalTitle');
+
+    /* Cada recibo abre la casilla «Dos por hoja» como le toca, sin heredar lo
+       que quedó del anterior: imprimir utilidades en media hoja porque antes
+       se vio un recibo de pago sería una sorpresa desagradable. */
+    function marcarDosPorHoja(si) {
+      const ch = document.getElementById('reciboDos');
+      if (ch) ch.checked = !!si;
+    }
     let lastReciboText = '';
 
     function reciboRows(tab, c) {
@@ -615,6 +623,7 @@
         + 'Son: ' + capitalizar(montoEnLetras(k.total)) + '\r\n';
       lastReciboName = (k.title + ' ' + emp.nombre).replace(/[\\/:*?"<>|]/g, '-') + '.txt';
       currentReciboPago = null; // este es el recibo de prestaciones: el PDF toma SU nombre, no el del último recibo de pago
+      marcarDosPorHoja(false);   // más largo que el de pago: no se da por hecho que quepa en media hoja
 
       overlay.dataset.open = 'true';
       drawIcons();
@@ -628,19 +637,81 @@
     if (overlay) overlay.addEventListener('click', (e) => { if (e.target === overlay) closeRecibo(); });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && overlay && overlay.dataset.open === 'true') closeRecibo(); });
     const rp = document.getElementById('reciboPrint');
+    const chkDos = document.getElementById('reciboDos');
     let tituloOriginal = null; // para restaurar el título tras imprimir/guardar PDF
-    if (rp) rp.addEventListener('click', () => {
-      // Clonar el recibo a un portal fuera de .app → una sola hoja, sin páginas en blanco
+
+    /* DOS RECIBOS EN UNA HOJA CARTA.
+
+       El trabajador se lleva el original y la empresa se queda con la copia
+       firmada como recibido. Antes salía una hoja por copia: dos hojas por
+       trabajador, todas las semanas.
+
+       Las dos mitades son el MISMO recibo clonado, no dos renders: así no
+       pueden decir cosas distintas. Lo único que cambia es el rótulo de
+       arriba y, en la copia, el pie de firma. */
+    function armarDosPorHoja(portal) {
+      const par = document.createElement('div');
+      par.className = 'recibo-par';
+
+      const mitad = (rotulo) => {
+        const m = document.createElement('div');
+        m.className = 'recibo-mitad';
+        const r = document.createElement('div');
+        r.className = 'rm-rotulo';
+        r.textContent = rotulo;
+        m.appendChild(r);
+        const clon = doc.cloneNode(true);
+        clon.removeAttribute('id');
+        /* El texto legal completo es el bloque más grande del recibo y dice
+           lo mismo en las dos copias. En media hoja no cabe, y lo que
+           importa de él —bajo qué artículo se emite— cabe en una línea. */
+        const legal = clon.querySelector('.recibo-legal');
+        if (legal) legal.textContent = 'Emitido conforme al Art. 106 de la LOTTT. Generado electrónicamente por DigiAccount.';
+        m.appendChild(clon);
+        return m;
+      };
+
+      par.appendChild(mitad('Original · para el trabajador'));
+
+      const corte = document.createElement('div');
+      corte.className = 'recibo-corte';
+      corte.textContent = '✂ cortar aquí';
+      par.appendChild(corte);
+
+      par.appendChild(mitad('Copia · para la empresa — firma de recibido'));
+      portal.appendChild(par);
+    }
+
+    /* LA PREPARACIÓN, EN UN SOLO SITIO.
+
+       Antes esto vivía dentro del clic de «Imprimir». Con Ctrl+P no pasaba
+       por aquí: el navegador imprimía la app entera y el recibo salía
+       repartido en varias hojas. El botón funcionaba y el atajo no, y desde
+       fuera parecía que el recibo estaba mal armado.
+
+       Ahora cuelga de `beforeprint`, que el navegador dispara venga la orden
+       de donde venga —el botón, Ctrl+P o el menú—. El botón ya solo llama a
+       imprimir. Una sola ruta, un solo resultado. */
+    function prepararImpresion() {
+      if (!overlay || overlay.dataset.open !== 'true') return;
       let portal = document.getElementById('printPortal');
       if (!portal) { portal = document.createElement('div'); portal.id = 'printPortal'; document.body.appendChild(portal); }
       portal.innerHTML = '';
-      const clon = doc.cloneNode(true);
-      clon.classList.add('recibo-print');
-      portal.appendChild(clon);
+
+      if (chkDos && chkDos.checked) {
+        armarDosPorHoja(portal);
+      } else {
+        const clon = doc.cloneNode(true);
+        clon.removeAttribute('id');
+        clon.classList.add('recibo-print');
+        portal.appendChild(clon);
+      }
       document.body.classList.add('printing-comp');
-      // "Guardar como PDF" usa el título del documento como nombre de archivo:
-      // → "Recibo ABRAHAN JOSE REYES MAJANO - Semana 13-07-2026 al 19-07-2026.pdf"
-      tituloOriginal = document.title;
+
+      /* "Guardar como PDF" usa el título del documento como nombre de
+         archivo: → "Recibo ABRAHAN JOSE REYES MAJANO - Semana 13-07-2026 al
+         19-07-2026.pdf" */
+      if (tituloOriginal == null) tituloOriginal = document.title;
       let nombrePdf = '';
       if (currentReciboPago && currentReciboPago.emp) {
         nombrePdf = 'Recibo ' + currentReciboPago.emp.nombre + ' - ' + String(currentReciboPago.periodo || '');
@@ -648,8 +719,17 @@
         nombrePdf = lastReciboName.replace(/\.txt$/i, '');
       }
       if (nombrePdf) document.title = nombrePdf.replace(/[\\/:*?"<>|]/g, '-');
+    }
+
+    window.addEventListener('beforeprint', prepararImpresion);
+    if (rp) rp.addEventListener('click', () => {
+      /* Safari no dispara `beforeprint`. Como `prepararImpresion` deja el
+         portal igual la llamen una o dos veces, se prepara también aquí y
+         el botón funciona en cualquier navegador. */
+      prepararImpresion();
       window.print();
     });
+
     window.addEventListener('afterprint', () => {
       document.body.classList.remove('printing-comp');
       const portal = document.getElementById('printPortal');
@@ -994,6 +1074,12 @@
         + 'Son: ' + capitalizar(montoEnLetras(p.neto)) + '\r\n';
       lastReciboName = ('Recibo ' + emp.nombre + ' - ' + p.f.periodo).replace(/[\\/:*?"<>|]/g, '-') + '.txt';
       currentReciboPago = { emp: emp, p: p, rows: rows, periodo: p.f.periodo, frecuencia: payFreq };
+
+      /* El recibo de pago SÍ viene marcado: es el que se firma cada semana y
+         tiene un máximo conocido de renglones, así que cabe en media hoja.
+         Los de vacaciones, utilidades y liquidación no: son más largos y
+         podrían cortarse por abajo. Ahí la casilla queda a mano. */
+      marcarDosPorHoja(true);
 
       overlay.dataset.open = 'true';
       drawIcons();

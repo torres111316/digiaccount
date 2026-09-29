@@ -4939,6 +4939,14 @@
   .recibo-sign .line { border-top: 1px solid var(--fg-body); padding-top: 6px; font-size: 10px; color: var(--fg-muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: var(--fw-semibold); }
   .recibo-legal { grid-column: 1 / -1; font-size: 9px; color: var(--fg-subtle); line-height: 1.5; padding-top: 12px; border-top: 1px dashed var(--border-default); }
 
+  /* La casilla «Dos por hoja» de la barra del recibo. */
+  .rm-dos {
+    display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px;
+    font-size: 12px; color: var(--da-white); cursor: pointer; user-select: none;
+    border: 1px solid rgba(255, 255, 255, .35); border-radius: var(--radius-sm); white-space: nowrap;
+  }
+  .rm-dos input { width: 14px; height: 14px; margin: 0; accent-color: var(--da-cyan-500); cursor: pointer; }
+
   /* Recibo y relación de nómina: se imprimen clonados al #printPortal (fuera de
      .app) usando el mismo sistema que comprobantes/libros → una sola hoja. */
   @media print {
@@ -4972,6 +4980,94 @@
     #printPortal .recibo-doc .recibo-foot { margin-top: 10px; }
     #printPortal .recibo-doc .recibo-sign { padding-top: 14px; }
     #printPortal .recibo-doc .recibo-legal { font-size: 7px; line-height: 1.3; }
+
+    /* ── DOS RECIBOS EN UNA HOJA CARTA ───────────────────────────────────
+
+       Arriba el original que se lleva el trabajador; abajo la copia que se
+       queda la empresa con su firma de recibido. Se corta por la raya.
+
+       Cada mitad mide exactamente la mitad de lo imprimible, para que la
+       raya caiga SIEMPRE en el mismo sitio: asi se puede cortar un taco de
+       recibos de una vez, en vez de uno por uno buscando la marca.
+
+       Por eso lleva `overflow: hidden`. Es la unica manera de garantizar la
+       altura, y el precio es real: un recibo mas largo de la cuenta se
+       cortaria por abajo sin avisar. De ahi que la casilla venga marcada
+       solo en el recibo de pago —que tiene un maximo conocido de renglones—
+       y que aqui se apriete todo lo que se pueda: el texto legal se reduce a
+       una linea, que es la pieza mas grande y la misma en las dos copias. */
+    @page reciboPar { size: letter portrait; margin: 9mm; }
+    #printPortal .recibo-par { page: reciboPar; }
+
+    /* 279,4mm de carta − 18mm de margenes = 261,4mm de alto imprimible.
+       128,5 + 3 + 128,5 = 260mm: sobra 1,4mm para el redondeo del navegador.
+
+       La raya no tiene que caer en el milimetro exacto del medio; tiene que
+       caer SIEMPRE en el mismo sitio, que es lo que permite cortar un taco
+       de recibos de una vez. */
+    #printPortal .recibo-par .recibo-mitad {
+      height: 128.5mm; overflow: hidden; position: relative;
+    }
+
+    /* LA FIRMA, CLAVADA ABAJO — Y NO ES DECORACION.
+
+       El recorte de una mitad es mudo: si el contenido pasara de 128,5mm, lo
+       que sobra desaparece sin decir nada. Y lo ultimo del recibo es justo lo
+       que no puede faltar: «Recibi conforme» con la raya para firmar. Una
+       copia sin esa linea no sirve para lo que existe la copia.
+
+       Clavandola al fondo de la mitad, la firma esta SIEMPRE ahi. Si algun
+       dia un recibo se pasa de largo, la tabla le llegara encima y se vera al
+       instante — un estorbo a la vista es mil veces mejor que una firma que
+       desaparecio sin que nadie se enterara. */
+    #printPortal .recibo-par .recibo-foot {
+      position: absolute; left: 0; right: 0; bottom: 0; background: #fff;
+    }
+    #printPortal .recibo-par .rm-rotulo {
+      font-family: var(--font-display); font-size: 7px; font-weight: 800;
+      text-transform: uppercase; letter-spacing: 0.1em; color: #5b6b7c;
+      padding-bottom: 2px; margin-bottom: 3px; border-bottom: 1px solid #c8d2dc;
+    }
+    /* La raya por donde se corta, justo en el medio de la hoja. */
+    #printPortal .recibo-par .recibo-corte {
+      height: 3mm; border-top: 1px dashed #93a3b3; margin: 0;
+      font-size: 6px; color: #93a3b3; text-align: center; letter-spacing: 0.14em;
+      text-transform: uppercase; padding-top: 0.6mm;
+    }
+
+    /* Todo mas apretado que en la hoja de un solo recibo. */
+    #printPortal .recibo-par .recibo-doc { padding: 0; font-size: 7px; }
+    #printPortal .recibo-par .recibo-head { padding-bottom: 4px; margin-bottom: 4px; }
+    #printPortal .recibo-par .rh-co { font-size: 10px; }
+    #printPortal .recibo-par .rh-meta { font-size: 6px; line-height: 1.25; }
+    #printPortal .recibo-par .rh-kind .k { font-size: 9px; }
+    #printPortal .recibo-par .rh-kind .num { font-size: 6.5px; }
+    #printPortal .recibo-par .recibo-party { gap: 2px 10px; margin: 4px 0; }
+    #printPortal .recibo-par .recibo-party .rp .l { font-size: 5.5px; }
+    #printPortal .recibo-par .recibo-party .rp .v { font-size: 7px; }
+    #printPortal .recibo-par .recibo-table th,
+    #printPortal .recibo-par .recibo-table td { padding: 1.2px 6px; font-size: 7px; }
+    /* LA BASE LEGAL DE CADA RENGLON, FUERA EN ESTE MODO.
+
+       Son 18 lineas de explicacion («4% · base tope 5 sal. min.») que ocupan
+       tanto como la tabla entera. Con ellas puestas, la primera prueba corto
+       por abajo el «Son:», las dos firmas y el pie legal — o sea, corto
+       justamente la parte que el trabajador firma, que es para lo que existe
+       la copia. Un recibo sin la linea de la firma no sirve de nada.
+
+       Quitandolas cabe todo con holgura, incluso en el recibo mas largo que
+       puede generar el sistema. Quien necesite el detalle lo tiene en la hoja
+       de un solo recibo, que no las toca. */
+    #printPortal .recibo-par .recibo-table td .sub { display: none; }
+    #printPortal .recibo-par .recibo-table tr.sec td { padding: 1.2px 6px; font-size: 6px; }
+    #printPortal .recibo-par .recibo-table tfoot td { font-size: 9px; padding: 4px 6px; }
+    #printPortal .recibo-par .recibo-words { font-size: 6.5px; margin: 3px 0; padding: 3px 8px; }
+    #printPortal .recibo-par .recibo-foot { margin-top: 4px; padding: 6px 8px 4px; gap: 20px; }
+    #printPortal .recibo-par .recibo-sign { padding-top: 9px; }
+    #printPortal .recibo-par .recibo-sign .line { font-size: 6px; padding-top: 3px; }
+    #printPortal .recibo-par .recibo-sign img { max-height: 26px !important; }
+    #printPortal .recibo-par .recibo-legal { font-size: 5.5px; line-height: 1.25; padding-top: 4px; }
+
     /* Relación de nómina: hoja apaisada (la del @page global landscape) */
     #printPortal .reln-print .reln-table th,
     #printPortal .reln-print .reln-table td { padding: 4px 7px; font-size: 9.5px; }
@@ -7690,6 +7786,8 @@
       height: auto; min-height: 34px; font-size: 11.5px; padding: 6px 10px;
     }
     .recibo-modal-bar .rm-actions .icon-btn { flex: 0 0 auto; }
+    /* La casilla «Dos por hoja» se comporta como los botones al envolverse. */
+    .recibo-modal-bar .rm-actions .rm-dos { flex: 1 1 auto; justify-content: center; min-height: 34px; height: auto; font-size: 11.5px; }
 
     /* El ticket ocupa el ancho disponible en vez de quedarse en sus
        300 px fijos con el resto en blanco. */

@@ -4819,6 +4819,19 @@
       <div class="rm-actions">
         <button class="btn btn-primary" style="height:32px;font-size:12px;" id="reciboFirmar"><i data-lucide="pen-tool"></i> Firmar</button>
         <button class="btn btn-ghost" style="height:32px;font-size:12px;" id="reciboFirmaEmpresa" title="Configurar la firma autorizada de la empresa (una sola vez)"><i data-lucide="stamp"></i> Firma empresa</button>
+        <!-- DOS RECIBOS EN UNA HOJA CARTA.
+
+             El trabajador se lleva el original y la empresa se queda con la
+             copia firmada como recibido. Antes era una hoja por copia: dos
+             hojas por trabajador, cada semana. Ahora sale una sola y se corta
+             por la mitad.
+
+             Viene marcada sola en el recibo de pago, que es el que se firma
+             cada semana. En los de vacaciones, utilidades y liquidacion queda
+             a mano: son mas largos y no siempre caben en media hoja. -->
+        <label class="rm-dos" id="reciboDosWrap" title="Imprime el mismo recibo dos veces en una hoja carta: original arriba y copia abajo, para cortar por la mitad.">
+          <input type="checkbox" id="reciboDos"> Dos por hoja
+        </label>
         <button class="btn btn-ghost" style="height:32px;font-size:12px;" id="reciboPrint"><i data-lucide="printer"></i> Imprimir</button>
         <button class="btn btn-ghost" style="height:32px;font-size:12px;" id="reciboDownload"><i data-lucide="download"></i> Descargar</button>
         <button class="icon-btn" id="reciboClose" title="Cerrar"><i data-lucide="x"></i></button>

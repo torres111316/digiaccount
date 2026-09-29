@@ -451,5 +451,72 @@ ok('la ficha no toca el stock (lo pone la compra)',
   /stock: 0, stock_min: 0, costo: 0,/.test(app), true);
 
 
+/* -- DOS RECIBOS DE NOMINA EN UNA HOJA CARTA --------------------------------
+
+   El trabajador se lleva el original y la empresa se queda con la copia
+   firmada como recibido. Antes salia una hoja por copia: dos hojas por
+   trabajador, todas las semanas.
+
+   Y aparte: con Ctrl+P el recibo salia repartido en varias hojas, mientras
+   que el boton «Imprimir» lo sacaba bien. La preparacion vivia dentro del
+   clic, asi que el atajo no pasaba por ella. */
+bloque('Dos recibos de nomina en una hoja');
+
+var _nom = (function () { try { return fs.readFileSync(path.join(RAIZ, 'assets', 'nomina.js'), 'utf8'); } catch (e) { return ''; } })();
+var _css = (function () { try { return fs.readFileSync(path.join(RAIZ, 'assets', 'app.css'), 'utf8'); } catch (e) { return ''; } })();
+
+/* Ctrl+P y el boton hacen lo mismo porque pasan por el mismo sitio. */
+ok('la preparacion cuelga de beforeprint',
+  /addEventListener\('beforeprint',\s*prepararImpresion\)/.test(_nom), true);
+ok('y el boton llama a esa misma preparacion',
+  /prepararImpresion\(\);\s*[\r\n]+\s*window\.print\(\)/.test(_nom), true);
+
+/* Las dos mitades son el MISMO recibo clonado: no pueden decir cosas
+   distintas porque no hay dos renders. */
+ok('las dos copias salen del mismo recibo',
+  (_nom.match(/doc\.cloneNode\(true\)/g) || []).length >= 2, true);
+
+/* LA CUENTA DE LA HOJA, CON LOS MILIMETROS DEL CSS.
+
+   Carta son 279,4mm. Menos los margenes del @page, eso es lo imprimible. Si
+   las dos mitades mas la raya de corte no caben ahi, la segunda copia se va a
+   una segunda hoja y se acabo la idea. */
+var _mm = function (re) { var m = _css.match(re); return m ? parseFloat(m[1]) : NaN; };
+var _margen = _mm(/@page reciboPar \{[^}]*margin:\s*([\d.]+)mm/);
+var _mitad = _mm(/\.recibo-par \.recibo-mitad \{[^}]*height:\s*([\d.]+)mm/);
+var _corte = _mm(/\.recibo-par \.recibo-corte \{[^}]*height:\s*([\d.]+)mm/);
+ok('se leyeron los milimetros del CSS',
+  !isNaN(_margen) && !isNaN(_mitad) && !isNaN(_corte), true);
+var _imprimible = 279.4 - (_margen * 2);
+var _ocupado = (_mitad * 2) + _corte;
+ok('las dos mitades y el corte caben en la carta', _ocupado <= _imprimible, true);
+/* Y que no sobre tanto que las mitades dejen de parecer mitades. */
+ok('sin desperdiciar media hoja', (_imprimible - _ocupado) < 12, true);
+
+/* LA FIRMA NO PUEDE CORTARSE.
+
+   Cada mitad lleva `overflow: hidden` —es lo que fija la raya siempre en el
+   mismo sitio, para poder cortar un taco de una vez— y ese recorte es MUDO.
+   Lo ultimo del recibo es «Recibi conforme» con su raya: una copia sin esa
+   linea no sirve para lo que existe la copia.
+
+   Clavada al fondo, esta siempre. Si un recibo se pasa de largo, la tabla le
+   llega encima y se ve; desaparecer, no desaparece. */
+var _pie = (_css.match(/#printPortal \.recibo-par \.recibo-foot \{([^}]*)\}/) || [])[1] || '';
+ok('el pie de firma esta clavado al fondo de la mitad',
+  /position:\s*absolute/.test(_pie) && /bottom:\s*0/.test(_pie), true);
+
+/* La base legal de cada renglon se va en este modo: son 18 lineas que ocupan
+   tanto como la tabla entera, y con ellas puestas la primera prueba corto el
+   «Son:», las dos firmas y el pie. */
+ok('la base legal por renglon no va en este modo',
+  /\.recibo-par \.recibo-table td \.sub \{[^}]*display:\s*none/.test(_css), true);
+
+/* Marcada sola en el recibo de pago; a mano en los demas, que son mas largos
+   y podrian no caber en media hoja. */
+ok('viene marcada en el recibo de pago', /marcarDosPorHoja\(true\)/.test(_nom), true);
+ok('y desmarcada en los de prestaciones', /marcarDosPorHoja\(false\)/.test(_nom), true);
+
+
 console.log('\n' + (fallas ? 'HAY ' + fallas + ' FALLA(S) de ' + total : 'TODO OK · ' + total + ' comprobaciones'));
 process.exit(fallas ? 1 : 0);
