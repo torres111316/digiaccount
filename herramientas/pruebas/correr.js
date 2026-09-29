@@ -351,5 +351,51 @@ ok('la clave entera de golpe SI', esRelleno('', 'ClaveLarga123'), true);
 ok('dos letras de golpe no', esRelleno('ab', 'abcd'), false);
 
 
+/* -- EL PRODUCTO NUEVO DENTRO DE UNA COMPRA ---------------------------------
+
+   Registrando una compra, Luis llego a un producto que no estaba en la lista
+   del inventario. El campo parece un selector de lo que ya hay, asi que dio
+   por hecho que no se lo iba a aceptar y CANCELO la compra -- con varias
+   lineas ya cargadas. Perdio el trabajo.
+
+   Lo amargo es que el sistema SIEMPRE dio de alta el producto que no existia.
+   Solo que no lo decia en ninguna parte. Una funcion que no se ve no existe.
+
+   Se prueba que la fila avisa en que situacion esta, y --lo que de verdad
+   puede romperse en silencio-- que la clase con la que se crea cada fila sea
+   la MISMA que el bucle de guardado busca. Si dejan de calzar, la compra se
+   guarda y el inventario no se mueve, sin un solo error en pantalla. */
+bloque('Un producto que no existe se puede registrar desde la compra');
+
+var _appCompra = (function () {
+  var i = app.indexOf('invBox.innerHTML');
+  var j = app.indexOf('if (window.cargarProductos) window.cargarProductos();', i);
+  return (i < 0 || j < 0) ? '' : app.slice(i, j);
+})();
+
+ok('se encontro el cuadro de inventario de la compra', _appCompra.length > 0, true);
+
+/* La fila dice si el producto ya esta o si es nuevo. */
+ok('la fila avisa cuando el producto ya existe',
+  /Ya est.\s*en inventario/.test(_appCompra), true);
+ok('la fila avisa cuando el producto es nuevo',
+  /Producto nuevo/.test(_appCompra), true);
+
+/* Y deja completarlo ahi mismo, para que no nazca con precio CERO. */
+ok('deja ponerle precio de venta al producto nuevo',
+  /ic-precio/.test(_appCompra), true);
+ok('el precio escrito llega al alta del producto',
+  /precio:\s*li\.precio/.test(_appCompra), true);
+ok('la categoria escrita llega al alta del producto',
+  /categoria:\s*li\.categoria/.test(_appCompra), true);
+
+/* LA COMPROBACION QUE IMPORTA: que lo que se crea y lo que se lee sean lo
+   mismo. Se saca la clase de la fila y el selector del bucle, del codigo. */
+var _claseFila = (_appCompra.match(/it\.className\s*=\s*'([\w-]+)'/) || [])[1] || '';
+var _selBucle = (_appCompra.match(/invBox\.querySelectorAll\('\.([\w-]+)'\)/) || [])[1] || '';
+ok('se leyo la clase con la que nace cada fila', _claseFila.length > 0, true);
+ok('el guardado busca exactamente esa clase', _selBucle, _claseFila);
+
+
 console.log('\n' + (fallas ? 'HAY ' + fallas + ' FALLA(S) de ' + total : 'TODO OK · ' + total + ' comprobaciones'));
 process.exit(fallas ? 1 : 0);

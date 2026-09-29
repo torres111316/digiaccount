@@ -5214,17 +5214,73 @@
               + '<button type="button" class="btn btn-ghost" id="invCompraAdd" style="height:30px;font-size:12px;margin-top:4px;"><i data-lucide="plus" style="width:14px;height:14px;"></i> Agregar producto</button>';
             body.querySelector('.fm-grid').appendChild(invBox);
             const rows = invBox.querySelector('#invCompraRows');
+
+            /* EL PRODUCTO QUE NO ESTA EN LA LISTA SE CREA — Y AHORA SE VE.
+
+               Siempre se creo solo: si el nombre no existia, se daba de alta
+               con esta misma compra. Pero no lo decia en ninguna parte, y el
+               campo parece un selector de lo que ya hay.
+
+               Luis cargo media compra, llego a un producto que no estaba en
+               la lista, dio por hecho que no lo iba a aceptar, y CANCELO. Se
+               le perdio todo lo que llevaba escrito.
+
+               Una funcion que existe pero no se ve es una funcion que no
+               existe — y encima cuesta el trabajo de quien no la encuentra.
+
+               Ahora cada linea dice en que situacion esta, y si es nuevo deja
+               ponerle precio de venta y categoria ahi mismo. Antes nacia con
+               precio CERO y habia que ir despues a Inventario a arreglarlo,
+               uno por uno. */
+            const _buscarProd = (nombre) => {
+              const n = String(nombre || '').trim().toLowerCase();
+              if (!n) return null;
+              return prodsCompra.find((x) => String(x.nombre || '').trim().toLowerCase() === n) || null;
+            };
+
             const addRow = () => {
               const empty = rows.querySelector('.ic-empty'); if (empty) empty.remove();
-              const r = document.createElement('div');
-              r.className = 'ic-row';
-              r.innerHTML = '<input class="ic-prod" list="fm-dl-prodcompra" placeholder="Producto…" autocomplete="off">'
+              const it = document.createElement('div');
+              it.className = 'ic-item';
+              it.innerHTML = '<div class="ic-row">'
+                + '<input class="ic-prod" list="fm-dl-prodcompra" placeholder="Producto…" autocomplete="off">'
                 + '<input class="ic-cant" type="number" step="any" placeholder="0 (acepta 2,5 kg)">'
                 + '<input class="ic-costo" type="number" step="0.01" placeholder="0,00">'
-                + '<button type="button" class="btn btn-ghost ic-del" title="Quitar"><i data-lucide="x" style="width:14px;height:14px;"></i></button>';
-              rows.appendChild(r);
-              r.querySelector('.ic-del').addEventListener('click', () => { r.remove(); if (!rows.querySelector('.ic-row')) rows.innerHTML = '<div class="ic-empty">Agrega los productos que llegaron con esta compra.</div>'; });
-              r.querySelector('.ic-prod').focus();
+                + '<button type="button" class="btn btn-ghost ic-del" title="Quitar"><i data-lucide="x" style="width:14px;height:14px;"></i></button>'
+                + '</div>'
+                + '<div class="ic-estado"></div>'
+                + '<div class="ic-nuevo" hidden>'
+                +   '<input class="ic-precio" type="number" step="0.01" placeholder="Precio de venta (opcional)">'
+                +   '<input class="ic-categoria" placeholder="Categoría (opcional)" autocomplete="off">'
+                + '</div>';
+              rows.appendChild(it);
+
+              const cProd = it.querySelector('.ic-prod');
+              const estado = it.querySelector('.ic-estado');
+              const cajaNueva = it.querySelector('.ic-nuevo');
+
+              const revisar = () => {
+                const nombre = (cProd.value || '').trim();
+                if (!nombre) { estado.textContent = ''; estado.className = 'ic-estado'; cajaNueva.hidden = true; return; }
+                const pr = _buscarProd(nombre);
+                if (pr) {
+                  estado.className = 'ic-estado es-ok';
+                  estado.textContent = 'Ya está en inventario · stock actual ' + (Number(pr.stock) || 0);
+                  cajaNueva.hidden = true;
+                } else {
+                  estado.className = 'ic-estado es-nuevo';
+                  estado.textContent = 'Producto nuevo — se da de alta con esta compra';
+                  cajaNueva.hidden = false;
+                }
+              };
+              cProd.addEventListener('input', revisar);
+              cProd.addEventListener('change', revisar);
+
+              it.querySelector('.ic-del').addEventListener('click', () => {
+                it.remove();
+                if (!rows.querySelector('.ic-item')) rows.innerHTML = '<div class="ic-empty">Agrega los productos que llegaron con esta compra.</div>';
+              });
+              cProd.focus();
               if (window.lucide) window.lucide.createIcons();
             };
             invBox.querySelector('#invCompraAdd').addEventListener('click', addRow);
@@ -5363,7 +5419,7 @@
             // Reponer inventario: suma las cantidades compradas al stock de cada producto
               if (esCompra && invBox && window.sb) {
                 const lineasInv = [];
-                /* `.ic-row` y no `#invCompraRows > div`.
+                /* `.ic-item` y no `#invCompraRows > div`.
 
                    Cuando no se agrega ningún producto, el contenedor lleva
                    dentro el aviso `<div class="ic-empty">Agrega los productos…`,
@@ -5372,18 +5428,25 @@
                    un `.then`, no se veía nada: la factura quedaba guardada y
                    todo lo que venía después —la retención de IVA, entre otras
                    cosas— no llegaba a ejecutarse. */
-                invBox.querySelectorAll('.ic-row').forEach((r) => {
+                invBox.querySelectorAll('.ic-item').forEach((r) => {
                   const cProd = r.querySelector('.ic-prod'), cCant = r.querySelector('.ic-cant'), cCosto = r.querySelector('.ic-costo');
                   if (!cProd || !cCant) return;
                   const nombre = (cProd.value || '').trim();
                   const cant = parseFloat(cCant.value) || 0;
+                  /* Lo que se escribio para un producto NUEVO. Si el producto
+                     ya existia estos campos estan ocultos y vienen vacios — y
+                     eso es correcto: una compra no cambia el precio de venta
+                     de algo que ya se vende. */
+                  const cPrecio = r.querySelector('.ic-precio'), cCat = r.querySelector('.ic-categoria');
+                  const precioNuevo = cPrecio ? (parseFloat(cPrecio.value) || 0) : 0;
+                  const catNueva = cCat ? (cCat.value || '').trim() : '';
                   /* El costo se escribió en la moneda de la factura: al
                      inventario va en bolívares, y si la compra fue en dólares
                      el artículo se queda además con su costo en dólares, que
                      es el que no se desactualiza. */
                   const costoCap = cCosto ? (parseFloat(cCosto.value) || 0) : 0;
                   const costo = Math.round(costoCap * _tasaF * 100) / 100;
-                  if (nombre && cant > 0) lineasInv.push({ nombre: nombre, cant: cant, costo: costo, costoUsd: _mon === 'USD' ? costoCap : 0 });
+                  if (nombre && cant > 0) lineasInv.push({ nombre: nombre, cant: cant, costo: costo, costoUsd: _mon === 'USD' ? costoCap : 0, precio: precioNuevo, categoria: catNueva });
                 });
                 if (lineasInv.length) {
                   const prods = window.__getProductos ? window.__getProductos() : [];
@@ -5400,8 +5463,11 @@
                         // todas las empresas: el mismo fallo por otra puerta.
                         empresa_id: (window.__EMPRESA_ACTIVA || {}).id || null,
                         nombre: li.nombre, sku: 'SKU-' + String(Date.now()).slice(-5) + '-' + Math.floor(Math.random() * 90 + 10),
-                        categoria: 'Otros', alicuota: '16%',
-                        stock: li.cant, stock_min: 0, costo: li.costo || 0, precio: 0,
+                        /* Lo que se escribio al vuelo; si no se escribio,
+                           los mismos valores de antes. */
+                        categoria: li.categoria || 'Otros', alicuota: '16%',
+                        stock: li.cant, stock_min: 0, costo: li.costo || 0,
+                        precio: li.precio || 0,
                         costo_usd: li.costoUsd || null,
                       });
                     }
@@ -5414,7 +5480,13 @@
                     const errs = rs.filter((r) => r && r.error);
                     if (errs.length) { toast('Inventario: ' + errs[0].error.message, 'error'); return; }
                     if (window.cargarProductos) window.cargarProductos();
-                    toast(lineasInv.length + ' producto(s) al inventario' + (creados.length ? ' · NUEVOS: ' + creados.join(', ') + ' (ponles su precio de venta en Inventario)' : ''), 'success');
+                    /* Solo se recuerda el precio de los que quedaron SIN el.
+                       Recordarselo tambien de los que ya lo traen es ruido, y
+                       el ruido hace que no se lea el aviso que si importa. */
+                    const sinPrecio = lineasInv.filter((x) => creados.indexOf(x.nombre) >= 0 && !(x.precio > 0)).map((x) => x.nombre);
+                    toast(lineasInv.length + ' producto(s) al inventario'
+                      + (creados.length ? ' · NUEVOS: ' + creados.join(', ') : '')
+                      + (sinPrecio.length ? ' (ponles su precio de venta en Inventario)' : ''), 'success');
                   });
                 }
               }

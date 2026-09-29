@@ -7441,12 +7441,28 @@
   .ic-head { font-size: 11px; font-weight: var(--fw-semibold); color: var(--fg-muted); margin-bottom: 6px; }
   .ic-head span:last-child { width: 36px; }
   .ic-row { margin-bottom: 8px; }
+
+  /* La linea que dice en que situacion esta cada producto de una compra, y
+     los campos que aparecen cuando es nuevo. Sin esto, el campo parece un
+     selector de lo que ya hay y quien no encuentra su producto cancela la
+     compra entera — paso. */
+  .ic-item { margin-bottom: 10px; }
+  .ic-item .ic-row { margin-bottom: 2px; }
+  .ic-estado { font-size: 11.5px; line-height: 1.5; padding: 0 2px; min-height: 16px; }
+  .ic-estado.es-ok { color: var(--fg-muted); }
+  .ic-estado.es-nuevo { color: var(--da-amber-700, #9a6700); font-weight: var(--fw-semibold); }
+  .ic-nuevo { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; margin-top: 4px; }
+  .ic-nuevo input {
+    width: 100%; min-width: 0; height: 32px; border: 1px dashed var(--border-strong);
+    border-radius: var(--radius-sm); padding: 0 11px; font-size: 12.5px;
+    font-family: var(--font-body); color: var(--fg-primary); background: var(--bg-surface);
+  }
   .ic-row input {
     width: 100%; min-width: 0; height: 36px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
     padding: 0 11px; font-size: 13px; font-family: var(--font-body); color: var(--fg-primary);
     background: var(--bg-surface); outline: none; transition: border-color .15s;
   }
-  .ic-row input:focus { border-color: var(--da-cyan-500); }
+  .ic-row input:focus, .ic-nuevo input:focus { border-color: var(--da-cyan-500); }
   .ic-row .ic-del { height: 36px; width: 36px; min-width: 36px; padding: 0; margin: 0; flex: none; display: inline-flex; align-items: center; justify-content: center; }
   .ic-empty { font-size: 12px; color: var(--fg-muted); padding: 4px 0 8px; }
   @media (max-width: 560px) { .fm-grid { grid-template-columns: 1fr; } }
