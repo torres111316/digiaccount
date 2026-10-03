@@ -1006,6 +1006,34 @@
        el Libro de Ventas, con la factura al frente, y desde ahi tiene que
        poder registrarla sin volver a escribir el tercero, el RIF, el numero
        de factura y la base. */
+    /* EL ESTABLECIMIENTO DE UNA RETENCIÓN ES EL DE SU FACTURA.
+
+       Lo decía el comentario del filtro («una retención hereda el
+       establecimiento de SU factura») y no lo hacía el código: al guardar se
+       leía `v.sucursal_id`, y `v` son los campos del formulario, que no tiene
+       ninguno de establecimiento. Se guardaba vacío SIEMPRE.
+
+       Como el filtro por establecimiento es estricto —lo que no tiene
+       establecimiento no entra en ninguno—, al elegir «Casa Matriz» en el
+       libro de compras de GATMA el cuadro de retenciones salía en cero, con
+       la factura y su retención de 378.772,49 ahí mismo.
+
+       Ahora se busca la factura en los libros y se toma su establecimiento.
+       La factura se reconoce por su número, el lado (compra si la retención
+       es practicada, venta si es sufrida) y el RIF del tercero: el mismo
+       número puede existir en dos proveedores distintos. */
+    function _sucursalDeLaFactura(facturas, numero, direccion, rif, respaldo) {
+      const n = String(numero || '').trim();
+      if (n) {
+        const lado = direccion === 'practicada' ? 'compra' : 'venta';
+        const r = normRif(rif);
+        const f = (facturas || []).find((x) => String(x.numero_factura || '').trim() === n
+          && x.tipo === lado && (!r || normRif(x.tercero_rif) === r));
+        if (f) return f.sucursal_id || null;
+      }
+      return respaldo || null;
+    }
+
     async function registrarRetencion(pre) {
       pre = pre || {};
       // Lo que ya tiene retenida la factura elegida. Lo llena afterRender al
@@ -1029,7 +1057,7 @@
           (q) => q.eq('empresa_id', window.__EMPRESA_ACTIVA.id)
             .order('periodo', { ascending: false }).order('numero_factura', { ascending: false }),
           'libro_fiscal',
-          'numero_factura, numero_control, tercero_nombre, tercero_rif, base, iva, tipo, fecha, periodo');
+          'numero_factura, numero_control, tercero_nombre, tercero_rif, base, iva, tipo, fecha, periodo, sucursal_id');
         facturas = data || [];
       }
       window.openFormModal && window.openFormModal({
@@ -1533,9 +1561,9 @@
             periodo: v.periodo || _periodoVigente(), comprobante: compFinal,
             tercero_nombre: v.nombre, tercero_rif: normRif(v.rif), factura: v.factura, numero_control: v.numControl || null,
             base: base, pct: pct, monto: monto, estado: 'Registrado',
-            // Nulo cuando la empresa no tiene sucursales o la factura es de
-            // casa matriz: se comporta igual que siempre.
-            sucursal_id: v.sucursal_id || null,
+            // El de SU factura. Nulo solo si la empresa no tiene
+            // establecimientos o la factura no está en los libros.
+            sucursal_id: _sucursalDeLaFactura(facturas, v.factura, dir, v.rif, pre.sucursal_id),
             concepto: esIslr ? v.concepto : null, concepto_codigo: esIslr ? cod : null, sujeto: esIslr ? suj : null, sustraendo: sust,
             // Solo en quien entera por quincena existe el campo; en los demás
             // ni se pregunta y la retención es del mes, como debe ser.

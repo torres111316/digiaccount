@@ -833,5 +833,54 @@ ok('y el desglose no pinta la 2da quincena en el libro de la 1ra',
   /_quincenaDelLibro\(\) === 1 \? '' : fila\('2da quincena'/.test(_ret), true);
 
 
+/* -- LA RETENCION HEREDA EL ESTABLECIMIENTO DE SU FACTURA -------------------
+
+   En el libro de compras de GATMA, al elegir «Casa Matriz», el cuadro de
+   retenciones salia en cero — con la factura de Casa Matriz y su retencion
+   de 378.772,49 a la vista.
+
+   Al guardar una retencion se leia `v.sucursal_id`, y `v` son los campos del
+   formulario, que no tiene ninguno de establecimiento: se guardaba vacio
+   SIEMPRE. Y el filtro por establecimiento es estricto: lo que no tiene
+   establecimiento no entra en ninguno. Siete retenciones estaban asi. */
+bloque('La retencion hereda el establecimiento de su factura');
+
+if (typeof normRif === 'undefined') {
+  var normRif = function (s) { return (s || '').toUpperCase().replace(/[\s.\-]/g, ''); };
+}
+eval(tramo('    function _sucursalDeLaFactura(facturas, numero, direccion, rif, respaldo) {',
+           '    async function registrarRetencion(pre) {'));
+
+var _libroGatma = [
+  { numero_factura: '0001894', tipo: 'compra', tercero_rif: 'J301436806', sucursal_id: 'MATRIZ' },
+  { numero_factura: '0001905', tipo: 'compra', tercero_rif: 'J301436806', sucursal_id: 'MATRIZ' },
+  { numero_factura: '0001894', tipo: 'compra', tercero_rif: 'J999999990', sucursal_id: 'BARQUISIMETO' },
+  { numero_factura: 'A000023', tipo: 'venta', tercero_rif: 'J111111111', sucursal_id: 'BARQUISIMETO' },
+];
+ok('toma el establecimiento de su factura',
+  _sucursalDeLaFactura(_libroGatma, '0001894', 'practicada', 'J301436806', null), 'MATRIZ');
+/* El mismo numero de factura en otro proveedor es OTRA factura. */
+ok('distingue por el RIF del proveedor',
+  _sucursalDeLaFactura(_libroGatma, '0001894', 'practicada', 'J-99999999-0', null), 'BARQUISIMETO');
+/* Practicada busca en compras; sufrida, en ventas. */
+ok('una sufrida busca en las ventas',
+  _sucursalDeLaFactura(_libroGatma, 'A000023', 'sufrida', 'J111111111', null), 'BARQUISIMETO');
+ok('y no confunde una venta con una compra',
+  _sucursalDeLaFactura(_libroGatma, 'A000023', 'practicada', 'J111111111', null), null);
+/* Si la factura no esta en los libros, vale lo que traiga quien abrio el
+   formulario; y si no trae nada, queda vacio. */
+ok('sin factura en el libro, usa el respaldo',
+  _sucursalDeLaFactura(_libroGatma, '9999999', 'practicada', 'J301436806', 'MATRIZ'), 'MATRIZ');
+ok('sin factura ni respaldo, queda vacio',
+  _sucursalDeLaFactura(_libroGatma, '', 'practicada', '', null), null);
+
+/* Y que al guardar se use de verdad, y no los campos del formulario. */
+ok('al guardar ya no se lee v.sucursal_id', /sucursal_id:\s*v\.sucursal_id/.test(_ret), false);
+ok('se guarda el de la factura',
+  /sucursal_id:\s*_sucursalDeLaFactura\(facturas, v\.factura, dir, v\.rif, pre\.sucursal_id\)/.test(_ret), true);
+ok('las facturas se traen con su establecimiento',
+  /tipo, fecha, periodo, sucursal_id'\)/.test(_ret), true);
+
+
 console.log('\n' + (fallas ? 'HAY ' + fallas + ' FALLA(S) de ' + total : 'TODO OK · ' + total + ' comprobaciones'));
 process.exit(fallas ? 1 : 0);
