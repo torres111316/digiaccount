@@ -382,6 +382,46 @@
       return y + '-' + String(m).padStart(2, '0');
     }
 
+    /* EL LIBRO DE UNA QUINCENA NO PUEDE MOSTRAR EL FUTURO.
+
+       GATMA, septiembre de 2026. Una sola compra en la primera quincena, con
+       su retención de IVA de 378.772,49. Al imprimir el libro de ESA quincena
+       salía debajo, además, la retención de 415.229,62 del 28 de septiembre.
+       El día 15 esa retención no existía: un libro cortado al 15 no puede
+       traer algo del 28.
+
+       Pasaba porque este cuadro seguía al selector de quincena de la pestaña
+       Retenciones —que suele estar en «mes completo»— y no a la quincena del
+       libro que se está mirando. Son dos selectores distintos.
+
+       La regla, dicha por Luis:
+         · libro de la 1ra quincena → solo lo retenido hasta el 15;
+         · libro de la 2da quincena → pueden salir las dos: la primera ya
+           pasó y la segunda es la que se declara;
+         · libro mensual (quien no declara el IVA por quincena) → todo el mes,
+           como siempre.
+
+       La quincena del libro solo existe en quien declara el IVA por quincena;
+       en los demás devuelve 0 y nada cambia. */
+    function _quincenaDelLibro() {
+      const porQuincena = window.__ivaPorQuincena && window.__ivaPorQuincena();
+      const per = window.__fiscalPer;
+      return (porQuincena && per && (per.q === 1 || per.q === 2)) ? per.q : 0;
+    }
+    /* La quincena de UNA retención: la que tiene registrada y, si no la
+       tiene, la que dice el día de su fecha (dd/mm/aa). 0 = no se sabe, y lo
+       que no se sabe no se esconde. */
+    function _quincenaDeRet(r) {
+      if (r && (r.quincena === 1 || r.quincena === 2)) return r.quincena;
+      const dia = parseInt(String((r && r.fecha) || '').slice(0, 2), 10);
+      if (!dia) return 0;
+      return dia <= 15 ? 1 : 2;
+    }
+    function _hastaLaQuincenaDelLibro(lista) {
+      if (_quincenaDelLibro() !== 1) return lista;
+      return lista.filter((r) => _quincenaDeRet(r) !== 2);
+    }
+
     // Mini-cuadro de retenciones dentro de una Forma 30 (compras=practicadas, ventas=sufridas)
     function renderMini(tableEl, arr) {
       if (!tableEl) return;
@@ -440,7 +480,10 @@
       caja.innerHTML = '<div style="padding:7px 11px;background:var(--bg-subtle,var(--bg-surface));font-weight:600;">'
         + 'IVA retenido por quincena <span style="font-weight:400;color:var(--fg-muted);">— se entera una declaración por quincena</span></div>'
         + fila('1ra quincena', q1, '(01–15)')
-        + fila('2da quincena', q2, '(16 al último día)')
+        /* Con el libro en la 1ra quincena, la 2da todavía no ha pasado: ni
+           la fila en cero se pinta, para que el papel no sugiera que se
+           revisó algo que aún no existe. */
+        + (_quincenaDelLibro() === 1 ? '' : fila('2da quincena', q2, '(16 al último día)'))
         /* Se NOMBRAN, no solo se cuentan.
 
            Decir «3 sin quincena» obliga a ir a Retenciones y buscarlas una
@@ -506,11 +549,23 @@
       const ivaSuf = arr.filter((r) => r.direccion === 'sufrida' && r.tipo === 'iva').reduce((s, r) => s + (Number(r.monto) || 0), 0);
       window.__RET_IVA_SUFRIDA = ivaSuf;
       if (window.__recalcAutoliq) window.__recalcAutoliq();
-      const practicadas = delEstablecimiento(arr.filter((r) => r.direccion === 'practicada'), 'compra');
+      /* De dónde salen las retenciones del cuadro del libro de compras.
+
+         En quien declara el IVA por quincena, salen del MES entero cortado a
+         la quincena del LIBRO — y no de `arr`, que ya viene partido por el
+         selector de la pestaña Retenciones. Con ese selector en «2da» y el
+         libro en la 1ra, `arr` no trae la retención de la primera quincena y
+         el libro saldría sin la suya.
+
+         En los demás, `arr` como siempre. */
+      const delMes = (_retMes.length ? _retMes : arr).filter((r) => r.direccion === 'practicada');
+      const paraElLibro = _quincenaDelLibro()
+        ? _hastaLaQuincenaDelLibro(delMes)
+        : arr.filter((r) => r.direccion === 'practicada');
+      const practicadas = delEstablecimiento(paraElLibro, 'compra');
       renderMini(document.querySelector('.fiscal-tab[data-tab="compras"] table.ret-mini'), practicadas);
-      // El desglose ve el MES entero, aunque arriba se este mirando una quincena.
-      pintarQuincenasRet(delEstablecimiento(
-        (_retMes.length ? _retMes : arr).filter((r) => r.direccion === 'practicada'), 'compra'));
+      // El desglose ve el mes, cortado igual: sin lo que aún no ha pasado.
+      pintarQuincenasRet(delEstablecimiento(_hastaLaQuincenaDelLibro(delMes), 'compra'));
       /* Se busca en la PESTAÑA, no dentro de la vista de facturas.
 
          La tablita vive junto a la Forma 30, y esa salió de las dos vistas

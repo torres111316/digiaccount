@@ -773,5 +773,65 @@ ok('lastReciboText esta declarada en nomina.js',
   /let lastReciboText\s*=/.test(_nom), true);
 
 
+/* -- EL LIBRO DE UNA QUINCENA NO MUESTRA EL FUTURO --------------------------
+
+   GATMA, septiembre de 2026. Una sola compra en la primera quincena, con su
+   retencion de IVA de 378.772,49. Al imprimir el libro de ESA quincena salia
+   debajo, ademas, la retencion de 415.229,62 del 28 de septiembre. El dia 15
+   esa retencion no existia.
+
+   El cuadro seguia al selector de quincena de la pestaña Retenciones y no a
+   la quincena del libro que se estaba mirando.
+
+   Se prueba con el codigo de verdad y con las tres retenciones de GATMA tal
+   como estan en la base. */
+bloque('El libro de una quincena no muestra el futuro');
+
+eval(tramo('    function _quincenaDelLibro() {',
+           '    // Mini-cuadro de retenciones dentro de una Forma 30'));
+
+var _retGatma = [
+  { fecha: '10/09/26', quincena: 1, tipo: 'islr', direccion: 'practicada', monto: 47346.56 },
+  { fecha: '10/09/26', quincena: 1, tipo: 'iva', direccion: 'practicada', monto: 378772.49 },
+  { fecha: '28/09/26', quincena: 2, tipo: 'iva', direccion: 'practicada', monto: 415229.62 },
+];
+var _ivaDe = function (lista) {
+  return lista.filter(function (r) { return r.tipo === 'iva'; })
+    .reduce(function (s, r) { return s + r.monto; }, 0).toFixed(2);
+};
+
+/* Libro de la 1ra quincena, empresa que declara el IVA por quincena. */
+window.__ivaPorQuincena = function () { return true; };
+window.__fiscalPer = { mm: '09', aa: '26', q: 1 };
+ok('1ra quincena: solo el IVA retenido hasta el 15', _ivaDe(_hastaLaQuincenaDelLibro(_retGatma)), '378772.49');
+ok('1ra quincena: la del 28 no aparece', _hastaLaQuincenaDelLibro(_retGatma).length, 2);
+
+/* Libro de la 2da: la primera ya paso y la segunda se declara. Salen las dos. */
+window.__fiscalPer = { mm: '09', aa: '26', q: 2 };
+ok('2da quincena: salen las dos', _ivaDe(_hastaLaQuincenaDelLibro(_retGatma)), '794002.11');
+
+/* Quien NO declara el IVA por quincena ve el mes entero, como siempre. */
+window.__ivaPorQuincena = function () { return false; };
+window.__fiscalPer = { mm: '09', aa: '26', q: 1 };
+ok('libro mensual: no se corta nada', _hastaLaQuincenaDelLibro(_retGatma).length, 3);
+
+/* Una retencion SIN quincena registrada se ubica por el dia de su fecha; y
+   si tampoco hay fecha, no se esconde: lo que no se sabe, se muestra. */
+window.__ivaPorQuincena = function () { return true; };
+ok('sin quincena, fechada el 20: es del futuro',
+  _hastaLaQuincenaDelLibro([{ fecha: '20/09/26', quincena: null }]).length, 0);
+ok('sin quincena, fechada el 08: se ve',
+  _hastaLaQuincenaDelLibro([{ fecha: '08/09/26', quincena: null }]).length, 1);
+ok('sin quincena ni fecha: no se esconde',
+  _hastaLaQuincenaDelLibro([{ fecha: '', quincena: null }]).length, 1);
+
+/* Y que el cuadro del libro use de verdad ese corte. */
+var _ret = (function () { try { return fs.readFileSync(path.join(RAIZ, 'assets', 'retenciones.js'), 'utf8'); } catch (e) { return ''; } })();
+ok('el cuadro del libro de compras aplica el corte',
+  /_quincenaDelLibro\(\)\s*[\r\n]+\s*\? _hastaLaQuincenaDelLibro\(delMes\)/.test(_ret), true);
+ok('y el desglose no pinta la 2da quincena en el libro de la 1ra',
+  /_quincenaDelLibro\(\) === 1 \? '' : fila\('2da quincena'/.test(_ret), true);
+
+
 console.log('\n' + (fallas ? 'HAY ' + fallas + ' FALLA(S) de ' + total : 'TODO OK · ' + total + ' comprobaciones'));
 process.exit(fallas ? 1 : 0);
