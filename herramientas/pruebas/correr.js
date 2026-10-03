@@ -882,5 +882,37 @@ ok('las facturas se traen con su establecimiento',
   /tipo, fecha, periodo, sucursal_id'\)/.test(_ret), true);
 
 
+/* -- EL RIF DE LA RETENCION ES EL DE SU FACTURA ------------------------------
+
+   GATMA, 10/09/2026: la retencion de ISLR de la factura 0001894 de MADERAS Y
+   MADERAS se guardo con el RIF J301436809. El proveedor es J301436806 — un 9
+   por un 6. Ese RIF es el que va en el XML de ISLR para el SENIAT, y en
+   pantalla no se nota porque el nombre de al lado es el correcto.
+
+   Revisadas las 334 retenciones de la cuenta, era la unica. Ahora no se
+   puede guardar otra asi. */
+bloque('El RIF de la retencion es el de su factura');
+
+eval(tramo('    function _rifDistintoAlDeLaFactura(facturas, numero, direccion, rif) {',
+           '    async function registrarRetencion(pre) {'));
+
+ok('el caso real: un 9 por un 6 se detecta',
+  _rifDistintoAlDeLaFactura(_libroGatma, '0001905', 'practicada', 'J301436809'), 'J301436806');
+ok('el RIF correcto pasa',
+  _rifDistintoAlDeLaFactura(_libroGatma, '0001905', 'practicada', 'J301436806'), '');
+ok('con guiones tambien pasa',
+  _rifDistintoAlDeLaFactura(_libroGatma, '0001905', 'practicada', 'J-30143680-6'), '');
+/* El mismo numero de factura en dos proveedores: basta con que uno coincida. */
+ok('factura repetida en dos proveedores: vale cualquiera de los dos',
+  _rifDistintoAlDeLaFactura(_libroGatma, '0001894', 'practicada', 'J999999990'), '');
+/* Sin con que comparar, no estorba. */
+ok('factura que no esta en el libro: no frena',
+  _rifDistintoAlDeLaFactura(_libroGatma, '7777777', 'practicada', 'J301436809'), '');
+ok('sin numero de factura: no frena',
+  _rifDistintoAlDeLaFactura(_libroGatma, '', 'practicada', 'J301436809'), '');
+ok('al guardar se comprueba',
+  /const rifDeLaFactura = _rifDistintoAlDeLaFactura\(facturas, nfac, dir, v\.rif\);\s*[\r\n]+\s*if \(rifDeLaFactura\) \{\s*[\r\n]+\s*return /.test(_ret), true);
+
+
 console.log('\n' + (fallas ? 'HAY ' + fallas + ' FALLA(S) de ' + total : 'TODO OK · ' + total + ' comprobaciones'));
 process.exit(fallas ? 1 : 0);

@@ -1034,6 +1034,33 @@
       return respaldo || null;
     }
 
+    /* EL RIF DE LA RETENCIÓN TIENE QUE SER EL DE SU FACTURA.
+
+       GATMA, 10 de septiembre de 2026: la retención de ISLR de la factura
+       0001894 de MADERAS Y MADERAS quedó con el RIF J301436809. El proveedor
+       es J301436806 — un 9 tecleado por un 6. La factura y la retención de
+       IVA de esa misma factura lo tenían bien.
+
+       Ese RIF es el que va en el XML de ISLR para el SENIAT: un dígito mal y
+       la retención queda declarada a nombre de otro contribuyente. Y no se
+       nota en pantalla, porque el nombre que se ve al lado es el correcto.
+
+       Devuelve el RIF de la factura cuando NO coincide con el escrito, y
+       cadena vacía cuando coincide o cuando no hay con qué comparar (la
+       factura no está en los libros, o no trae RIF). Si el mismo número de
+       factura existe en dos proveedores, basta con que uno coincida. */
+    function _rifDistintoAlDeLaFactura(facturas, numero, direccion, rif) {
+      const n = String(numero || '').trim();
+      const escrito = normRif(rif);
+      if (!n || !escrito) return '';
+      const lado = direccion === 'practicada' ? 'compra' : 'venta';
+      const deEsaFactura = (facturas || [])
+        .filter((x) => String(x.numero_factura || '').trim() === n && x.tipo === lado)
+        .map((x) => normRif(x.tercero_rif)).filter(Boolean);
+      if (!deEsaFactura.length || deEsaFactura.indexOf(escrito) >= 0) return '';
+      return deEsaFactura[0];
+    }
+
     async function registrarRetencion(pre) {
       pre = pre || {};
       // Lo que ya tiene retenida la factura elegida. Lo llena afterRender al
@@ -1540,6 +1567,14 @@
              tiene la llave única de la base: si algo se escapa de este lado,
              el insert la rechaza y se traduce el error 23505. */
           const nfac = (v.factura || '').trim();
+          /* Antes de nada: que el RIF sea el de la factura. Se dice con los
+             dos RIF a la vista, para que el dígito cambiado salte solo. */
+          const rifDeLaFactura = _rifDistintoAlDeLaFactura(facturas, nfac, dir, v.rif);
+          if (rifDeLaFactura) {
+            return 'La factura ' + nfac + ' está registrada con el RIF ' + rifDeLaFactura
+              + ', y aquí dice ' + normRif(v.rif) + '. Revisa el RIF: es el que va en la declaración ante el SENIAT. '
+              + 'Si el equivocado es el de la factura, corrígelo primero en el libro.';
+          }
           if (nfac && _yaRetenida[(esIslr ? 'islr' : 'iva')]) {
             const y = _yaRetenida[(esIslr ? 'islr' : 'iva')];
             return 'La factura ' + nfac + ' YA tiene retención de ' + (esIslr ? 'ISLR' : 'IVA')
