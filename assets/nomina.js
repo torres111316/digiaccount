@@ -135,6 +135,7 @@
     });
 
     let empleados = [];   // se carga desde Supabase (cargarEmpleados)
+    let egresados = [];   // dados de baja CON fecha de egreso: solo para consultar su liquidación
     // (datos de ejemplo eliminados: la nómina trabaja con empleados reales de Supabase)
 
     const fmt = (n) => n.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -306,9 +307,20 @@
       const utilNeto = utilAnual - incesUtil;
       const utilFrac = (utilAnual * mesesAnio) / 12;
 
-      // Prestaciones sociales (Art. 142 LOTTT)
-      const diasGarantia = 60 * y;                       // 15 días/trimestre
-      const diasAdic = Math.min(2 * Math.max(0, y - 1), 30);
+      /* PRESTACIONES SOCIALES (Art. 142 LOTTT) — la garantía, día por día.
+
+         a) 15 días por cada TRIMESTRE, y «el derecho a este depósito se
+            adquiere desde el momento de iniciar el trimestre». Se cuentan,
+            pues, los trimestres iniciados, no los años cumplidos. Antes se
+            hacía 60 × años: a quien salía con 1 año y 8 meses se le contaban
+            60 días y eran 105 (siete trimestres iniciados).
+         b) Después del primer año, 2 días por cada año, ACUMULATIVOS hasta
+            30: 2 al cumplir el segundo, 4 al tercero, 6 al cuarto… Lo
+            depositado es la suma de todos, no solo lo del último año. */
+      const trimestres = Math.floor((y * 12 + fracMeses) / 3) + 1;
+      const diasGarantia = 15 * trimestres;
+      let diasAdic = 0;
+      for (let k = 1; k <= y - 1; k++) diasAdic += Math.min(2 * k, 30);
       const garantia = (diasGarantia + diasAdic) * salIntDia;
       // Cálculo retroactivo (Art. 142.c): 30 días por año o fracción superior a 6 meses
       const aniosRetro = y + (fracMeses > 6 ? 1 : 0);
@@ -317,19 +329,36 @@
       const usoRetro = retroactiva >= garantia;
       const intereses = garantia * TASA_INTERES;
 
-      // Fracciones para liquidación
-      const vacFrac = diasVac * (fracMeses / 12) * salDia;
-      const bonoVacFrac = diasBonoVac * (fracMeses / 12) * salDia;
+      /* FRACCIONADOS DE LA LIQUIDACIÓN, SEGÚN LA LOTTT.
+
+         · Vacaciones (Art. 196): se paga la proporción, por meses completos,
+           de las vacaciones «que le hubieran correspondido» ese año. O sea,
+           las del año EN CURSO, el que no llegó a completar — no las del año
+           anterior. Quien ya cumplió un año va por su segundo, y a ese le
+           tocan 16 días (Art. 190: 15 + 1 por cada año, hasta 15 más).
+           Antes se usaban los 15 del año ya cumplido: un día de menos.
+         · Bono vacacional (Art. 192): lo mismo, 15 + 1 por año, hasta 30.
+         · Utilidades (Art. 131): meses completos del ejercicio.
+         · INCES: el trabajador aporta el 0,5 % de sus utilidades (Ley del
+           INCES, Art. 14), también de las fraccionadas. En la pestaña de
+           Utilidades ya se retenía; en la liquidación no. */
+      const diasVacCurso = Math.min(DIAS_VAC + y, DIAS_VAC + 15);
+      const diasBonoCurso = Math.min(DIAS_BONO_VAC + y, DIAS_BONO_VAC + 15);
+      const vacFrac = diasVacCurso * (fracMeses / 12) * salDia;
+      const bonoVacFrac = diasBonoCurso * (fracMeses / 12) * salDia;
+      const incesUtilFrac = utilFrac * 0.005;
 
       const liqAsig = prestacion + intereses + vacFrac + bonoVacFrac + utilFrac;
-      const deducciones = 0;
+      const deducciones = incesUtilFrac;
       const liqTotal = liqAsig - deducciones;
 
       return {
         salDia, y, fracMeses, mesesAnio, diasVac, diasBonoVac, diasUtil,
         salIntDia, vacDisfrute, vacBono, vacTotal, utilAnual, incesUtil, utilNeto, utilFrac,
         diasGarantia, diasAdic, garantia, retroactiva, prestacion, usoRetro,
+        trimestres, aniosRetro,
         intereses, vacFrac, bonoVacFrac, liqAsig, deducciones, liqTotal,
+        diasVacCurso, diasBonoCurso, incesUtilFrac,
         corte: corte || null,
       };
     }
@@ -389,23 +418,28 @@
       const host = view.querySelector('.emp-picker[data-picker="' + tab + '"]');
       if (!host) return;
       if (!empleados.length) { host.innerHTML = '<div class="emp-picker-head">Sin empleados</div><div class="emp-picker-body" style="padding:18px;color:var(--fg-muted);font-size:12px;">Registra trabajadores en la pestaña Empleados.</div>'; return; }
-      const rows = empleados.map((e) => {
-        const c = calc(e);
+      // Solo Liquidación ofrece también a los egresados, al final y marcados.
+      const lista = tab === 'liquidacion' ? empleados.concat(egresados) : empleados;
+      const rows = lista.map((e) => {
+        const c = e.egresado ? calc(e, undefined, new Date(e.fechaEgreso + 'T00:00:00')) : calc(e);
         const active = state[tab] === e.id ? 'true' : 'false';
-        return '<div class="emp-pick" data-emp="' + e.id + '" data-active="' + active + '">'
+        return '<div class="emp-pick" data-emp="' + e.id + '" data-active="' + active + '"' + (e.egresado ? ' style="opacity:.75;"' : '') + '>'
           + '<span class="epa" style="background:' + e.color + '">' + e.ini + '</span>'
-          + '<span class="epi"><span class="epn">' + e.nombre + '</span><span class="epr">' + e.cargo + '</span></span>'
+          + '<span class="epi"><span class="epn">' + e.nombre + '</span><span class="epr">'
+          + (e.egresado ? 'Egresó el ' + _fmtFecha(new Date(e.fechaEgreso + 'T00:00:00')) : e.cargo) + '</span></span>'
           + '<span class="epy">' + c.y + ' año' + (c.y === 1 ? '' : 's') + '</span>'
           + '</div>';
       }).join('');
-      host.innerHTML = '<div class="emp-picker-head">Selecciona un empleado · ' + empleados.length + '</div><div class="emp-picker-body">' + rows + '</div>';
+      host.innerHTML = '<div class="emp-picker-head">Selecciona un empleado · ' + empleados.length
+        + (tab === 'liquidacion' && egresados.length ? ' · ' + egresados.length + ' egresado' + (egresados.length === 1 ? '' : 's') : '')
+        + '</div><div class="emp-picker-body">' + rows + '</div>';
       host.querySelectorAll('.emp-pick').forEach((el) => {
         el.addEventListener('click', () => { state[tab] = el.dataset.emp; renderPicker(tab); renderCalc(tab); });
       });
     }
 
     // ---------- Render del cálculo ----------
-    function empById(id) { return empleados.find((e) => e.id === id); }
+    function empById(id) { return empleados.find((e) => e.id === id) || egresados.find((e) => e.id === id); }
 
     function calcHead(emp, c, conceptLabel, conceptVal) {
       return '<div class="calc-card-head">'
@@ -479,9 +513,12 @@
         // Hasta qué día trabajó: de aquí salen la antigüedad y los fraccionados.
         html += '<div class="calc-basebar" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 12px;margin-bottom:10px;border:1px solid var(--border-strong);border-radius:10px;background:var(--bg-subtle);">'
           + '<span style="font-size:12px;font-weight:600;">Fecha de egreso <span style="font-weight:400;color:var(--fg-muted);">(último día trabajado)</span>:</span>'
-          + '<input type="date" id="egresoInput" value="' + egresoISO + '" min="' + _isoFecha(emp.ingreso) + '" style="height:32px;border:1px solid var(--border-strong);border-radius:8px;padding:0 10px;font:inherit;background:var(--bg-surface);color:inherit;">'
+          + '<input type="date" id="egresoInput" value="' + egresoISO + '" min="' + _isoFecha(emp.ingreso) + '"' + (emp.egresado ? ' disabled' : '') + ' style="height:32px;border:1px solid var(--border-strong);border-radius:8px;padding:0 10px;font:inherit;background:var(--bg-surface);color:inherit;">'
           + '<span style="font-size:12px;color:var(--fg-muted);">Ingresó el ' + _fmtFecha(emp.ingreso) + ' · antigüedad al egreso:</span>'
           + '<span style="font-size:13px;font-weight:700;color:#0a7a44;">' + c.y + ' año' + (c.y === 1 ? '' : 's') + ' y ' + c.fracMeses + ' mes' + (c.fracMeses === 1 ? '' : 'es') + '</span>'
+          + (emp.egresado
+            ? '<span style="font-size:12px;color:var(--fg-muted);margin-left:auto;">Ya está dado de baja · su ficha se conserva</span>'
+            : '<button class="btn btn-ghost" id="egresoBajaBtn" style="height:30px;font-size:11px;margin-left:auto;" title="Guarda la fecha de egreso en su ficha y lo saca de la nómina. No se borra: queda aquí, en Liquidación, como egresado."><i data-lucide="user-minus"></i> Registrar egreso y dar de baja</button>')
           + '</div>';
         html += '<div class="calc-params">'
           + param('Antigüedad', c.y + ' <small>años</small> ' + c.fracMeses + ' <small>m</small>')
@@ -491,14 +528,16 @@
           + '</div>';
         html += '<div class="calc-lines">'
           + sectionLine('Prestaciones sociales (Art. 142 LOTTT)')
-          + line('Garantía de prestaciones', c.diasGarantia + ' días (15/trim.) + ' + c.diasAdic + ' adic. × Bs ' + fmt(c.salIntDia), 'Bs ' + fmt(c.garantia), '')
-          + line('Cálculo retroactivo', '30 días × ' + c.y + ' años × Bs ' + fmt(c.salIntDia), 'Bs ' + fmt(c.retroactiva), '')
+          + line('Garantía de prestaciones', c.diasGarantia + ' días (15 × ' + c.trimestres + ' trimestres iniciados) + ' + c.diasAdic + ' adic. × Bs ' + fmt(c.salIntDia), 'Bs ' + fmt(c.garantia), '')
+          + line('Cálculo retroactivo', '30 días × ' + c.aniosRetro + ' año' + (c.aniosRetro === 1 ? '' : 's') + ' (o fracción mayor de 6 meses) × Bs ' + fmt(c.salIntDia), 'Bs ' + fmt(c.retroactiva), '')
           + line('<strong>Prestación a pagar</strong> (el monto mayor, Art. 142d)', c.usoRetro ? 'Aplica retroactivo' : 'Aplica garantía', 'Bs ' + fmt(c.prestacion), 'subtotal')
           + line('Intereses sobre prestaciones', '≈ ' + (TASA_INTERES * 100).toFixed(0) + '% anual referencial', 'Bs ' + fmt(c.intereses), 'add')
           + sectionLine('Conceptos fraccionados')
-          + line('Vacaciones fraccionadas', c.fracMeses + '/12 × ' + c.diasVac + ' días', 'Bs ' + fmt(c.vacFrac), 'add')
-          + line('Bono vacacional fraccionado', c.fracMeses + '/12 × ' + c.diasBonoVac + ' días', 'Bs ' + fmt(c.bonoVacFrac), 'add')
-          + line('Utilidades fraccionadas', c.mesesAnio + '/12 × ' + c.diasUtil + ' días (meses completos del ejercicio)', 'Bs ' + fmt(c.utilFrac), 'add')
+          + line('Vacaciones fraccionadas', c.fracMeses + '/12 × ' + c.diasVacCurso + ' días del año en curso (Art. 196)', 'Bs ' + fmt(c.vacFrac), 'add')
+          + line('Bono vacacional fraccionado', c.fracMeses + '/12 × ' + c.diasBonoCurso + ' días del año en curso (Art. 192)', 'Bs ' + fmt(c.bonoVacFrac), 'add')
+          + line('Utilidades fraccionadas', c.mesesAnio + '/12 × ' + c.diasUtil + ' días (meses completos del ejercicio, Art. 131)', 'Bs ' + fmt(c.utilFrac), 'add')
+          + sectionLine('Deducciones')
+          + line('INCES · aporte del trabajador', '0,5 % sobre las utilidades fraccionadas (Ley del INCES, Art. 14)', '− Bs ' + fmt(c.incesUtilFrac), '')
           + '</div>';
         html += total('Total liquidación a pagar', 'Bs ' + fmt(c.liqTotal));
         html += foot('Prestaciones según Art. 142 LOTTT: se paga el mayor entre la garantía trimestral y 30 días por año sobre el último salario integral.', 'liquidacion');
@@ -557,6 +596,36 @@
         }
         _egreso[emp.id] = egIn.value;
         renderCalc(tab);
+      });
+
+      /* REGISTRAR EL EGRESO Y DAR DE BAJA, EN UN SOLO PASO Y DESDE AQUÍ.
+
+         Es el sitio natural: se acaba de calcular su liquidación con esa
+         fecha. Guarda la fecha en la ficha y lo marca inactivo. No se borra
+         nada: sale de la nómina y queda en esta pestaña como egresado.
+
+         Se pregunta con el nombre y la fecha delante, porque no hay botón
+         para deshacerlo desde la app. */
+      const bajaBtn = host.querySelector('#egresoBajaBtn');
+      if (bajaBtn) bajaBtn.addEventListener('click', async () => {
+        const fechaTxt = _fmtFecha(new Date(egresoISO + 'T00:00:00'));
+        if (!window.confirm('¿Registrar el egreso de ' + emp.nombre + ' con fecha ' + fechaTxt + ' y darlo de baja?\n\n'
+          + 'Dejará de aparecer en la nómina. Su ficha NO se borra: quedará en Liquidación como egresado.\n\n'
+          + 'Genera antes su recibo de liquidación si aún no lo has hecho.')) return;
+        if (!window.sb) { if (window.toast) window.toast('No hay sesión activa.', 'error'); return; }
+        let r = await window.sb.from('empleados').update({ activo: false, fecha_egreso: egresoISO }).eq('id', emp.id);
+        let sinColumna = false;
+        if (r.error && /fecha_egreso/.test(r.error.message || '')) {
+          // La columna aún no existe: se da de baja igual y se dice qué falta.
+          sinColumna = true;
+          r = await window.sb.from('empleados').update({ activo: false }).eq('id', emp.id);
+        }
+        if (r.error) { if (window.toast) window.toast('No se pudo dar de baja: ' + r.error.message, 'error'); return; }
+        if (window.toast) window.toast(sinColumna
+          ? emp.nombre + ' dado de baja, pero la fecha de egreso NO se guardó: falta correr sql/empleados_egreso.sql'
+          : 'Egreso de ' + emp.nombre + ' registrado (' + fechaTxt + ') · queda en Liquidación como egresado', sinColumna ? 'error' : 'success');
+        state.liquidacion = sinColumna ? null : emp.id;
+        if (window.cargarEmpleados) window.cargarEmpleados();
       });
       const btn = host.querySelector('[data-recibo]');
       if (btn) btn.addEventListener('click', () => openRecibo(tab, emp, c));
@@ -669,12 +738,16 @@
       // liquidación
       return [
         ['sec', 'Prestaciones sociales (Art. 142 LOTTT)', '', null],
-        ['asig', 'Prestación a pagar', (c.usoRetro ? 'Cálculo retroactivo · 30 días por año' : 'Garantía · 15 días por trimestre') + ' · ' + c.y + ' años · Art. 142 LOTTT (se paga el monto mayor, literal d)', c.prestacion],
+        ['asig', 'Prestación a pagar', (c.usoRetro ? 'Cálculo retroactivo · 30 días × ' + c.aniosRetro + ' año' + (c.aniosRetro === 1 ? '' : 's')
+          : 'Garantía · ' + c.diasGarantia + ' días (15 × ' + c.trimestres + ' trimestres)' + (c.diasAdic ? ' + ' + c.diasAdic + ' adicionales' : ''))
+          + ' · Art. 142 LOTTT (se paga el monto mayor, literal d)', c.prestacion],
         ['asig', 'Intereses sobre prestaciones', (TASA_INTERES * 100).toFixed(0) + '% anual referencial · Art. 143 LOTTT', c.intereses],
         ['sec', 'Conceptos fraccionados', '', null],
-        ['asig', 'Vacaciones fraccionadas', c.fracMeses + '/12 · Art. 190 y 196 LOTTT', c.vacFrac],
-        ['asig', 'Bono vacacional fraccionado', c.fracMeses + '/12 · Art. 192 LOTTT', c.bonoVacFrac],
-        ['asig', 'Utilidades fraccionadas', c.mesesAnio + '/12 · Art. 131 LOTTT', c.utilFrac],
+        ['asig', 'Vacaciones fraccionadas', c.fracMeses + '/12 × ' + c.diasVacCurso + ' días · Art. 190 y 196 LOTTT', c.vacFrac],
+        ['asig', 'Bono vacacional fraccionado', c.fracMeses + '/12 × ' + c.diasBonoCurso + ' días · Art. 192 LOTTT', c.bonoVacFrac],
+        ['asig', 'Utilidades fraccionadas', c.mesesAnio + '/12 × ' + c.diasUtil + ' días · meses completos · Art. 131 LOTTT', c.utilFrac],
+        ['sec', 'Deducciones', '', null],
+        ['ded', 'INCES · aporte del trabajador', '0,5% sobre las utilidades fraccionadas · Ley del INCES, Art. 14', c.incesUtilFrac],
       ];
     }
 
@@ -1275,7 +1348,7 @@
       const { data, error } = await window.sb.from('empleados').select('*').eq('empresa_id', window.__EMPRESA_ACTIVA.id).eq('activo', true).order('nombre');
       if (error) { console.warn('[DigiAccount] empleados:', error.message); empleados = []; renderAll(); return; }
       const PAL = ['#003057', '#00aeef', '#1c8f5a', '#c97a14', '#c0392b', '#6f8aab', '#3a7bb8', '#9a5ba8', '#2e7d6b', '#b8568f'];
-      empleados = (data || []).map((r, i) => ({
+      const aTrabajador = (r, i) => ({
         id: r.id, nombre: r.nombre, cedula: r.cedula || '', cargo: r.cargo || '', depto: r.depto || '—', tipo: r.tipo || 'Administrativo',
         ingreso: r.ingreso ? new Date(r.ingreso + 'T00:00:00') : new Date(2026, 0, 1), salarioMes: Number(r.salario_mes) || 0,
         transporteUSD: Number(r.transporte_usd) || 0, transportePct: (Number(r.transporte_pct) || 0) / 100,
@@ -1289,7 +1362,34 @@
         correo: r.correo || '', whatsapp: r.whatsapp || '',
         horasExtra: 0, horasNoct: 0, diasFeriado: 0, comisionBs: 0, bonoProdBs: 0, anticipoSueldo: 0,
         color: r.color || PAL[i % PAL.length], ini: r.ini || (r.nombre || '?').split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase(),
-      }));
+      });
+      empleados = (data || []).map(aTrabajador);
+
+      /* LOS EGRESADOS NO DESAPARECEN.
+
+         Dar de baja nunca borró al trabajador —solo lo marca inactivo—, pero
+         lo sacaba de todas las pantallas y no guardaba qué día se fue. Y de
+         un egresado se sigue necesitando la ficha: una constancia de trabajo,
+         reimprimir su liquidación, una inspección… y un reclamo por
+         prestaciones prescribe a los diez años (Art. 51 LOTTT).
+
+         Se traen aparte y SOLO los que tienen fecha de egreso: así no se
+         cuelan aquí los que se dieron de baja por haberlos cargado mal. No
+         entran en la nómina ni en ningún cálculo de los activos; solo se
+         ofrecen en la pestaña de Liquidación.
+
+         Si la columna aún no existe en la base (falta correr
+         sql/empleados_egreso.sql) la consulta falla y simplemente no hay
+         egresados que mostrar: nada más se rompe. */
+      egresados = [];
+      try {
+        const eg = await window.sb.from('empleados').select('*').eq('empresa_id', window.__EMPRESA_ACTIVA.id)
+          .eq('activo', false).not('fecha_egreso', 'is', null).order('fecha_egreso', { ascending: false });
+        if (!eg.error) {
+          egresados = (eg.data || []).map((r, i) => Object.assign(aTrabajador(r, i), { egresado: true, fechaEgreso: r.fecha_egreso }));
+          egresados.forEach((e) => { _egreso[e.id] = e.fechaEgreso; });
+        }
+      } catch (e) { egresados = []; }
       renderAll();
     }
     window.cargarEmpleados = cargarEmpleados;

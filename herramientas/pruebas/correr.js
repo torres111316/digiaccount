@@ -965,5 +965,52 @@ ok('nomina no usa la fecha UTC como «hoy» fuera de su unica ayuda',
   (_nom.match(/new Date\(\)\.toISOString\(\)\.slice\(0, 10\)/g) || []).length <= 2, true);
 
 
+/* -- LA LIQUIDACION, CONCEPTO POR CONCEPTO, COMO DICE LA LOTTT --------------
+
+   Se corre calc() de verdad con Abrahan Reyes (ingreso 04/01/2025, egreso
+   13/09/2026: 1 año y 8 meses) y un salario de Bs 3.000 al mes (100 diarios),
+   para que los dias se lean directo en el resultado. */
+bloque('Liquidacion segun la LOTTT');
+
+var DIAS_VAC = 15, DIAS_BONO_VAC = 15, DIAS_UTILIDADES = 30, TASA_INTERES = 0.15;
+var baseCalcMes = function () { return 3000; };
+eval(tramo('    function calc(emp, baseOverrideMes, corte) {', '    // ---------- Número a letras'));
+var _cA = calc({ ingreso: _ingAbrahan }, 3000, _egrAbrahan);
+
+ok('vacaciones fraccionadas: sobre los 16 dias del año en curso (Art. 190 y 196)', _cA.diasVacCurso, 16);
+ok('bono vacacional fraccionado: sobre 16 dias (Art. 192)', _cA.diasBonoCurso, 16);
+ok('vacaciones fraccionadas: 8/12 de 16 dias', Math.round(_cA.vacFrac * 100) / 100, Math.round(16 * 8 / 12 * 100 * 100) / 100);
+ok('las vacaciones del año ya cumplido siguen siendo 15 (pestaña Vacaciones)', _cA.diasVac, 15);
+ok('utilidades fraccionadas: 8/12 de 30 dias', Math.round(_cA.utilFrac), 2000);
+ok('INCES 0,5% sobre las utilidades fraccionadas', Math.round(_cA.incesUtilFrac * 100) / 100, 10);
+ok('el INCES se descuenta del total', Math.round((_cA.liqAsig - _cA.liqTotal) * 100) / 100, 10);
+ok('garantia: 7 trimestres iniciados', _cA.trimestres, 7);
+ok('garantia: 105 dias', _cA.diasGarantia, 105);
+ok('con un solo año cumplido no hay dias adicionales', _cA.diasAdic, 0);
+ok('retroactivo: 2 años (1 y fraccion mayor de 6 meses)', _cA.aniosRetro, 2);
+ok('se paga la garantia, que es mayor', _cA.usoRetro, false);
+
+/* Los topes y los acumulativos, con antiguedades largas. */
+var _c5 = calc({ ingreso: new Date(2021, 8, 13) }, 3000, _egrAbrahan);      // 5 años justos
+ok('5 años: 2+4+6+8 = 20 dias adicionales acumulados (Art. 142 b)', _c5.diasAdic, 20);
+ok('5 años justos: 21 trimestres iniciados (el dia del aniversario inicia otro)', _c5.trimestres, 21);
+ok('5 años: fraccionadas sobre 20 dias', _c5.diasVacCurso, 20);
+var _c20 = calc({ ingreso: new Date(2006, 8, 13) }, 3000, _egrAbrahan);     // 20 años
+ok('20 años: vacaciones topadas en 30 dias', _c20.diasVacCurso, 30);
+ok('20 años: adicionales con tope de 30 por año', _c20.diasAdic, 2 + 4 + 6 + 8 + 10 + 12 + 14 + 16 + 18 + 20 + 22 + 24 + 26 + 28 + 30 * 5);
+var _c0 = calc({ ingreso: new Date(2026, 5, 1) }, 3000, _egrAbrahan);       // 3 meses
+ok('primer año: fraccionadas sobre 15 dias', _c0.diasVacCurso, 15);
+ok('3 meses y dias: 2 trimestres iniciados', _c0.trimestres, 2);
+
+/* Los egresados: se guardan con su fecha y siguen a la vista en Liquidacion. */
+ok('la baja desde Liquidacion guarda la fecha de egreso',
+  /update\(\{ activo: false, fecha_egreso: egresoISO \}\)/.test(_nom), true);
+ok('los egresados se cargan aparte y solo con fecha',
+  /\.eq\('activo', false\)\.not\('fecha_egreso', 'is', null\)/.test(_nom), true);
+ok('solo Liquidacion ofrece a los egresados',
+  /const lista = tab === 'liquidacion' \? empleados\.concat\(egresados\) : empleados;/.test(_nom), true);
+ok('un egresado se encuentra por su id', /empleados\.find\(\(e\) => e\.id === id\) \|\| egresados\.find/.test(_nom), true);
+
+
 console.log('\n' + (fallas ? 'HAY ' + fallas + ' FALLA(S) de ' + total : 'TODO OK · ' + total + ' comprobaciones'));
 process.exit(fallas ? 1 : 0);
