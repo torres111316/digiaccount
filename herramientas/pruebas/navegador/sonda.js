@@ -120,6 +120,20 @@
         ok('y la pantalla sigue con uno despues de imprimir',
           hojaR ? hojaR.querySelectorAll('.recibo-doc').length : 0, 1);
 
+        /* LA LIQUIDACION CORTA EN LA FECHA DE EGRESO. El trabajador de prueba
+           ingreso el 03/02/2023; si egresa el 02/09/2023 lleva 0 años y 6
+           meses, sea cual sea el dia en que se corra esto. */
+        var liq = document.querySelector('.calc-detail[data-calc="liquidacion"]');
+        var egr = liq && liq.querySelector('#egresoInput');
+        ok('la Liquidacion pide la fecha de egreso', !!egr, true);
+        if (egr) {
+          egr.value = '2023-09-02';
+          egr.dispatchEvent(new Event('change'));
+          var barra = document.querySelector('.calc-detail[data-calc="liquidacion"] #egresoInput').closest('.calc-basebar');
+          ok('y la antiguedad se mide hasta ese dia',
+            /0 años y 6 meses/.test(barra.textContent.replace(/\s+/g, ' ')), true);
+        }
+
         /* Se deja todo como estaba para lo que viene detras. */
         if (ovR) ovR.dataset.open = 'false';
         window.sb = sbReal; window.__EMPRESA_ACTIVA = empresaReal; window.__CUENTA_ID = cuentaReal;

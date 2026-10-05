@@ -914,5 +914,56 @@ ok('al guardar se comprueba',
   /const rifDeLaFactura = _rifDistintoAlDeLaFactura\(facturas, nfac, dir, v\.rif\);\s*[\r\n]+\s*if \(rifDeLaFactura\) \{\s*[\r\n]+\s*return /.test(_ret), true);
 
 
+/* -- LA LIQUIDACION SE CALCULA HASTA EL DIA EN QUE SE FUE -------------------
+
+   Abrahan Reyes (JOSE AGUERO 4) ingreso el 04/01/2025 y salio el 13/09/2026.
+   Se le liquido el 4 de octubre. La pestaña no tenia donde poner la fecha de
+   egreso: todo se calculaba «al dia de hoy», asi que le contaba 1 año y 9
+   meses (era 1 año y 8) y 10 meses de utilidades (eran 8). Pagaba tiempo que
+   no trabajo.
+
+   Se prueba con el codigo de verdad y sus fechas. */
+bloque('La liquidacion se calcula hasta la fecha de egreso');
+
+var HOY = new Date(2026, 9, 4);          // el dia en que se hizo la liquidacion
+eval(tramo('    function aniosServicio(ing, ref) {', '    /* El día de hoy en la hora de AQUÍ.'));
+
+var _ingAbrahan = new Date(2025, 0, 4), _egrAbrahan = new Date(2026, 8, 13);
+ok('al egreso: 1 año', aniosServicio(_ingAbrahan, _egrAbrahan), 1);
+ok('al egreso: y 8 meses', mesesFraccion(_ingAbrahan, _egrAbrahan), 8);
+ok('utilidades: 8 meses completos (enero a agosto)', mesesCompletosDelEjercicio(_ingAbrahan, _egrAbrahan), 8);
+/* Lo que salia antes, calculando contra «hoy»: un mes de mas en cada cosa. */
+ok('sin fecha de egreso se mide contra hoy: 9 meses', mesesFraccion(_ingAbrahan), 9);
+
+/* Los bordes del «mes completo». */
+ok('salir el ultimo dia del mes SI cuenta ese mes',
+  mesesCompletosDelEjercicio(_ingAbrahan, new Date(2026, 8, 30)), 9);
+ok('salir el dia 1 no cuenta ese mes',
+  mesesCompletosDelEjercicio(_ingAbrahan, new Date(2026, 8, 1)), 8);
+ok('febrero: el 28 es su ultimo dia en 2026',
+  mesesCompletosDelEjercicio(_ingAbrahan, new Date(2026, 1, 28)), 2);
+/* Quien entro ese mismo año no cobra los meses de antes de entrar. */
+ok('ingreso el 15 de marzo, egreso el 13 de septiembre: abril a agosto',
+  mesesCompletosDelEjercicio(new Date(2026, 2, 15), _egrAbrahan), 5);
+ok('ingreso el 1 de marzo: marzo tambien cuenta',
+  mesesCompletosDelEjercicio(new Date(2026, 2, 1), _egrAbrahan), 6);
+/* El aniversario exacto. */
+ok('egreso el dia del aniversario: 1 año y 0 meses',
+  aniosServicio(_ingAbrahan, new Date(2026, 0, 4)) + '-' + mesesFraccion(_ingAbrahan, new Date(2026, 0, 4)), '1-0');
+ok('un dia antes del aniversario: 0 años y 11 meses',
+  aniosServicio(_ingAbrahan, new Date(2026, 0, 3)) + '-' + mesesFraccion(_ingAbrahan, new Date(2026, 0, 3)), '0-11');
+
+/* Y que la pestaña lo use: el campo existe y el calculo recibe el corte. */
+ok('la pestaña tiene el campo de fecha de egreso', /id="egresoInput"/.test(_nom), true);
+ok('el calculo de la liquidacion recibe esa fecha',
+  /const c = calc\(emp, baseMes, egresoISO \? new Date\(egresoISO \+ 'T00:00:00'\) : undefined\);/.test(_nom), true);
+ok('el recibo de liquidacion dice la fecha de egreso', /Fecha de egreso<\/div><div class="v">' \+ _fmtFecha\(c\.corte\)/.test(_nom), true);
+
+/* El dia de hoy no se saca de toISOString(): eso es UTC y, pasadas las 8 de
+   la noche en Venezuela, ya da mañana. */
+ok('nomina no usa la fecha UTC como «hoy» fuera de su unica ayuda',
+  (_nom.match(/new Date\(\)\.toISOString\(\)\.slice\(0, 10\)/g) || []).length <= 2, true);
+
+
 console.log('\n' + (fallas ? 'HAY ' + fallas + ' FALLA(S) de ' + total : 'TODO OK · ' + total + ' comprobaciones'));
 process.exit(fallas ? 1 : 0);

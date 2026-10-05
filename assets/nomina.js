@@ -210,19 +210,51 @@
     }
     window.__buildRelacion = buildRelacionNomina;
 
-    function aniosServicio(ing) {
-      let y = HOY.getFullYear() - ing.getFullYear();
-      const m = HOY.getMonth() - ing.getMonth();
-      if (m < 0 || (m === 0 && HOY.getDate() < ing.getDate())) y--;
-      return y;
+    /* LA ANTIGÜEDAD SE MIDE CONTRA UNA FECHA, NO SIEMPRE CONTRA HOY.
+
+       Antes todo se calculaba «al día de hoy». Para vacaciones y utilidades
+       de alguien que sigue trabajando está bien. Para una LIQUIDACIÓN no:
+       Abrahan Reyes salió el 13/09/2026 y se le liquidó el 4 de octubre. El
+       sistema le contaba 1 año y 9 meses (era 1 año y 8) y 10 meses de
+       utilidades (eran 8): le pagaba tiempo que no trabajó. Y no había dónde
+       decirle hasta qué día había trabajado.
+
+       `ref` es esa fecha. Si no se pasa, es hoy, como siempre. */
+    function aniosServicio(ing, ref) {
+      const R = ref || HOY;
+      let y = R.getFullYear() - ing.getFullYear();
+      const m = R.getMonth() - ing.getMonth();
+      if (m < 0 || (m === 0 && R.getDate() < ing.getDate())) y--;
+      return Math.max(0, y);
     }
-    function mesesFraccion(ing) {
-      const y = aniosServicio(ing);
+    function mesesFraccion(ing, ref) {
+      const R = ref || HOY;
+      const y = aniosServicio(ing, R);
       const lastAniv = new Date(ing.getFullYear() + y, ing.getMonth(), ing.getDate());
-      let m = (HOY.getFullYear() - lastAniv.getFullYear()) * 12 + (HOY.getMonth() - lastAniv.getMonth());
-      if (HOY.getDate() < lastAniv.getDate()) m--;
+      let m = (R.getFullYear() - lastAniv.getFullYear()) * 12 + (R.getMonth() - lastAniv.getMonth());
+      if (R.getDate() < lastAniv.getDate()) m--;
       return Math.max(0, m);
     }
+    /* Meses COMPLETOS trabajados en el ejercicio, hasta la fecha de egreso.
+
+       Las utilidades fraccionadas van por «meses completos de servicios
+       prestados» (Art. 131 LOTTT). Quien sale el 13 de septiembre trabajó
+       ocho meses completos, de enero a agosto: septiembre no cuenta. Solo
+       cuenta el mes de salida si se trabajó hasta su último día, y el de
+       ingreso si se entró el día 1. */
+    function mesesCompletosDelEjercicio(ing, ref) {
+      const anio = ref.getFullYear();
+      if (ing.getFullYear() > anio) return 0;
+      const ultimoDia = new Date(anio, ref.getMonth() + 1, 0).getDate();
+      const hasta = ref.getMonth() + (ref.getDate() >= ultimoDia ? 1 : 0);
+      const desde = ing.getFullYear() === anio ? ing.getMonth() + (ing.getDate() > 1 ? 1 : 0) : 0;
+      return Math.max(0, hasta - desde);
+    }
+    /* El día de hoy en la hora de AQUÍ. `toISOString()` da la fecha en UTC:
+       pasadas las 8 de la noche en Venezuela ya devuelve mañana. */
+    const _hoyISO = () => (window.__hoyISO ? window.__hoyISO() : new Date().toISOString().slice(0, 10));
+    // Fecha de egreso por empleado (ISO 'aaaa-mm-dd'), para su liquidación.
+    const _egreso = {};
 
     // Base mensual manual por trabajador para prestaciones (Vac./Util./Liq.).
     // En Venezuela el mínimo legal es irrisorio: el contador ajusta la base a lo que
@@ -243,14 +275,17 @@
       do { d.setDate(d.getDate() + 1); } while (!esHabil(d));
       return d;
     }
-    function calc(emp, baseOverrideMes) {
+    function calc(emp, baseOverrideMes, corte) {
       // Base para prestaciones: el mínimo cotizable por defecto, o el monto que fije el
       // contador (salario real en Bs/$). El Bono de Contingencia sigue siendo no salarial.
       const salBaseMes = (baseOverrideMes != null && baseOverrideMes > 0) ? baseOverrideMes : baseCalcMes(emp);
       const salDia = salBaseMes / 30;
-      const y = aniosServicio(emp.ingreso);
-      const fracMeses = mesesFraccion(emp.ingreso);
-      const mesesAnio = HOY.getMonth() + 1; // utilidades del ejercicio en curso (ene..may = 5)
+      // Con fecha de corte (liquidación) todo se mide hasta ESE día; sin ella, hasta hoy.
+      const y = aniosServicio(emp.ingreso, corte);
+      const fracMeses = mesesFraccion(emp.ingreso, corte);
+      const mesesAnio = corte
+        ? mesesCompletosDelEjercicio(emp.ingreso, corte)   // liquidación: meses completos hasta el egreso
+        : HOY.getMonth() + 1;                              // provisión del ejercicio en curso (ene..may = 5)
 
       const diasVac = Math.min(DIAS_VAC + Math.max(0, y - 1), DIAS_VAC + 15);
       const diasBonoVac = Math.min(DIAS_BONO_VAC + Math.max(0, y - 1), DIAS_BONO_VAC + 15);
@@ -295,6 +330,7 @@
         salIntDia, vacDisfrute, vacBono, vacTotal, utilAnual, incesUtil, utilNeto, utilFrac,
         diasGarantia, diasAdic, garantia, retroactiva, prestacion, usoRetro,
         intereses, vacFrac, bonoVacFrac, liqAsig, deducciones, liqTotal,
+        corte: corte || null,
       };
     }
 
@@ -385,7 +421,9 @@
       const emp = empById(state[tab]);
       if (!emp) { host.innerHTML = '<div class="calc-card" style="padding:28px;text-align:center;color:var(--fg-muted);font-size:13px;">Registra empleados para calcular prestaciones.</div>'; return; }
       const baseMes = baseCalcMes(emp);
-      const c = calc(emp, baseMes);
+      // Solo la liquidación corta en una fecha: la de egreso (por defecto, hoy).
+      const egresoISO = tab === 'liquidacion' ? (_egreso[emp.id] || _hoyISO()) : '';
+      const c = calc(emp, baseMes, egresoISO ? new Date(egresoISO + 'T00:00:00') : undefined);
       const ajustada = Math.abs(baseMes - SALARIO_MINIMO) > 0.01;
       let html = '<div class="calc-card">';
       // Base de cálculo EDITABLE: el contador ajusta el salario a la realidad (Bs/$)
@@ -401,7 +439,7 @@
 
       if (tab === 'vacaciones') {
         html += calcHead(emp, c, 'Período', String(HOY.getFullYear()));
-        const iniISO = _vacInicio[emp.id] || new Date().toISOString().slice(0, 10);
+        const iniISO = _vacInicio[emp.id] || _hoyISO();
         const reing = fechaReingreso(iniISO, c.diasVac);
         html += '<div class="calc-basebar" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 12px;margin-bottom:10px;border:1px solid var(--border-strong);border-radius:10px;background:var(--bg-subtle);">'
           + '<span style="font-size:12px;font-weight:600;">Inicio del disfrute:</span>'
@@ -438,6 +476,13 @@
         html += foot('Utilidades según Art. 131-132 LOTTT: mínimo 30 días, esta empresa otorga ' + c.diasUtil + ' días. Pago antes del 15 de diciembre.', 'utilidades');
       } else if (tab === 'liquidacion') {
         html += calcHead(emp, c, 'Motivo', 'Retiro / cese');
+        // Hasta qué día trabajó: de aquí salen la antigüedad y los fraccionados.
+        html += '<div class="calc-basebar" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 12px;margin-bottom:10px;border:1px solid var(--border-strong);border-radius:10px;background:var(--bg-subtle);">'
+          + '<span style="font-size:12px;font-weight:600;">Fecha de egreso <span style="font-weight:400;color:var(--fg-muted);">(último día trabajado)</span>:</span>'
+          + '<input type="date" id="egresoInput" value="' + egresoISO + '" min="' + _isoFecha(emp.ingreso) + '" style="height:32px;border:1px solid var(--border-strong);border-radius:8px;padding:0 10px;font:inherit;background:var(--bg-surface);color:inherit;">'
+          + '<span style="font-size:12px;color:var(--fg-muted);">Ingresó el ' + _fmtFecha(emp.ingreso) + ' · antigüedad al egreso:</span>'
+          + '<span style="font-size:13px;font-weight:700;color:#0a7a44;">' + c.y + ' año' + (c.y === 1 ? '' : 's') + ' y ' + c.fracMeses + ' mes' + (c.fracMeses === 1 ? '' : 'es') + '</span>'
+          + '</div>';
         html += '<div class="calc-params">'
           + param('Antigüedad', c.y + ' <small>años</small> ' + c.fracMeses + ' <small>m</small>')
           + param('Salario integral diario', 'Bs ' + fmt(c.salIntDia))
@@ -453,7 +498,7 @@
           + sectionLine('Conceptos fraccionados')
           + line('Vacaciones fraccionadas', c.fracMeses + '/12 × ' + c.diasVac + ' días', 'Bs ' + fmt(c.vacFrac), 'add')
           + line('Bono vacacional fraccionado', c.fracMeses + '/12 × ' + c.diasBonoVac + ' días', 'Bs ' + fmt(c.bonoVacFrac), 'add')
-          + line('Utilidades fraccionadas', c.mesesAnio + '/12 × ' + c.diasUtil + ' días', 'Bs ' + fmt(c.utilFrac), 'add')
+          + line('Utilidades fraccionadas', c.mesesAnio + '/12 × ' + c.diasUtil + ' días (meses completos del ejercicio)', 'Bs ' + fmt(c.utilFrac), 'add')
           + '</div>';
         html += total('Total liquidación a pagar', 'Bs ' + fmt(c.liqTotal));
         html += foot('Prestaciones según Art. 142 LOTTT: se paga el mayor entre la garantía trimestral y 30 días por año sobre el último salario integral.', 'liquidacion');
@@ -501,6 +546,18 @@
       });
       const vacIni = host.querySelector('#vacInicioInput');
       if (vacIni) vacIni.addEventListener('change', () => { if (vacIni.value) { _vacInicio[emp.id] = vacIni.value; renderCalc(tab); } });
+      const egIn = host.querySelector('#egresoInput');
+      if (egIn) egIn.addEventListener('change', () => {
+        if (!egIn.value) return;
+        // Nadie egresa antes de haber ingresado: sería una antigüedad negativa.
+        if (new Date(egIn.value + 'T00:00:00') < emp.ingreso) {
+          if (window.toast) window.toast('La fecha de egreso no puede ser anterior al ingreso (' + _fmtFecha(emp.ingreso) + ').', 'error');
+          egIn.value = egresoISO;
+          return;
+        }
+        _egreso[emp.id] = egIn.value;
+        renderCalc(tab);
+      });
       const btn = host.querySelector('[data-recibo]');
       if (btn) btn.addEventListener('click', () => openRecibo(tab, emp, c));
     }
@@ -641,12 +698,18 @@
       // Datos de disfrute solo para el recibo de Vacaciones
       let vacExtra = '';
       if (tab === 'vacaciones') {
-        const iniISO = _vacInicio[emp.id] || new Date().toISOString().slice(0, 10);
+        const iniISO = _vacInicio[emp.id] || _hoyISO();
         const reing = fechaReingreso(iniISO, c.diasVac);
         vacExtra = '<div class="rp"><div class="l">Salario mensual (base del cálculo)</div><div class="v">Bs ' + fmt(c.salDia * 30) + '</div></div>'
           + '<div class="rp"><div class="l">Salario diario</div><div class="v">Bs ' + fmt(c.salDia) + '</div></div>'
           + '<div class="rp"><div class="l">Inicio del disfrute</div><div class="v">' + _fmtFecha(new Date(iniISO + 'T00:00:00')) + '</div></div>'
           + '<div class="rp"><div class="l">Fecha de reingreso</div><div class="v">' + _fmtFecha(reing) + '</div></div>';
+      }
+
+      // En la liquidación, la fecha de egreso: es la que explica la antigüedad pagada.
+      if (tab === 'liquidacion' && c.corte) {
+        vacExtra = '<div class="rp"><div class="l">Fecha de egreso</div><div class="v">' + _fmtFecha(c.corte) + '</div></div>'
+          + '<div class="rp"><div class="l">Salario integral diario</div><div class="v">Bs ' + fmt(c.salIntDia) + '</div></div>';
       }
 
       const EMPK = window.__EMPRESA_ACTIVA || {};
@@ -662,7 +725,7 @@
         + '<div class="rp"><div class="l">Cargo</div><div class="v">' + emp.cargo + ' · ' + emp.depto + '</div></div>'
         + '<div class="rp"><div class="l">Fecha de emisión</div><div class="v">' + fecha + '</div></div>'
         + '<div class="rp"><div class="l">Fecha de ingreso</div><div class="v">' + ('0' + emp.ingreso.getDate()).slice(-2) + '/' + ('0' + (emp.ingreso.getMonth() + 1)).slice(-2) + '/' + emp.ingreso.getFullYear() + '</div></div>'
-        + '<div class="rp"><div class="l">Antigüedad</div><div class="v">' + c.y + ' años ' + c.fracMeses + ' meses</div></div>'
+        + '<div class="rp"><div class="l">Antigüedad</div><div class="v">' + c.y + (c.y === 1 ? ' año y ' : ' años y ') + c.fracMeses + (c.fracMeses === 1 ? ' mes' : ' meses') + '</div></div>'
         + vacExtra
         + '</div>'
         + '<table class="recibo-table"><thead><tr><th>Concepto</th><th class="num"></th><th class="num">Monto</th></tr></thead>'
@@ -1257,7 +1320,7 @@
           { name: 'cargo', label: 'Cargo', placeholder: 'Ej. Asistente', value: emp ? emp.cargo : '' },
           { name: 'depto', label: 'Departamento', placeholder: 'Ej. Administración', value: emp && emp.depto !== '—' ? emp.depto : '' },
           { name: 'tipo', label: 'Tipo de trabajador', type: 'select', value: emp ? emp.tipo : 'Administrativo', options: ['Administrativo', 'Planta', 'Producción', 'Gerencia'] },
-          { name: 'ingreso', label: 'Fecha de ingreso', type: 'date', value: emp && emp.ingreso ? _isoFecha(emp.ingreso) : new Date().toISOString().slice(0, 10) },
+          { name: 'ingreso', label: 'Fecha de ingreso', type: 'date', value: emp && emp.ingreso ? _isoFecha(emp.ingreso) : _hoyISO() },
           { name: 'salarioMes', label: 'Salario base mensual cotizable (Bs)', type: 'number', step: '0.01', placeholder: '0.00', value: emp ? String(emp.salarioMes) : '' },
           { name: 'contingenciaUSD', label: 'Paquete del período en USD (ej. 70 semanales — el Bono de Contingencia completa: paquete − cesta − salario)', type: 'number', step: '0.01', moneda: 'USD', placeholder: '0', value: emp ? String(emp.contingenciaUSD || '') : '' },
           { name: 'transportePct', label: 'Bono de transporte (% de la contingencia, opcional — si lo llenas, manda sobre el monto fijo)', type: 'number', step: '1', placeholder: '0', value: emp && emp.transportePct ? String(emp.transportePct * 100) : '' },
@@ -1474,7 +1537,7 @@
 
     // Selector del tipo de contrato antes de generarlo
     function generarContrato(emp) {
-      const hoyISO = new Date().toISOString().slice(0, 10);
+      const hoyISO = _hoyISO();
       window.openFormModal({
         title: 'Generar contrato · ' + emp.nombre,
         saveLabel: 'Generar contrato',
