@@ -8400,10 +8400,14 @@
     const AUTO_LABEL = { sugiere: 'Sugiere', aviso: 'Auto + aviso', silencioso: 'Auto silencioso' };
     const AUTO_CLS = { sugiere: 'sugiere', aviso: 'aviso', silencioso: 'silencioso' };
 
-    /* EL EQUIPO DIGITAL — seis cargos, no doce funciones.
+    /* EL EQUIPO DIGITAL — siete cargos, no doce funciones.
        Cada ficha declara su ESTADO REAL de desarrollo. Un tablero que pinta
        ocho agentes "en línea" cuando solo uno hace trabajo es una maqueta; uno
        que dice la verdad es una hoja de ruta. El orden es el de construcción.
+
+       Son los MISMOS que conversan por Telegram: Lucho atiende y coordina, y
+       consulta a Roberth y Mariale (un mismo flujo en n8n), a Carmen y a María.
+       Por ahora ellos SOLO consultan y explican; por eso están en «parcial».
 
        estado: 'activo'  — funciona hoy
                'parcial' — una parte funciona
@@ -8412,28 +8416,32 @@
     const AGENTS = [
       { id: 'arelis', n: 'Arelis', g: 'f', ic: 'scan-text', col: '#A96A12', auto: 'sugiere', orden: 1, estado: 'parcial',
         spec: 'Asistente administrativa',
-        hace: 'Lee facturas de compra por foto y arma el libro',
-        prox: 'Recibir comprobantes de retención por WhatsApp y enlazarlos a su factura' },
-      { id: 'lucho', n: 'Lucho', g: 'm', ic: 'shield-check', col: '#6A3C86', auto: 'aviso', orden: 2, estado: 'plan',
+        hace: 'Lee facturas de compra por foto y arma el libro; recibe libros en Excel por Telegram',
+        prox: 'Recibir la foto de una factura por Telegram y cargarla con tu confirmación' },
+      { id: 'lucho', n: 'Lucho', g: 'm', ic: 'shield-check', col: '#6A3C86', auto: 'aviso', orden: 2, estado: 'parcial',
         spec: 'Especialista tributario · coordina al equipo',
-        hace: '',
+        hace: 'Conversa contigo por Telegram: normativa tributaria, calendario fiscal y libros de tus clientes',
         prox: 'Revisar el libro del período: retenciones sin comprobante, facturas repetidas, correlativos saltados' },
-      { id: 'roberth', n: 'Roberth', g: 'm', ic: 'book-open', col: '#0E6B4E', auto: 'sugiere', orden: 3, estado: 'plan',
+      { id: 'roberth', n: 'Roberth', g: 'm', ic: 'book-open', col: '#0E6B4E', auto: 'sugiere', orden: 3, estado: 'parcial',
         spec: 'Analista contable',
-        hace: '',
+        hace: 'Responde por Telegram sobre normas VEN-NIF y los asientos de tus clientes',
         prox: 'Proponer el asiento de cada operación usando el histórico de esa empresa' },
-      { id: 'mariale', n: 'Mariale', g: 'f', ic: 'wallet', col: '#0B7079', auto: 'sugiere', orden: 4, estado: 'plan',
+      { id: 'mariale', n: 'Mariale', g: 'f', ic: 'wallet', col: '#0B7079', auto: 'sugiere', orden: 4, estado: 'parcial',
         spec: 'Ventas, tesorería y cobranzas',
-        hace: '',
+        hace: 'Responde por Telegram sobre cobros, pagos y movimientos de tesorería',
         prox: 'Cruzar los pagos móviles recibidos contra las facturas pendientes' },
       { id: 'augusto', n: 'Augusto', g: 'm', ic: 'package', col: '#93304F', auto: 'aviso', orden: 5, estado: 'plan',
         spec: 'Costos e inventario',
         hace: '',
         prox: 'Recalcular el costo promedio y avisar cuando un precio quede por debajo del costo' },
-      { id: 'carmen', n: 'Carmen', g: 'f', ic: 'users', col: '#2A5AA8', auto: 'sugiere', orden: 6, estado: 'plan',
+      { id: 'carmen', n: 'Carmen', g: 'f', ic: 'users', col: '#2A5AA8', auto: 'sugiere', orden: 6, estado: 'parcial',
         spec: 'Especialista de nómina',
-        hace: '',
+        hace: 'Responde por Telegram sobre la LOTTT y la nómina de tus clientes',
         prox: 'Avisar vacaciones vencidas y preparar utilidades y prestaciones sociales' },
+      { id: 'maria', n: 'María', g: 'f', ic: 'scale', col: '#5E5A2A', auto: 'sugiere', orden: 7, estado: 'parcial',
+        spec: 'Legal · abogada mercantil',
+        hace: 'Responde por Telegram sobre el Código de Comercio, las sociedades y los trámites del SAREN',
+        prox: 'Avisar a tiempo las asambleas, actas y registros que vence cada empresa' },
     ];
     const EST = {
       activo:  { txt: 'Activo',      cls: 'est-ok' },
@@ -8620,37 +8628,12 @@
       if (p) p.scrollIntoView({ behavior: 'smooth', block: 'center' });
     });
 
-    // ---- Chat con el Gerente IA ----
-    const msgs = document.getElementById('agcMessages');
-    const input = document.getElementById('agcInput');
-    function bubble(text, who) {
-      const d = document.createElement('div');
-      d.className = 'agc-msg ' + who;
-      d.innerHTML = text;
-      msgs.appendChild(d);
-      msgs.scrollTop = msgs.scrollHeight;
-    }
-    function respond(q) {
-      const t = q.toLowerCase();
-      let r;
-      if (/iva/.test(t)) r = 'Según el <strong>Agente Fiscal</strong>: el IVA de la 2da quincena va en <strong>Bs 413.300</strong> a pagar (débito 894.420 − crédito 481.120). Tienes una aprobación pendiente para declararlo. ¿La autorizo?';
-      else if (/pag|vence|venc/.test(t)) r = 'El <strong>Agente Tesorería</strong> reporta 1 pago crítico: <strong>Importadora Zulia · Bs 487.500</strong> vence mañana. Hay 5 facturas más en los próximos 7 días por Bs 968.450.';
-      else if (/salud|financ|análisis|analisis/.test(t)) r = 'El <strong>Agente Analista</strong> califica la salud financiera en <strong>78/100 (saludable)</strong>: liquidez 82, solvencia 71, rentabilidad 85. Atención: el período de cobro subió 3 días.';
-      else if (/factura|registr|compra/.test(t)) r = 'Perfecto. Envíame la <strong>foto de la factura por WhatsApp</strong> y el <strong>Agente OCR</strong> la lee, valida el RIF en Terceros y prepara el registro + asiento para tu aprobación.';
-      else if (/hola|buen|gracias/.test(t)) r = '¡A la orden! Puedo coordinar a cualquiera de los 8 agentes. Dime qué necesitas.';
-      else r = 'Entendido. Lo derivo al especialista correspondiente y te traigo la propuesta a la bandeja de aprobaciones. ¿Algo más?';
-      setTimeout(() => bubble(r, 'bot'), 480);
-    }
-    function send(q) {
-      const text = (q || input.value).trim();
-      if (!text) return;
-      bubble(text, 'user');
-      input.value = '';
-      respond(text);
-    }
-    document.getElementById('agcSend').addEventListener('click', () => send());
-    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') send(); });
-    view.querySelectorAll('#agcSuggest button').forEach((b) => b.addEventListener('click', () => send(b.dataset.q)));
+    /* ---- Hablar con Lucho ----
+       Aquí había un chat de mentira: contestaba con cifras inventadas («IVA a
+       pagar Bs 413.300», «salud financiera 78/100») a cualquier empresa. Lucho
+       de verdad vive en Telegram; mientras no converse aquí dentro, el panel
+       lleva allá. */
+    const input = document.getElementById('agcTelegram');
     view.querySelectorAll('[data-ag-chat]').forEach((b) => b.addEventListener('click', () => {
       const p = document.getElementById('agChatPanel');
       if (p) p.scrollIntoView({ behavior: 'smooth', block: 'center' });

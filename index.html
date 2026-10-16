@@ -4679,7 +4679,7 @@
           <div class="overline">Inteligencia operativa · Orquestación multi-agente</div>
           <div class="dash-title-row">
             <h1 class="dash-title">Centro de Agentes IA</h1>
-            <span class="contrib-badge"><i data-lucide="bot"></i> 8 agentes</span>
+            <span class="contrib-badge"><i data-lucide="bot"></i> 7 agentes</span>
             <span class="contrib-badge especial"><i data-lucide="activity"></i> En línea</span>
           </div>
         </div>
@@ -4711,9 +4711,9 @@
         <div class="ag-manager" style="--ag:#6A3C86;">
           <div class="agm-avatar agm-mono"><svg viewBox="0 0 48 48" fill="currentColor" class="ag-busto" aria-hidden="true"><circle cx="24" cy="18" r="8.5"/><path d="M24 29c-8.3 0-15 5.6-15 12.5V44h30v-2.5C39 34.6 32.3 29 24 29z"/></svg></div>
           <div class="agm-info">
-            <div class="agm-name">Lucho <span class="ag-est est-med">En construcción</span></div>
+            <div class="agm-name">Lucho <span class="ag-est est-med">Parcial · por Telegram</span></div>
             <div class="agm-role">Especialista tributario · coordina al equipo y revisa antes de declarar</div>
-            <div class="agm-desc">Es el último en ver los libros. No registra nada: busca lo que se le escapó a los demás — retenciones sin comprobante, facturas repetidas, correlativos saltados. Hablas con él; él coordina a todos.</div>
+            <div class="agm-desc">Hoy conversa contigo por Telegram: responde sobre normativa tributaria, calendario fiscal y libros de tus clientes, y consulta a Roberth, Mariale, Carmen y María cuando el tema es de ellos. Lo próximo: revisar el libro del período antes de declarar — retenciones sin comprobante, facturas repetidas, correlativos saltados.</div>
           </div>
           <div class="agm-side">
             <div class="agm-stat"><strong>0</strong><span>revisiones hechas</span></div>
@@ -4755,9 +4755,9 @@
               <div class="panel-title-block"><div class="title"><span style="display:inline-flex;align-items:center;gap:8px;"><i data-lucide="plug-zap" style="width:15px;height:15px;color:var(--da-cyan-600);"></i> Canales conectados</span></div><div class="sub">Por dónde te llegan y respondes</div></div>
             </div>
             <div class="ag-channels">
-              <div class="ag-channel"><div class="agch-ic wa"><i data-lucide="message-circle"></i></div><div class="agch-info"><div class="agch-name">WhatsApp Business</div><div class="agch-sub">+58 414-1234567</div></div><span class="agch-status on">Conectado</span></div>
-              <div class="ag-channel"><div class="agch-ic tg"><i data-lucide="send"></i></div><div class="agch-info"><div class="agch-name">Telegram Bot</div><div class="agch-sub">@DigiAccountBot</div></div><span class="agch-status on">Conectado</span></div>
-              <div class="ag-channel"><div class="agch-ic n8n"><i data-lucide="workflow"></i></div><div class="agch-info"><div class="agch-name">n8n · Automatizaciones</div><div class="agch-sub">12 flujos activos</div></div><span class="agch-status on">Activo</span></div>
+              <div class="ag-channel off"><div class="agch-ic wa"><i data-lucide="message-circle"></i></div><div class="agch-info"><div class="agch-name">WhatsApp Business</div><div class="agch-sub">Todavía no conectado</div></div><button class="agch-connect" data-channel="WhatsApp">Conectar</button></div>
+              <div class="ag-channel"><div class="agch-ic tg"><i data-lucide="send"></i></div><div class="agch-info"><div class="agch-name">Telegram · Lucho</div><div class="agch-sub">@Lcdo_Torres_bot</div></div><span class="agch-status on">Conectado</span></div>
+              <div class="ag-channel"><div class="agch-ic n8n"><i data-lucide="workflow"></i></div><div class="agch-info"><div class="agch-name">n8n · Automatizaciones</div><div class="agch-sub">Automatizaciones del equipo</div></div><span class="agch-status on">Activo</span></div>
               <div class="ag-channel off"><div class="agch-ic mail"><i data-lucide="mail"></i></div><div class="agch-info"><div class="agch-name">Correo electrónico</div><div class="agch-sub">Recepción de facturas PDF</div></div><button class="agch-connect" data-channel="Correo">Conectar</button></div>
             </div>
           </div>
@@ -4765,20 +4765,14 @@
           <!-- Chat con el Gerente -->
           <div class="panel ag-chat-panel" id="agChatPanel">
             <div class="panel-head">
-              <div class="panel-title-block"><div class="title"><span style="display:inline-flex;align-items:center;gap:8px;"><span class="agc-avatar"><i data-lucide="brain-circuit"></i></span> Gerente IA</span></div><div class="sub">Pregúntale o pídele algo</div></div>
+              <div class="panel-title-block"><div class="title"><span style="display:inline-flex;align-items:center;gap:8px;"><span class="agc-avatar"><i data-lucide="brain-circuit"></i></span> Hablar con Lucho</span></div><div class="sub">Por ahora conversa por Telegram</div></div>
             </div>
             <div class="ag-chat">
               <div class="agc-messages" id="agcMessages">
-                <div class="agc-msg bot">¡Hola! Soy tu Gerente IA. Coordino a los agentes de cada módulo. Puedes pedirme cosas como <em>"¿cuánto debo pagar de IVA?"</em> o <em>"registra esta factura"</em>.</div>
+                <div class="agc-msg bot">Soy Lucho. Por ahora converso contigo por <strong>Telegram</strong>: pregúntame por la normativa, el calendario fiscal, los libros, la nómina o los datos de cualquiera de tus clientes, y consulto a Roberth, Mariale, Carmen o María cuando haga falta. Solo consulto y explico: no registro nada sin ti.</div>
               </div>
-              <div class="agc-input">
-                <input type="text" id="agcInput" placeholder="Escribe un mensaje…" autocomplete="off">
-                <button id="agcSend" title="Enviar"><i data-lucide="send"></i></button>
-              </div>
-              <div class="agc-suggest" id="agcSuggest">
-                <button data-q="¿Cuánto debo pagar de IVA este mes?">¿Cuánto pago de IVA?</button>
-                <button data-q="¿Qué pagos vencen esta semana?">Pagos por vencer</button>
-                <button data-q="Resume la salud financiera de la empresa">Salud financiera</button>
+              <div class="agc-input" style="justify-content:center;">
+                <a class="btn btn-primary" id="agcTelegram" href="https://t.me/Lcdo_Torres_bot" target="_blank" rel="noopener" style="height:36px;font-size:12px;"><i data-lucide="send"></i> Abrir a Lucho en Telegram</a>
               </div>
             </div>
           </div>
@@ -5235,7 +5229,7 @@
           <div class="sic"><i data-lucide="check-circle-2"></i></div>
           <h3 id="cwOkTitle">¡Empresa registrada!</h3>
           <p>Tu empresa ya está lista. Configuramos su plan de cuentas, calendario fiscal y módulos según su actividad.</p>
-          <div class="agent-line"><i data-lucide="sparkles"></i> El Gerente IA y sus agentes ya vigilan tus obligaciones.</div>
+          <div class="agent-line"><i data-lucide="sparkles"></i> Su calendario fiscal ya está cargado según el terminal del RIF.</div>
         </div>
       </div>
     </div>
