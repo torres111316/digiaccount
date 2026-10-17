@@ -8945,27 +8945,6 @@
   })();
 
   /* =========================================================
-     MÉTRICAS SaaS — gráfica de evolución del MRR (Fundador)
-     ========================================================= */
-  (function saasMetrics() {
-    const bars = document.getElementById('mrrBars');
-    if (!bars) return;
-    const MRR = [
-      { m: 'Ene', v: 0 }, { m: 'Feb', v: 0 }, { m: 'Mar', v: 0 },
-      { m: 'Abr', v: 0 }, { m: 'May', v: 0 }, { m: 'Jun', v: 0 },
-    ];
-    const max = Math.max.apply(null, MRR.map((x) => x.v));
-    bars.innerHTML = MRR.map((x, i) => {
-      const h = Math.max(8, Math.round((x.v / max) * 100));
-      const last = i === MRR.length - 1;
-      return '<div class="shc-bar' + (last ? ' active' : '') + '">'
-        + '<div class="shc-bar-val">$' + (x.v / 1000).toFixed(1) + 'k</div>'
-        + '<div class="shc-col" style="height:' + h + '%"></div>'
-        + '<div class="shc-bar-m">' + x.m + '</div></div>';
-    }).join('');
-  })();
-
-  /* =========================================================
      COBROS Y PAGOS — métodos receptores + suscripciones
      Métodos para Venezuela: Pago Móvil C2P, USDT/Binance, Zelle
      ========================================================= */
@@ -9429,8 +9408,8 @@
           vence = new Date(window.__TRIAL_TERMINA);
           diasRest = Math.max(0, Math.ceil((vence - new Date()) / 86400000));
         }
-        estadoTxt = 'Prueba · ' + diasRest + ' día' + (diasRest === 1 ? '' : 's'); estadoCls = 'prueba';
-        fechaLabel = 'Tu prueba vence'; fechaVal = vence ? fFecha(vence) : '—';
+        estadoTxt = 'Cortesía · ' + diasRest + ' día' + (diasRest === 1 ? '' : 's'); estadoCls = 'prueba';
+        fechaLabel = 'Tu cortesía vence'; fechaVal = vence ? fFecha(vence) : '—';
       } else if (estado === 'pendiente') {
         estadoTxt = 'En revisión'; estadoCls = 'prueba';
         fechaLabel = 'Estado'; fechaVal = 'Por activar';
@@ -9944,9 +9923,9 @@
     }
     const CONTENIDO = {
       info: (d) => ({ icon: 'gift', title: 'Estás usando tu mes de cortesía', sub: 'Quedan ' + d + ' días · activa tu plan cuando quieras, sin apuro.' }),
-      aviso: (d) => ({ icon: 'clock', title: 'Tu prueba vence en ' + d + ' días', sub: 'Activa tu plan para no perder el acceso a tus módulos.' }),
-      urgente: (d) => ({ icon: 'alert-triangle', title: '¡Solo te quedan ' + d + (d === 1 ? ' día' : ' días') + ' de prueba!', sub: 'Activa tu plan ahora para no perder tu información ni tu acceso.' }),
-      vencido: () => ({ icon: 'lock', title: 'Tu prueba terminó', sub: 'Activa un plan para seguir usando DigiAccount.' }),
+      aviso: (d) => ({ icon: 'clock', title: 'Tu cortesía vence en ' + d + ' días', sub: 'Activa tu plan para no perder el acceso a tus módulos.' }),
+      urgente: (d) => ({ icon: 'alert-triangle', title: '¡Solo te quedan ' + d + (d === 1 ? ' día' : ' días') + ' de cortesía!', sub: 'Activa tu plan ahora para no perder tu información ni tu acceso.' }),
+      vencido: () => ({ icon: 'lock', title: 'Tu cortesía terminó', sub: 'Activa un plan para seguir usando DigiAccount.' }),
     };
 
     function sync() {
@@ -9975,11 +9954,11 @@
       window.__prueba.dias = n;
       dismissedNivel = null;
       const trial = document.getElementById('planTrial');
-      if (trial) trial.textContent = 'Prueba · ' + n + ' días';
+      if (trial) trial.textContent = 'Cortesía · ' + n + ' días';
       // Notifica al entrar en zona urgente o al vencer
       if (window.__notificar && nivel(n) !== nivel(antes)) {
-        if (n <= 0) window.__notificar({ icon: 'lock', nivel: 'danger', titulo: 'Tu prueba terminó', detalle: 'Activa un plan para no perder tu acceso', view: 'suscripcion', title2: 'Mi Suscripción' });
-        else if (n <= 3) window.__notificar({ icon: 'alert-triangle', nivel: 'warn', titulo: '¡Tu prueba vence en ' + n + (n === 1 ? ' día!' : ' días!'), detalle: 'Activa tu plan para mantener tu suscripción', view: 'suscripcion', title2: 'Mi Suscripción' });
+        if (n <= 0) window.__notificar({ icon: 'lock', nivel: 'danger', titulo: 'Tu cortesía terminó', detalle: 'Activa un plan para no perder tu acceso', view: 'suscripcion', title2: 'Mi Suscripción' });
+        else if (n <= 3) window.__notificar({ icon: 'alert-triangle', nivel: 'warn', titulo: '¡Tu cortesía vence en ' + n + (n === 1 ? ' día!' : ' días!'), detalle: 'Activa tu plan para mantener tu suscripción', view: 'suscripcion', title2: 'Mi Suscripción' });
       }
       sync();
     };
@@ -10246,6 +10225,13 @@
       set('saasKpiMrr', fmt0(activas.reduce((a, c) => a + c.mrr, 0)));
       set('saasKpiEmpresas', fmt0(CUENTAS.reduce((a, c) => a + c.empresas, 0)));
       set('saasKpiUsuarios', fmt0(CUENTAS.reduce((a, c) => a + c.usuarios, 0)));
+      // Indicadores reales (antes eran cifras escritas a mano)
+      const pagan = activas.filter((c) => c.mrr > 0);
+      set('shmArpu', pagan.length ? fmt0(Math.round(pagan.reduce((a, c) => a + c.mrr, 0) / pagan.length)) : '0');
+      set('shmCobrar', CUENTAS.filter((c) => c.cobrable && typeof c.cobroDias === 'number' && c.cobroDias <= 7).length);
+      const hoy = new Date().toISOString().slice(0, 10);
+      set('shmCortesia', CUENTAS.filter((c) => !c.exenta && c.cortesiaHasta && c.cortesiaHasta >= hoy).length);
+      set('shmExentas', CUENTAS.filter((c) => c.exenta).length);
       /* Lo que toca cobrar: vencidas y las que vencen dentro de 7 días. Es el
          numero por el que uno entra a esta pantalla. */
       const porCobrar = CUENTAS.filter((c) => c.cobrable && typeof c.cobroDias === 'number' && c.cobroDias <= 7);
@@ -11175,7 +11161,7 @@
       const trial = document.getElementById('planTrial');
       if (trial) {
         trial.hidden = !prueba;
-        if (prueba) trial.textContent = 'Prueba · ' + window.__prueba.dias + ' días';
+        if (prueba) trial.textContent = 'Cortesía · ' + window.__prueba.dias + ' días';
       }
       // Botón "Activar / Pagar" visible solo durante la prueba
       const actBtn = document.getElementById('planActivarBtn');

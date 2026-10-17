@@ -130,7 +130,7 @@
         <button type="button" class="auth-back" id="forgotBack"><i data-lucide="arrow-left"></i> Volver a iniciar sesión</button>
       </form>
 
-      <div class="auth-foot" id="authFoot">¿No tienes cuenta? <a href="#" class="auth-link" data-goauth="signup">Créala gratis</a></div>
+      <div class="auth-foot" id="authFoot">¿No tienes cuenta? <a href="#" class="auth-link" data-goauth="signup">Créala aquí</a></div>
     </div>
   </div>
 </div>
@@ -4494,16 +4494,15 @@
 
       <div class="plan-dist" id="planDist"><!-- por JS --></div>
 
+      <!-- Indicadores calculados con las cuentas reales. Aquí había cifras escritas
+           a mano (conversión 68%, churn 3,2%, ARPU $72, LTV $2.250) y una gráfica de
+           MRR en cero: ninguna salía de la base. Se quitaron el 17/10/2026. -->
       <div class="saas-health">
         <div class="sh-metrics">
-          <div class="sh-metric"><div class="shm-top"><span>Conversión prueba → pago</span><i data-lucide="trending-up"></i></div><div class="shm-val">68<small>%</small></div><div class="shm-bar"><span style="width:68%"></span></div><div class="shm-sub">de las pruebas terminan pagando</div></div>
-          <div class="sh-metric"><div class="shm-top"><span>Churn mensual</span><i data-lucide="trending-down"></i></div><div class="shm-val">3,2<small>%</small></div><div class="shm-bar danger"><span style="width:32%"></span></div><div class="shm-sub">cancelaciones sobre cuentas activas</div></div>
-          <div class="sh-metric"><div class="shm-top"><span>ARPU</span><i data-lucide="user"></i></div><div class="shm-val"><span class="cur">$</span>72</div><div class="shm-sub">ingreso promedio por cuenta / mes</div></div>
-          <div class="sh-metric"><div class="shm-top"><span>LTV estimado</span><i data-lucide="gem"></i></div><div class="shm-val"><span class="cur">$</span>2.250</div><div class="shm-sub">valor de vida del cliente</div></div>
-        </div>
-        <div class="sh-chart">
-          <div class="shc-head"><span><i data-lucide="bar-chart-3"></i> Evolución del MRR</span><small>últimos 6 meses · USD</small></div>
-          <div class="shc-bars" id="mrrBars"><!-- por JS --></div>
+          <div class="sh-metric"><div class="shm-top"><span>Ingreso promedio por cuenta</span><i data-lucide="user"></i></div><div class="shm-val"><span class="cur">$</span><span id="shmArpu">—</span></div><div class="shm-sub">MRR entre las cuentas que pagan</div></div>
+          <div class="sh-metric"><div class="shm-top"><span>Por cobrar en 7 días</span><i data-lucide="calendar-clock"></i></div><div class="shm-val" id="shmCobrar">—</div><div class="shm-sub">cuentas vencidas o que vencen pronto</div></div>
+          <div class="sh-metric"><div class="shm-top"><span>En cortesía</span><i data-lucide="gift"></i></div><div class="shm-val" id="shmCortesia">—</div><div class="shm-sub">meses regalados que siguen vigentes</div></div>
+          <div class="sh-metric"><div class="shm-top"><span>Exentas</span><i data-lucide="shield-check"></i></div><div class="shm-val" id="shmExentas">—</div><div class="shm-sub">cuentas que no pagan, con su motivo</div></div>
         </div>
       </div>
 
