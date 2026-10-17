@@ -379,6 +379,7 @@
     // Defensa por ROL: si el rol del usuario no incluye esta vista, vuelve al Dashboard
     // (el menú ya la oculta; esto cubre atajos, enlaces internos y URLs a mano).
     if (window.__rolPermiteVista && !window.__rolPermiteVista(viewId)) { viewId = 'dashboard'; title = 'Dashboard Central'; }
+    if (window.__planPermiteVista && !window.__planPermiteVista(viewId)) { viewId = 'dashboard'; title = 'Dashboard Central'; }
     views.forEach((v) => (v.dataset.active = v.id === 'view-' + viewId ? 'true' : 'false'));
     navItems.forEach((n) => (n.dataset.active = n.dataset.view === viewId ? 'true' : 'false'));
     if (title && breadcrumbHere) breadcrumbHere.textContent = title;
@@ -7895,6 +7896,14 @@
         const { data: ad } = await window.sb.from('cuentas').select('addon_agentes').eq('id', data.cuenta_id).single();
         window.__ADDON_AGENTES = !!(ad && ad.addon_agentes);
       } catch (e) {}
+      // Tope de empresas: paquetes de PRO y tope del contrato a medida
+      // (sql/planes_dos_apps.sql). Tolerante: sin las columnas, tope de lista.
+      window.__EMPRESAS_EXTRA = 0;
+      window.__MAX_CONTRATO = null;
+      try {
+        const { data: tp, error: tpErr } = await window.sb.from('cuentas').select('empresas_extra, max_empresas_contrato').eq('id', data.cuenta_id).single();
+        if (!tpErr && tp) { window.__EMPRESAS_EXTRA = tp.empresas_extra || 0; window.__MAX_CONTRATO = tp.max_empresas_contrato || null; }
+      } catch (e) {}
       // Muestra el Panel del Fundador SOLO al super-admin
       const navFund = document.querySelector('.nav-item[data-view="fundador"]');
       if (navFund) navFund.hidden = !window.__ES_FUNDADOR;
@@ -8657,52 +8666,55 @@
     if (!view) return;
     const toast = (m, t) => { if (window.toast) window.toast(m, t); };
 
+    // Igual que la web (digiaccount.io/software/#planes). Los planes a medida no
+    // tienen precio de lista: se conversan por WhatsApp.
+    const WA_MEDIDA = 'https://wa.me/584125070103?text=' + encodeURIComponent('Hola Luis, me interesa un sistema DigiAccount a medida, con mi marca');
     const SEGMENTOS = {
       contadores: {
-        desc: 'Para contadores públicos que gestionan la contabilidad y los impuestos de varios clientes.',
+        desc: 'DigiAccount Gestión Contable y Fiscal · para contadores que llevan la contabilidad y los impuestos de varios clientes.',
         planes: [
           { nombre: 'Contador Básico', precio: 49, popular: false, cta: 'Elegir plan', features: [
-            { t: 'Hasta 3 empresas', ok: true }, { t: 'Módulos: Fiscal + Contabilidad', ok: true },
-            { t: 'Soporte por email', ok: true }, { t: 'Onboarding', ok: false }] },
+            { t: 'Hasta 3 empresas', ok: true }, { t: 'Libros, retenciones con TXT y Forma 30', ok: true },
+            { t: 'Contabilidad y nómina LOTTT', ok: true }, { t: 'Puesta en marcha acompañada', ok: false }] },
           { nombre: 'Contador PRO', precio: 79, popular: true, cta: 'Elegir plan', features: [
-            { t: 'Hasta 10 empresas', ok: true }, { t: 'Fiscal · Contabilidad · Nómina', ok: true },
-            { t: 'Soporte por email', ok: true }, { t: 'Onboarding 1:1 (1 sesión)', ok: true }] },
-          { nombre: 'Firma Contable', precio: 199, popular: false, cta: 'Elegir plan', features: [
-            { t: 'Empresas ilimitadas', ok: true }, { t: 'Todos los módulos', ok: true },
-            { t: 'Soporte por email y WhatsApp', ok: true }, { t: 'Onboarding + capacitación', ok: true }] },
+            { t: 'Hasta 10 empresas, ampliable a 20', ok: true }, { t: '+ $40/mes por cada 5 empresas adicionales', ok: true },
+            { t: 'Especiales por quincena y sucursales', ok: true }, { t: 'Puesta en marcha acompañada', ok: true }] },
+          { nombre: 'Firma a medida', sub: 'Tu propio sistema', precio: null, consultar: true, cta: 'Conversemos', features: [
+            { t: 'Tu marca, tus colores y tu dominio', ok: true }, { t: 'Tu servidor y tu base de datos', ok: true },
+            { t: 'Tu plan de cuentas a tu manera', ok: true }, { t: 'Agentes IA con los nombres que elijas (opcional)', ok: true }] },
         ],
       },
       empresas: {
-        desc: 'Para empresas que implementan DigiAccount para su propia gestión.',
+        desc: 'DigiAccount Gestión de Ventas e Inventario · para el negocio que quiere ver claro su día a día.',
         planes: [
-          { nombre: 'Emprendimientos y PYME', sub: 'Contribuyentes Ordinarios', precio: 29, popular: false, cta: 'Elegir plan', features: [
-            { t: '1 empresa', ok: true }, { t: 'Módulos: Ventas y CxC, Compras y CxP, Tesorería e Inventario', ok: true },
-            { t: 'Soporte por email', ok: true }, { t: 'Onboarding', ok: false }] },
-          { nombre: 'Empresa Completa', precio: 99, popular: true, cta: 'Elegir plan', features: [
-            { t: '1 empresa · usuarios ilimitados', ok: true }, { t: 'Todos los módulos', ok: true },
-            { t: 'Soporte por email', ok: true }, { t: 'Onboarding + capacitación', ok: true }] },
-          { nombre: 'Grupo Empresarial', precio: 299, popular: false, cta: 'Elegir plan', features: [
-            { t: 'Hasta 5 empresas', ok: true }, { t: 'Todos los módulos', ok: true },
-            { t: 'Soporte por email y WhatsApp', ok: true }, { t: 'Onboarding + capacitación', ok: true }] },
+          { nombre: 'Emprendimientos y PYME', sub: 'Tu negocio', precio: 29, popular: false, cta: 'Elegir plan', features: [
+            { t: 'Ventas, recibos y cuentas por cobrar', ok: true }, { t: 'Compras y cuentas por pagar', ok: true },
+            { t: 'Inventario y costos', ok: true }, { t: 'Tesorería: bancos y caja', ok: true }] },
+          { nombre: 'Empresa Completa', sub: 'Con su contador interno', precio: 99, popular: true, cta: 'Elegir plan', features: [
+            { t: 'Todo lo del plan PYME', ok: true }, { t: 'Contabilidad VEN-NIF', ok: true },
+            { t: 'Libros, retenciones y declaraciones', ok: true }, { t: 'Nómina LOTTT con prestaciones', ok: true }] },
+          { nombre: 'Grupo a medida', sub: 'Tu propio sistema', precio: null, consultar: true, cta: 'Conversemos', features: [
+            { t: 'Tu marca, tus colores y tu dominio', ok: true }, { t: 'Tu servidor y tu base de datos', ok: true },
+            { t: 'Todas tus empresas en un panel', ok: true }, { t: 'Agentes IA con los nombres que elijas (opcional)', ok: true }] },
         ],
       },
       ia: {
-        desc: 'Servicios de automatización e inteligencia artificial a la medida, sobre cualquier plan.',
+        desc: 'Automatización e inteligencia artificial. Los agentes vienen como opción en los planes a medida.',
         planes: [
-          { nombre: 'Agentes IA', precio: null, consultar: true, cta: 'Consultar', features: [
-            { t: 'Setup inicial sobre cualquier plan', ok: true }, { t: '+ mensualidad de mantenimiento', ok: true },
-            { t: 'Soporte por email y WhatsApp', ok: true }, { t: 'Agentes a la medida de tu operación', ok: true }] },
-          { nombre: 'Auditoría + Implementación', sub: 'Sistema completo de automatizaciones y Agentes IA', precio: null, consultar: true, cta: 'Consultar', features: [
+          { nombre: 'Agentes IA', sub: 'En los planes a medida', precio: null, consultar: true, cta: 'Conversemos', features: [
+            { t: 'Consultan los datos reales de tu sistema', ok: true }, { t: 'Con los nombres y la manera de trabajar que elijas', ok: true },
+            { t: 'Por Telegram, en el chat de tu equipo', ok: true }, { t: 'Implementación + mensualidad', ok: true }] },
+          { nombre: 'Auditoría + Implementación', sub: 'Sistema completo de automatizaciones y Agentes IA', precio: null, consultar: true, cta: 'Conversemos', features: [
             { t: 'Diagnóstico y auditoría de procesos', ok: true }, { t: 'Implementación integral a medida', ok: true },
-            { t: 'Acompañamiento dedicado', ok: true }, { t: 'Integraciones (n8n, WhatsApp, OCR)', ok: true }] },
+            { t: 'Acompañamiento dedicado', ok: true }, { t: 'Integraciones (n8n, Telegram, OCR)', ok: true }] },
         ],
       },
     };
     window.__PLANES = SEGMENTOS;
 
     const ICONS = {
-      'Contador Básico': 'calculator', 'Contador PRO': 'briefcase-business', 'Firma Contable': 'landmark',
-      'Emprendimientos y PYME': 'sprout', 'Empresa Completa': 'building-2', 'Grupo Empresarial': 'network',
+      'Contador Básico': 'calculator', 'Contador PRO': 'briefcase-business', 'Firma a medida': 'landmark',
+      'Emprendimientos y PYME': 'sprout', 'Empresa Completa': 'building-2', 'Grupo a medida': 'network',
       'Agentes IA': 'bot', 'Auditoría + Implementación': 'shield-check',
     };
     let seg = 'contadores', billing = 'mes';
@@ -8713,7 +8725,7 @@
       grid.dataset.count = s.planes.length;
       grid.innerHTML = s.planes.map((p) => {
         let precioHtml;
-        if (p.consultar || p.precio == null) precioHtml = '<div class="pc-amount consultar">A consultar</div>';
+        if (p.consultar || p.precio == null) precioHtml = '<div class="pc-amount consultar">A medida</div>';
         else if (billing === 'anual') { const m = Math.round(p.precio * 10 / 12); precioHtml = '<div class="pc-amount"><span class="cur">$</span>' + m + '<span class="per">/mes</span></div><div class="pc-bill">facturado anual · $' + (p.precio * 10) + '/año</div>'; }
         else precioHtml = '<div class="pc-amount"><span class="cur">$</span>' + p.precio + '<span class="per">/mes</span></div>';
         return '<div class="price-card' + (p.popular ? ' popular' : '') + '">'
@@ -8727,7 +8739,7 @@
           + '</div>';
       }).join('');
       grid.querySelectorAll('.pc-cta').forEach((b) => b.addEventListener('click', () => {
-        if (b.dataset.consultar) { toast('Solicitud enviada · te contactaremos por WhatsApp o email', 'success'); return; }
+        if (b.dataset.consultar) { window.open(WA_MEDIDA, '_blank', 'noopener'); return; }
         // Abre el checkout de pago para activar la suscripción
         if (window.openCheckout) { window.openCheckout(b.dataset.plan); return; }
         if (window.aplicarPlan) window.aplicarPlan(b.dataset.plan);
@@ -9390,7 +9402,7 @@
     const addMes = (d) => { const x = new Date(d); x.setMonth(x.getMonth() + 1); return x; };
     const addDias = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
     const fFecha = (d) => d.toLocaleDateString('es-VE');
-    const ICON = { 'Contador Básico': 'calculator', 'Contador PRO': 'briefcase-business', 'Firma Contable': 'landmark', 'Emprendimientos y PYME': 'sprout', 'Empresa Completa': 'building-2', 'Grupo Empresarial': 'network' };
+    const ICON = { 'Contador Básico': 'calculator', 'Contador PRO': 'briefcase-business', 'Firma a medida': 'landmark', 'Emprendimientos y PYME': 'sprout', 'Empresa Completa': 'building-2', 'Grupo a medida': 'network' };
 
     function renderResumen() {
       const plan = window.__planActivo
@@ -9445,9 +9457,9 @@
       document.getElementById('subSummary').innerHTML =
         '<div class="ss-card"><div class="ss-main"><div class="ss-plan-ic"><i data-lucide="' + (ICON[plan] || 'package') + '"></i></div>'
         + '<div><div class="ss-label">Tu plan actual</div><div class="ss-plan">' + planTxt + '</div><span class="ss-badge ' + estadoCls + '">' + estadoTxt + '</span></div></div>'
-        + '<div class="ss-meta"><div class="ss-meta-item"><span>Precio</span><strong>' + (plan ? '$' + precio + ' <em>/mes</em>' : '—') + '</strong></div>'
+        + '<div class="ss-meta"><div class="ss-meta-item"><span>Precio</span><strong>' + (!plan ? '—' : precio ? '$' + precio + ' <em>/mes</em>' : 'Según contrato') + '</strong></div>'
         + '<div class="ss-meta-item"><span>' + fechaLabel + '</span><strong>' + fechaVal + '</strong></div>'
-        + '<div class="ss-meta-item"><span>Equivalente Bs</span><strong>' + (plan ? 'Bs ' + bsFmt(precio * bcv) : '—') + '</strong></div></div></div>';
+        + '<div class="ss-meta-item"><span>Equivalente Bs</span><strong>' + (plan && precio ? 'Bs ' + bsFmt(precio * bcv) : '—') + '</strong></div></div></div>';
       if (window.lucide) window.lucide.createIcons();
     }
 
@@ -9993,8 +10005,8 @@
     const toast = (m, t) => { if (window.toast) window.toast(m, t); };
     const grid = document.getElementById('onbGrid');
     const ICONS = {
-      'Contador Básico': 'calculator', 'Contador PRO': 'briefcase-business', 'Firma Contable': 'landmark',
-      'Emprendimientos y PYME': 'sprout', 'Empresa Completa': 'building-2', 'Grupo Empresarial': 'network',
+      'Contador Básico': 'calculator', 'Contador PRO': 'briefcase-business', 'Firma a medida': 'landmark',
+      'Emprendimientos y PYME': 'sprout', 'Empresa Completa': 'building-2', 'Grupo a medida': 'network',
     };
     let seg = 'empresas', billing = 'mensual';
 
@@ -10003,8 +10015,9 @@
     function render() {
       const SEG = window.__PLANES || {};
       const s = SEG[seg]; if (!s) return;
-      grid.dataset.count = s.planes.length;
-      grid.innerHTML = s.planes.map((p) => {
+      const lista = s.planes.filter((p) => !p.consultar); // los a medida se conversan
+      grid.dataset.count = lista.length;
+      grid.innerHTML = lista.map((p) => {
         let precioHtml;
         if (billing === 'anual') precioHtml = '<div class="pc-amount"><span class="cur">$</span>' + precioMes(p) + '<span class="per">/mes</span></div><div class="pc-bill">facturado anual · $' + (p.precio * 10) + '/año</div>';
         else precioHtml = '<div class="pc-amount"><span class="cur">$</span>' + p.precio + '<span class="per">/mes</span></div>';
@@ -10046,7 +10059,7 @@
       document.getElementById('onbBilling').querySelectorAll('button').forEach((x) => x.removeAttribute('data-active'));
       b.dataset.active = 'true'; billing = b.dataset.bill; render();
     }));
-    document.getElementById('onbSkip').addEventListener('click', () => elegir(seg === 'contadores' ? 'Firma Contable' : 'Empresa Completa'));
+    document.getElementById('onbSkip').addEventListener('click', () => elegir(seg === 'contadores' ? 'Contador PRO' : 'Empresa Completa'));
 
     window.openPlanOnboarding = function (segmento, nombre) {
       seg = (segmento === 'contadores') ? 'contadores' : 'empresas';
@@ -10067,12 +10080,12 @@
     const fmt0 = (n) => Number(n).toLocaleString('es-VE');
 
     const PLANES = {
-      'Contador Básico': { precio: 49, color: '#545e67', empresas: 'Hasta 3 empresas', usuarios: '2 usuarios', modulos: 'Contabilidad · Fiscal' },
-      'Contador PRO': { precio: 79, color: '#008ec7', empresas: 'Hasta 10 empresas', usuarios: '10 usuarios', modulos: 'Fiscal · Contabilidad · Nómina' },
-      'Firma Contable': { precio: 199, color: '#003057', empresas: 'Empresas ilimitadas', usuarios: 'Usuarios ilimitados', modulos: 'Todos los módulos' },
+      'Contador Básico': { precio: 49, color: '#545e67', empresas: 'Hasta 3 empresas', usuarios: '2 usuarios', modulos: 'Contabilidad · Fiscal · Nómina' },
+      'Contador PRO': { precio: 79, color: '#008ec7', empresas: 'Hasta 10 empresas (+5 por paquete, máx. 20)', usuarios: '10 usuarios', modulos: 'Fiscal · Contabilidad · Nómina' },
+      'Firma a medida': { precio: 0, color: '#003057', empresas: 'Según contrato', usuarios: 'Usuarios ilimitados', modulos: 'Las dos apps · agentes opcionales' },
       'Emprendimientos y PYME': { precio: 29, color: '#1c8f5a', empresas: '1 empresa', usuarios: '2 usuarios', modulos: 'Ventas y CxC · Compras y CxP · Tesorería · Inventario' },
-      'Empresa Completa': { precio: 99, color: '#c97a14', empresas: '1 empresa', usuarios: 'Usuarios ilimitados', modulos: 'Todos los módulos' },
-      'Grupo Empresarial': { precio: 299, color: '#7b54c9', empresas: 'Hasta 5 empresas', usuarios: 'Usuarios ilimitados', modulos: 'Todos los módulos' },
+      'Empresa Completa': { precio: 99, color: '#c97a14', empresas: '1 empresa', usuarios: 'Usuarios ilimitados', modulos: 'Las dos apps' },
+      'Grupo a medida': { precio: 0, color: '#7b54c9', empresas: 'Según contrato', usuarios: 'Usuarios ilimitados', modulos: 'Las dos apps · agentes opcionales' },
     };
     let CUENTAS = [];   // se llena con las cuentas reales desde Supabase
     const estadoTag = { 'Activa': 'success', 'Prueba': 'cyan', 'Vencida': 'danger', 'Pendiente': 'navy', 'Suspendida': 'slate' };
@@ -10096,7 +10109,7 @@
       (perfiles || []).forEach((p) => { usersBy[p.cuenta_id] = (usersBy[p.cuenta_id] || 0) + 1; if (!adminBy[p.cuenta_id] || p.rol === 'admin') adminBy[p.cuenta_id] = p.nombre; });
       (emps || []).forEach((e) => { empsBy[e.cuenta_id] = (empsBy[e.cuenta_id] || 0) + 1; });
       CUENTAS = (cuentas || []).map((c) => {
-        const planNombre = (c.planes && c.planes.nombre) || '—';
+        const planNombre = window.__nombrePlan((c.planes && c.planes.nombre) || '—');
         const pl = PLANES[planNombre] || {};
         let est = normEstado(c.estado);
         // Días restantes de prueba; si ya venció, se marca como "Vencida"
@@ -10291,9 +10304,11 @@
             'Exonerar — no se le cobra nunca',
             'Quitar la exención y volver al ciclo',
             'Cambiar el ciclo (mensual / anual)',
+            'Ajustar el tope de empresas (paquetes de PRO o contrato a medida)',
           ] },
           { name: 'meses', label: 'Meses (para pago o cortesía)', type: 'number', step: '1', value: '1' },
           { name: 'ciclo', label: 'Ciclo', type: 'select', options: ['mensual', 'anual'], value: c.ciclo },
+          { name: 'tope', label: 'Empresas: PRO = extra (0, 5 o 10) · a medida = tope del contrato', type: 'number', step: '1', value: '0' },
           { name: 'desde', label: 'Cobrar a partir de (dd/mm/aaaa o aaaa-mm-dd)', type: 'date', value: hoyISO() },
           { name: 'motivo', label: 'Motivo o referencia — queda registrado', col: 2,
             placeholder: 'Ej. Pago móvil 0412 ref. 004512 · o: colega que ayuda a probar el producto' },
@@ -10337,6 +10352,21 @@
             patch.proximo_cobro = v.desde || hoyISO();
             patch.plan_desde = c.planDesde || (v.desde || hoyISO());
             anota = { tipo: 'ajuste', meses: null, hasta: patch.proximo_cobro };
+          } else if (/tope de empresas/i.test(acc)) {
+            // Paquetes de PRO ($40 por cada 5, hasta 20) o tope del contrato a medida.
+            // La base lo blinda (sql/planes_dos_apps.sql): solo el fundador lo cambia.
+            const n = parseInt(v.tope, 10) || 0;
+            const planN = window.__nombrePlan ? window.__nombrePlan(c.plan) : c.plan;
+            if (planN === 'Contador PRO') {
+              if ([0, 5, 10].indexOf(n) < 0) return 'En PRO las empresas extra van de 5 en 5: 0, 5 o 10 (tope 20).';
+              patch.empresas_extra = n;
+            } else if (planN === 'Firma a medida' || planN === 'Grupo a medida') {
+              if (n < 1) return 'Escribe el número de empresas que dice el contrato.';
+              patch.max_empresas_contrato = n;
+            } else {
+              return 'El tope solo se ajusta en Contador PRO (paquetes) o en un plan a medida (contrato).';
+            }
+            anota = { tipo: 'ajuste', meses: null, hasta: null };
           } else {
             patch.ciclo = v.ciclo === 'anual' ? 'anual' : 'mensual';
             anota = { tipo: 'ajuste', meses: null, hasta: c.proximoCobro };
@@ -11040,90 +11070,101 @@
      ========================================================= */
   (function planGating() {
     const toast = (m, t) => { if (window.toast) window.toast(m, t); };
-    // Módulos operativos sujetos a plan (los transversales —dashboard, terceros,
-    // usuarios, plataforma— están siempre disponibles).
-    const TODOS = ['ventas', 'compras', 'tesoreria', 'inventario', 'nomina', 'contabilidad', 'fiscal', 'agentes'];
-    // 'agentes' (IA) NO va en ningún plan: es un ADD-ON aparte, personalizado y con precio
-    // variable según el negocio (se vende en la pestaña "Automatizaciones y Agentes IA").
-    const EMPRESA_FULL = ['ventas', 'compras', 'tesoreria', 'inventario', 'nomina', 'contabilidad', 'fiscal'];
-    // Alcance del CONTADOR: solo módulos contables/de cumplimiento (NUNCA los operativos
-    // ventas/compras/tesorería/inventario, que son el control interno de la empresa).
-    // Esto evita que un contador "regale" el ERP completo y canibalice los planes de Empresa.
+    // ── Planes: qué módulos ve cada cuenta ──────────────────────────────────
+    // Dos apps sobre el mismo código (docs/superpowers/specs/2026-10-17-dos-apps-design.md):
+    //   · Gestión de Ventas e Inventario → el control interno del negocio.
+    //   · Gestión Contable y Fiscal      → lo que el contador lleva y declara.
+    // No se conectan entre sí. Lo que no es de la app de tu plan NO se muestra
+    // (antes salía con candado). Los transversales —dashboard, terceros,
+    // usuarios, plataforma— están siempre.
+    const APP_NEGOCIO = ['ventas', 'compras', 'tesoreria', 'inventario'];
+    const APP_CONTADOR = ['contabilidad', 'fiscal', 'nomina'];
+    const AMBAS = APP_NEGOCIO.concat(APP_CONTADOR);
+    const TODOS = AMBAS.concat(['agentes']);
     const PLAN_MODULOS = {
-      'Contador Básico': ['contabilidad', 'fiscal'],
-      'Contador PRO': ['contabilidad', 'fiscal', 'nomina'],
-      // Firma Contable: TODOS los módulos, incluidos los operativos (decisión de Luis 09/07/2026:
-      // la Firma es el plan tope de contadores y no se le recorta nada).
-      'Firma Contable': EMPRESA_FULL,
-      'Emprendimientos y PYME': ['ventas', 'compras', 'tesoreria', 'inventario'],
-      'Empresa Completa': EMPRESA_FULL,
-      'Grupo Empresarial': EMPRESA_FULL,
+      'Contador Básico': APP_CONTADOR,
+      'Contador PRO': APP_CONTADOR,
+      'Firma a medida': AMBAS,
+      'Emprendimientos y PYME': APP_NEGOCIO,
+      'Empresa Completa': AMBAS,
+      'Grupo a medida': AMBAS,
     };
-    // Nombre del plan → código (id) de la tabla 'planes' en Supabase
+    const A_MEDIDA = ['Firma a medida', 'Grupo a medida'];
+    // Hasta que se corra sql/planes_dos_apps.sql la base trae los nombres viejos.
+    const PLAN_ALIAS = { 'Firma Contable': 'Firma a medida', 'Grupo Empresarial': 'Grupo a medida' };
+    const nombrePlan = (p) => PLAN_ALIAS[p] || p;
+    window.__nombrePlan = nombrePlan;
+    // Nombre del plan → código (id) de la tabla 'planes' en Supabase (los id no cambiaron)
     const PLAN_SLUG = {
-      'Contador Básico': 'contador_basico', 'Contador PRO': 'contador_pro', 'Firma Contable': 'firma_contable',
-      'Emprendimientos y PYME': 'pyme', 'Empresa Completa': 'empresa_completa', 'Grupo Empresarial': 'grupo_empresarial',
+      'Contador Básico': 'contador_basico', 'Contador PRO': 'contador_pro', 'Firma a medida': 'firma_contable',
+      'Emprendimientos y PYME': 'pyme', 'Empresa Completa': 'empresa_completa', 'Grupo a medida': 'grupo_empresarial',
     };
-    // Tope REAL de empresas por plan (se aplica al registrar; el fundador no tiene tope).
+    // Tope de empresas de lista. PRO crece con paquetes de 5 hasta 20; los planes a
+    // medida usan el tope de su contrato. La base aplica lo mismo (validar_limite_empresas).
     const LIMITE_EMPRESAS = {
-      'Contador Básico': 3, 'Contador PRO': 10, 'Firma Contable': 30,
-      'Emprendimientos y PYME': 1, 'Empresa Completa': 1, 'Grupo Empresarial': 5,
+      'Contador Básico': 3, 'Contador PRO': 10, 'Firma a medida': 30,
+      'Emprendimientos y PYME': 1, 'Empresa Completa': 1, 'Grupo a medida': 5,
+    };
+    // Módulos de un plan. Agentes IA: solo con el add-on por cuenta (cuentas.addon_agentes),
+    // que se vende con los planes a medida y lo enciende el fundador.
+    window.__modulosDelPlan = function (plan, tipo, fundador, addon) {
+      if (fundador) return TODOS.slice();
+      plan = nombrePlan(plan);
+      let m = (PLAN_MODULOS[plan] || (tipo === 'contador' ? APP_CONTADOR : APP_NEGOCIO)).slice();
+      // Un contador en plan de lista nunca ve el control interno del negocio.
+      if (tipo === 'contador' && A_MEDIDA.indexOf(plan) < 0) m = m.filter((v) => APP_NEGOCIO.indexOf(v) < 0);
+      if (addon) m.push('agentes');
+      return m;
+    };
+    window.__topeEmpresas = function (plan, extra, contrato) {
+      plan = nombrePlan(plan);
+      if (plan === 'Contador PRO') return 10 + Math.min(Number(extra) || 0, 10);
+      if (A_MEDIDA.indexOf(plan) >= 0 && Number(contrato) > 0) return Number(contrato);
+      const lim = LIMITE_EMPRESAS[plan];
+      return (lim != null) ? lim : Infinity;
+    };
+    // Nombre de la app que ve la cuenta; vacío si ve las dos (cada sección lleva el suyo).
+    window.__nombreApp = function (modulos) {
+      const neg = modulos.some((v) => APP_NEGOCIO.indexOf(v) >= 0);
+      const con = modulos.some((v) => APP_CONTADOR.indexOf(v) >= 0);
+      if (neg && !con) return 'Gestión de Ventas e Inventario';
+      if (con && !neg) return 'Gestión Contable y Fiscal';
+      return '';
     };
     window.__limiteEmpresas = function () {
-      const lim = LIMITE_EMPRESAS[window.__planActivo || planActivo];
-      return (lim != null) ? lim : Infinity;
+      return window.__topeEmpresas(window.__planActivo || planActivo, window.__EMPRESAS_EXTRA, window.__MAX_CONTRATO);
     };
     const NOMBRE_VIEW = {
       ventas: 'Ventas y CxC', compras: 'Compras y CxP', tesoreria: 'Tesorería', inventario: 'Inventario',
       nomina: 'Nómina y RRHH', contabilidad: 'Contabilidad', fiscal: 'Módulo Fiscal', agentes: 'Centro de Agentes IA',
     };
-    let planActivo = 'Firma Contable'; // por defecto: acceso completo
+    let planActivo = 'Firma a medida'; // por defecto: acceso completo
+    let incluidos = TODOS.slice();
+    // La usa showView: una vista que no es de tu app no se abre ni escribiendo la dirección.
+    window.__planPermiteVista = (v) => TODOS.indexOf(v) < 0 || incluidos.indexOf(v) >= 0;
 
     function aplicarPlan(plan, prueba) {
+      plan = nombrePlan(plan);
       planActivo = plan;
       window.__planActivo = plan;
-      // El fundador (super-admin) tiene acceso completo al ERP para llevar las finanzas
-      // de DigiAccount mismo, sin importar el plan de su cuenta.
-      // Sin plan asignado (ej. cuenta en prueba que no eligió): módulos de su segmento,
-      // NUNCA todos (y jamás agentes, que es add-on).
-      const SIN_PLAN = (window.__CUENTA_TIPO === 'contador')
-        ? ['contabilidad', 'fiscal', 'nomina']
-        : EMPRESA_FULL;
-      let incluidos = window.__ES_FUNDADOR ? TODOS : (PLAN_MODULOS[plan] || SIN_PLAN);
-      // REFUERZO ANTI-FUGA: una cuenta de CONTADOR nunca tiene módulos operativos
-      // (ventas/compras/tesorería/inventario), pase lo que pase con el plan. Esos módulos
-      // son el control interno de la empresa; si la empresa los quiere, compra su plan.
-      // (Excepción: Firma Contable SÍ incluye los operativos — plan tope de contadores.)
-      if (!window.__ES_FUNDADOR && window.__CUENTA_TIPO === 'contador' && plan !== 'Firma Contable') {
-        const OPERATIVOS = ['ventas', 'compras', 'tesoreria', 'inventario'];
-        incluidos = incluidos.filter((m) => OPERATIVOS.indexOf(m) < 0);
-      }
-      // Agentes IA: add-on aparte. Bloqueado por defecto (vitrina con candado); se
-      // enciende POR CUENTA con cuentas.addon_agentes (lo activa solo el fundador,
-      // p. ej. a su propia Firma Contable o a un cliente que compre el add-on).
-      if (!window.__ES_FUNDADOR && window.__ADDON_AGENTES && incluidos.indexOf('agentes') < 0) incluidos = incluidos.concat('agentes');
-      const demoAgentes = false;
-      window.__demoAgentes = demoAgentes;
+      incluidos = window.__modulosDelPlan(plan, window.__CUENTA_TIPO, window.__ES_FUNDADOR, window.__ADDON_AGENTES);
       TODOS.forEach((v) => {
         const item = document.querySelector('.nav-item[data-view="' + v + '"]');
         if (!item) return;
-        let locked = incluidos.indexOf(v) < 0;
-        if (v === 'agentes' && demoAgentes) locked = false; // demo durante la prueba
-        item.classList.toggle('locked', locked);
-        // candado a la derecha (reemplaza/añade indicador)
-        let lk = item.querySelector('.nav-lock');
-        if (locked && !lk) { lk = document.createElement('i'); lk.setAttribute('data-lucide', 'lock'); lk.className = 'nav-lock'; item.appendChild(lk); }
-        else if (!locked && lk) lk.remove();
-        // badge "Demo" en Agentes IA durante la prueba
-        if (v === 'agentes') {
-          let demoB = item.querySelector('.nav-demo');
-          if (demoAgentes && !demoB) { demoB = document.createElement('span'); demoB.className = 'nav-demo'; demoB.textContent = 'Demo'; item.appendChild(demoB); }
-          else if (!demoAgentes && demoB) demoB.remove();
-        }
+        item.classList.toggle('plan-oculto', incluidos.indexOf(v) < 0);
+        item.classList.remove('locked');
+        const lk = item.querySelector('.nav-lock');
+        if (lk) lk.remove();
       });
-      // Banner de demo en la vista de Agentes
       const demoBanner = document.getElementById('agDemoBanner');
-      if (demoBanner) demoBanner.hidden = !demoAgentes;
+      if (demoBanner) demoBanner.hidden = true;
+      // Nombre de la app bajo la marca
+      const app = window.__nombreApp(incluidos);
+      const appEl = document.getElementById('appNombre');
+      if (appEl) { appEl.textContent = app; appEl.hidden = !app; }
+      document.title = 'DigiAccount' + (app ? ' · ' + app : ' ERP');
+      // Las etiquetas de sección se recalculan con el rol (oculta las que quedan vacías)
+      if (window.aplicarRol) window.aplicarRol();
       // indicador del plan activo
       const badge = document.getElementById('planActivoBadge');
       if (badge) badge.textContent = plan;
@@ -11209,7 +11250,7 @@
       document.querySelectorAll('.nav-item[data-view]').forEach((item) => {
         const v = item.dataset.view;
         if (v === 'fundador') return; // lo gobierna __ES_FUNDADOR
-        item.style.display = window.__rolPermiteVista(v) ? '' : 'none';
+        item.style.display = (window.__rolPermiteVista(v) && !item.classList.contains('plan-oculto')) ? '' : 'none';
       });
       // Etiquetas de sección que quedaron sin ítems visibles → se ocultan también
       document.querySelectorAll('.nav-section-label').forEach((lbl) => {

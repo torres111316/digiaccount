@@ -73,6 +73,15 @@
   .sidebar-brand .wordmark .digi    { color: var(--da-white); }
   .sidebar-brand .wordmark .account { color: var(--da-slate-400); }
   .app[data-collapsed="true"] .sidebar-brand .wordmark { opacity: 0; pointer-events: none; }
+  /* Nombre de la app según el plan (Gestión de Ventas e Inventario / Gestión
+     Contable y Fiscal). Va bajo la marca, pequeño: dice en qué app estás. */
+  .sidebar-brand .wordmark .app-nombre {
+    display: block; margin-top: 2px;
+    font-family: var(--font-body, inherit); font-weight: 600; font-size: 10.5px;
+    letter-spacing: .02em; color: var(--da-cyan-500);
+  }
+  /* Módulo que no es de la app de tu plan: no se muestra (ver planGating). */
+  .nav-item.plan-oculto { display: none !important; }
 
   /* Entity switcher */
   .entity-switcher {

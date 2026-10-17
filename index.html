@@ -141,7 +141,8 @@
   <aside class="sidebar">
     <div class="sidebar-brand">
       <img src="assets/isotipo-on-dark.png" alt="DigiAccount">
-      <div class="wordmark"><span class="digi">Digi</span><span class="account">Account</span></div>
+      <div class="wordmark"><span class="digi">Digi</span><span class="account">Account</span>
+        <span class="app-nombre" id="appNombre" hidden></span></div>
     </div>
 
     <button class="collapse-btn" id="collapseBtn" aria-label="Colapsar menú">
@@ -170,11 +171,20 @@
 
     <!-- Nav -->
     <nav class="nav">
-      <div class="nav-section-label">Operación</div>
+      <div class="nav-section-label">General</div>
       <a class="nav-item" data-active="true" data-view="dashboard" data-title="Dashboard Central" href="#dashboard">
         <span class="ico"><i data-lucide="layout-dashboard"></i></span>
         <span class="lbl">Dashboard Central</span>
       </a>
+      <a class="nav-item" data-view="terceros" data-title="Terceros · Clientes y Proveedores" href="#terceros">
+        <span class="ico"><i data-lucide="contact-round"></i></span>
+        <span class="lbl">Terceros</span>
+        <span class="badge" id="navTercerosBadge" style="display:none">0</span>
+      </a>
+
+      <!-- Las dos apps (diseño 2026-10-17-dos-apps): cada plan muestra la suya.
+           Lo que no es de tu app no aparece; ver planGating en app.js. -->
+      <div class="nav-section-label" data-app="negocio">Gestión de Ventas e Inventario</div>
       <a class="nav-item" data-view="ventas" data-title="Ventas y Cuentas por Cobrar" href="#ventas">
         <span class="ico"><i data-lucide="receipt"></i></span>
         <span class="lbl">Ventas y CxC</span>
@@ -192,17 +202,8 @@
         <span class="ico"><i data-lucide="package"></i></span>
         <span class="lbl">Catálogo e Inventario</span>
       </a>
-      <a class="nav-item" data-view="nomina" data-title="Nómina y RRHH" href="#nomina">
-        <span class="ico"><i data-lucide="users"></i></span>
-        <span class="lbl">Nómina y RRHH</span>
-      </a>
-      <a class="nav-item" data-view="terceros" data-title="Terceros · Clientes y Proveedores" href="#terceros">
-        <span class="ico"><i data-lucide="contact-round"></i></span>
-        <span class="lbl">Terceros</span>
-        <span class="badge" id="navTercerosBadge" style="display:none">0</span>
-      </a>
 
-      <div class="nav-section-label">Cumplimiento</div>
+      <div class="nav-section-label" data-app="contador">Gestión Contable y Fiscal</div>
       <a class="nav-item" data-view="contabilidad" data-title="Contabilidad · Libros" href="#contabilidad">
         <span class="ico"><i data-lucide="book-open"></i></span>
         <span class="lbl">Contabilidad</span>
@@ -210,6 +211,10 @@
       <a class="nav-item" id="navFiscal" data-view="fiscal" data-title="Módulo Fiscal · SENIAT" href="#fiscal" hidden>
         <span class="ico"><i data-lucide="file-text"></i></span>
         <span class="lbl">Módulo Fiscal · SENIAT</span>
+      </a>
+      <a class="nav-item" data-view="nomina" data-title="Nómina y RRHH" href="#nomina">
+        <span class="ico"><i data-lucide="users"></i></span>
+        <span class="lbl">Nómina y RRHH</span>
       </a>
 
       <div class="nav-section-label">Inteligencia</div>

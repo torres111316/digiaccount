@@ -1011,6 +1011,45 @@ ok('solo Liquidacion ofrece a los egresados',
   /const lista = tab === 'liquidacion' \? empleados\.concat\(egresados\) : empleados;/.test(_nom), true);
 ok('un egresado se encuentra por su id', /empleados\.find\(\(e\) => e\.id === id\) \|\| egresados\.find/.test(_nom), true);
 
+// ── Dos apps: qué ve cada plan ──────────────────────────────────────────────
+/* Diseño 2026-10-17-dos-apps. El negocio ve su control interno; el contador,
+   lo que se declara. Lo que no es de su app no aparece, y los agentes solo
+   existen con el add-on de un plan a medida. */
+bloque('Dos apps: qué ve cada plan');
+eval(tramo("    const APP_NEGOCIO = ['ventas',", '    window.__limiteEmpresas = function () {'));
+const _ve = (plan, tipo, fund, addon) => window.__modulosDelPlan(plan, tipo, fund, addon).slice().sort().join(',');
+ok('PYME: solo la app del negocio', _ve('Emprendimientos y PYME', 'empresa'), 'compras,inventario,tesoreria,ventas');
+ok('PYME: sin libros ni fiscal', _ve('Emprendimientos y PYME', 'empresa').indexOf('fiscal') < 0, true);
+ok('Contador Básico: contabilidad, fiscal y nómina', _ve('Contador Básico', 'contador'), 'contabilidad,fiscal,nomina');
+ok('Contador PRO: lo mismo que el Básico', _ve('Contador PRO', 'contador'), 'contabilidad,fiscal,nomina');
+ok('Empresa Completa: las dos apps', _ve('Empresa Completa', 'empresa'), 'compras,contabilidad,fiscal,inventario,nomina,tesoreria,ventas');
+ok('Firma a medida: las dos apps', _ve('Firma a medida', 'contador'), 'compras,contabilidad,fiscal,inventario,nomina,tesoreria,ventas');
+ok('el nombre viejo «Firma Contable» se lee como Firma a medida', _ve('Firma Contable', 'contador'), _ve('Firma a medida', 'contador'));
+ok('el nombre viejo «Grupo Empresarial» se lee como Grupo a medida', _ve('Grupo Empresarial', 'empresa'), _ve('Grupo a medida', 'empresa'));
+ok('agentes: solo con el add-on', _ve('Firma a medida', 'contador', false, true).indexOf('agentes') >= 0, true);
+ok('agentes: sin add-on no aparecen', _ve('Empresa Completa', 'empresa').indexOf('agentes') < 0, true);
+ok('el fundador lo ve todo', _ve('Emprendimientos y PYME', 'empresa', true), 'agentes,compras,contabilidad,fiscal,inventario,nomina,tesoreria,ventas');
+ok('cuenta de contador sin plan: su app', _ve(undefined, 'contador'), 'contabilidad,fiscal,nomina');
+ok('cuenta de empresa sin plan: la app del negocio', _ve(undefined, 'empresa'), 'compras,inventario,tesoreria,ventas');
+ok('nombre de la app del negocio', window.__nombreApp(window.__modulosDelPlan('Emprendimientos y PYME', 'empresa')), 'Gestión de Ventas e Inventario');
+ok('nombre de la app del contador', window.__nombreApp(window.__modulosDelPlan('Contador PRO', 'contador')), 'Gestión Contable y Fiscal');
+ok('con las dos apps no hay nombre único', window.__nombreApp(window.__modulosDelPlan('Empresa Completa', 'empresa')), '');
+
+bloque('Dos apps: tope de empresas');
+ok('Básico: 3', window.__topeEmpresas('Contador Básico', 0), 3);
+ok('PRO sin paquetes: 10', window.__topeEmpresas('Contador PRO', 0), 10);
+ok('PRO con un paquete: 15', window.__topeEmpresas('Contador PRO', 5), 15);
+ok('PRO con dos paquetes: 20', window.__topeEmpresas('Contador PRO', 10), 20);
+ok('PRO no pasa de 20', window.__topeEmpresas('Contador PRO', 30), 20);
+ok('Firma a medida: lo del contrato', window.__topeEmpresas('Firma a medida', 0, 40), 40);
+ok('Firma a medida sin contrato cargado: 30', window.__topeEmpresas('Firma Contable', 0, null), 30);
+ok('Grupo a medida: lo del contrato', window.__topeEmpresas('Grupo Empresarial', 0, 8), 8);
+ok('PYME: 1', window.__topeEmpresas('Emprendimientos y PYME'), 1);
+ok('Empresa Completa: 1', window.__topeEmpresas('Empresa Completa'), 1);
+const _sqlTope = fs.readFileSync(path.join(RAIZ, 'sql', 'planes_dos_apps.sql'), 'utf8');
+ok('la base aplica el mismo tope de PRO', /when 'contador_pro'\s+then 10 \+ least\(v_extra, 10\)/.test(_sqlTope), true);
+ok('la base blinda el tope contra el cliente', /new\.empresas_extra := old\.empresas_extra/.test(_sqlTope), true);
+
 
 console.log('\n' + (fallas ? 'HAY ' + fallas + ' FALLA(S) de ' + total : 'TODO OK · ' + total + ' comprobaciones'));
 process.exit(fallas ? 1 : 0);
