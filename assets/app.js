@@ -12344,12 +12344,13 @@
           caja.hidden = false;
           caja.innerHTML = '<div class="re-cab"><i data-lucide="check-circle-2"></i> <b>' + esc(elegido.nombre) + '</b></div>'
                          + resumenPerfil(elegido.perfil)
-                         + '<label class="re-sembrar" id="cwSembrarBox" hidden><input type="checkbox" id="cwSembrar" checked> '
-                         + '<span>Cargar la lista de <b id="cwSembrarN">0</b> productos más comunes de este ramo. '
-                         + 'Llegan sin precio ni existencia: esos los pones tú.</span></label>';
-          contarLista(elegido.id).then((n) => {
-            const box = $('cwSembrarBox'), num = $('cwSembrarN');
-            if (box && num && n) { num.textContent = n; box.hidden = false; }
+                         + '<div id="cwSembrarBox" hidden></div>';
+          const idRamo = elegido.id;
+          cargarListas().then(() => {
+            const box = $('cwSembrarBox');
+            if (!box || !elegido || elegido.id !== idRamo) return;
+            box.innerHTML = selectorListas(idRamo);
+            box.hidden = !box.innerHTML;
           });
           /* Los tres modelos que ya existían siguen mandando en la vista de
              Inventario: aquí solo se sincronizan con lo que dice el ramo, en
@@ -12370,24 +12371,96 @@
     window.__montarRamoWizard = montarBuscador;
 
     // ── La lista de productos sugerida por ramo (sql/catalogo_ramos.sql) ──
-    async function contarLista(ramoId) {
-      if (!window.sb || !ramoId) return 0;
-      const { count, error } = await window.sb.from('ramo_productos')
-        .select('nombre', { count: 'exact', head: true }).eq('ramo_id', ramoId);
-      return error ? 0 : (count || 0);
+    /* Un negocio tiene UN ramo principal —el que decide cómo se lleva su
+       inventario— pero casi nunca vende de uno solo: la carnicería tiene
+       charcutería, la panadería quesos, la bodega verduras. Por eso las
+       listas de productos se pueden sumar de varios ramos. */
+    let LISTAS = null;   // { ramo_id: cuántos productos sugeridos tiene }
+    async function cargarListas() {
+      if (LISTAS || !window.sb) return LISTAS || {};
+      const { data, error } = await window.sb.from('ramo_productos').select('ramo_id');
+      if (error) return {};
+      LISTAS = {};
+      (data || []).forEach((r) => { LISTAS[r.ramo_id] = (LISTAS[r.ramo_id] || 0) + 1; });
+      return LISTAS;
     }
-    // Copia la lista a la empresa. Solo agrega lo que no tenga (por nombre).
-    async function sembrarLista(empresaId, ramoId) {
-      const { data, error } = await window.sb.rpc('sembrar_catalogo', { p_empresa_id: empresaId, p_ramo_id: ramoId });
-      if (error || (data && data.ok === false)) {
-        toast('No se pudo cargar la lista de productos: ' + (error ? error.message : data.motivo), 'error');
-        return -1;
+    // Lo que suele venderse junto con cada ramo
+    const COMPLEMENTOS = {
+      carniceria: ['charcuteria', 'lacteos', 'bodega'],
+      charcuteria: ['lacteos', 'panaderia', 'carniceria'],
+      lacteos: ['charcuteria', 'panaderia'],
+      panaderia: ['charcuteria', 'lacteos', 'bodega'],
+      bodega: ['verduleria', 'charcuteria', 'lacteos', 'carniceria'],
+      abasto: ['verduleria', 'charcuteria', 'carniceria', 'lacteos'],
+      verduleria: ['bodega', 'lacteos'],
+      licoreria: ['bodega'],
+      farmacia: ['perfumeria'],
+      perfumeria: ['farmacia', 'quincalla'],
+      ropa: ['perfumeria', 'quincalla'],
+      quincalla: ['libreria', 'perfumeria', 'telefonia'],
+      libreria: ['quincalla'],
+      telefonia: ['quincalla'],
+      repuestos: ['repuestos_moto', 'taller', 'cauchera'],
+      repuestos_moto: ['repuestos'],
+      ferreteria: ['construccion', 'electricos', 'agropecuaria', 'quincalla'],
+      agropecuaria: ['ferreteria', 'veterinaria'],
+      construccion: ['ferreteria', 'electricos'],
+      electricos: ['ferreteria', 'construccion'],
+      electro: ['telefonia', 'electricos'],
+      jugueteria: ['quincalla', 'libreria'],
+      oficina: ['libreria'],
+      veterinaria: ['agropecuaria'],
+      belleza: ['perfumeria'],
+      taller: ['repuestos', 'cauchera'],
+      cauchera: ['repuestos', 'taller'],
+      comida_rapida: ['restaurante', 'licoreria'],
+      restaurante: ['comida_rapida', 'licoreria'],
+      panaderia_prod: ['panaderia', 'charcuteria', 'lacteos'],
+      mayorista: ['abasto', 'bodega', 'licoreria'],
+    };
+    // Casillas: el ramo principal marcado, los que suelen ir con él a la vista
+    // y el resto plegado. Cada casilla lleva data-sembrar con el id del ramo.
+    function selectorListas(principal) {
+      const L = LISTAS || {};
+      const nombre = (id) => { const r = RAMOS.find((x) => x.id === id); return r ? r.nombre : id; };
+      const casilla = (id) => '<label class="re-chip"><input type="checkbox" data-sembrar="' + esc(id) + '"> '
+        + esc(nombre(id)) + ' <small>' + L[id] + '</small></label>';
+      const sugeridos = (COMPLEMENTOS[principal] || []).filter((id) => L[id] && id !== principal);
+      const resto = RAMOS.map((r) => r.id).filter((id) => L[id] && id !== principal && sugeridos.indexOf(id) < 0);
+      let html = '';
+      if (L[principal]) {
+        html += '<label class="re-sembrar"><input type="checkbox" data-sembrar="' + esc(principal) + '" checked> '
+          + '<span>Cargar los <b>' + L[principal] + '</b> productos más comunes de <b>' + esc(nombre(principal)) + '</b>. '
+          + 'Llegan sin precio ni existencia: esos los pones tú.</span></label>';
       }
-      const n = (data && data.agregados) || 0;
-      toast(n ? n + ' productos cargados en Inventario. Ponles su precio antes de vender.'
-              : 'Esta empresa ya tenía todos los productos de la lista.', n ? 'success' : 'info');
+      if (sugeridos.length || resto.length) {
+        html += '<div class="re-extra-tit">¿Vendes también…?</div><div class="re-extra">'
+          + sugeridos.map(casilla).join('') + '</div>';
+        if (resto.length) {
+          html += '<details class="re-mas"><summary>Ver los demás ramos</summary><div class="re-extra">'
+            + resto.map(casilla).join('') + '</div></details>';
+        }
+      }
+      return html;
+    }
+    const marcados = (cont) => cont
+      ? Array.prototype.map.call(cont.querySelectorAll('[data-sembrar]:checked'), (c) => c.dataset.sembrar) : [];
+    // Copia las listas a la empresa, una tras otra. Solo agrega lo que no tenga
+    // (por nombre), así que el queso que está en dos listas entra una vez.
+    async function sembrarListas(empresaId, ramos) {
+      let total = 0;
+      for (const id of ramos) {
+        const { data, error } = await window.sb.rpc('sembrar_catalogo', { p_empresa_id: empresaId, p_ramo_id: id });
+        if (error || (data && data.ok === false)) {
+          toast('No se pudo cargar la lista de productos: ' + (error ? error.message : data.motivo), 'error');
+          return -1;
+        }
+        total += (data && data.agregados) || 0;
+      }
+      toast(total ? total + ' productos cargados en Inventario. Ponles su precio antes de vender.'
+                  : 'Esta empresa ya tenía todos esos productos.', total ? 'success' : 'info');
       if (window.cargarProductos) window.cargarProductos();
-      return n;
+      return total;
     }
     window.__ramoElegido = () => (elegido ? elegido.id : null);
 
@@ -12397,13 +12470,13 @@
     window.__aplicarRamoNuevaEmpresa = function (empresaId) {
       const id = window.__ramoElegido();
       if (!id || !empresaId || !window.sb) return;
-      const chk = $('cwSembrar'), box = $('cwSembrarBox');
-      const sembrar = !!(chk && chk.checked && box && !box.hidden);
+      const box = $('cwSembrarBox');
+      const listas = (box && !box.hidden) ? marcados(box) : [];
       window.sb.rpc('aplicar_ramo', { p_empresa_id: empresaId, p_ramo_id: id, p_sobrescribir: true })
         .then(({ error }) => {
           if (error) console.warn('[Ramos] No se pudo aplicar el ramo:', error.message);
           elegido = null;
-          if (sembrar) sembrarLista(empresaId, id);
+          if (listas.length) sembrarListas(empresaId, listas);
         });
     };
 
@@ -12504,14 +12577,24 @@
       if (btnSembrar) btnSembrar.addEventListener('click', async () => {
         const sel = $('cfgRamoSel');
         if (!sel || !sel.value) { toast('Elige primero un ramo.', 'info'); return; }
-        const r = RAMOS.find((x) => x.id === sel.value);
-        const n = await contarLista(sel.value);
-        if (!n) { toast('Ese ramo todavía no tiene lista de productos sugerida.', 'info'); return; }
-        if (!confirm('Se agregarán hasta ' + n + ' productos de «' + (r ? r.nombre : sel.value) + '» a '
-            + (emp.nombre || 'esta empresa') + ', sin precio ni existencia.' + String.fromCharCode(10) + 'Los que ya tengas con el mismo nombre no se tocan.' + String.fromCharCode(10, 10) + '¿Continuar?')) return;
-        btnSembrar.disabled = true;
-        await sembrarLista(emp.id, sel.value);
-        btnSembrar.disabled = false;
+        await cargarListas();
+        const html = selectorListas(sel.value);
+        if (!html) { toast('Todavía no hay listas de productos sugeridas.', 'info'); return; }
+        window.openFormModal && window.openFormModal({
+          title: 'Cargar productos sugeridos', saveLabel: 'Cargar',
+          fields: [{ name: 'x', label: ' ', col: 2, type: 'static', html:
+            '<div id="cfgSembrarSel" class="re-modal">' + html
+            + '<p class="re-nota">Se agregan a ' + esc(emp.nombre || 'esta empresa') + ' sin precio ni existencia. '
+            + 'Los que ya tengas con el mismo nombre no se tocan.</p></div>' }],
+          // Síncrono a propósito: openFormModal solo muestra el error si recibe
+          // un texto, no una promesa. La carga sigue sola y avisa al terminar.
+          onSave: () => {
+            const ids = marcados(document.getElementById('cfgSembrarSel'));
+            if (!ids.length) return 'Marca al menos un ramo.';
+            btnSembrar.disabled = true;
+            sembrarListas(emp.id, ids).then(() => { btnSembrar.disabled = false; });
+          },
+        });
       });
 
       const btnGuardar = $('cfgInvGuardar');

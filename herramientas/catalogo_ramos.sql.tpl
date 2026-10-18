@@ -19,7 +19,8 @@
 -- 1) Ramos nuevos y nombres ajustados
 insert into public.ramos (id, nombre, familia, nota, orden) values
   ('bodega',    'Bodega y abasto de barrio',          'empaquetado', 'Víveres, cesta básica exenta, venta al detal', 9),
-  ('quincalla', 'Quincalla y variedades',             'empaquetado', 'Surtido amplio, muchos artículos de bajo precio', 19)
+  ('quincalla', 'Quincalla y variedades',             'empaquetado', 'Surtido amplio, muchos artículos de bajo precio', 19),
+  ('cauchera',  'Cauchera',                           'tecnico',     'Cauchos nuevos y usados, montaje y balanceo', 28)
 on conflict (id) do update set nombre = excluded.nombre, familia = excluded.familia,
   nota = excluded.nota, orden = excluded.orden;
 update public.ramos set nombre = 'Ropa, calzado y accesorios', nota = 'Tallas, colores y bisutería' where id = 'ropa';
@@ -31,7 +32,8 @@ insert into public.ramo_perfil (ramo_id,
   control_lotes, control_series, unidades_multiples, variantes,
   aplicabilidad, receta, registro_sanitario, listas_precio) values
   ('bodega',    true,false,false, true,'promedio',true, true, false,false,true, false, false,false,false,false),
-  ('quincalla', true,false,false, true,'promedio',false,true, false,false,false,false, false,false,false,false)
+  ('quincalla', true,false,false, true,'promedio',false,true, false,false,false,false, false,false,false,false),
+  ('cauchera',  true,false,true,  true,'promedio',false,false,false,false,false,false, true, false,false,false)
 on conflict (ramo_id) do nothing;
 
 -- 2) La lista por ramo (global, igual para todas las cuentas)

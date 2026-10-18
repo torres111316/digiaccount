@@ -863,6 +863,434 @@ Bisutería | Accesorios | und | 16
 """
 
 
+CAT['comida_rapida'] = """
+Perro caliente sencillo | Perros calientes | und | 16
+Perro caliente especial | Perros calientes | und | 16
+Perro caliente polaco | Perros calientes | und | 16
+Hamburguesa sencilla | Hamburguesas | und | 16
+Hamburguesa con queso | Hamburguesas | und | 16
+Hamburguesa doble | Hamburguesas | und | 16
+Hamburguesa de pollo | Hamburguesas | und | 16
+Hamburguesa especial de la casa | Hamburguesas | und | 16
+Pepito de carne | Pepitos | und | 16
+Pepito de pollo | Pepitos | und | 16
+Pepito mixto | Pepitos | und | 16
+Arepa reina pepiada | Arepas | und | 16
+Arepa dominó | Arepas | und | 16
+Arepa pelúa | Arepas | und | 16
+Arepa catira | Arepas | und | 16
+Arepa de queso | Arepas | und | 16
+Arepa de jamón y queso | Arepas | und | 16
+Arepa con carne mechada | Arepas | und | 16
+Empanada de carne | Empanadas | und | 16
+Empanada de pollo | Empanadas | und | 16
+Empanada de queso | Empanadas | und | 16
+Empanada de cazón | Empanadas | und | 16
+Cachapa con queso | Cachapas | und | 16
+Cachapa con queso y cochino | Cachapas | und | 16
+Patacón | Patacones | und | 16
+Shawarma | Otros | und | 16
+Salchipapa | Otros | und | 16
+Tequeños (porción) | Acompañantes | und | 16
+Papas fritas (porción) | Acompañantes | und | 16
+Tostones (porción) | Acompañantes | und | 16
+Pollo frito (pieza) | Pollo | und | 16
+Alitas (porción) | Pollo | und | 16
+Combo del día | Combos | und | 16
+Refresco (vaso) | Bebidas | und | 16
+Refresco lata | Bebidas | und | 16
+Jugo natural | Bebidas | und | 16
+Malta | Bebidas | und | 16
+Agua mineral | Bebidas | und | 16
+Merengada | Bebidas | und | 16
+Café | Bebidas | und | 16
+Envase para llevar | Empaques | und | 16
+Servicio de delivery | Servicios | und | 16
+"""
+
+CAT['restaurante'] = """
+Desayuno criollo | Desayunos | und | 16
+Arepa con acompañantes | Desayunos | und | 16
+Empanadas (ración) | Desayunos | und | 16
+Huevos al gusto | Desayunos | und | 16
+Pabellón criollo | Platos principales | und | 16
+Pollo a la plancha | Platos principales | und | 16
+Pollo guisado | Platos principales | und | 16
+Carne asada | Platos principales | und | 16
+Carne mechada | Platos principales | und | 16
+Bistec encebollado | Platos principales | und | 16
+Chuleta de cerdo | Platos principales | und | 16
+Pescado frito | Platos principales | und | 16
+Parrilla para dos | Parrillas | und | 16
+Parrilla mixta | Parrillas | und | 16
+Pasta a la boloñesa | Pastas | und | 16
+Pasta carbonara | Pastas | und | 16
+Sopa del día | Sopas | und | 16
+Hervido de res | Sopas | und | 16
+Hervido de gallina | Sopas | und | 16
+Ensalada mixta | Ensaladas | und | 16
+Ensalada César | Ensaladas | und | 16
+Arroz (contorno) | Contornos | und | 16
+Tajadas (contorno) | Contornos | und | 16
+Yuca (contorno) | Contornos | und | 16
+Papas fritas (contorno) | Contornos | und | 16
+Menú ejecutivo | Menú del día | und | 16
+Quesillo | Postres | und | 16
+Torta (porción) | Postres | und | 16
+Tres leches | Postres | und | 16
+Jugo natural | Bebidas | und | 16
+Refresco | Bebidas | und | 16
+Agua mineral | Bebidas | und | 16
+Café | Bebidas | und | 16
+Cerveza | Bebidas | und | 16?
+Servicio a domicilio | Servicios | und | 16
+"""
+
+CAT['panaderia_prod'] = """
+Harina de trigo panadera (saco 45 kg) | Harinas | bulto | E?
+Harina de trigo todo uso (saco) | Harinas | bulto | E?
+Azúcar (saco 50 kg) | Endulzantes | bulto | 16?
+Azúcar pulverizada | Endulzantes | kg | 16
+Sal (saco) | Insumos | bulto | E
+Levadura fresca | Insumos | kg | 16
+Levadura seca | Insumos | und | 16
+Mejorador de pan | Insumos | kg | 16
+Polvo de hornear | Insumos | kg | 16
+Manteca vegetal | Grasas | kg | 16?
+Margarina para hojaldre | Grasas | kg | 16?
+Mantequilla | Grasas | kg | E
+Aceite vegetal (garrafa) | Grasas | und | E
+Huevos (cartón de 30) | Insumos | und | E
+Leche en polvo (saco) | Insumos | bulto | E
+Esencia de vainilla | Insumos | und | 16
+Cacao en polvo | Insumos | kg | 16
+Chocolate de cobertura | Insumos | kg | 16
+Crema pastelera (mezcla) | Insumos | kg | 16
+Queso para relleno | Rellenos | kg | 16?
+Jamón para relleno | Rellenos | kg | 16
+Guayaba en pasta | Rellenos | kg | 16
+Papelón | Endulzantes | und | 16?
+Bolsas para pan | Empaques | und | 16
+Cajas para torta | Empaques | und | 16
+Bandejas de cartón | Empaques | und | 16
+Gas (bombona industrial) | Servicios | und | E?
+"""
+
+CAT['belleza'] = """
+Champú profesional | Cabello | und | 16
+Acondicionador profesional | Cabello | und | 16
+Tratamiento capilar | Cabello | und | 16
+Keratina | Cabello | und | 16
+Tinte | Coloración | und | 16
+Oxidante | Coloración | und | 16
+Decolorante | Coloración | und | 16
+Gel para cabello | Peinado | und | 16
+Cera para cabello | Peinado | und | 16
+Laca | Peinado | und | 16
+Esmalte de uñas | Uñas | und | 16
+Gel para uñas | Uñas | und | 16
+Acrílico para uñas | Uñas | und | 16
+Quitaesmalte | Uñas | und | 16
+Limas | Uñas | und | 16
+Cuchillas de afeitar | Barbería | und | 16
+Espuma de afeitar | Barbería | und | 16
+After shave | Barbería | und | 16
+Talco | Barbería | und | 16
+Cera depilatoria | Depilación | und | 16
+Corte de dama | Servicios | und | 16
+Corte de caballero | Servicios | und | 16
+Corte de niño | Servicios | und | 16
+Barba | Servicios | und | 16
+Secado (blower) | Servicios | und | 16
+Planchado | Servicios | und | 16
+Tinte (servicio) | Servicios | und | 16
+Mechas | Servicios | und | 16
+Alisado con keratina (servicio) | Servicios | und | 16
+Manicure | Servicios | und | 16
+Pedicure | Servicios | und | 16
+Uñas acrílicas (servicio) | Servicios | und | 16
+Depilación de cejas | Servicios | und | 16
+Maquillaje | Servicios | und | 16
+"""
+
+CAT['taller'] = """
+Cambio de aceite (mano de obra) | Servicios | und | 16
+Afinación | Servicios | und | 16
+Diagnóstico con escáner | Servicios | und | 16
+Cambio de pastillas de freno (mano de obra) | Servicios | und | 16
+Rectificación de discos | Servicios | und | 16
+Alineación | Servicios | und | 16
+Balanceo | Servicios | und | 16
+Cambio de correa de tiempo (mano de obra) | Servicios | und | 16
+Reparación de motor | Servicios | und | 16
+Reparación de caja | Servicios | und | 16
+Trabajo eléctrico | Servicios | und | 16
+Latonería | Servicios | und | 16
+Pintura de pieza | Servicios | und | 16
+Lavado de motor | Servicios | und | 16
+Aceite de motor 15W40 (litro) | Repuestos | und | 16
+Aceite de motor 20W50 (litro) | Repuestos | und | 16
+Filtro de aceite | Repuestos | und | 16
+Filtro de aire | Repuestos | und | 16
+Bujías (juego) | Repuestos | und | 16
+Pastillas de freno | Repuestos | und | 16
+Líquido de frenos | Repuestos | und | 16
+Refrigerante (galón) | Repuestos | und | 16
+Limpiador de carburador | Repuestos | und | 16
+Desengrasante | Repuestos | und | 16
+"""
+
+CAT['cauchera'] = """
+Caucho rin 13 | Cauchos nuevos | und | 16
+Caucho rin 14 | Cauchos nuevos | und | 16
+Caucho rin 15 | Cauchos nuevos | und | 16
+Caucho rin 16 | Cauchos nuevos | und | 16
+Caucho rin 17 | Cauchos nuevos | und | 16
+Caucho de camioneta | Cauchos nuevos | und | 16
+Caucho de moto | Cauchos nuevos | und | 16
+Caucho usado | Cauchos usados | und | 16
+Caucho reencauchado | Cauchos usados | und | 16
+Tripa | Accesorios | und | 16
+Válvula | Accesorios | und | 16
+Parche | Accesorios | und | 16
+Tapón para caucho | Accesorios | und | 16
+Pesas de balanceo | Accesorios | und | 16
+Rin | Rines | und | 16
+Montaje de caucho | Servicios | und | 16
+Desmontaje de caucho | Servicios | und | 16
+Reparación de pinchazo | Servicios | und | 16
+Balanceo | Servicios | und | 16
+Alineación | Servicios | und | 16
+Rotación de cauchos | Servicios | und | 16
+Inflado con nitrógeno | Servicios | und | 16
+"""
+
+CAT['construccion'] = """
+Cemento gris (saco 42,5 kg) | Cemento y agregados | bulto | 16
+Cemento blanco (saco) | Cemento y agregados | bulto | 16
+Arena lavada (m³) | Cemento y agregados | und | 16
+Arena de río (m³) | Cemento y agregados | und | 16
+Piedra picada (m³) | Cemento y agregados | und | 16
+Granzón (m³) | Cemento y agregados | und | 16
+Cal (saco) | Cemento y agregados | bulto | 16
+Concreto premezclado (m³) | Cemento y agregados | und | 16
+Bloque de arcilla 15 | Bloques | und | 16
+Bloque de arcilla 10 | Bloques | und | 16
+Bloque de cemento 15 | Bloques | und | 16
+Bloque de cemento 20 | Bloques | und | 16
+Ladrillo | Bloques | und | 16
+Cabilla 3/8 | Acero | und | 16
+Cabilla 1/2 | Acero | und | 16
+Cabilla 5/8 | Acero | und | 16
+Malla truckson | Acero | und | 16
+Alambre dulce | Acero | kg | 16
+Perfil tubular | Acero | und | 16
+Lámina de zinc | Techos | und | 16
+Lámina acerolit | Techos | und | 16
+Teja | Techos | und | 16
+Correa para techo | Techos | und | 16
+Manto asfáltico | Impermeabilización | und | 16
+Impermeabilizante | Impermeabilización | und | 16
+Cerámica para piso (m²) | Acabados | und | 16
+Porcelanato (m²) | Acabados | und | 16
+Pego para cerámica (saco) | Acabados | bulto | 16
+Porcelana para juntas | Acabados | und | 16
+Friso listo (saco) | Acabados | bulto | 16
+Lámina de drywall | Acabados | und | 16
+Pasta para drywall | Acabados | und | 16
+Tubo PVC 4 pulgadas | Plomería | und | 16
+Tubo PVC 1/2 | Plomería | und | 16
+Poceta | Sanitarios | und | 16
+Lavamanos | Sanitarios | und | 16
+Fregadero | Sanitarios | und | 16
+Tanque de agua | Sanitarios | und | 16
+Puerta de madera | Puertas y ventanas | und | 16
+Puerta de hierro | Puertas y ventanas | und | 16
+Ventana panorámica | Puertas y ventanas | und | 16
+Flete | Servicios | und | 16
+"""
+
+CAT['electricos'] = """
+Cable número 14 | Cables | m | 16
+Cable número 12 | Cables | m | 16
+Cable número 10 | Cables | m | 16
+Cable número 8 | Cables | m | 16
+Cable dúplex | Cables | m | 16
+Cable de teléfono | Cables | m | 16
+Cable coaxial | Cables | m | 16
+Cable UTP (red) | Cables | m | 16
+Tubo conduit 1/2 | Canalización | und | 16
+Tubo conduit 3/4 | Canalización | und | 16
+Canaleta plástica | Canalización | und | 16
+Caja de paso | Canalización | und | 16
+Tomacorriente doble | Accesorios | und | 16
+Tomacorriente 220 V | Accesorios | und | 16
+Interruptor sencillo | Accesorios | und | 16
+Interruptor doble | Accesorios | und | 16
+Interruptor triple | Accesorios | und | 16
+Tapa ciega | Accesorios | und | 16
+Socate | Accesorios | und | 16
+Enchufe macho | Accesorios | und | 16
+Regleta | Accesorios | und | 16
+Breaker 15 A | Protección | und | 16
+Breaker 20 A | Protección | und | 16
+Breaker 30 A | Protección | und | 16
+Breaker 40 A | Protección | und | 16
+Tablero eléctrico | Protección | und | 16
+Protector de voltaje | Protección | und | 16
+Bombillo LED 9 W | Iluminación | und | 16
+Bombillo LED 12 W | Iluminación | und | 16
+Bombillo LED 20 W | Iluminación | und | 16
+Tubo LED | Iluminación | und | 16
+Panel LED | Iluminación | und | 16
+Reflector LED | Iluminación | und | 16
+Lámpara de techo | Iluminación | und | 16
+Cinta LED | Iluminación | m | 16
+Cinta aislante | Insumos | und | 16
+Conectores de cable | Insumos | und | 16
+Teipe | Insumos | und | 16
+Multímetro | Herramientas | und | 16
+Pinza amperimétrica | Herramientas | und | 16
+"""
+
+CAT['electro'] = """
+Nevera | Línea blanca | und | 16
+Cocina a gas | Línea blanca | und | 16
+Cocina eléctrica | Línea blanca | und | 16
+Lavadora | Línea blanca | und | 16
+Secadora | Línea blanca | und | 16
+Freezer | Línea blanca | und | 16
+Aire acondicionado | Climatización | und | 16
+Ventilador | Climatización | und | 16
+Televisor 32 pulgadas | Audio y video | und | 16
+Televisor 43 pulgadas | Audio y video | und | 16
+Televisor 55 pulgadas | Audio y video | und | 16
+Equipo de sonido | Audio y video | und | 16
+Corneta | Audio y video | und | 16
+Microondas | Pequeños electrodomésticos | und | 16
+Licuadora | Pequeños electrodomésticos | und | 16
+Cafetera | Pequeños electrodomésticos | und | 16
+Tostiarepa | Pequeños electrodomésticos | und | 16
+Freidora de aire | Pequeños electrodomésticos | und | 16
+Plancha | Pequeños electrodomésticos | und | 16
+Batidora | Pequeños electrodomésticos | und | 16
+Arrocera | Pequeños electrodomésticos | und | 16
+Olla de presión | Pequeños electrodomésticos | und | 16
+Secador de cabello | Cuidado personal | und | 16
+Plancha para cabello | Cuidado personal | und | 16
+Regulador de voltaje | Protección | und | 16
+Protector de nevera | Protección | und | 16
+Inversor | Energía | und | 16
+Planta eléctrica | Energía | und | 16
+Batería para inversor | Energía | und | 16
+"""
+
+CAT['jugueteria'] = """
+Muñeca | Muñecas | und | 16
+Peluche | Peluches | und | 16
+Carro a control remoto | Vehículos | und | 16
+Carrito de juguete | Vehículos | und | 16
+Pelota | Deportes | und | 16
+Bicicleta | Deportes | und | 16
+Patineta | Deportes | und | 16
+Patines | Deportes | und | 16
+Juego de mesa | Juegos | und | 16
+Rompecabezas | Juegos | und | 16
+Bloques para armar | Juegos | und | 16
+Figura de acción | Figuras | und | 16
+Juguete didáctico | Bebés | und | 16
+Sonajero | Bebés | und | 16
+Pistola de agua | Temporada | und | 16
+Piñata | Fiesta | und | 16
+Globos (paquete) | Fiesta | und | 16
+Cotillón | Fiesta | und | 16
+Papel de regalo | Regalos | und | 16
+Bolsa de regalo | Regalos | und | 16
+Tarjeta de felicitación | Regalos | und | 16
+Taza decorada | Regalos | und | 16
+Portarretrato | Regalos | und | 16
+"""
+
+CAT['oficina'] = """
+Papel bond carta (resma) | Papel | und | 16
+Papel bond oficio (resma) | Papel | und | 16
+Papel para impresora térmica (rollo) | Papel | und | 16
+Sobre manila carta | Archivo | und | 16
+Carpeta marrón | Archivo | und | 16
+Carpeta de fuelle | Archivo | und | 16
+Archivador | Archivo | und | 16
+Separadores | Archivo | und | 16
+Bolígrafo azul (caja) | Escritura | und | 16
+Bolígrafo negro (caja) | Escritura | und | 16
+Marcador permanente | Escritura | und | 16
+Resaltador | Escritura | und | 16
+Corrector | Escritura | und | 16
+Grapadora | Escritorio | und | 16
+Grapas (caja) | Escritorio | und | 16
+Saca grapas | Escritorio | und | 16
+Perforadora | Escritorio | und | 16
+Clips (caja) | Escritorio | und | 16
+Gancho mariposa (caja) | Escritorio | und | 16
+Cinta adhesiva | Escritorio | und | 16
+Notas adhesivas | Escritorio | und | 16
+Tijera | Escritorio | und | 16
+Calculadora | Equipos | und | 16
+Tóner | Impresión | und | 16
+Cartucho de tinta negro | Impresión | und | 16
+Cartucho de tinta a color | Impresión | und | 16
+Tinta para recargar | Impresión | und | 16
+Sello de goma | Sellos | und | 16
+Tinta para sello | Sellos | und | 16
+Libro de actas | Libros contables | und | 16?
+Libro diario | Libros contables | und | 16?
+Talonario de recibos | Formularios | und | 16
+"""
+
+CAT['veterinaria'] = """
+Alimento para perro adulto (saco) | Alimentos | bulto | 16?
+Alimento para cachorro (saco) | Alimentos | bulto | 16?
+Alimento para gato (saco) | Alimentos | bulto | 16?
+Alimento húmedo (lata) | Alimentos | und | 16?
+Desparasitante interno | Medicinas | und | E?
+Antipulgas | Medicinas | und | E?
+Vacuna antirrábica | Vacunas | und | E?
+Vacuna séxtuple | Vacunas | und | E?
+Antibiótico veterinario | Medicinas | und | E?
+Vitaminas | Medicinas | und | E?
+Champú para mascotas | Higiene | und | 16
+Collar | Accesorios | und | 16
+Correa | Accesorios | und | 16
+Comedero | Accesorios | und | 16
+Cama para mascota | Accesorios | und | 16
+Arena para gatos | Higiene | und | 16
+Juguete para mascota | Accesorios | und | 16
+Consulta veterinaria | Servicios | und | E?
+Vacunación (servicio) | Servicios | und | E?
+Baño y peluquería | Servicios | und | 16
+Desparasitación (servicio) | Servicios | und | E?
+Esterilización | Servicios | und | E?
+"""
+
+CAT['optica'] = """
+Montura de metal | Monturas | und | 16
+Montura de pasta | Monturas | und | 16
+Montura infantil | Monturas | und | 16
+Cristales monofocales (par) | Cristales | und | E?
+Cristales bifocales (par) | Cristales | und | E?
+Cristales progresivos (par) | Cristales | und | E?
+Antirreflejo | Tratamientos | und | E?
+Fotocromático | Tratamientos | und | E?
+Lentes de contacto | Contacto | und | E?
+Solución para lentes de contacto | Contacto | und | 16?
+Lentes de sol | Sol | und | 16
+Estuche | Accesorios | und | 16
+Paño de limpieza | Accesorios | und | 16
+Cordón para lentes | Accesorios | und | 16
+Examen de la vista | Servicios | und | E?
+Reparación de montura | Servicios | und | 16
+"""
+
+
 def filas(texto):
     out = []
     for n, linea in enumerate(l for l in texto.strip().splitlines() if l.strip()):

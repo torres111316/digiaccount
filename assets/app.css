@@ -8136,6 +8136,15 @@ table.suc-tabla td.c-mat { text-align: center; }
 .re-sembrar { display: flex; gap: 8px; align-items: flex-start; margin-top: 10px; padding: 9px 10px; border-radius: 8px; background: var(--bg-surface-alt); font-size: 12px; line-height: 1.5; color: var(--fg-body); cursor: pointer; }
 .re-sembrar[hidden] { display: none; }
 .re-sembrar input { margin-top: 2px; accent-color: var(--da-cyan-500); }
+.re-extra-tit { margin: 10px 0 6px; font-size: 12px; font-weight: 600; color: var(--fg-body); }
+.re-extra { display: flex; flex-wrap: wrap; gap: 6px; }
+.re-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border: 1px solid var(--border-default); border-radius: 999px; font-size: 12px; cursor: pointer; background: var(--bg-surface); }
+.re-chip small { color: var(--fg-muted); font-size: 10.5px; }
+.re-chip input { accent-color: var(--da-cyan-500); margin: 0; }
+.re-chip:has(input:checked) { border-color: var(--da-cyan-500); background: color-mix(in srgb, var(--da-cyan-500) 10%, transparent); }
+.re-mas { margin-top: 8px; font-size: 12px; }
+.re-mas summary { cursor: pointer; color: var(--fg-muted); margin-bottom: 6px; }
+.re-modal { font-size: 12.5px; }
 
 /* ── Los interruptores en Configuración ──────────────────────────────── */
 .inv-ramo { padding-bottom: 14px; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
