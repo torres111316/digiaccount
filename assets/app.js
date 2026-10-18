@@ -12409,7 +12409,7 @@
       electro: ['telefonia', 'electricos'],
       jugueteria: ['quincalla', 'libreria'],
       oficina: ['libreria'],
-      veterinaria: ['agropecuaria'],
+      veterinaria: ['agropecuaria', 'belleza'],
       belleza: ['perfumeria'],
       taller: ['repuestos', 'cauchera'],
       cauchera: ['repuestos', 'taller'],
@@ -12417,6 +12417,23 @@
       restaurante: ['comida_rapida', 'licoreria'],
       panaderia_prod: ['panaderia', 'charcuteria', 'lacteos'],
       mayorista: ['abasto', 'bodega', 'licoreria'],
+      // Consultorios compartidos: cualquier especialidad puede sumar las demás
+      consultorio: ['laboratorio', 'medicina_interna', 'pediatria', 'ginecologia', 'cardiologia'],
+      odontologia: ['consultorio'],
+      pediatria: ['consultorio', 'laboratorio', 'nutricion'],
+      ginecologia: ['consultorio', 'laboratorio'],
+      traumatologia: ['fisioterapia', 'consultorio'],
+      cardiologia: ['medicina_interna', 'laboratorio'],
+      dermatologia: ['consultorio'],
+      oftalmologia: ['optica', 'consultorio'],
+      otorrino: ['consultorio'],
+      medicina_interna: ['cardiologia', 'laboratorio', 'consultorio'],
+      psicologia: ['nutricion'],
+      nutricion: ['psicologia', 'consultorio'],
+      fisioterapia: ['traumatologia'],
+      laboratorio: ['consultorio'],
+      gimnasio: ['nutricion', 'fisioterapia'],
+      optica: ['oftalmologia'],
     };
     // Casillas: el ramo principal marcado, los que suelen ir con él a la vista
     // y el resto plegado. Cada casilla lleva data-sembrar con el id del ramo.

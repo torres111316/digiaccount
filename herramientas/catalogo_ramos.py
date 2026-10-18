@@ -1291,6 +1291,327 @@ Reparación de montura | Servicios | und | 16
 """
 
 
+# ── SERVICIOS ────────────────────────────────────────────────────────────────
+# Los servicios médico-asistenciales y odontológicos están exentos (Ley del IVA,
+# art. 19). Los servicios profesionales (contables, gimnasio) van al 16%.
+
+CAT['gimnasio'] = """
+Inscripción | Membresías | und | 16
+Mensualidad | Membresías | und | 16
+Plan trimestral | Membresías | und | 16
+Plan semestral | Membresías | und | 16
+Plan anual | Membresías | und | 16
+Pase diario | Membresías | und | 16
+Pase semanal | Membresías | und | 16
+Mensualidad estudiante | Membresías | und | 16
+Mensualidad pareja | Membresías | und | 16
+Clase de bailoterapia | Clases | und | 16
+Clase de spinning | Clases | und | 16
+Clase de funcional | Clases | und | 16
+Clase de crossfit | Clases | und | 16
+Clase de yoga | Clases | und | 16
+Clase de pilates | Clases | und | 16
+Clase de boxeo | Clases | und | 16
+Clase de artes marciales | Clases | und | 16
+Clase de natación | Clases | und | 16
+Entrenamiento personalizado (sesión) | Entrenador | und | 16
+Entrenamiento personalizado (mes) | Entrenador | und | 16
+Plan de entrenamiento | Entrenador | und | 16
+Evaluación física | Entrenador | und | 16
+Plan nutricional | Entrenador | und | 16?
+Alquiler de casillero | Otros | und | 16
+Agua mineral | Tienda | und | 16
+Bebida isotónica | Tienda | und | 16
+Proteína en polvo | Tienda | und | 16
+Creatina | Tienda | und | 16
+Barra de proteína | Tienda | und | 16
+Guantes de entrenamiento | Tienda | und | 16
+Cinturón de pesas | Tienda | und | 16
+Toalla | Tienda | und | 16
+Franela del gimnasio | Tienda | und | 16
+"""
+
+CAT['contable'] = """
+Honorarios de contabilidad mensual | Contabilidad | und | 16
+Honorarios de contabilidad (persona natural) | Contabilidad | und | 16
+Estados financieros | Contabilidad | und | 16
+Estados financieros auditados | Contabilidad | und | 16
+Certificación de ingresos | Contabilidad | und | 16
+Balance personal | Contabilidad | und | 16
+Auditoría | Contabilidad | und | 16
+Revisión limitada | Contabilidad | und | 16
+Libros contables (sellado y apertura) | Contabilidad | und | 16
+Declaración de IVA | Tributos | und | 16
+Declaración de IVA (sin movimiento) | Tributos | und | 16
+Declaración de retenciones de IVA | Tributos | und | 16
+Declaración de retenciones de ISLR | Tributos | und | 16
+Declaración de ISLR anual (persona jurídica) | Tributos | und | 16
+Declaración de ISLR anual (persona natural) | Tributos | und | 16
+Declaración estimada de ISLR | Tributos | und | 16
+Declaración de IGTF | Tributos | und | 16
+Declaración de impuestos municipales | Tributos | und | 16
+Declaración de grandes patrimonios | Tributos | und | 16
+Libros de compras y ventas | Tributos | und | 16
+Inscripción de RIF | Trámites SENIAT | und | 16
+Actualización de RIF | Trámites SENIAT | und | 16
+Solicitud de solvencia | Trámites SENIAT | und | 16
+Atención de fiscalización | Trámites SENIAT | und | 16
+Recurso o descargo ante el SENIAT | Trámites SENIAT | und | 16
+Nómina mensual | Nómina | und | 16
+Nómina quincenal | Nómina | und | 16
+Cálculo de prestaciones sociales | Nómina | und | 16
+Liquidación de trabajador | Nómina | und | 16
+Cálculo de utilidades | Nómina | und | 16
+Cálculo de vacaciones | Nómina | und | 16
+Constancia de trabajo | Nómina | und | 16
+Inscripción en el IVSS | Parafiscales | und | 16
+Inscripción en el INCES | Parafiscales | und | 16
+Inscripción en el BANAVIH (FAOV) | Parafiscales | und | 16
+Declaración y pago del IVSS | Parafiscales | und | 16
+Declaración y pago del INCES | Parafiscales | und | 16
+Declaración y pago del FAOV | Parafiscales | und | 16
+Solvencia laboral | Parafiscales | und | 16
+Registro de empresa (acompañamiento) | Mercantil | und | 16
+Acta de asamblea | Mercantil | und | 16
+Licencia de actividades económicas | Municipal | und | 16
+Asesoría contable (hora) | Asesoría | und | 16
+Asesoría tributaria (hora) | Asesoría | und | 16
+Planificación fiscal | Asesoría | und | 16
+"""
+
+# El consultorio se separa por especialidad: cada una es un ramo con su lista.
+CAT['consultorio'] = """
+Consulta de medicina general | Consultas | und | E
+Consulta de control | Consultas | und | E
+Consulta a domicilio | Consultas | und | E
+Informe médico | Documentos | und | E
+Certificado de salud | Documentos | und | E
+Certificado médico | Documentos | und | E
+Récipe | Documentos | und | E
+Curas | Procedimientos | und | E
+Retiro de puntos | Procedimientos | und | E
+Sutura | Procedimientos | und | E
+Inyección | Procedimientos | und | E
+Nebulización | Procedimientos | und | E
+Toma de tensión | Procedimientos | und | E
+Glicemia capilar | Procedimientos | und | E
+Electrocardiograma | Estudios | und | E
+"""
+
+CAT['odontologia'] = """
+Consulta odontológica | Consultas | und | E
+Limpieza dental | Prevención | und | E
+Aplicación de flúor | Prevención | und | E
+Sellantes | Prevención | und | E
+Resina | Operatoria | und | E
+Amalgama | Operatoria | und | E
+Extracción simple | Cirugía | und | E
+Extracción de cordal | Cirugía | und | E
+Tratamiento de conducto (endodoncia) | Endodoncia | und | E
+Corona | Prótesis | und | E
+Puente fijo | Prótesis | und | E
+Prótesis removible | Prótesis | und | E
+Dentadura total | Prótesis | und | E
+Implante dental | Implantes | und | E
+Blanqueamiento dental | Estética | und | E?
+Carillas | Estética | und | E?
+Ortodoncia (instalación de brackets) | Ortodoncia | und | E
+Control de ortodoncia (mensualidad) | Ortodoncia | und | E
+Retenedor | Ortodoncia | und | E
+Radiografía periapical | Estudios | und | E
+Radiografía panorámica | Estudios | und | E
+Tartrectomía | Periodoncia | und | E
+Curetaje | Periodoncia | und | E
+"""
+
+CAT['pediatria'] = """
+Consulta pediátrica | Consultas | und | E
+Control de niño sano | Consultas | und | E
+Consulta de recién nacido | Consultas | und | E
+Consulta a domicilio | Consultas | und | E
+Vacunación | Procedimientos | und | E
+Nebulización | Procedimientos | und | E
+Lavado de oídos | Procedimientos | und | E
+Curas | Procedimientos | und | E
+Informe médico | Documentos | und | E
+Certificado de salud | Documentos | und | E
+Certificado escolar | Documentos | und | E
+"""
+
+CAT['ginecologia'] = """
+Consulta ginecológica | Consultas | und | E
+Consulta de control prenatal | Consultas | und | E
+Citología | Estudios | und | E
+Colposcopia | Estudios | und | E
+Ecografía transvaginal | Ecografías | und | E
+Ecografía obstétrica | Ecografías | und | E
+Ecografía 4D | Ecografías | und | E
+Ecografía mamaria | Ecografías | und | E
+Perfil biofísico | Ecografías | und | E
+Inserción de DIU | Procedimientos | und | E
+Retiro de DIU | Procedimientos | und | E
+Implante anticonceptivo | Procedimientos | und | E
+Biopsia | Procedimientos | und | E
+Parto | Cirugía | und | E
+Cesárea | Cirugía | und | E
+Informe médico | Documentos | und | E
+"""
+
+CAT['traumatologia'] = """
+Consulta traumatológica | Consultas | und | E
+Consulta de control | Consultas | und | E
+Infiltración | Procedimientos | und | E
+Colocación de yeso | Procedimientos | und | E
+Retiro de yeso | Procedimientos | und | E
+Inmovilización con férula | Procedimientos | und | E
+Reducción de fractura | Procedimientos | und | E
+Artroscopia | Cirugía | und | E
+Cirugía de fractura (osteosíntesis) | Cirugía | und | E
+Informe médico | Documentos | und | E
+Férula | Insumos | und | E?
+Muletas | Insumos | und | E?
+Cuello ortopédico | Insumos | und | E?
+"""
+
+CAT['cardiologia'] = """
+Consulta cardiológica | Consultas | und | E
+Evaluación cardiovascular preoperatoria | Consultas | und | E
+Electrocardiograma | Estudios | und | E
+Ecocardiograma | Estudios | und | E
+Prueba de esfuerzo | Estudios | und | E
+Holter de 24 horas | Estudios | und | E
+Monitoreo ambulatorio de tensión (MAPA) | Estudios | und | E
+Eco doppler | Estudios | und | E
+Informe médico | Documentos | und | E
+"""
+
+CAT['dermatologia'] = """
+Consulta dermatológica | Consultas | und | E
+Consulta de control | Consultas | und | E
+Crioterapia | Procedimientos | und | E
+Electrocauterización | Procedimientos | und | E
+Biopsia de piel | Procedimientos | und | E
+Retiro de lunar | Procedimientos | und | E
+Dermatoscopia | Estudios | und | E
+Peeling químico | Estética | und | E?
+Limpieza facial | Estética | und | 16?
+Toxina botulínica | Estética | und | E?
+Relleno con ácido hialurónico | Estética | und | E?
+Informe médico | Documentos | und | E
+"""
+
+CAT['oftalmologia'] = """
+Consulta oftalmológica | Consultas | und | E
+Examen de la vista (refracción) | Consultas | und | E
+Fondo de ojo | Estudios | und | E
+Tonometría (presión ocular) | Estudios | und | E
+Campo visual | Estudios | und | E
+Topografía corneal | Estudios | und | E
+Cirugía de catarata | Cirugía | und | E
+Cirugía de pterigión | Cirugía | und | E
+Cirugía refractiva (láser) | Cirugía | und | E
+Informe médico | Documentos | und | E
+"""
+
+CAT['otorrino'] = """
+Consulta otorrinolaringológica | Consultas | und | E
+Lavado de oídos | Procedimientos | und | E
+Nasofibrolaringoscopia | Estudios | und | E
+Audiometría | Estudios | und | E
+Impedanciometría | Estudios | und | E
+Cauterización nasal | Procedimientos | und | E
+Amigdalectomía | Cirugía | und | E
+Septoplastia | Cirugía | und | E
+Informe médico | Documentos | und | E
+"""
+
+CAT['medicina_interna'] = """
+Consulta de medicina interna | Consultas | und | E
+Consulta de control | Consultas | und | E
+Evaluación preoperatoria | Consultas | und | E
+Control de diabetes | Consultas | und | E
+Control de hipertensión | Consultas | und | E
+Electrocardiograma | Estudios | und | E
+Ecografía abdominal | Estudios | und | E
+Informe médico | Documentos | und | E
+"""
+
+CAT['psicologia'] = """
+Consulta psicológica | Consultas | und | E?
+Terapia individual (sesión) | Terapias | und | E?
+Terapia de pareja (sesión) | Terapias | und | E?
+Terapia familiar (sesión) | Terapias | und | E?
+Terapia infantil (sesión) | Terapias | und | E?
+Evaluación psicológica | Evaluaciones | und | E?
+Evaluación psicotécnica | Evaluaciones | und | E?
+Informe psicológico | Documentos | und | E?
+Taller grupal | Talleres | und | 16?
+"""
+
+CAT['nutricion'] = """
+Consulta nutricional | Consultas | und | E?
+Consulta de control | Consultas | und | E?
+Plan de alimentación | Planes | und | E?
+Evaluación de composición corporal | Evaluaciones | und | E?
+Plan nutricional deportivo | Planes | und | E?
+Paquete mensual de controles | Planes | und | E?
+"""
+
+CAT['fisioterapia'] = """
+Evaluación fisioterapéutica | Consultas | und | E
+Sesión de fisioterapia | Terapias | und | E
+Paquete de 10 sesiones | Terapias | und | E
+Rehabilitación postoperatoria (sesión) | Terapias | und | E
+Terapia con electroestimulación | Terapias | und | E
+Terapia con ultrasonido | Terapias | und | E
+Masaje terapéutico | Terapias | und | E?
+Drenaje linfático | Terapias | und | E?
+Terapia a domicilio | Terapias | und | E
+Vendaje neuromuscular | Procedimientos | und | E
+"""
+
+CAT['laboratorio'] = """
+Hematología completa | Hematología | und | E
+Glicemia | Química sanguínea | und | E
+Perfil lipídico | Química sanguínea | und | E
+Urea y creatinina | Química sanguínea | und | E
+Ácido úrico | Química sanguínea | und | E
+Perfil hepático | Química sanguínea | und | E
+Hemoglobina glicosilada | Química sanguínea | und | E
+Perfil tiroideo | Hormonas | und | E
+Prueba de embarazo en sangre | Hormonas | und | E
+PSA | Hormonas | und | E
+Examen de orina | Uroanálisis | und | E
+Examen de heces | Coprología | und | E
+Urocultivo | Microbiología | und | E
+VDRL | Serología | und | E
+VIH | Serología | und | E
+Grupo sanguíneo | Hematología | und | E
+Perfil prenatal | Perfiles | und | E
+Perfil preoperatorio | Perfiles | und | E
+Toma de muestra a domicilio | Servicios | und | E
+"""
+
+# La veterinaria ya trae productos; se le suman sus servicios
+CAT['veterinaria'] = CAT['veterinaria'] + """
+Consulta de control | Servicios | und | 16?
+Consulta de emergencia | Servicios | und | 16?
+Consulta a domicilio | Servicios | und | 16?
+Hematología veterinaria | Servicios | und | 16?
+Ecografía veterinaria | Servicios | und | 16?
+Radiografía veterinaria | Servicios | und | 16?
+Limpieza dental veterinaria | Servicios | und | 16?
+Cirugía veterinaria | Servicios | und | 16?
+Hospitalización (día) | Servicios | und | 16?
+Eutanasia | Servicios | und | 16?
+Certificado de salud para viaje | Servicios | und | 16?
+Corte de uñas | Servicios | und | 16
+Hospedaje de mascotas (día) | Servicios | und | 16
+"""
+# Los servicios veterinarios no son médico-asistenciales humanos: se marcan para revisar
+CAT['veterinaria'] = CAT['veterinaria'].replace('| Servicios | und | E?', '| Servicios | und | 16?')
+
+
 def filas(texto):
     out = []
     for n, linea in enumerate(l for l in texto.strip().splitlines() if l.strip()):

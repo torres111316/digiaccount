@@ -36,6 +36,44 @@ insert into public.ramo_perfil (ramo_id,
   ('cauchera',  true,false,true,  true,'promedio',false,false,false,false,false,false, true, false,false,false)
 on conflict (ramo_id) do nothing;
 
+-- Consultorios por especialidad: cada una es su propio ramo. El de siempre
+-- ('consultorio') queda como medicina general. Nacen con el perfil del
+-- consultorio (servicios + insumos con lote y registro sanitario).
+update public.ramos set nombre = 'Consultorio de medicina general',
+  nota = 'Consultas, procedimientos e informes; servicio exento' where id = 'consultorio';
+insert into public.ramos (id, nombre, familia, nota, orden) values
+  ('odontologia',      'Odontología',                    'servicio', 'Tratamientos, prótesis y ortodoncia', 52),
+  ('pediatria',        'Pediatría',                      'servicio', 'Control de niño sano, vacunas', 52),
+  ('ginecologia',      'Ginecología y obstetricia',      'servicio', 'Control prenatal, ecografías', 52),
+  ('traumatologia',    'Traumatología',                  'servicio', 'Yesos, infiltraciones, cirugía', 52),
+  ('cardiologia',      'Cardiología',                    'servicio', 'Electro, eco, Holter', 52),
+  ('dermatologia',     'Dermatología',                   'servicio', 'Procedimientos y estética', 52),
+  ('oftalmologia',     'Oftalmología',                   'servicio', 'Estudios y cirugía', 52),
+  ('otorrino',         'Otorrinolaringología',           'servicio', 'Audiometría, nasofibro', 52),
+  ('medicina_interna', 'Medicina interna',               'servicio', 'Control de crónicos, preoperatorios', 52),
+  ('psicologia',       'Psicología',                     'servicio', 'Terapias y evaluaciones', 52),
+  ('nutricion',        'Nutrición',                      'servicio', 'Planes de alimentación', 52),
+  ('fisioterapia',     'Fisioterapia y rehabilitación',  'servicio', 'Sesiones y paquetes', 52),
+  ('laboratorio',      'Laboratorio clínico',            'servicio', 'Exámenes y perfiles', 52)
+on conflict (id) do update set nombre = excluded.nombre, familia = excluded.familia,
+  nota = excluded.nota, orden = excluded.orden;
+insert into public.ramo_perfil (ramo_id,
+  mod_comercial, mod_manufactura, mod_servicios,
+  lleva_inventario, metodo_costo, vende_por_peso, codigo_barras,
+  control_lotes, control_series, unidades_multiples, variantes,
+  aplicabilidad, receta, registro_sanitario, listas_precio)
+select r.id,
+  p.mod_comercial, p.mod_manufactura, p.mod_servicios,
+  p.lleva_inventario, p.metodo_costo, p.vende_por_peso, p.codigo_barras,
+  p.control_lotes, p.control_series, p.unidades_multiples, p.variantes,
+  p.aplicabilidad, p.receta, p.registro_sanitario, p.listas_precio
+  from (values ('odontologia'), ('pediatria'), ('ginecologia'), ('traumatologia'), ('cardiologia'),
+               ('dermatologia'), ('oftalmologia'), ('otorrino'), ('medicina_interna'), ('psicologia'),
+               ('nutricion'), ('fisioterapia'), ('laboratorio')) as r(id)
+  cross join public.ramo_perfil p
+ where p.ramo_id = 'consultorio'
+on conflict (ramo_id) do nothing;
+
 -- 2) La lista por ramo (global, igual para todas las cuentas)
 create table if not exists public.ramo_productos (
   ramo_id    text not null references public.ramos(id) on delete cascade,
