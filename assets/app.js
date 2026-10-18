@@ -12378,10 +12378,17 @@
     let LISTAS = null;   // { ramo_id: cuántos productos sugeridos tiene }
     async function cargarListas() {
       if (LISTAS || !window.sb) return LISTAS || {};
-      const { data, error } = await window.sb.from('ramo_productos').select('ramo_id');
-      if (error) return {};
-      LISTAS = {};
-      (data || []).forEach((r) => { LISTAS[r.ramo_id] = (LISTAS[r.ramo_id] || 0) + 1; });
+      /* Por páginas: Supabase devuelve como máximo 1.000 filas por consulta y la
+         lista ya pasa de 1.500. Sin esto, los ramos del final no aparecían. */
+      const cuenta = {};
+      for (let desde = 0; ; desde += 1000) {
+        const { data, error } = await window.sb.from('ramo_productos').select('ramo_id')
+          .order('ramo_id').order('nombre').range(desde, desde + 999);
+        if (error) return {};
+        (data || []).forEach((r) => { cuenta[r.ramo_id] = (cuenta[r.ramo_id] || 0) + 1; });
+        if (!data || data.length < 1000) break;
+      }
+      LISTAS = cuenta;
       return LISTAS;
     }
     // Lo que suele venderse junto con cada ramo
