@@ -44,7 +44,9 @@
       return '<td><div class="prod-cell"><div class="prod-thumb"><i data-lucide="package"></i></div><div class="info"><div class="n">' + nombre + '</div><div class="sku">' + sku + '</div></div></div></td>'
         + '<td>' + cat + '</td>'
         + '<td><div class="stock-cell"><div class="qty">' + stock + ' <span class="unit">' + (p.unidad || 'und') + '</span></div><div class="stock-bar"><span style="width:60%"></span></div><div class="min-note">Mín. ' + min + '</div></div></td>'
-        + '<td class="num">' + fmt(costo) + '</td><td class="num">' + fmt(Number(p.precio) || 0) + '</td><td>' + tag + '</td>'
+        + '<td class="num">' + fmt(costo) + '</td><td class="num">' + ((Number(p.precio) || Number(p.precio_usd))
+          ? fmt(Number(p.precio) || 0)
+          : '<span class="tag warn" title="Viene de la lista sugerida del ramo: ponle su precio">Sin precio</span>') + '</td><td>' + tag + '</td>'
         + '<td class="num">' + fmt(stock * costo) + '</td><td style="white-space:nowrap;">' + estado
         + ' <button class="btn btn-ghost" data-prod-edit="' + (p.id || '') + '" title="Editar o eliminar" style="height:22px;font-size:10px;padding:0 7px;margin-left:4px;"><i data-lucide="pencil" style="width:11px;height:11px;"></i></button></td>';
     }
