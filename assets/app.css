@@ -80,6 +80,8 @@
     font-family: var(--font-body, inherit); font-weight: 600; font-size: 10.5px;
     letter-spacing: .02em; color: var(--da-cyan-500);
   }
+  /* Logo de la app de ventas: es el ícono cuadrado (fondo cian), no la marca suelta. */
+  .sidebar-brand img.logo-ventas { height: 30px; border-radius: 7px; }
   /* Módulo que no es de la app de tu plan: no se muestra (ver planGating). */
   .nav-item.plan-oculto { display: none !important; }
 

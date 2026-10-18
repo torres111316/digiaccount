@@ -2,7 +2,7 @@
 FROM nginx:alpine
 
 # Solo los archivos de la app (no .md ni sql/)
-COPY index.html manifest.json sw.js /usr/share/nginx/html/
+COPY index.html manifest.json manifest-ventas.json sw.js /usr/share/nginx/html/
 COPY assets /usr/share/nginx/html/assets/
 
 # Config de Nginx (caché y fallback a index.html)

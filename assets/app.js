@@ -11149,6 +11149,15 @@
       const appEl = document.getElementById('appNombre');
       if (appEl) { appEl.textContent = app; appEl.hidden = !app; }
       document.title = 'DigiAccount' + (app ? ' · ' + app : ' ERP');
+      // La app de ventas lleva el logo con los colores invertidos (fondo cian):
+      // barra lateral, ícono de la pestaña y el de instalar en el teléfono.
+      const ventas = app === 'Gestión de Ventas e Inventario';
+      const setAttr = (id, at, v) => { const el = document.getElementById(id); if (el && el.getAttribute(at) !== v) el.setAttribute(at, v); };
+      setAttr('sidebarLogo', 'src', ventas ? 'assets/pwa-ventas-192.png' : 'assets/isotipo-on-dark.png');
+      const sl = document.getElementById('sidebarLogo'); if (sl) sl.classList.toggle('logo-ventas', ventas);
+      setAttr('linkFavicon', 'href', ventas ? 'assets/pwa-ventas-192.png' : 'assets/pwa-192.png');
+      setAttr('linkTouchIcon', 'href', ventas ? 'assets/pwa-ventas-192.png' : 'assets/pwa-192.png');
+      setAttr('linkManifest', 'href', ventas ? 'manifest-ventas.json' : 'manifest.json');
       // Las etiquetas de sección se recalculan con el rol (oculta las que quedan vacías)
       if (window.aplicarRol) window.aplicarRol();
       // indicador del plan activo

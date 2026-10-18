@@ -20,7 +20,7 @@
    queda atascado en una versión vieja (en el teléfono no hay Ctrl+Shift+R). */
 /* Sube de número en cada cambio de estos archivos: es lo que hace que el
    navegador se traiga la versión nueva en vez de servir la del caché. */
-const CACHE = 'digiaccount-v173';
+const CACHE = 'digiaccount-v174';
 const ASSETS = [
   './',
   './index.html',
@@ -44,7 +44,10 @@ const ASSETS = [
   './assets/isotipo-on-dark.png',
   './assets/pwa-192.png',
   './assets/pwa-512.png',
+  './assets/pwa-ventas-192.png',
+  './assets/pwa-ventas-512.png',
   './manifest.json',
+  './manifest-ventas.json',
 ];
 
 self.addEventListener('install', (e) => {

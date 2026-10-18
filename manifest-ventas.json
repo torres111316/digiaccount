@@ -1,0 +1,39 @@
+{
+  "name": "DigiAccount · Gestión de Ventas e Inventario",
+  "short_name": "DigiAccount Ventas",
+  "id": "/digiaccount-ventas",
+  "description": "Ventas, cuentas por cobrar, compras, inventario y tesorería del negocio.",
+  "lang": "es-VE",
+  "dir": "ltr",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#00bfff",
+  "theme_color": "#00bfff",
+  "categories": [
+    "business",
+    "finance",
+    "productivity"
+  ],
+  "icons": [
+    {
+      "src": "assets/pwa-ventas-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/pwa-ventas-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/pwa-ventas-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

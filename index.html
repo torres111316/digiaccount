@@ -7,14 +7,14 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; connect-src 'self' https://esnicjnuymqgktqoueyq.supabase.co wss://esnicjnuymqgktqoueyq.supabase.co https://n8n.digiaccount.io; object-src 'none'; base-uri 'self'; form-action 'self'">
 <title>DigiAccount ERP — Dashboard Central</title>
 <!-- PWA -->
-<link rel="manifest" href="manifest.json">
+<link rel="manifest" href="manifest.json" id="linkManifest">
 <meta name="theme-color" content="#0a2342">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="DigiAccount">
-<link rel="apple-touch-icon" href="assets/pwa-192.png">
-<link rel="icon" type="image/png" href="assets/pwa-192.png">
+<link rel="apple-touch-icon" href="assets/pwa-192.png" id="linkTouchIcon">
+<link rel="icon" type="image/png" href="assets/pwa-192.png" id="linkFavicon">
 <!-- LO PRIMERO DE TODO: la puerta de salida.
      Si el service worker activo impide abrir la app, el boton
      «Actualizar» nunca aparece y no hay forma de salir del hoyo.
@@ -140,7 +140,7 @@
   <!-- ============== SIDEBAR ============== -->
   <aside class="sidebar">
     <div class="sidebar-brand">
-      <img src="assets/isotipo-on-dark.png" alt="DigiAccount">
+      <img src="assets/isotipo-on-dark.png" alt="DigiAccount" id="sidebarLogo">
       <div class="wordmark"><span class="digi">Digi</span><span class="account">Account</span>
         <span class="app-nombre" id="appNombre" hidden></span></div>
     </div>
