@@ -1,0 +1,15 @@
+{
+  "name": "correo-facturas",
+  "private": true,
+  "description": "Cloudflare Email Worker: facturas@digiaccount.io -> webhook de n8n",
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/index.js --bundle --format=esm --target=es2022 --minify --outfile=dist/worker.js"
+  },
+  "dependencies": {
+    "postal-mime": "4.0.11"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}
