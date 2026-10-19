@@ -2,6 +2,11 @@
      APP SHELL
      ========================================================= */
   *, *::before, *::after { box-sizing: border-box; }
+  /* Lo que está marcado `hidden` se oculta SIEMPRE. Sin esto, cualquier regla
+     con `display: flex/block` le ganaba al atributo y el elemento salía igual:
+     así el letrero de «acceso de cortesía» aparecía en cuentas sin cortesía.
+     Antes se parchaba clase por clase (.btn[hidden], .nav-item[hidden]...). */
+  [hidden] { display: none !important; }
   html, body { height: 100%; }
   body {
     margin: 0;

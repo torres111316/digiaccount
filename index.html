@@ -88,8 +88,8 @@
       <div class="auth-pane" data-tab="login" data-active="true" id="loginForm">
         <h2>Bienvenido de vuelta</h2>
         <p class="auth-sub">Ingresa a tu cuenta para continuar</p>
-        <label class="auth-field"><span>Correo electrónico</span><input type="email" id="loginEmail" placeholder="tucorreo@empresa.com"></label>
-        <label class="auth-field"><span>Contraseña</span><div class="auth-pass"><input type="password" id="loginPass" placeholder="••••••••"><button type="button" class="auth-eye" data-toggle="loginPass"><i data-lucide="eye"></i></button></div></label>
+        <label class="auth-field"><span>Correo electrónico</span><input type="email" id="loginEmail" name="username" autocomplete="username" placeholder="tucorreo@empresa.com"></label>
+        <label class="auth-field"><span>Contraseña</span><div class="auth-pass"><input type="password" id="loginPass" name="password" autocomplete="current-password" placeholder="••••••••"><button type="button" class="auth-eye" data-toggle="loginPass"><i data-lucide="eye"></i></button></div></label>
         <div class="auth-row"><label class="auth-check"><input type="checkbox" checked> Recordarme</label><a href="#" class="auth-link" id="forgotLink">¿Olvidaste tu contraseña?</a></div>
         <button type="button" class="auth-submit" id="loginBtn">Entrar <i data-lucide="arrow-right"></i></button>
         <!-- AQUI ESTABA «Continuar con Google», y era un maniqui del
@@ -113,10 +113,10 @@
           <label class="auth-field"><span>Cédula</span><input type="text" id="suCedula" placeholder="V-12345678"></label>
           <label class="auth-field"><span>WhatsApp</span><input type="tel" id="suWhatsapp" placeholder="0414-1234567"></label>
         </div>
-        <label class="auth-field"><span>Correo electrónico</span><input type="email" id="suEmail" placeholder="tucorreo@empresa.com"></label>
+        <label class="auth-field"><span>Correo electrónico</span><input type="email" id="suEmail" autocomplete="email" placeholder="tucorreo@empresa.com"></label>
         <label class="auth-field"><span>¿Cómo usarás DigiAccount?</span><select id="suSegmento"><option value="empresas">Tengo una empresa / negocio</option><option value="contadores">Soy contador independiente</option></select></label>
         <label class="auth-field"><span>Código <em style="font-style:normal;color:var(--fg-muted);font-weight:400;">(opcional · si tu contador o tu equipo te dio uno)</em></span><input type="text" id="suCodigo" placeholder="Ej. K7M2X9 o LUIS417" maxlength="10" autocapitalize="characters" style="text-transform:uppercase;letter-spacing:2px;"></label>
-        <label class="auth-field"><span>Contraseña</span><div class="auth-pass"><input type="password" id="suPass" placeholder="Mínimo 8 caracteres"><button type="button" class="auth-eye" data-toggle="suPass"><i data-lucide="eye"></i></button></div></label>
+        <label class="auth-field"><span>Contraseña</span><div class="auth-pass"><input type="password" id="suPass" autocomplete="new-password" placeholder="Mínimo 8 caracteres"><button type="button" class="auth-eye" data-toggle="suPass"><i data-lucide="eye"></i></button></div></label>
         <label class="auth-check auth-terms"><input type="checkbox" id="suTerms"> Acepto los <a href="#" class="auth-link" data-legal="terminos">términos y condiciones</a> y la <a href="#" class="auth-link" data-legal="privacidad">política de privacidad</a></label>
         <button type="submit" class="auth-submit">Crear cuenta <i data-lucide="arrow-right"></i></button>
       </form>
@@ -125,7 +125,7 @@
       <form class="auth-pane" data-tab="forgot" id="forgotForm">
         <h2>Recuperar contraseña</h2>
         <p class="auth-sub">Te enviaremos un enlace para restablecerla</p>
-        <label class="auth-field"><span>Correo electrónico</span><input type="email" id="fgEmail" placeholder="tucorreo@empresa.com"></label>
+        <label class="auth-field"><span>Correo electrónico</span><input type="email" id="fgEmail" autocomplete="username" placeholder="tucorreo@empresa.com"></label>
         <button type="submit" class="auth-submit">Enviar enlace de recuperación</button>
         <button type="button" class="auth-back" id="forgotBack"><i data-lucide="arrow-left"></i> Volver a iniciar sesión</button>
       </form>
@@ -5031,7 +5031,7 @@
         </div>
         <div class="ter-grid">
           <label class="ter-f"><span>Teléfono</span><input type="text" data-tk="tel" placeholder="0414-0000000"></label>
-          <label class="ter-f"><span>Correo electrónico</span><input type="email" data-tk="email" placeholder="contacto@empresa.com"></label>
+          <label class="ter-f"><span>Correo electrónico</span><input type="email" data-tk="email" autocomplete="off" placeholder="contacto@empresa.com"></label>
           <label class="ter-f wide"><span>Domicilio fiscal</span><input type="text" data-tk="dom" placeholder="Dirección fiscal completa"></label>
         </div>
       </div>
@@ -5191,7 +5191,7 @@
           <div class="wf full" data-tg="std fp emp"><label>Domicilio fiscal</label><input id="cwDom" placeholder="Dirección fiscal completa"></div>
           <div class="wf" data-tg="std fp emp"><label>WhatsApp <span class="wf-hint">· obligatorio</span></label><input id="cwWhatsapp" type="tel" placeholder="0414-1234567"></div>
           <div class="wf" data-tg="std fp emp"><label>Teléfono</label><input id="cwTel" placeholder="0241-0000000"></div>
-          <div class="wf full" data-tg="std fp emp"><label>Correo <span class="wf-hint">· obligatorio</span></label><input id="cwEmail" type="email" placeholder="empresa@correo.com"></div>
+          <div class="wf full" data-tg="std fp emp"><label>Correo <span class="wf-hint">· obligatorio</span></label><input id="cwEmail" type="email" autocomplete="off" placeholder="empresa@correo.com"></div>
         </div>
       </div>
       <div class="wiz-pane" data-step="3">

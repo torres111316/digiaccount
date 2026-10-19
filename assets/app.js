@@ -5,6 +5,31 @@
 (function () {
   'use strict';
 
+  /* El navegador solo debe autollenar el inicio de sesión. Sin esto, metía el
+     correo guardado de otra cuenta en cualquier campo que le pareciera de
+     correo —el buscador de Usuarios y Roles, por ejemplo— y la tabla quedaba
+     filtrada y vacía. Se aplica también a los campos que se crean después. */
+  (function antiAutollenado() {
+    const NO = ['password', 'hidden', 'checkbox', 'radio', 'file', 'submit', 'button'];
+    function blindar(el) {
+      if (el.closest('.auth-pane') || NO.indexOf(el.type) >= 0) return;
+      if (!el.hasAttribute('autocomplete')) el.setAttribute('autocomplete', 'off');
+      if (!el.name && /^buscar/i.test(el.placeholder || '')) el.name = 'busqueda-' + (el.id || 'lista');
+    }
+    function barrer(n) {
+      if (n.nodeType !== 1) return;
+      if (n.tagName === 'INPUT') blindar(n);
+      else n.querySelectorAll('input').forEach(blindar);
+    }
+    function iniciar() {
+      barrer(document.body);
+      new MutationObserver((ms) => ms.forEach((m) => m.addedNodes.forEach(barrer)))
+        .observe(document.body, { childList: true, subtree: true });
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', iniciar);
+    else iniciar();
+  })();
+
   // Al cargar, pone la fecha de HOY en los campos de fecha que traían un valor fijo
   window.addEventListener('DOMContentLoaded', function () {
     ['amFecha', 'fvFecha'].forEach(function (id) {
@@ -221,8 +246,24 @@
     // que por RLS ve todo) veía en su selector las empresas de TODOS los clientes.
     let q = window.sb.from('empresas').select('id, nombre, rif, condicion_fiscal, fiscal_activo, firma_empresa, direccion, telefono, representante, representante_ci, representante_cargo, registro_mercantil, ciudad, modo_doc, autorizada_desde, autorizacion_seniat');
     if (window.__CUENTA_ID) q = q.eq('cuenta_id', window.__CUENTA_ID);
-    const { data, error } = await q.order('nombre');
+    let { data, error } = await q.order('nombre');
     if (error) { console.warn('[DigiAccount] No se pudieron cargar las empresas:', error.message); return; }
+    /* Empresas con acceso: lo que el administrador marcó al invitar o editar al
+       usuario (tabla usuario_empresa). Antes se guardaba pero no se aplicaba:
+       cualquier miembro veía todas las empresas de la cuenta. El admin y el
+       fundador ven todas; un miembro sin ninguna marcada también, que es como
+       quedaron los invitados de antes. */
+    if (!window.__ES_FUNDADOR && window.__rolActual && window.__rolActual() !== 'admin') {
+      const { data: au } = await window.sb.auth.getUser();
+      const uid = au && au.user && au.user.id;
+      if (uid) {
+        const { data: ue } = await window.sb.from('usuario_empresa').select('empresa_id').eq('perfil_id', uid);
+        if (ue && ue.length) {
+          const permitidas = new Set(ue.map((x) => x.empresa_id));
+          data = (data || []).filter((e) => permitidas.has(e.id));
+        }
+      }
+    }
     // Quitar las opciones de ejemplo (hardcodeadas) y sus etiquetas de grupo
     dd.querySelectorAll('.entity-option, .group-label').forEach((el) => el.remove());
     const lbl = document.createElement('div');
