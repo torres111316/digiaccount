@@ -3461,9 +3461,24 @@
         msgEl.classList.add('error');
         return;
       }
-      if (typeof res === 'string') { msgEl.textContent = res; msgEl.classList.add('error'); return; }
-      msgEl.textContent = ''; msgEl.classList.remove('error');
-      if (!stayOpen) close();
+      const terminar = (r) => {
+        if (typeof r === 'string') { msgEl.textContent = r; msgEl.classList.add('error'); return; }
+        msgEl.textContent = ''; msgEl.classList.remove('error');
+        if (!stayOpen) close();
+      };
+      /* `onSave` asíncrono: se ESPERA. Antes se cerraba el cuadro sin esperar,
+         así que un aviso como «Escribe la referencia del pago» nunca se veía:
+         la promesa no es un texto y el formulario se iba igual. */
+      if (res && typeof res.then === 'function') {
+        saveBtn.disabled = true;
+        res.then(terminar, (err) => {
+          console.error('[openFormModal] onSave falló:', err);
+          msgEl.textContent = 'No se pudo completar: ' + (err && err.message ? err.message : err);
+          msgEl.classList.add('error');
+        }).finally(() => { saveBtn.disabled = false; });
+        return;
+      }
+      terminar(res);
     });
     cancelBtn.addEventListener('click', close);
     closeBtn.addEventListener('click', close);
@@ -7305,17 +7320,6 @@
       },
     }));
 
-    // Cobrar (CxC) — envía recordatorio de cobro
-    view.querySelectorAll('.teso-tab[data-tab="cxc"] tbody .btn').forEach((b) => {
-      if (!/cobrar/i.test(b.textContent)) return;
-      b.addEventListener('click', () => {
-        const cli = (b.closest('tr').querySelector('.primary') || {}).textContent || 'el cliente';
-        toast('Recordatorio de cobro enviado a ' + cli);
-      });
-    });
-    const recMasivo = find('.teso-tab[data-tab="cxc"] .btn', /recordatorio masivo/i);
-    if (recMasivo) recMasivo.addEventListener('click', () => toast('Recordatorio masivo enviado a los clientes con saldo pendiente'));
-
     // Pagar / Programar (CxP)
     view.querySelectorAll('.teso-tab[data-tab="cxp"] tbody .btn').forEach((b) => {
       const tr = b.closest('tr');
@@ -8997,10 +9001,10 @@
 
     window.__BCV = 36.80; // valor de respaldo: cargarTasaBCV() lo actualiza con la tasa real de Supabase
     const METODOS = {
-      pagomovil: { label: 'Pago Móvil C2P', icon: 'smartphone', moneda: 'Bs', auto: true, nota: 'Confirmación automática vía banco' },
-      transferencia: { label: 'Transferencia Bancaria', icon: 'landmark', moneda: 'Bs', auto: false, nota: 'Se verifica contra el estado de cuenta' },
-      usdt: { label: 'USDT · Binance Pay', icon: 'bitcoin', moneda: 'USD', auto: true, nota: 'Confirmación automática on-chain' },
-      zelle: { label: 'Zelle', icon: 'circle-dollar-sign', moneda: 'USD', auto: false, nota: 'Verifica el Agente IA (comprobante)' },
+      pagomovil: { label: 'Pago Móvil C2P', icon: 'smartphone', moneda: 'Bs', auto: false, nota: 'Lo confirmas tú con la referencia en tu banco' },
+      transferencia: { label: 'Transferencia Bancaria', icon: 'landmark', moneda: 'Bs', auto: false, nota: 'Lo confirmas tú contra tu estado de cuenta' },
+      usdt: { label: 'USDT · Binance Pay', icon: 'bitcoin', moneda: 'USD', auto: false, nota: 'Lo confirmas tú con el hash en Binance' },
+      zelle: { label: 'Zelle', icon: 'circle-dollar-sign', moneda: 'USD', auto: false, nota: 'Lo confirmas tú con tu banco' },
     };
     const RECEPTORAS = {
       pagomovil: { activo: false, campos: { Banco: '', 'Teléfono': '', 'Tipo de documento': '', 'Nº de documento': '', Titular: '' } },
@@ -9094,7 +9098,7 @@
         const m = METODOS[k]; const r = RECEPTORAS[k];
         const datos = Object.keys(r.campos).map((c) => '<div class="cr-row"><span>' + esc(c) + '</span><strong>' + esc(r.campos[c]) + '</strong></div>').join('');
         return '<div class="cobro-card' + (r.activo ? '' : ' off') + '">'
-          + '<div class="cc-head"><span class="cc-ic"><i data-lucide="' + m.icon + '"></i></span><div class="cc-tt"><div class="cc-name">' + m.label + '</div><div class="cc-tag ' + (m.auto ? 'auto' : 'ia') + '">' + (m.auto ? 'Automático' : 'Agente IA') + '</div></div>'
+          + '<div class="cc-head"><span class="cc-ic"><i data-lucide="' + m.icon + '"></i></span><div class="cc-tt"><div class="cc-name">' + m.label + '</div><div class="cc-tag ia">Confirmación manual</div></div>'
           + '<label class="cc-switch"><input type="checkbox" data-m="' + k + '"' + (r.activo ? ' checked' : '') + '><span></span></label></div>'
           + '<div class="cc-body">' + datos + '</div>'
           + '<button class="cc-edit" data-edit="' + k + '"><i data-lucide="pencil"></i> Configurar</button>'
@@ -9145,7 +9149,7 @@
           ? '<span class="tag success"><i data-lucide="check-circle-2"></i> Confirmado</span>'
           : '<span class="tag warn"><i data-lucide="clock"></i> Por verificar</span>';
         const accion = p.estado === 'Por verificar'
-          ? '<button class="row-act" data-verif="' + PAGOS.indexOf(p) + '"><i data-lucide="bot"></i> Verificar (IA)</button>'
+          ? '<button class="row-act" data-verif="' + PAGOS.indexOf(p) + '"><i data-lucide="badge-check"></i> Confirmar</button>'
           : '<span class="row-done"><i data-lucide="check"></i></span>';
         const montoStr = '$' + p.monto + (m.moneda === 'Bs' ? ' · Bs ' + bsFmt(p.monto * window.__BCV) : '');
         return '<tr><td><strong>' + p.cliente + '</strong></td><td>' + p.plan + '</td>'
@@ -9157,24 +9161,32 @@
       if (window.lucide) window.lucide.createIcons();
     }
     window.__renderPagos = renderPagos;
-    function verificar(idx, btn) {
+    function verificar(idx) {
       const p = PAGOS[idx]; if (!p) return;
-      if (btn) { btn.disabled = true; btn.innerHTML = '<i data-lucide="loader"></i> Verificando…'; if (window.lucide) window.lucide.createIcons(); }
-      toast('Agente IA leyendo el comprobante de ' + p.cliente + '…', 'info');
-      setTimeout(() => {
-        p.estado = 'Confirmado'; renderPagos();
-        // Persistir la confirmación (solo el fundador puede, por RLS)
-        if (p._id && window.sb) window.sb.from('pagos_suscripcion').update({ estado: 'confirmado' }).eq('id', p._id)
-          .then(({ error }) => { if (error) console.warn('[Pagos] No se pudo confirmar en BD:', error.message); });
-        // Al confirmar el pago, la CUENTA del cliente se ACTIVA automáticamente
-        if (p._cuenta && window.sb) window.sb.from('cuentas').update({ estado: 'activa' }).eq('id', p._cuenta)
-          .then(({ error }) => {
-            if (error) console.warn('[Pagos] No se pudo activar la cuenta:', error.message);
-            else if (window.cargarCuentasFundador) window.cargarCuentasFundador();
-          });
-        toast('Pago de ' + p.cliente + ' verificado y confirmado · suscripción activa', 'success');
-        if (window.__notificar) window.__notificar({ icon: 'badge-check', nivel: 'ok', titulo: 'Pago verificado · ' + p.cliente, detalle: 'El Agente IA confirmó el pago de $' + p.monto + ' · suscripción activa', view: 'fundador', title2: 'Panel del Fundador' });
-      }, 1400);
+      const m = METODOS[p.metodo] || { label: p.metodo };
+      const e = (t) => String(t == null ? '' : t).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+      window.openFormModal && window.openFormModal({
+        title: 'Confirmar pago · ' + p.cliente, saveLabel: 'Confirmar pago recibido',
+        fields: [
+          { name: 'x', label: ' ', col: 2, type: 'static', html:
+            '<div style="font-size:12.5px;line-height:1.8;color:var(--fg-body);background:var(--bg-surface-alt);padding:10px 12px;border-radius:8px;">'
+            + '<strong>Plan:</strong> ' + e(p.plan) + '<br><strong>Monto:</strong> $' + e(p.monto) + ' · ' + e(m.label)
+            + '<br><strong>Referencia:</strong> <span style="font-family:var(--font-mono);">' + e(p.ref || '—') + '</span>'
+            + '<br><strong>Reportado:</strong> ' + e(p.fecha) + '</div>'
+            + '<p style="font-size:12px;color:var(--fg-muted);margin:8px 0 0;">Antes de confirmar, revisa en tu banco que el pago llegó con esa referencia. '
+            + 'Al confirmar, la cuenta queda activa y su próximo cobro se corre los meses que indiques.</p>' },
+          { name: 'meses', label: 'Meses que cubre este pago', type: 'number', step: '1', value: '1' },
+        ],
+        onSave: async (v) => {
+          const meses = Math.max(1, parseInt(v.meses, 10) || 1);
+          if (!window.__confirmarPagoReportado) return 'Abre primero la pestaña Cuentas del panel.';
+          const r = await window.__confirmarPagoReportado(p, meses);
+          if (typeof r === 'string') return r;
+          p.estado = 'Confirmado'; renderPagos();
+          toast('Pago de ' + p.cliente + ' confirmado · próximo cobro ' + r.proximo, 'success');
+          if (window.__notificar) window.__notificar({ icon: 'badge-check', nivel: 'ok', titulo: 'Pago confirmado · ' + p.cliente, detalle: '$' + p.monto + ' · próximo cobro ' + r.proximo, view: 'fundador', title2: 'Panel del Fundador' });
+        },
+      });
     }
 
     document.getElementById('pagosFiltros').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => {
@@ -10181,6 +10193,12 @@
       if (error) { toast('No se pudo actualizar: ' + error.message, 'error'); return; }
       toast('Cuenta ' + (nuevo === 'activa' ? 'activada' : 'suspendida') + ': ' + c.cuenta, 'success');
       cargarCuentas();
+      /* Activar solo abría la puerta: la cuenta quedaba sin fecha de cobro y el
+         sistema nunca sabía que le tocaba pagar. Ahora se pregunta en el acto. */
+      if (nuevo === 'activa' && !c.exenta && !c.proximoCobro && !c.cortesiaHasta) {
+        toast('Ahora define cómo se le cobra a ' + c.cuenta, 'info');
+        gestionarCobro(c);
+      }
     }
     // Elimina definitivamente una cuenta (y, con ON DELETE CASCADE en la BD, sus datos).
     async function eliminarCuenta(c) {
@@ -10300,15 +10318,41 @@
        motivo escrito, dentro de un año, no lo recuerda nadie — y es
        exactamente lo que uno necesita saber cuando el favor se acaba.
        ══════════════════════════════════════════════════════════════════ */
+    const hoyCaracas = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Caracas' });
+    const masMeses = (desdeISO, meses) => {
+      const d = new Date((desdeISO || hoyCaracas()) + 'T12:00:00');
+      const dia = d.getDate();
+      d.setMonth(d.getMonth() + meses);
+      if (d.getDate() < dia) d.setDate(0);      // 31 de enero + 1 mes = 28/29 de febrero
+      return d.toLocaleDateString('en-CA');
+    };
+
+    /* El pago que el cliente REPORTÓ desde la app, confirmado por el fundador.
+       Hace lo mismo que «Registrar un pago recibido»: corre la fecha del próximo
+       cobro, activa la cuenta y deja el registro. Antes «Verificar» anunciaba que
+       un agente de IA revisaba el comprobante; no revisaba nada ni movía la fecha. */
+    window.__confirmarPagoReportado = async function (p, meses) {
+      const c = CUENTAS.find((x) => x.id === p._cuenta);
+      if (!c) return 'No encuentro la cuenta de ese pago. Abre la pestaña Cuentas y vuelve a intentar.';
+      const base = (c.proximoCobro && c.proximoCobro >= hoyCaracas()) ? c.proximoCobro : hoyCaracas();
+      const paso = c.ciclo === 'anual' ? 12 * meses : meses;
+      const patch = { proximo_cobro: masMeses(base, paso), plan_desde: c.planDesde || hoyCaracas(), estado: 'activa', exenta: false };
+      const { error } = await window.sb.from('cuentas').update(patch).eq('id', c.id);
+      if (error) return 'No se pudo poner al día la cuenta: ' + error.message;
+      const { error: e2 } = await window.sb.from('pagos_suscripcion').update({ estado: 'confirmado' }).eq('id', p._id);
+      if (e2) return 'La cuenta quedó al día, pero el pago no se marcó como confirmado: ' + e2.message;
+      const { error: e3 } = await window.sb.from('beneficios_cuenta').insert({
+        cuenta_id: c.id, tipo: 'pago', meses: meses, hasta: patch.proximo_cobro,
+        motivo: 'Pago reportado · ' + (p.metodo || '') + ' ref. ' + (p.ref || '—'), otorgado_por: window.__USER_EMAIL || 'fundador',
+      });
+      if (e3) console.warn('[Fundador] No se pudo registrar el pago en el historial:', e3.message);
+      cargarCuentas();
+      return { cuenta: c.cuenta, proximo: patch.proximo_cobro };
+    };
+
     function gestionarCobro(c) {
-      const hoyISO = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Caracas' });
-      const sumarMeses = (desdeISO, meses) => {
-        const d = new Date((desdeISO || hoyISO()) + 'T12:00:00');
-        const dia = d.getDate();
-        d.setMonth(d.getMonth() + meses);
-        if (d.getDate() < dia) d.setDate(0);      // 31 de enero + 1 mes = 28/29 de febrero
-        return d.toLocaleDateString('en-CA');
-      };
+      const hoyISO = hoyCaracas;
+      const sumarMeses = masMeses;
       const situacion = c.exenta
         ? '<strong>Exenta</strong> — no se le cobra.' + (c.exentaMotivo ? '<br>Motivo: ' + esc(c.exentaMotivo) : '')
         : (c.cortesiaHasta && new Date(c.cortesiaHasta + 'T12:00:00') >= new Date(hoyISO() + 'T12:00:00'))

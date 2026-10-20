@@ -106,8 +106,8 @@ bloque('El ciclo de cobro del Panel del Fundador');
 /* `const` dentro de un eval no sale de ahí: se envuelve y se devuelve lo que
    hace falta probar. */
 const sumarMeses = eval('(function () {'
-  + tramo('      const hoyISO = () => new Date().toLocaleDateString', '      const situacion = c.exenta')
-  + ' return sumarMeses; })()');
+  + tramo('    const hoyCaracas = () => new Date().toLocaleDateString', '    /* El pago que el cliente REPORT')
+  + ' return masMeses; })()');
 ok('un mes normal', sumarMeses('2026-09-15', 1), '2026-10-15');
 ok('un año (ciclo anual)', sumarMeses('2026-09-15', 12), '2027-09-15');
 ok('31 de enero + 1 mes = fin de febrero', sumarMeses('2026-01-31', 1), '2026-02-28');
@@ -1050,6 +1050,21 @@ const _sqlTope = fs.readFileSync(path.join(RAIZ, 'sql', 'planes_dos_apps.sql'), 
 ok('la base aplica el mismo tope de PRO', /when 'contador_pro'\s+then 10 \+ least\(v_extra, 10\)/.test(_sqlTope), true);
 ok('la base blinda el tope contra el cliente', /new\.empresas_extra := old\.empresas_extra/.test(_sqlTope), true);
 
+
+// ── Los cobros dicen la verdad ──────────────────────────────────────────────
+/* El botón «Verificar» de Cobros decía «Agente IA leyendo el comprobante» y no
+   leía nada; los métodos decían «Confirmación automática» y no había nada
+   automático; y los formularios con guardado asíncrono se cerraban sin mostrar
+   sus avisos. */
+bloque('Los cobros dicen la verdad');
+ok('nadie dice que un agente lee el comprobante', /Agente IA leyendo/.test(app), false);
+ok('ningún método de cobro se anuncia automático', /Confirmación automática/.test(app), false);
+ok('confirmar un pago reportado corre la fecha del próximo cobro',
+  /__confirmarPagoReportado[\s\S]{0,900}proximo_cobro: masMeses\(base, paso\)/.test(app), true);
+ok('activar una cuenta pregunta cómo se le cobra',
+  /nuevo === 'activa' && !c\.exenta && !c\.proximoCobro && !c\.cortesiaHasta\)[\s\S]{0,160}gestionarCobro\(c\)/.test(app), true);
+ok('el formulario espera un guardado asíncrono',
+  /res && typeof res\.then === 'function'/.test(app), true);
 
 console.log('\n' + (fallas ? 'HAY ' + fallas + ' FALLA(S) de ' + total : 'TODO OK · ' + total + ' comprobaciones'));
 process.exit(fallas ? 1 : 0);
