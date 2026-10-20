@@ -342,7 +342,9 @@ def recorrer_hoja(hoja):
         # entre páginas; dejarlo pisar al primero hacía que el revisor
         # comparara las filas contra cero y denunciara como descuadre cada
         # hoja que sí cuadraba.
-        if re.match(r'^\s*totales?\s*:?\s*$', plano(texto(fila[0]) if fila else '')):
+        # «TOTAL» o «TOTALES»: el libro de ventas lo trae en singular, y la
+        # expresión vieja (totales?) exigía la «e» y lo contaba como venta.
+        if re.match(r'^\s*total(es)?\s*:?\s*$', plano(texto(fila[0]) if fila else '')):
             if not cerrada:
                 crudos = {k: num(celda(fila, mapa, k))
                           for k in ('total', 'exento', 'base', 'iva')}

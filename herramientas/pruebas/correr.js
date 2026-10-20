@@ -19,7 +19,7 @@ const RAIZ = path.resolve(__dirname, '..', '..');
 /* Se busca en el nucleo y en la app: al partir el archivo, cada funcion
    puede estar en cualquiera de los dos y la prueba no tiene por que saberlo. */
 const leer = (f) => { try { return fs.readFileSync(path.join(RAIZ, 'assets', f), 'utf8'); } catch (e) { return ''; } };
-const app = ['core.js', 'app.js', 'retenciones.js', 'tesoreria.js', 'facturas.js', 'contabilidad.js', 'inventario.js', 'terceros.js', 'nomina.js'].map(leer).join(String.fromCharCode(10));
+const app = ['core.js', 'app.js', 'retenciones.js', 'tesoreria.js', 'facturas.js', 'contabilidad.js', 'inventario.js', 'terceros.js', 'nomina.js', 'importador.js'].map(leer).join(String.fromCharCode(10));
 
 /* Se toma el código TAL COMO ESTÁ en app.js: si alguien cambia el cálculo,
    estas pruebas prueban el cálculo nuevo, no una copia que envejece. */
@@ -215,7 +215,7 @@ bloque('Cerrar sesion cierra de verdad');
 
 var _core = (function () { try { return fs.readFileSync(path.join(RAIZ, 'assets', 'core.js'), 'utf8'); } catch (e) { return ''; } })();
 var _modulos = ['app.js', 'retenciones.js', 'tesoreria.js', 'facturas.js',
-                'contabilidad.js', 'inventario.js', 'terceros.js', 'nomina.js'];
+                'contabilidad.js', 'inventario.js', 'terceros.js', 'nomina.js', 'importador.js'];
 
 ok('core.js se pudo leer', _core.length > 0, true);
 ok('hay UNA funcion que cierra sesion', /__cerrarSesionSegura\s*=/.test(_core), true);
@@ -1065,6 +1065,50 @@ ok('activar una cuenta pregunta cómo se le cobra',
   /nuevo === 'activa' && !c\.exenta && !c\.proximoCobro && !c\.cortesiaHasta\)[\s\S]{0,160}gestionarCobro\(c\)/.test(app), true);
 ok('el formulario espera un guardado asíncrono',
   /res && typeof res\.then === 'function'/.test(app), true);
+
+// ── El importador de libros lee como el revisor ─────────────────────────────
+/* Un libro de ventas de prueba con lo que traen los reales: encabezado del
+   período, una anulada sin fecha, la línea de una sucursal y la fila TOTAL en
+   singular (la que se contaba como una venta más y duplicaba el mes). */
+bloque('Importador de libros');
+{
+  const _ctx = { window: {}, document: { querySelectorAll: () => [], getElementById: () => null }, console };
+  const _vm = require('vm'); _vm.createContext(_ctx);
+  _vm.runInContext(fs.readFileSync(path.join(RAIZ, 'assets', 'importador.js'), 'utf8'), _ctx);
+  const imp = _ctx.window.__importador;
+  const H = ['Nº de Operación', 'Fecha de la Factura', 'Nº R.I.F.', 'Nombre o Razón Social', 'Comprobante de Retención', 'N° de Factura', 'N° Control de Factura',
+    'Total Ventas Incluyendo el IVA', 'Ventas Internas No Gravadas', 'Base Imponible', '% Alícuota', 'Impuesto IVA', 'IVA Retenido por el Comprador'];
+  const hoja = [
+    ['EMPRESA DE PRUEBA'], ['LIBRO DE VENTAS'], ['Mes Junio: 01/06/2026 al 30/06/2026'], H,
+    [1, '02/06/2026', 'J-12345678-9', 'CLIENTE UNO, C.A.', '', '000101', '00-000101', 1160, 0, 1000, 0.16, 160, 0],
+    [2, '', '', '', '', '000102', '00-000102', 0, 0, 0, 0.16, 0, 0],
+    [3, '05/06/2026', 'J-87654321-0', 'CLIENTE ESPECIAL, S.A.', '20260600000001', '000103', '00-000103', 2320, 0, 2000, 0.16, 320, 240],
+    ['', '', 'SUCURSAL 02', 'Ventas de la sucursal', '', '', '', 500, 0, 431.03, 0.16, 68.97, 0],
+    ['TOTAL', '', '', '', '', '', '', 3980, 0, 3431.03, '', 548.97, 240],   // incluye la sucursal
+    ['TOTALES', '', '', '', '', '', '', 0, 0, 0, '', 0, 0],
+  ];
+  const h = imp.leerHoja('JUNIO 2026', hoja, 'venta');
+  ok('reconoce el libro de ventas', h.tipo, 'venta');
+  ok('el período sale del encabezado', h.periodo, '2026-06');
+  ok('mes completo no es quincena', h.quincena, null);
+  ok('la fila TOTAL en singular no se cuenta como venta', h.cuenta.operaciones, 2);
+  ok('la anulada se conserva', h.cuenta.anuladas, 1);
+  ok('la anulada toma la fecha de la anterior', h.ops[1].fecha && h.ops[1].fecha.d, 2);
+  ok('la línea de la sucursal no se carga', h.ops.length, 3);
+  ok('suma la base de las operaciones', h.suma.base, 3000);
+  ok('cuadra contra la fila TOTAL (y no contra la TOTALES vacía)', h.cuadra, true);
+  ok('cuenta la retención del cliente', h.cuenta.retenciones, 1);
+  ok('rechaza un libro de compras en el libro de ventas', !!imp.leerHoja('JUNIO 2026', hoja, 'compra').errorGrave, true);
+  ok('período desde el nombre de la hoja', imp.periodoDeHoja('MARZO 2026', [['sin rango']]).periodo, '2026-03');
+  ok('quincena desde el rango', imp.periodoDeHoja('X', [['Mes Junio: 16/06/2026 al 30/06/2026']]).quincena, 2);
+  ok('número con miles en formato venezolano', imp.num('1.234.567,89'), 1234567.89);
+  ok('fecha corta dd/mm/aa', JSON.stringify(imp.leerFecha('05/03/26')), JSON.stringify({ a: 2026, m: 3, d: 5 }));
+  const HN = H.slice(0, 7).concat(['N° Nota de Crédito'], H.slice(7));
+  const notas = imp.leerHoja('JUNIO 2026', [['Mes Junio: 01/06/2026 al 30/06/2026'], HN,
+    [1, '10/06/2026', 'J-12345678-9', 'CLIENTE UNO, C.A.', '', '', '', 'NC-0007', -116, 0, -100, 0.16, -16, 0]], 'venta');
+  ok('una nota de crédito se reconoce como NC', notas.ops[0].doc, 'NC');
+  ok('la NC toma su propio número', notas.ops[0].factura, 'NC-0007');
+}
 
 console.log('\n' + (fallas ? 'HAY ' + fallas + ' FALLA(S) de ' + total : 'TODO OK · ' + total + ' comprobaciones'));
 process.exit(fallas ? 1 : 0);
