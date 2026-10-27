@@ -1018,18 +1018,18 @@
        Antes era siempre el de hoy, y eso dejaba sin salida el caso más común:
        el lunes ya es otra semana, y los recibos de la que acaba de terminar no
        se podían sacar. Luis lo tropezó el 26/10 con los de Iraida y José
-       Agüero. `periodoDesfase` cuenta períodos hacia atrás (0 = el actual,
-       -1 = el anterior) y TODO lo del período sale de aquí: la etiqueta, la
+       Agüero. Y no basta con «el anterior»: hay que poder volver a cualquiera
+       para reimprimir.
+
+       `periodoRef` es un DÍA (aaaa-mm-dd) dentro del período elegido; null =
+       hoy. Se guarda un día y no «tantos períodos atrás» porque el recibo
+       cambia la frecuencia a la del trabajador: con un día, la semana del
+       19/10 de uno semanal pasa a ser la quincena 16–31/10 de uno quincenal,
+       el mismo momento. TODO lo del período sale de aquí: la etiqueta, la
        tasa y si el trabajador estaba de vacaciones. */
-    let periodoDesfase = 0;
+    let periodoRef = null;
     const isoDe = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-    function rangoNomina(freq) {
-      const ref = new Date(); ref.setHours(12, 0, 0, 0);
-      for (let i = 0; i < -periodoDesfase; i++) {
-        if (freq === 'semanal') ref.setDate(ref.getDate() - 7);
-        else if (freq === 'quincenal') { if (ref.getDate() > 15) ref.setDate(1); else ref.setDate(0); } // un día de la quincena anterior
-        else { ref.setDate(1); ref.setMonth(ref.getMonth() - 1); }
-      }
+    function rangoDe(freq, ref) {
       if (freq === 'semanal') {
         const ini = new Date(ref); ini.setDate(ref.getDate() - ((ref.getDay() + 6) % 7)); // lunes
         const fin = new Date(ini); fin.setDate(ini.getDate() + 6);                      // domingo
@@ -1042,24 +1042,59 @@
       }
       return { ini: new Date(ref.getFullYear(), ref.getMonth(), 1, 12), fin: new Date(ref.getFullYear(), ref.getMonth() + 1, 0, 12), ref: ref };
     }
-    function periodoNomina(freq) {
-      const r = rangoNomina(freq);
+    const hoyMediodia = () => { const d = new Date(); d.setHours(12, 0, 0, 0); return d; };
+    function rangoNomina(freq) {
+      return rangoDe(freq, periodoRef ? new Date(periodoRef + 'T12:00:00') : hoyMediodia());
+    }
+    // ¿El período elegido es el que está corriendo? Entonces manda hoy (tasa y vacaciones).
+    function periodoEsActual(freq) {
+      if (!periodoRef) return true;
+      const r = rangoNomina(freq), hoy = isoDe(new Date());
+      return isoDe(r.ini) <= hoy && hoy <= isoDe(r.fin);
+    }
+    const etiquetaRango = (freq, r) => {
       const dd = (n) => String(n).padStart(2, '0');
       const fmt = (d) => dd(d.getDate()) + '/' + dd(d.getMonth() + 1) + '/' + d.getFullYear();
       if (freq === 'semanal') return 'Semana ' + fmt(r.ini) + ' al ' + fmt(r.fin);
       if (freq === 'quincenal') return 'Quincena ' + fmt(r.ini) + ' al ' + fmt(r.fin);
       return 'Mes de ' + MESES_NOM[r.ini.getMonth()] + ' ' + r.ini.getFullYear();
-    }
+    };
+    function periodoNomina(freq) { return etiquetaRango(freq, rangoNomina(freq)); }
     /* La tasa del período: la de FECHA VALOR del primer día hábil DESPUÉS de
        que termina (la semana pagada el sábado se liquida con la del lunes).
        Para el período en curso es justo `__bcvRateNomina`; para uno pasado se
        busca en el historial. Si no está, 0: el recibo se niega en vez de
        inventar una conversión. */
     function tasaNomina(freq) {
-      if (!periodoDesfase) return window.__bcvRateNomina || window.__bcvRate || 145.82;
+      if (periodoEsActual(freq)) return window.__bcvRateNomina || window.__bcvRate || 145.82;
       const fin = isoDe(rangoNomina(freq).fin);
       const sig = (window.__TASAS_USD || []).find((x) => x.f > fin);
       return sig ? sig.t : 0;
+    }
+    /* La lista de períodos para elegir: el actual y los anteriores, hacia
+       atrás, de la frecuencia que esté puesta. Se rehace al cambiar la
+       frecuencia y conserva el mismo momento. */
+    const PERIODOS_ATRAS = { semanal: 26, quincenal: 24, mensual: 12 };
+    function pintarPeriodos() {
+      const sel = document.getElementById('payPeriodo');
+      if (!sel) return;
+      const freq = payFreq;
+      let d = hoyMediodia();
+      const opts = [];
+      for (let i = 0; i <= (PERIODOS_ATRAS[freq] || 12); i++) {
+        const r = rangoDe(freq, d);
+        opts.push('<option value="' + (i ? isoDe(r.ini) : '') + '">' + (i ? '' : 'Este período · ') + etiquetaRango(freq, r) + '</option>');
+        d = new Date(r.ini); d.setDate(d.getDate() - 1);
+      }
+      sel.innerHTML = opts.join('');
+      // El mismo momento en la nueva frecuencia (o el actual, si se sale de la lista)
+      const elegido = periodoRef && !periodoEsActual(freq) ? isoDe(rangoNomina(freq).ini) : '';
+      sel.value = elegido;
+      // periodoRef se conserva tal cual (no se cambia por el inicio del período
+      // nuevo): así, ir a quincenal y volver a semanal regresa a la misma semana.
+      // Si en esta frecuencia cae en el período actual, se marca «Este período» pero el día se
+      // guarda igual; solo se olvida si quedó fuera de la lista.
+      if (sel.value !== elegido) { sel.value = ''; periodoRef = null; }
     }
     const fmtFechaISO = (iso) => { if (!iso) return ''; const [y, m, d] = iso.split('-'); return d + '/' + m + '/' + y; };
     // Vacaciones: mientras el día de referencia del período caiga en [desde, hasta], el
@@ -1067,7 +1102,8 @@
     // se le sigue pagando el Cestaticket. En el período actual ese día es hoy.
     function enVacaciones(emp, freq) {
       if (!emp.vacacionesDesde || !emp.vacacionesHasta) return false;
-      const diaISO = periodoDesfase ? isoDe(rangoNomina(freq || emp.frecHabitual || payFreq).ref)
+      const fq = freq || emp.frecHabitual || payFreq;
+      const diaISO = !periodoEsActual(fq) ? isoDe(rangoNomina(fq).ini)
         : (window.__hoyISO ? window.__hoyISO() : new Date().toISOString().slice(0, 10));
       return diaISO >= emp.vacacionesDesde && diaISO <= emp.vacacionesHasta;
     }
@@ -1188,7 +1224,7 @@
         renderEmpTable();
       }
       // Período pasado: su tasa sale del historial, que puede no haber llegado todavía.
-      if (periodoDesfase && !window.__TASAS_USD && window.__cargarTasasUSD && !emp.__esperoTasas) {
+      if (!periodoEsActual(payFreq) && !window.__TASAS_USD && window.__cargarTasasUSD && !emp.__esperoTasas) {
         window.__cargarTasasUSD().then(() => openReciboPago(Object.assign({}, emp, { __esperoTasas: true })));
         return;
       }
@@ -1325,6 +1361,7 @@
       }
       const tbody = table.querySelector('tbody');
       if (!tbody) return;
+      pintarPeriodos(); // la lista de períodos sigue a la frecuencia (y conserva el momento elegido)
       // Columna de período: sigue la frecuencia seleccionada (Semana / Quincena / Mes)
       const perTh = document.getElementById('empPeriodoTh');
       if (perTh) perTh.textContent = payFreq === 'semanal' ? 'Semana' : payFreq === 'mensual' ? 'Mes' : 'Quincena';
@@ -1782,18 +1819,15 @@
       });
     })();
 
-    // ---------- Selector de período: el actual o el anterior ----------
+    // ---------- Selector de período: el actual o cualquiera de los anteriores ----------
     (function wirePeriodo() {
       const sel = document.getElementById('payPeriodo');
       if (!sel) return;
-      sel.querySelectorAll('button').forEach((b) => {
-        b.addEventListener('click', () => {
-          sel.querySelectorAll('button').forEach((x) => x.removeAttribute('data-active'));
-          b.dataset.active = 'true';
-          periodoDesfase = parseInt(b.dataset.desfase, 10) || 0;
-          if (periodoDesfase && window.__cargarTasasUSD) window.__cargarTasasUSD();
-          renderEmpTable(); // el encabezado muestra el período elegido
-        });
+      pintarPeriodos();
+      sel.addEventListener('change', () => {
+        periodoRef = sel.value || null;
+        if (periodoRef && window.__cargarTasasUSD) window.__cargarTasasUSD();
+        renderEmpTable(); // el encabezado muestra el período elegido
       });
     })();
 

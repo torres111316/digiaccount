@@ -4919,14 +4919,26 @@
     transition: transform var(--dur-base) var(--ease-out), opacity var(--dur-base) var(--ease-out);
   }
   .recibo-overlay[data-open="true"] .recibo-modal { transform: translateY(0); opacity: 1; }
+  /* LA BARRA ENVUELVE, Y LA X SIEMPRE ESTÁ EN SU ESQUINA.
+
+     El modal mide 720 px y el recibo de nómina lleva título + Firmar, Firma
+     empresa, Dos por hoja, Imprimir, Descargar y la X: no caben en una
+     fila. Sin poder envolver, la fila se salía por la derecha y el
+     `overflow: hidden` del modal se comía la X (Luis, 27/10). La factura,
+     con sus seis botones, estaba al borde de lo mismo.
+
+     Ahora los botones bajan a una segunda línea cuando no caben, y la X
+     sale del flujo: queda fija arriba a la derecha, pase lo que pase. */
   .recibo-modal-bar {
-    display: flex; align-items: center; justify-content: space-between; gap: 12px;
-    padding: 12px 16px; border-bottom: 1px solid var(--border-default);
+    position: relative;
+    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px 12px;
+    padding: 12px 56px 12px 16px; border-bottom: 1px solid var(--border-default);
     background: var(--bg-surface-alt); flex-shrink: 0;
   }
-  .recibo-modal-bar .rm-title { font-family: var(--font-display); font-weight: var(--fw-bold); font-size: 14px; color: var(--fg-primary); display: inline-flex; align-items: center; gap: 8px; }
+  .recibo-modal-bar .rm-title { font-family: var(--font-display); font-weight: var(--fw-bold); font-size: 14px; color: var(--fg-primary); display: inline-flex; align-items: center; gap: 8px; min-height: 32px; }
   .recibo-modal-bar .rm-title svg { width: 16px; height: 16px; color: var(--da-navy-700); }
-  .recibo-modal-bar .rm-actions { display: flex; align-items: center; gap: 8px; }
+  .recibo-modal-bar .rm-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+  .recibo-modal-bar .rm-actions > .icon-btn[title="Cerrar"] { position: absolute; top: 12px; right: 14px; }
   .recibo-scroll { overflow-y: auto; padding: 20px; background: var(--da-slate-100); }
 
   /* Documento del recibo */
@@ -4980,11 +4992,14 @@
   .recibo-sign .line { border-top: 1px solid var(--fg-body); padding-top: 6px; font-size: 10px; color: var(--fg-muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: var(--fw-semibold); }
   .recibo-legal { grid-column: 1 / -1; font-size: 9px; color: var(--fg-subtle); line-height: 1.5; padding-top: 12px; border-top: 1px dashed var(--border-default); }
 
-  /* La casilla «Dos por hoja» de la barra del recibo. */
+  /* La casilla «Dos por hoja» de la barra del recibo. La barra es clara:
+     con letra y borde blancos (como se hizo pensando en una barra oscura)
+     la casilla quedaba casi invisible. */
   .rm-dos {
     display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px;
-    font-size: 12px; color: var(--da-white); cursor: pointer; user-select: none;
-    border: 1px solid rgba(255, 255, 255, .35); border-radius: var(--radius-sm); white-space: nowrap;
+    font-size: 12px; color: var(--fg-primary); cursor: pointer; user-select: none;
+    border: 1px solid var(--border-strong); border-radius: var(--radius-sm); white-space: nowrap;
+    background: var(--bg-surface);
   }
   .rm-dos input { width: 14px; height: 14px; margin: 0; accent-color: var(--da-cyan-500); cursor: pointer; }
 
@@ -7839,7 +7854,8 @@
        pantalla. Ahora el título va arriba y los botones debajo,
        repartidos en las líneas que hagan falta. */
     .recibo-modal { max-height: 94vh; }
-    .recibo-modal-bar { flex-wrap: wrap; gap: 8px; padding: 10px 12px; }
+    .recibo-modal-bar { flex-wrap: wrap; gap: 8px; padding: 10px 52px 10px 12px; }
+    .recibo-modal-bar .rm-actions > .icon-btn[title="Cerrar"] { top: 10px; right: 12px; }
     .recibo-modal-bar .rm-title { flex: 1 1 auto; min-width: 0; }
     .recibo-modal-bar .rm-actions { flex-wrap: wrap; width: 100%; gap: 6px; }
     .recibo-modal-bar .rm-actions .btn {
