@@ -1013,30 +1013,63 @@
     };
     // Período de pago REAL según la frecuencia (semana = lunes a domingo, pago típico el sábado)
     const MESES_NOM = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
-    function periodoNomina(freq) {
-      const hoy = new Date();
-      const dd = (n) => String(n).padStart(2, '0');
-      const fmt = (d) => dd(d.getDate()) + '/' + dd(d.getMonth() + 1) + '/' + d.getFullYear();
+    /* QUÉ PERÍODO SE ESTÁ PAGANDO.
+
+       Antes era siempre el de hoy, y eso dejaba sin salida el caso más común:
+       el lunes ya es otra semana, y los recibos de la que acaba de terminar no
+       se podían sacar. Luis lo tropezó el 26/10 con los de Iraida y José
+       Agüero. `periodoDesfase` cuenta períodos hacia atrás (0 = el actual,
+       -1 = el anterior) y TODO lo del período sale de aquí: la etiqueta, la
+       tasa y si el trabajador estaba de vacaciones. */
+    let periodoDesfase = 0;
+    const isoDe = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    function rangoNomina(freq) {
+      const ref = new Date(); ref.setHours(12, 0, 0, 0);
+      for (let i = 0; i < -periodoDesfase; i++) {
+        if (freq === 'semanal') ref.setDate(ref.getDate() - 7);
+        else if (freq === 'quincenal') { if (ref.getDate() > 15) ref.setDate(1); else ref.setDate(0); } // un día de la quincena anterior
+        else { ref.setDate(1); ref.setMonth(ref.getMonth() - 1); }
+      }
       if (freq === 'semanal') {
-        const lun = new Date(hoy); lun.setDate(hoy.getDate() - ((hoy.getDay() + 6) % 7)); // lunes de esta semana
-        const dom = new Date(lun); dom.setDate(lun.getDate() + 6);
-        return 'Semana ' + fmt(lun) + ' al ' + fmt(dom);
+        const ini = new Date(ref); ini.setDate(ref.getDate() - ((ref.getDay() + 6) % 7)); // lunes
+        const fin = new Date(ini); fin.setDate(ini.getDate() + 6);                      // domingo
+        return { ini: ini, fin: fin, ref: ref };
       }
       if (freq === 'quincenal') {
-        const ult = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).getDate();
-        return hoy.getDate() <= 15
-          ? ('Quincena 01/' + dd(hoy.getMonth() + 1) + ' al 15/' + dd(hoy.getMonth() + 1) + '/' + hoy.getFullYear())
-          : ('Quincena 16/' + dd(hoy.getMonth() + 1) + ' al ' + ult + '/' + dd(hoy.getMonth() + 1) + '/' + hoy.getFullYear());
+        const primera = ref.getDate() <= 15;
+        return { ini: new Date(ref.getFullYear(), ref.getMonth(), primera ? 1 : 16, 12),
+                 fin: new Date(ref.getFullYear(), primera ? ref.getMonth() : ref.getMonth() + 1, primera ? 15 : 0, 12), ref: ref };
       }
-      return 'Mes de ' + MESES_NOM[hoy.getMonth()] + ' ' + hoy.getFullYear();
+      return { ini: new Date(ref.getFullYear(), ref.getMonth(), 1, 12), fin: new Date(ref.getFullYear(), ref.getMonth() + 1, 0, 12), ref: ref };
+    }
+    function periodoNomina(freq) {
+      const r = rangoNomina(freq);
+      const dd = (n) => String(n).padStart(2, '0');
+      const fmt = (d) => dd(d.getDate()) + '/' + dd(d.getMonth() + 1) + '/' + d.getFullYear();
+      if (freq === 'semanal') return 'Semana ' + fmt(r.ini) + ' al ' + fmt(r.fin);
+      if (freq === 'quincenal') return 'Quincena ' + fmt(r.ini) + ' al ' + fmt(r.fin);
+      return 'Mes de ' + MESES_NOM[r.ini.getMonth()] + ' ' + r.ini.getFullYear();
+    }
+    /* La tasa del período: la de FECHA VALOR del primer día hábil DESPUÉS de
+       que termina (la semana pagada el sábado se liquida con la del lunes).
+       Para el período en curso es justo `__bcvRateNomina`; para uno pasado se
+       busca en el historial. Si no está, 0: el recibo se niega en vez de
+       inventar una conversión. */
+    function tasaNomina(freq) {
+      if (!periodoDesfase) return window.__bcvRateNomina || window.__bcvRate || 145.82;
+      const fin = isoDe(rangoNomina(freq).fin);
+      const sig = (window.__TASAS_USD || []).find((x) => x.f > fin);
+      return sig ? sig.t : 0;
     }
     const fmtFechaISO = (iso) => { if (!iso) return ''; const [y, m, d] = iso.split('-'); return d + '/' + m + '/' + y; };
-    // Vacaciones: mientras hoy caiga en [desde, hasta], el trabajador NO devenga salario ni
-    // contingencia/transporte en la nómina regular — solo se le sigue pagando el Cestaticket.
-    function enVacaciones(emp) {
+    // Vacaciones: mientras el día de referencia del período caiga en [desde, hasta], el
+    // trabajador NO devenga salario ni contingencia/transporte en la nómina regular — solo
+    // se le sigue pagando el Cestaticket. En el período actual ese día es hoy.
+    function enVacaciones(emp, freq) {
       if (!emp.vacacionesDesde || !emp.vacacionesHasta) return false;
-      const hoyISO = window.__hoyISO ? window.__hoyISO() : new Date().toISOString().slice(0, 10);
-      return hoyISO >= emp.vacacionesDesde && hoyISO <= emp.vacacionesHasta;
+      const diaISO = periodoDesfase ? isoDe(rangoNomina(freq || emp.frecHabitual || payFreq).ref)
+        : (window.__hoyISO ? window.__hoyISO() : new Date().toISOString().slice(0, 10));
+      return diaISO >= emp.vacacionesDesde && diaISO <= emp.vacacionesHasta;
     }
 
     function calcPago(emp, freqOver) {
@@ -1046,11 +1079,12 @@
       const factor = 2 / f.div; // proporción respecto a la quincena (quincenal=1, mensual=2, semanal≈0,46)
       // Nómina se liquida con la tasa de FECHA VALOR más reciente publicada por el BCV:
       // el sábado de pago usa la del lunes siguiente (publicada el viernes en la tarde).
-      const tasa = window.__bcvRateNomina || window.__bcvRate || 145.82;
+      // Para un período pasado, la de su propio lunes (ver tasaNomina).
+      const tasa = tasaNomina(fq);
 
       // Vacaciones: mientras esté en su rango de vacaciones, NO devenga salario ni novedades
       // ni contingencia/transporte — solo se le sigue pagando el Cestaticket (más abajo).
-      const deVacaciones = enVacaciones(emp);
+      const deVacaciones = enVacaciones(emp, fq);
 
       // Salario base COTIZABLE = el que se declara para el trabajador.
       // El Bono de Contingencia es un complemento NO salarial (no cotizable), explícito.
@@ -1153,11 +1187,22 @@
         });
         renderEmpTable();
       }
+      // Período pasado: su tasa sale del historial, que puede no haber llegado todavía.
+      if (periodoDesfase && !window.__TASAS_USD && window.__cargarTasasUSD && !emp.__esperoTasas) {
+        window.__cargarTasasUSD().then(() => openReciboPago(Object.assign({}, emp, { __esperoTasas: true })));
+        return;
+      }
       const p = calcPago(emp);
+      if (!(p.tasa > 0)) {
+        if (window.toast) window.toast('No hay tasa BCV para ' + p.f.periodo + ' (la del lunes siguiente). Revisa la tabla de tasas antes de sacar este recibo.', 'error');
+        return;
+      }
       modalTitle.textContent = 'Recibo de Pago de Nómina';
       const hoyR = new Date();
       const fecha = ('0' + hoyR.getDate()).slice(-2) + '/' + ('0' + (hoyR.getMonth() + 1)).slice(-2) + '/' + hoyR.getFullYear();
-      const numDoc = p.f.doc + '-' + hoyR.getFullYear() + '-10-' + emp.id.toUpperCase();
+      // Año y mes del PERÍODO pagado (antes el mes iba fijo en «10»)
+      const iniPer = rangoNomina(payFreq).ini;
+      const numDoc = p.f.doc + '-' + iniPer.getFullYear() + '-' + String(iniPer.getMonth() + 1).padStart(2, '0') + '-' + emp.id.toUpperCase();
 
       const rows = [];
       if (p.deVacaciones) {
@@ -1733,6 +1778,21 @@
           if (hint) hint.innerHTML = '<i data-lucide="info" style="width:13px;height:13px;"></i> ' + (hints[payFreq] || '');
           renderEmpTable(); // la columna de período del cuadro sigue a la frecuencia elegida
           drawIcons();
+        });
+      });
+    })();
+
+    // ---------- Selector de período: el actual o el anterior ----------
+    (function wirePeriodo() {
+      const sel = document.getElementById('payPeriodo');
+      if (!sel) return;
+      sel.querySelectorAll('button').forEach((b) => {
+        b.addEventListener('click', () => {
+          sel.querySelectorAll('button').forEach((x) => x.removeAttribute('data-active'));
+          b.dataset.active = 'true';
+          periodoDesfase = parseInt(b.dataset.desfase, 10) || 0;
+          if (periodoDesfase && window.__cargarTasasUSD) window.__cargarTasasUSD();
+          renderEmpTable(); // el encabezado muestra el período elegido
         });
       });
     })();
