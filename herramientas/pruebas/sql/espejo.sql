@@ -14,7 +14,8 @@ create function public.mi_cuenta_id() returns uuid language sql as 'select null:
 
 create table public.cuentas (
   id uuid primary key default gen_random_uuid(),
-  nombre text
+  nombre text not null,
+  segmento text not null   -- 'empresa' o 'contador'; obligatorio y sin valor por defecto, igual que en Supabase
 );
 
 create table public.empresas (
