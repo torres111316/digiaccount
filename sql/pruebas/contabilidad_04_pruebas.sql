@@ -34,7 +34,7 @@ $$;
 create function pg_temp.viejo(emp uuid, ref text, descr text) returns void language sql as $$
   insert into asientos (cuenta_id, empresa_id, fecha, descripcion, referencia, origen, lineas, total)
   values ('a0000000-0000-0000-0000-000000000001', emp, '31/03/2026', descr, ref, 'prueba', '[]', 0);
-  update asientos set origen = 'auto' where referencia = ref and origen = 'prueba';
+  update asientos set origen = 'auto' where empresa_id = emp and referencia = ref and origen = 'prueba';
 $$;
 
 insert into cuentas (id, nombre, segmento, plan_id) values ('a0000000-0000-0000-0000-000000000001', 'Firma de prueba', 'contador', 'contador_basico');  -- el plan permite 3 empresas (validar_limite_empresas)
@@ -92,7 +92,7 @@ values ('20000000-0000-0000-0000-000000000003', 'a0000000-0000-0000-0000-0000000
 update libro_fiscal set base = 200, iva = 32, total = 232 where id = '20000000-0000-0000-0000-000000000003';
 select pg_temp.igual('mes con resumen LV: no se crea asiento por factura', pg_temp.n('20000000-0000-0000-0000-000000000003'), '0');
 select pg_temp.igual('un asiento que llega sin período lo toma de su fecha',
-  (select periodo from asientos where referencia = 'LV-03/2026'), '2026-03');
+  (select periodo from asientos where empresa_id = 'e0000000-0000-0000-0000-000000000001' and referencia = 'LV-03/2026'), '2026-03');
 
 -- 8. El asiento suelto que dejó el navegador se ADOPTA al editar su factura.
 insert into libro_fiscal (id, cuenta_id, empresa_id, tipo, fecha, periodo, tercero_nombre, numero_factura, tipo_doc, base, iva, total)
@@ -117,7 +117,7 @@ insert into asientos (cuenta_id, empresa_id, numero, fecha, descripcion, referen
 values ('a0000000-0000-0000-0000-000000000001', 'e0000000-0000-0000-0000-000000000001', 5, '02/11/2026', 'Asiento manual', 'MAN', 'manual', '[]', 0);
 select pg_temp.igual('el manual toma el número siguiente (no el 5 que mandó) y su período',
   (select (numero = (select max(numero) from asientos where empresa_id = 'e0000000-0000-0000-0000-000000000001') and numero <> 5)::text || ' ' || periodo
-     from asientos where referencia = 'MAN'), 'true 2026-11');
+     from asientos where empresa_id = 'e0000000-0000-0000-0000-000000000001' and referencia = 'MAN'), 'true 2026-11');
 
 -- ===== Revisión final del plan 1 =====
 
@@ -129,11 +129,11 @@ insert into asientos (cuenta_id, empresa_id, numero, fecha, descripcion, referen
   ('a0000000-0000-0000-0000-000000000001', 'e0000000-0000-0000-0000-000000000001', 7003, '02/11/2026', 'Anulación venta N° 780', '780', 'auto', '[]', 0),
   ('a0000000-0000-0000-0000-000000000001', 'e0000000-0000-0000-0000-000000000001', 7004, '30/11/2026', 'Ventas del mes (resumen Libro de Ventas) · noviembre 2026', 'LV-11/2026', 'auto', '[]', 0);
 select pg_temp.igual('se descartan los asientos del libro que manda la app vieja',
-  (select count(*)::text from asientos where referencia in ('777', '778', '779', '780', 'LV-11/2026')), '0');
+  (select count(*)::text from asientos where empresa_id = 'e0000000-0000-0000-0000-000000000001' and referencia in ('777', '778', '779', '780', 'LV-11/2026')), '0');
 insert into asientos (cuenta_id, empresa_id, fecha, descripcion, referencia, origen, lineas, total) values
   ('a0000000-0000-0000-0000-000000000001', 'e0000000-0000-0000-0000-000000000001', '02/11/2026', 'Venta s/recibo REC-0001 · CLIENTE', 'REC-0001', 'auto', '[]', 0),
   ('a0000000-0000-0000-0000-000000000001', 'e0000000-0000-0000-0000-000000000001', '02/11/2026', 'Reverso cobro REC-0001 · CLIENTE', 'REC-0001', 'auto', '[]', 0);
-select pg_temp.igual('los recibos y la tesorería sí entran', (select count(*)::text from asientos where referencia = 'REC-0001'), '2');
+select pg_temp.igual('los recibos y la tesorería sí entran', (select count(*)::text from asientos where empresa_id = 'e0000000-0000-0000-0000-000000000001' and referencia = 'REC-0001'), '2');
 
 -- C1. Anular o borrar una factura VIEJA quita su asiento suelto.
 insert into libro_fiscal (id, cuenta_id, empresa_id, tipo, fecha, periodo, tercero_nombre, numero_factura, tipo_doc, base, iva, total) values
@@ -143,10 +143,10 @@ select pg_temp.heredado('30000000-0000-0000-0000-000000000001', 'Compra s/factur
 select pg_temp.heredado('30000000-0000-0000-0000-000000000002', 'Venta s/libro · factura 000300 · CLIENTE TRES');
 update libro_fiscal set tercero_nombre = 'ANULADA', base = 0, iva = 0, total = 0 where id = '30000000-0000-0000-0000-000000000001';
 select pg_temp.igual('anular una compra vieja quita su asiento suelto',
-  (select count(*)::text from asientos where referencia = '0000054586'), '0');
+  (select count(*)::text from asientos where empresa_id = 'e0000000-0000-0000-0000-000000000001' and referencia = '0000054586'), '0');
 delete from libro_fiscal where id = '30000000-0000-0000-0000-000000000002';
 select pg_temp.igual('borrar una venta vieja quita su asiento suelto',
-  (select count(*)::text from asientos where referencia = '000300'), '0');
+  (select count(*)::text from asientos where empresa_id = 'e0000000-0000-0000-0000-000000000001' and referencia = '000300'), '0');
 
 -- I1. Casos ambiguos: si no hay UN solo asiento suelto inequívoco, el motor no toca nada.
 insert into libro_fiscal (id, cuenta_id, empresa_id, tipo, fecha, periodo, tercero_nombre, numero_factura, tipo_doc, base, iva, total) values
@@ -155,20 +155,20 @@ select pg_temp.heredado('30000000-0000-0000-0000-000000000003', 'Compra s/factur
 select pg_temp.viejo('e0000000-0000-0000-0000-000000000001', 'A021521', 'Compra s/factura A021521 · VENCEMENT, C.A.');
 update libro_fiscal set base = 150, iva = 24, total = 174 where id = '30000000-0000-0000-0000-000000000003';
 select pg_temp.igual('dos asientos sueltos de la misma factura: no se adopta ni se crea otro',
-  (select count(*)::text || ' ' || count(origen_id)::text from asientos where referencia = 'A021521'), '2 0');
+  (select count(*)::text || ' ' || count(origen_id)::text from asientos where empresa_id = 'e0000000-0000-0000-0000-000000000001' and referencia = 'A021521'), '2 0');
 insert into libro_fiscal (id, cuenta_id, empresa_id, tipo, fecha, periodo, tercero_nombre, numero_factura, tipo_doc, base, iva, total) values
   ('30000000-0000-0000-0000-000000000004', 'a0000000-0000-0000-0000-000000000001', 'e0000000-0000-0000-0000-000000000001', 'compra', '08/09/26', '2026-09', 'MAXCAM, C.A.', '00309501', 'FC', 100, 16, 116);
 select pg_temp.heredado('30000000-0000-0000-0000-000000000004', 'Compra s/factura 00309501 · MAXCAM, C.A.');
 select pg_temp.viejo('e0000000-0000-0000-0000-000000000001', '00309501', 'Reverso compra s/factura 00309501 · MAXCAM, C.A.');
 delete from libro_fiscal where id = '30000000-0000-0000-0000-000000000004';
 select pg_temp.igual('factura con un reverso viejo: borrarla no toca sus asientos',
-  (select count(*)::text from asientos where referencia = '00309501'), '2');
+  (select count(*)::text from asientos where empresa_id = 'e0000000-0000-0000-0000-000000000001' and referencia = '00309501'), '2');
 insert into libro_fiscal (id, cuenta_id, empresa_id, tipo, fecha, periodo, tercero_nombre, numero_factura, tipo_doc, base, iva, total) values
   ('30000000-0000-0000-0000-000000000005', 'a0000000-0000-0000-0000-000000000001', 'e0000000-0000-0000-0000-000000000001', 'venta', '09/09/26', '2026-09', 'BELTRAC, C.A.', '001379', 'FV', 100, 16, 116);
 select pg_temp.heredado('30000000-0000-0000-0000-000000000005', 'Venta s/libro · factura 001379 · OTRO CLIENTE');
 update libro_fiscal set base = 120, iva = 19.2, total = 139.2 where id = '30000000-0000-0000-0000-000000000005';
 select pg_temp.igual('un asiento suelto de OTRO tercero con el mismo número no se adopta',
-  (select count(*)::text from asientos where referencia = '001379'), '2');
+  (select count(*)::text from asientos where empresa_id = 'e0000000-0000-0000-0000-000000000001' and referencia = '001379'), '2');
 
 -- I1. Corregir el N° de factura de una fila vieja adopta su asiento por el número anterior.
 insert into libro_fiscal (id, cuenta_id, empresa_id, tipo, fecha, periodo, tercero_nombre, numero_factura, tipo_doc, base, iva, total) values
@@ -176,14 +176,14 @@ insert into libro_fiscal (id, cuenta_id, empresa_id, tipo, fecha, periodo, terce
 select pg_temp.heredado('30000000-0000-0000-0000-000000000006', 'Compra s/factura 1234 · FERRETERIA SOL');
 update libro_fiscal set numero_factura = '01234' where id = '30000000-0000-0000-0000-000000000006';
 select pg_temp.igual('al corregir el número se adopta el asiento viejo, con la referencia nueva',
-  (select count(*)::text || ' ' || string_agg(referencia, ',') from asientos where referencia in ('1234', '01234')), '1 01234');
+  (select count(*)::text || ' ' || string_agg(referencia, ',') from asientos where empresa_id = 'e0000000-0000-0000-0000-000000000001' and referencia in ('1234', '01234')), '1 01234');
 
 -- I1. Un reporte Z no adopta una factura con el mismo número.
 select pg_temp.viejo('e0000000-0000-0000-0000-000000000001', '0812', 'Venta s/libro · factura 0812 · CLIENTE FACTURA');
 insert into libro_fiscal (id, cuenta_id, empresa_id, tipo, fecha, periodo, tercero_nombre, numero_factura, numero_zeta, maquina_fiscal, tipo_doc, base, iva, total) values
   ('30000000-0000-0000-0000-000000000007', 'a0000000-0000-0000-0000-000000000001', 'e0000000-0000-0000-0000-000000000001', 'venta', '11/09/26', '2026-09', '', '', '0812', 'Z7C0025982', 'FV', 500, 80, 580);
 select pg_temp.igual('el Z crea su propio asiento y el de la factura queda',
-  (select count(*)::text || ' ' || count(origen_id)::text from asientos where referencia = '0812'), '2 1');
+  (select count(*)::text || ' ' || count(origen_id)::text from asientos where empresa_id = 'e0000000-0000-0000-0000-000000000001' and referencia = '0812'), '2 1');
 
 -- I2. Filas de un período sin asiento (las cargadas antes del motor): «Cerrar mes» no debe cerrarlo.
 -- (Sin desactivar disparadores, que bloquearía libro_fiscal en producción: se

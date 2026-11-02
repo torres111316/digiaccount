@@ -101,3 +101,16 @@ create table public.asientos (
   total numeric,
   creado_en timestamptz default now()
 );
+
+-- RUIDO: en la base real hay otras empresas con asientos que repiten las
+-- referencias que usan las pruebas (LV-03/2026 de Agüero, 000144 de GATMA,
+-- A021521 de Radian...). Una prueba que busque por referencia sin filtrar por
+-- su empresa de prueba debe fallar AQUÍ y no recién en Supabase (pasó el
+-- 02/11/2026: «more than one row returned by a subquery»).
+insert into public.cuentas (id, nombre, segmento) values ('99999999-0000-0000-0000-000000000001', 'Cuenta ajena', 'contador');
+insert into public.empresas (id, cuenta_id, nombre) values ('99999999-0000-0000-0000-0000000000e1', '99999999-0000-0000-0000-000000000001', 'Empresa ajena');
+insert into public.asientos (cuenta_id, empresa_id, numero, fecha, descripcion, referencia, origen, lineas, total)
+select '99999999-0000-0000-0000-000000000001', '99999999-0000-0000-0000-0000000000e1', row_number() over (), '31/03/2026',
+       'Asiento ajeno ' || r, r, 'auto', '[]', 0
+  from unnest(array['LV-03/2026', '000144', 'A021521', '00309501', '001379', '0812', '0000054586', '000300',
+                    '777', '778', '779', '780', 'LV-11/2026', 'MAN', 'REC-0001', '1234', '01234', 'M000001']) r;
