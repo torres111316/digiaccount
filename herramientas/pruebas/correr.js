@@ -1142,5 +1142,26 @@ ok('editar una compra muestra su cuenta o la del proveedor',
   /__campoCuentaCompra\(r\.cuenta_contable \|\| window\.__cuentaDeProveedor\(/.test(_appjs), true);
 ok('hay una lista de cuentas clasificables', /window\.__cuentasClasificables\s*=/.test(_conta), true);
 
+/* El asiento de cada fila del libro lo crea, actualiza y borra la base
+   (sql/contabilidad_04_motor.sql), entre por donde entre la factura. Si el
+   navegador siguiera creándolo, cada factura cargada en pantalla tendría dos. */
+bloque('El libro contabiliza desde la base');
+ok('registrar una compra ya no llama a __postAsiento', /__postAsiento\('Compra s\/factura/.test(_appjs), false);
+ok('registrar una venta del libro ya no llama a __postAsiento', /__postAsiento\('Venta s\/libro/.test(_appjs), false);
+ok('anular una fila del libro ya no llama a __postAsiento', /__postAsiento\('Anulación ' \+ \(esCompra/.test(_appjs), false);
+ok('editar o borrar una fila del libro ya no reversa en el navegador', /__postAsiento\('Reverso ' \+ \(esCompra/.test(_appjs), false);
+ok('__postAsiento no manda numero', /numero:\s*\(asientoNum/.test(_conta), false);
+/* «Cerrar mes» creaba los asientos resumen LV/LC del mes. Con el motor, cada
+   factura ya tiene el suyo: cerrar un mes lo habría contado dos veces. Queda
+   la liquidación (F30) y, mientras el plan 2 no registre cada retención, un
+   asiento con las retenciones de IVA sufridas del mes contra CxC (§5). */
+ok('cerrar mes ya no genera el resumen de ventas', /Ventas del mes \(resumen Libro de Ventas\)/.test(_appjs), false);
+ok('cerrar mes ya no genera el resumen de compras', /Compras del mes \(resumen Libro de Compras\)/.test(_appjs), false);
+ok('cerrar mes registra las retenciones de IVA sufridas contra CxC', /'RIVA-' \+ mm/.test(_appjs), true);
+ok('cerrar mes no numera en el navegador', /numero: maxNum/.test(_appjs), false);
+ok('el asiento manual no numera en el navegador', /const numero = \(asientoNum/.test(_conta), false);
+ok('__postAsiento acepta la fecha como quinto parámetro',
+  /__postAsiento = async function \(descripcion, referencia, lineas, origen, fecha\)/.test(_conta), true);
+
 console.log('\n' + (fallas ? 'HAY ' + fallas + ' FALLA(S) de ' + total : 'TODO OK · ' + total + ' comprobaciones'));
 process.exit(fallas ? 1 : 0);

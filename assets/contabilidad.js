@@ -174,15 +174,14 @@
         if (Math.abs(totD - totH) > 0.009) return setMsg('El asiento no cuadra: Debe ' + fmt2(totD) + ' ≠ Haber ' + fmt2(totH) + '.');
         if (!window.sb || !window.__CUENTA_ID || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) return setMsg('No hay sesión o empresa activa. Selecciona una empresa arriba.');
         const fecha = fechaRaw ? fechaRaw.split('-').reverse().join('/') : '';
-        const numero = (asientoNum || 0) + 1;
         const lineasDB = lineas.map((l) => ({ cta: l.cta, debe: l.d, haber: l.h }));
         window.sb.from('asientos').insert({
           cuenta_id: window.__CUENTA_ID, empresa_id: window.__EMPRESA_ACTIVA.id,
-          numero: numero, fecha: fecha, descripcion: desc, referencia: ref, origen: 'manual',
+          fecha: fecha, descripcion: desc, referencia: ref, origen: 'manual',   // el número lo pone la base
           lineas: lineasDB, total: totD,
-        }).then(({ error }) => {
+        }).select('numero').single().then(({ data: guardado, error }) => {
           if (error) { setMsg('No se pudo guardar: ' + error.message); return; }
-          toast('Asiento #0' + numero + ' registrado · ' + lineas.length + ' líneas · cuadra en Bs ' + fmt2(totD));
+          toast('Asiento #0' + ((guardado && guardado.numero) || '') + ' registrado · ' + lineas.length + ' líneas · cuadra en Bs ' + fmt2(totD));
           if (window.cargarAsientos) window.cargarAsientos();
           close();
         });
@@ -286,14 +285,18 @@
     })();
 
     // Ayudante reutilizable: cualquier módulo puede generar un asiento contable (depreciación, cripto, etc.)
-    window.__postAsiento = async function (descripcion, referencia, lineas, origen) {
+    /* El número lo pone la base (trg_asiento_numero): calcularlo aquí chocaba
+       cuando dos asientos entraban a la vez. La fecha es dd/mm/aaaa; si no se
+       pasa, la de hoy según el reloj del equipo (no la UTC, que pasadas las
+       8 p. m. en Venezuela ya es mañana). Las filas del libro fiscal NO pasan por aquí: su asiento lo
+       hace la base (sql/contabilidad_04_motor.sql). */
+    window.__postAsiento = async function (descripcion, referencia, lineas, origen, fecha) {
       if (!window.sb || !window.__CUENTA_ID || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) return { error: { message: 'No hay una empresa activa' } };
       const total = (lineas || []).reduce((s, l) => s + (Number(l.debe) || 0), 0);
-      const hoy = new Date();
-      const fecha = String(hoy.getDate()).padStart(2, '0') + '/' + String(hoy.getMonth() + 1).padStart(2, '0') + '/' + hoy.getFullYear();
+      if (!fecha) { const p = window.__hoyISO().split('-'); fecha = p[2] + '/' + p[1] + '/' + p[0]; }
       const res = await window.sb.from('asientos').insert({
         cuenta_id: window.__CUENTA_ID, empresa_id: window.__EMPRESA_ACTIVA.id,
-        numero: (asientoNum || 0) + 1, fecha: fecha, descripcion: descripcion, referencia: referencia || '', origen: origen || 'auto',
+        fecha: fecha, descripcion: descripcion, referencia: referencia || '', origen: origen || 'auto',
         lineas: lineas, total: total,
       });
       if (!res.error && window.cargarAsientos) await window.cargarAsientos();
@@ -819,7 +822,7 @@
       const fecha = String(hoy.getDate()).padStart(2, '0') + '/' + String(hoy.getMonth() + 1).padStart(2, '0') + '/' + hoy.getFullYear();
       const { error: eAsi } = await window.sb.from('asientos').insert({
         cuenta_id: window.__CUENTA_ID, empresa_id: window.__EMPRESA_ACTIVA.id,
-        numero: (asientoNum || 0) + 1, fecha: fecha, descripcion: 'Depreciación del período', referencia: 'DEPR', origen: 'auto',
+        fecha: fecha, descripcion: 'Depreciación del período', referencia: 'DEPR', origen: 'auto',
         lineas: [{ cta: '6.1.1.06 · Depreciación', debe: total, haber: 0 }, { cta: '1.2.1.06 · Depreciación acumulada (−)', debe: 0, haber: total }],
         total: total,
       });

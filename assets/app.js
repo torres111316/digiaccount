@@ -5805,16 +5805,9 @@
                registrándola dos veces. Lo que la pantalla muestra no puede
                depender de que el resto haya salido bien. */
             limpiarParaSiguiente();
-            // Asiento contable de la COMPRA: Debe Inventario + IVA crédito / Haber CxP.
-            // (Las ventas NO se contabilizan desde el libro: eso lo hace el RECIBO. El libro es solo para declarar.)
-            if (esCompra && window.__postAsiento) {
-              // Modelo del contador externo: la compra va directo a COSTO (grupo 5) para
-              // que baje al Estado de Resultados; el inventario físico se ajusta al cierre.
-              const ln = [{ cta: '5.1.1.02 · Compra de Mercancía', debe: base + exento, haber: 0 }];
-              if (iva > 0.005) ln.push({ cta: '1.1.3.01 · IVA crédito fiscal', debe: iva, haber: 0 });
-              ln.push({ cta: '2.1.1.01 · Cuentas por pagar comerciales', debe: 0, haber: total });
-              window.__postAsiento('Compra s/factura ' + v.numFactura + ' · ' + v.nombre, v.numFactura, ln, 'auto').then((r) => { if (r && r.error) console.warn('[DigiAccount] No se pudo contabilizar la compra:', r.error.message); });
-            }
+            // El asiento lo crea, actualiza o borra la base (sql/contabilidad_04_motor.sql):
+            // aquí solo se recarga el Libro Diario.
+            if (window.cargarAsientos) window.cargarAsientos();
             /* El inventario va dentro de un try, y NO por miedo a este bloque en
                concreto: por lo que hay DESPUÉS. Aquí abajo se registra la
                retención de IVA, que es una obligación fiscal, mientras que
@@ -5900,14 +5893,6 @@
             } catch (err) {
               console.error('[compra] no se pudo reponer inventario:', err);
               toast('La factura se guardó. El inventario no se actualizó: ' + err.message, 'error');
-            }
-            // VENTA en el Libro: solo contabiliza si la empresa está en modo "libro" (contador).
-            // En modo "recibos" la venta la contabiliza el recibo, no el libro (este es solo para declarar).
-            if (!esCompra && window.__postAsiento && ((window.__EMPRESA_ACTIVA && window.__EMPRESA_ACTIVA.modo) === 'libro')) {
-              const ln = [{ cta: '1.1.2.01 · Cuentas por cobrar comerciales', debe: total, haber: 0 },
-                { cta: '4.1.1.01 · Venta de mercancía', debe: 0, haber: base + exento }];
-              if (iva > 0.005) ln.push({ cta: '2.1.3.01 · IVA débito fiscal', debe: 0, haber: iva });
-              window.__postAsiento('Venta s/libro · factura ' + v.numFactura + ' · ' + v.nombre, v.numFactura, ln, 'auto').then((r) => { if (r && r.error) console.warn('[DigiAccount] No se pudo contabilizar la venta del libro:', r.error.message); });
             }
             // Refresca Compras y CxP (y CxC) con la nueva factura
             if (window.cargarTesoreria) window.cargarTesoreria();
@@ -6827,22 +6812,9 @@
           if (!window.confirm('¿ANULAR el N° ' + (r.numero_factura || '') + '?\n\nEl número queda RESERVADO en el correlativo (no se borra ni se reutiliza), pero deja de sumar en el libro y en la Forma 30. Se generará el asiento de reverso correspondiente.')) return;
           window.sb.from('libro_fiscal').update({ tercero_nombre: 'ANULADA', tercero_rif: '', exento: 0, base: 0, iva: 0, igtf: 0, total: 0 }).eq('id', id).then(({ error }) => {
             if (error) { toast('No se pudo anular: ' + error.message, 'error'); return; }
-            const tot = Number(r.total) || 0, ex = Number(r.exento) || 0, base = Number(r.base) || 0, iva = Number(r.iva) || 0, igtf = Number(r.igtf) || 0;
-            if (window.__postAsiento && tot > 0.005) {
-              let lineas;
-              if (esCompra) {
-                lineas = [{ cta: '2.1.1.01 · Cuentas por pagar comerciales', debe: tot, haber: 0 }];
-                if (base + ex > 0.005) lineas.push({ cta: '5.1.1.02 · Compra de Mercancía', debe: 0, haber: base + ex });
-                if (iva > 0.005) lineas.push({ cta: '1.1.3.01 · IVA crédito fiscal', debe: 0, haber: iva });
-              } else {
-                lineas = [{ cta: '4.1.1.01 · Venta de mercancía', debe: base + ex, haber: 0 }];
-                if (iva > 0.005) lineas.push({ cta: '2.1.3.01 · IVA débito fiscal', debe: iva, haber: 0 });
-                if (igtf > 0.005) lineas.push({ cta: '2.1.4.03 · IGTF por pagar', debe: igtf, haber: 0 });
-                lineas.push({ cta: '1.1.2.01 · Cuentas por cobrar comerciales', debe: 0, haber: tot });
-              }
-              window.__postAsiento('Anulación ' + (esCompra ? 'compra' : 'venta') + ' N° ' + (r.numero_factura || ''), r.numero_factura || '', lineas, 'auto')
-                .then((rr) => { if (rr && rr.error) console.warn('[DigiAccount] Reverso por anulación:', rr.error.message); });
-            }
+            // El asiento lo crea, actualiza o borra la base (sql/contabilidad_04_motor.sql):
+            // aquí solo se recarga el Libro Diario.
+            if (window.cargarAsientos) window.cargarAsientos();
             if (window.__invalidarArrastres) window.__invalidarArrastres();
             cargarLibroFiscal(tipo);
             if (window.cargarTesoreria) window.cargarTesoreria();
@@ -6861,31 +6833,17 @@
             toast('Este documento tiene ' + (esCompra ? 'pagos' : 'cobros') + ' registrados. Elimínalos primero en Tesorería (X del movimiento).', 'error');
             return;
           }
-          if (!window.confirm('¿Eliminar este registro del libro?\n\nSe generará el asiento de REVERSO correspondiente. Si esta compra repuso inventario, ajusta el stock manualmente en Inventario.')) return;
+          if (!window.confirm('¿Eliminar este registro del libro?\n\nSu asiento contable se elimina con él. Si esta compra repuso inventario, ajusta el stock manualmente en Inventario.')) return;
           window.sb.from('libro_fiscal').delete().eq('id', id).then(({ error }) => {
             if (error) { toast('No se pudo eliminar: ' + error.message, 'error'); return; }
-            // Reverso contable del registro eliminado
-            if (window.__postAsiento) {
-              const tot = Number(r.total) || 0, ex = Number(r.exento) || 0, base = Number(r.base) || 0, iva = Number(r.iva) || 0, igtf = Number(r.igtf) || 0;
-              let lineas;
-              if (esCompra) {
-                lineas = [{ cta: '2.1.1.01 · Cuentas por pagar comerciales', debe: tot, haber: 0 }];
-                if (base + ex > 0.005) lineas.push({ cta: '5.1.1.02 · Compra de Mercancía', debe: 0, haber: base + ex });
-                if (iva > 0.005) lineas.push({ cta: '1.1.3.01 · IVA crédito fiscal', debe: 0, haber: iva });
-              } else {
-                lineas = [{ cta: '4.1.1.01 · Venta de mercancía', debe: base + ex, haber: 0 }];
-                if (iva > 0.005) lineas.push({ cta: '2.1.3.01 · IVA débito fiscal', debe: iva, haber: 0 });
-                if (igtf > 0.005) lineas.push({ cta: '2.1.4.03 · IGTF por pagar', debe: igtf, haber: 0 });
-                lineas.push({ cta: '1.1.2.01 · Cuentas por cobrar comerciales', debe: 0, haber: tot });
-              }
-              window.__postAsiento('Reverso ' + (esCompra ? 'compra' : 'venta') + ' s/factura ' + (r.numero_factura || '') + ' · ' + (r.tercero_nombre || ''), r.numero_factura || '', lineas, 'auto')
-                .then((rr) => { if (rr && rr.error) console.warn('[DigiAccount] Reverso libro:', rr.error.message); });
-            }
+            // El asiento lo crea, actualiza o borra la base (sql/contabilidad_04_motor.sql):
+            // aquí solo se recarga el Libro Diario.
+            if (window.cargarAsientos) window.cargarAsientos();
             if (window.__invalidarArrastres) window.__invalidarArrastres();
             cargarLibroFiscal(tipo);
             if (window.cargarTesoreria) window.cargarTesoreria();
             if (window.cargarDashboard) window.cargarDashboard();
-            toast('Registro eliminado · asiento reversado', 'success');
+            toast('Registro eliminado · su asiento también', 'success');
           });
           closeModal();
         },
@@ -7129,12 +7087,11 @@
         toast('Período ' + _perLabel() + ' reabierto para modificaciones');
         return;
       }
-      if (!window.confirm('¿CERRAR ' + _perLabel() + '?\n\nSe generan los asientos resumen del mes (ventas, compras y liquidación de IVA, si aún no existen) y las transacciones del período quedan BLOQUEADAS. Podrás reabrirlo cuando quieras.')) return;
+      if (!window.confirm('¿CERRAR ' + _perLabel() + '?\n\nSe generan la liquidación de IVA del mes y el asiento de sus retenciones sufridas, si aún no existen (ventas y compras ya tienen su asiento, factura por factura), y las transacciones del período quedan BLOQUEADAS. Podrás reabrirlo cuando quieras.')) return;
       const mm = _fiscalPer.mm, anio = '20' + _fiscalPer.aa;
       const perDecl = anio + '-' + mm, sufPer = '/' + mm + '/' + _fiscalPer.aa;
       // ¿Ya existen los asientos del mes? (meses migrados o cierres previos → solo bloquear)
       const { data: yaLV } = await window.sb.from('asientos').select('id').eq('empresa_id', empId).eq('referencia', 'LV-' + mm + '/' + anio).limit(1);
-      const { data: yaLC } = await window.sb.from('asientos').select('id').eq('empresa_id', empId).eq('referencia', 'LC-' + mm + '/' + anio).limit(1);
       // Del PERÍODO DE DECLARACIÓN que se cierra (no por fecha de factura)
       const { data: filas, error: e1 } = await window.__sbAll((q) => q.eq('empresa_id', empId)
         .or('periodo.eq.' + perDecl + ',and(periodo.is.null,fecha.like.*' + sufPer + ')'), 'libro_fiscal', '*');
@@ -7150,31 +7107,30 @@
       const r2c = (x) => Math.round(x * 100) / 100;
       const ultDia = new Date(parseInt(anio, 10), parseInt(mm, 10), 0).getDate();
       const fechaAsi = String(ultDia).padStart(2, '0') + '/' + mm + '/' + anio;
-      // Saldos actuales de crédito fiscal y retenciones (para el arrastre de la liquidación)
-      const { data: asiAll } = await window.sb.from('asientos').select('numero,lineas').eq('empresa_id', empId);
-      let maxNum = 0;
-      const saldoDe = (pref) => (asiAll || []).reduce((s, a) => {
-        if (a.numero > maxNum) maxNum = a.numero;
-        return s + (Array.isArray(a.lineas) ? a.lineas : []).reduce((x, l) => x + (String(l.cta || '').indexOf(pref) === 0 ? (Number(l.debe) || 0) - (Number(l.haber) || 0) : 0), 0);
-      }, 0);
-      let credDisp = saldoDe('1.1.3.01'), retDisp = saldoDe('1.1.3.03');
-      (asiAll || []).forEach((a) => { if (a.numero > maxNum) maxNum = a.numero; });
+      // Saldos de lo que se arrastra de un mes a otro (excedente y retenciones por descontar)
+      const { data: asiAll } = await window.__sbAll((q) => q.eq('empresa_id', empId), 'asientos', 'lineas');
+      const saldoDe = (pref) => (asiAll || []).reduce((s, a) =>
+        s + (Array.isArray(a.lineas) ? a.lineas : []).reduce((x, l) => x + (String(l.cta || '').indexOf(pref) === 0 ? (Number(l.debe) || 0) - (Number(l.haber) || 0) : 0), 0), 0);
+      /* Ventas y compras ya tienen su asiento, factura por factura: lo hace la
+         base (sql/contabilidad_04_motor.sql). Antes aquí se creaban los
+         resumen LV/LC del mes; hoy contarían todo dos veces. El crédito y las
+         retenciones de la liquidación salen del libro de ESTE período, no del
+         saldo, porque el saldo ya trae las compras del mes siguiente si se
+         registraron antes de cerrar. */
+      const credDisp = r2c(c.iva), retDisp = r2c(retMes);
       const nuevos = [];
-      const mkAsiento = (desc, ref, lineas) => { maxNum += 1; nuevos.push({ cuenta_id: window.__CUENTA_ID, empresa_id: empId, numero: maxNum, fecha: fechaAsi, descripcion: desc, referencia: ref, origen: 'auto', lineas: lineas, total: r2c(lineas.reduce((s, l) => s + l.debe, 0)) }); };
-      if (!(yaLV && yaLV.length) && v.tot > 0.005) {
-        const ln = [{ cta: '1.1.1.03 · Bancos', debe: r2c(v.tot - retMes), haber: 0 }];
-        if (retMes > 0.005) ln.push({ cta: '1.1.3.03 · Retenciones IVA soportadas', debe: r2c(retMes), haber: 0 });
-        ln.push({ cta: '4.1.1.01 · Venta de mercancía', debe: 0, haber: r2c(v.be) });
-        if (v.iva > 0.005) ln.push({ cta: '2.1.3.01 · IVA débito fiscal', debe: 0, haber: r2c(v.iva) });
-        mkAsiento('Ventas del mes (resumen Libro de Ventas) · ' + _perLabel(), 'LV-' + mm + '/' + anio, ln);
-        retDisp = r2c(retDisp + retMes);
-      }
-      if (!(yaLC && yaLC.length) && c.tot > 0.005) {
-        const ln = [{ cta: '5.1.1.02 · Compra de Mercancía', debe: r2c(c.be), haber: 0 }];
-        if (c.iva > 0.005) ln.push({ cta: '1.1.3.01 · IVA crédito fiscal', debe: r2c(c.iva), haber: 0 });
-        ln.push({ cta: '1.1.1.03 · Bancos', debe: 0, haber: r2c(c.tot) });
-        mkAsiento('Compras del mes (resumen Libro de Compras) · ' + _perLabel(), 'LC-' + mm + '/' + anio, ln);
-        credDisp = r2c(credDisp + c.iva);
+      // El número lo pone la base (trg_asiento_numero).
+      const mkAsiento = (desc, ref, lineas) => { nuevos.push({ cuenta_id: window.__CUENTA_ID, empresa_id: empId, fecha: fechaAsi, descripcion: desc, referencia: ref, origen: 'auto', lineas: lineas, total: r2c(lineas.reduce((s, l) => s + l.debe, 0)) }); };
+      /* Retenciones de IVA que los clientes le hicieron a la empresa en el mes:
+         el cliente pagó menos, así que bajan la CxC y quedan como crédito a
+         descontar (spec §5). PROVISIONAL: un solo asiento por mes, hasta que
+         el plan 2 registre cada comprobante; ese plan debe quitar este. */
+      const { data: yaRiva } = await window.sb.from('asientos').select('id').eq('empresa_id', empId).eq('referencia', 'RIVA-' + mm + '/' + anio).limit(1);
+      if (!(yaLV && yaLV.length) && !(yaRiva && yaRiva.length) && retMes > 0.005) {
+        mkAsiento('Retenciones de IVA sufridas del mes · ' + _perLabel(), 'RIVA-' + mm + '/' + anio, [
+          { cta: '1.1.3.03 · Retenciones IVA soportadas', debe: r2c(retMes), haber: 0 },
+          { cta: '1.1.2.01 · Cuentas por cobrar comerciales (clientes)', debe: 0, haber: r2c(retMes) },
+        ]);
       }
       const { data: yaF30 } = await window.sb.from('asientos').select('id').eq('empresa_id', empId).eq('referencia', 'F30-' + mm + '/' + anio).limit(1);
       if (!(yaF30 && yaF30.length) && v.iva > 0.005 && !(yaLV && yaLV.length)) {
@@ -7216,7 +7172,7 @@
       if (e3) { toast('Asientos listos, pero no se pudo bloquear el mes: ' + e3.message + ' (¿corriste el SQL dpp_y_cierres.sql?)', 'error'); return; }
       _cierres.add(key); pintarCierreBtn();
       if (window.cargarAsientos) window.cargarAsientos();
-      toast('✅ ' + _perLabel() + ' CERRADO · ' + (nuevos.length ? nuevos.length + ' asientos resumen generados y ' : '') + 'transacciones del período bloqueadas', 'success');
+      toast('✅ ' + _perLabel() + ' CERRADO · ' + (nuevos.length ? nuevos.length + ' asiento(s) generado(s) y ' : '') + 'transacciones del período bloqueadas', 'success');
     }
     cargarCierres();
 
