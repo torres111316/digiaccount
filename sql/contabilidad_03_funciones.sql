@@ -12,7 +12,11 @@
 --
 -- Reglas (docs/superpowers/specs/2026-11-02-contabilidad-design.md §4):
 --   · Venta:  Debe CxC (1.1.2.01) / Haber Venta de mercancía (base + exento)
---             / Haber IVA débito fiscal. Igual si es un reporte Z.
+--             / Haber IVA débito fiscal / Haber IGTF por pagar (2.1.4.03) si se
+--             percibió: el cliente lo debe junto con la factura. Igual si es un Z.
+--   · El proveedor (su cuenta por defecto) se busca por RIF o, si la factura
+--     no lo trae, por nombre, entre los terceros de la cuenta DUEÑA de la
+--     empresa: el cuenta_id de la fila lo pone quien inserta.
 --   · Compra: Debe la cuenta de la factura → la del proveedor → Compra de
 --             Mercancía (5.1.1.02), por base + exento / Debe IVA crédito
 --             fiscal / Haber CxP (2.1.1.01).
@@ -75,34 +79,46 @@ create or replace function public.contab_lineas_libro(r public.libro_fiscal)
 returns jsonb language plpgsql stable set search_path = public as $$
 declare
   modo_libro boolean;
+  dueña uuid;   -- la cuenta dueña de la empresa (no el cuenta_id que traiga la fila: ese lo pone quien inserta)
   nc boolean := upper(trim(coalesce(r.tipo_doc, ''))) = 'NC';
   b numeric := round(coalesce(r.base, 0) + coalesce(r.exento, 0), 2);
   i numeric := round(coalesce(r.iva, 0), 2);
+  g numeric := round(coalesce(r.igtf, 0), 2);   -- IGTF percibido en la venta (spec §5): pasivo, y el cliente lo debe
   t numeric;
   cta text;
   lin jsonb := '[]'::jsonb;   -- en una nota de crédito, debe y haber van invertidos
 begin
   if coalesce(r.tercero_nombre, '') ~* 'ANULAD' then return null; end if;
-  select coalesce(fiscal_activo, true) into modo_libro from empresas where id = r.empresa_id;
+  select coalesce(fiscal_activo, true), cuenta_id into modo_libro, dueña from empresas where id = r.empresa_id;
   if r.tipo = 'venta' and modo_libro is false then return null; end if;
   if b = 0 and i = 0 then return null; end if;
   t := b + (case when i > 0.005 then i else 0 end);
 
   if r.tipo = 'venta' then
+    if g > 0.005 then t := t + g; end if;
     lin := jsonb_build_array(
       jsonb_build_object('cta', contab_cta('1.1.2.01', r.empresa_id), 'debe', case when nc then 0 else t end, 'haber', case when nc then t else 0 end),
       jsonb_build_object('cta', contab_cta('4.1.1.01', r.empresa_id), 'debe', case when nc then b else 0 end, 'haber', case when nc then 0 else b end));
     if i > 0.005 then
       lin := lin || jsonb_build_object('cta', contab_cta('2.1.3.01', r.empresa_id), 'debe', case when nc then i else 0 end, 'haber', case when nc then 0 else i end);
     end if;
+    if g > 0.005 then
+      lin := lin || jsonb_build_object('cta', contab_cta('2.1.4.03', r.empresa_id), 'debe', case when nc then g else 0 end, 'haber', case when nc then 0 else g end);
+    end if;
   else
+    -- La cuenta del proveedor: por RIF y, si la factura no lo trae, por nombre
+    -- (la pantalla busca igual: window.__cuentaDeProveedor en assets/app.js).
     cta := coalesce(
       nullif(trim(coalesce(r.cuenta_contable, '')), ''),
       (select nullif(trim(tr.cuenta_gasto), '') from terceros tr
-        where tr.cuenta_id = r.cuenta_id
-          and coalesce(trim(r.tercero_rif), '') <> ''
-          and upper(regexp_replace(tr.rif, '[\s.\-]', '', 'g')) = upper(regexp_replace(r.tercero_rif, '[\s.\-]', '', 'g'))
+        where tr.cuenta_id = dueña
           and nullif(trim(tr.cuenta_gasto), '') is not null
+          and ((coalesce(trim(r.tercero_rif), '') <> ''
+                and upper(regexp_replace(tr.rif, '[\s.\-]', '', 'g')) = upper(regexp_replace(r.tercero_rif, '[\s.\-]', '', 'g')))
+            or (coalesce(trim(r.tercero_nombre), '') <> ''
+                and upper(trim(tr.nombre)) = upper(trim(r.tercero_nombre))))
+        order by (coalesce(trim(r.tercero_rif), '') <> ''
+                  and upper(regexp_replace(tr.rif, '[\s.\-]', '', 'g')) = upper(regexp_replace(r.tercero_rif, '[\s.\-]', '', 'g'))) desc
         limit 1),
       '5.1.1.02');
     lin := jsonb_build_array(

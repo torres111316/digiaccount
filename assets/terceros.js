@@ -286,6 +286,7 @@
         fiscal: r.condicion_fiscal || 'Contribuyente ordinario',
         agenteRet: r.agente_retencion ? 'Sí' : 'No',
         cuentaGasto: r.cuenta_gasto || '',
+        cuenta: r.cuenta_id || '',   // de qué cuenta es: la cuenta contable del proveedor se busca solo en la activa
         tel: r.telefono || '', email: r.email || '', dom: r.domicilio || '',
         cxc: Number(r.cxc) || 0, cxp: Number(r.cxp) || 0,
         cont: Array.isArray(r.contactos) ? r.contactos : []

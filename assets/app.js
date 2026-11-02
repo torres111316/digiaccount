@@ -5221,13 +5221,25 @@
       /* COMPRAS: costo o gasto lo da el proveedor (regla de Luis). El campo se
          llena solo con la cuenta de su ficha y se puede cambiar en esta
          factura. Se guarda en cuenta_contable SOLO si difiere de la del
-         proveedor: así, si mañana se corrige la ficha, sus facturas la siguen. */
+         proveedor (null = la de su ficha al momento de contabilizar). Corregir
+         la ficha después no rehace solos los asientos ya creados: se rehacen
+         al editar cada factura o en la reconstrucción.
+         La búsqueda es la MISMA que hace la base (contab_lineas_libro): por
+         RIF o por nombre, entre los terceros de la cuenta activa. */
       window.__cuentaDeProveedor = window.__cuentaDeProveedor || ((nombre, rif) => {
         const nr = (s) => (s || '').toUpperCase().replace(/[\s.\-]/g, '');
         const r = nr(rif), n = String(nombre || '').trim().toUpperCase();
         const t = (window.__getTerceros ? window.__getTerceros() : [])
-          .find((x) => x.prov && ((r && nr(x.rif) === r) || (n && String(x.nombre || '').toUpperCase() === n)));
+          .filter((x) => x.prov && (!x.cuenta || x.cuenta === window.__CUENTA_ID))
+          .find((x) => (r && nr(x.rif) === r) || (n && String(x.nombre || '').trim().toUpperCase() === n));
         return (t && t.cuentaGasto) || '';
+      });
+      // Qué se guarda en libro_fiscal.cuenta_contable. Elegir «Compra de
+      // Mercancía» a propósito, cuando el proveedor tiene otra, se respeta.
+      window.__cuentaContableAGuardar = window.__cuentaContableAGuardar || ((elegida, nombre, rif) => {
+        const delProveedor = window.__cuentaDeProveedor(nombre, rif);
+        if (!elegida) return delProveedor ? '5.1.1.02' : null;
+        return elegida === delProveedor ? null : elegida;
       });
       window.__campoCuentaCompra = window.__campoCuentaCompra || ((valor) => {
         const ctas = window.__cuentasClasificables ? window.__cuentasClasificables() : [];
@@ -5758,7 +5770,7 @@
             base_red: M.base_red, iva_red: M.iva_red,
             base_adic: M.base_adic, iva_adic: M.iva_adic,
             // Solo si se cambió en esta factura; si no, manda la del proveedor.
-            cuenta_contable: (esCompra && v.cuentaContable && v.cuentaContable !== cuentaDeProveedor(v.nombre, v.rif)) ? v.cuentaContable : null,
+            cuenta_contable: esCompra ? window.__cuentaContableAGuardar(v.cuentaContable, v.nombre, v.rif) : null,
           }).select('id').then(({ data: guardado, error }) => {
             if (saveBtnEl) saveBtnEl.disabled = false;
             if (error) {
@@ -6786,7 +6798,7 @@
             base_red: M.base_red, iva_red: M.iva_red,
             base_adic: M.base_adic, iva_adic: M.iva_adic,
             // Solo si se cambió en esta factura; si no, manda la del proveedor.
-            cuenta_contable: (esCompra && v.cuentaContable && v.cuentaContable !== window.__cuentaDeProveedor(v.nombre, v.rif)) ? v.cuentaContable : null,
+            cuenta_contable: esCompra ? window.__cuentaContableAGuardar(v.cuentaContable, v.nombre, v.rif) : null,
           }).eq('id', id).then(({ error }) => {
             if (error) { toast('No se pudo actualizar: ' + error.message, 'error'); return; }
             if (window.__invalidarArrastres) window.__invalidarArrastres();
@@ -6809,7 +6821,7 @@
             toast('Este documento tiene ' + (esCompra ? 'pagos' : 'cobros') + ' registrados. Elimínalos primero en Tesorería (X del movimiento).', 'error');
             return;
           }
-          if (!window.confirm('¿ANULAR el N° ' + (r.numero_factura || '') + '?\n\nEl número queda RESERVADO en el correlativo (no se borra ni se reutiliza), pero deja de sumar en el libro y en la Forma 30. Se generará el asiento de reverso correspondiente.')) return;
+          if (!window.confirm('¿ANULAR el N° ' + (r.numero_factura || '') + '?\n\nEl número queda RESERVADO en el correlativo (no se borra ni se reutiliza), pero deja de sumar en el libro y en la Forma 30. Su asiento contable se quita con él.')) return;
           window.sb.from('libro_fiscal').update({ tercero_nombre: 'ANULADA', tercero_rif: '', exento: 0, base: 0, iva: 0, igtf: 0, total: 0 }).eq('id', id).then(({ error }) => {
             if (error) { toast('No se pudo anular: ' + error.message, 'error'); return; }
             // El asiento lo crea, actualiza o borra la base (sql/contabilidad_04_motor.sql):
@@ -7090,6 +7102,16 @@
       if (!window.confirm('¿CERRAR ' + _perLabel() + '?\n\nSe generan la liquidación de IVA del mes y el asiento de sus retenciones sufridas, si aún no existen (ventas y compras ya tienen su asiento, factura por factura), y las transacciones del período quedan BLOQUEADAS. Podrás reabrirlo cuando quieras.')) return;
       const mm = _fiscalPer.mm, anio = '20' + _fiscalPer.aa;
       const perDecl = anio + '-' + mm, sufPer = '/' + mm + '/' + _fiscalPer.aa;
+      /* Un mes cargado antes del motor contable tiene facturas sin asiento
+         (GATMA y Radian, oct-25 a jul-26). Cerrarlo así dejaría una
+         liquidación de IVA sin las ventas y compras que la sostienen: esos
+         meses primero se reconstruyen (plan 6 de contabilidad). */
+      const { data: sinAsi, error: eSin } = await window.sb.rpc('contab_filas_sin_asiento', { p_empresa: empId, p_periodo: perDecl });
+      if (eSin) { toast('No se pudo comprobar la contabilidad del período: ' + eSin.message, 'error'); return; }
+      if (sinAsi > 0) {
+        toast(_perLabel() + ' tiene ' + sinAsi + ' factura(s) sin asiento contable: se cargaron antes del motor contable. Ese mes se reconstruye antes de cerrarlo.', 'error');
+        return;
+      }
       // ¿Ya existen los asientos del mes? (meses migrados o cierres previos → solo bloquear)
       const { data: yaLV } = await window.sb.from('asientos').select('id').eq('empresa_id', empId).eq('referencia', 'LV-' + mm + '/' + anio).limit(1);
       // Del PERÍODO DE DECLARACIÓN que se cierra (no por fecha de factura)
@@ -7107,17 +7129,17 @@
       const r2c = (x) => Math.round(x * 100) / 100;
       const ultDia = new Date(parseInt(anio, 10), parseInt(mm, 10), 0).getDate();
       const fechaAsi = String(ultDia).padStart(2, '0') + '/' + mm + '/' + anio;
-      // Saldos de lo que se arrastra de un mes a otro (excedente y retenciones por descontar)
-      const { data: asiAll } = await window.__sbAll((q) => q.eq('empresa_id', empId), 'asientos', 'lineas');
-      const saldoDe = (pref) => (asiAll || []).reduce((s, a) =>
-        s + (Array.isArray(a.lineas) ? a.lineas : []).reduce((x, l) => x + (String(l.cta || '').indexOf(pref) === 0 ? (Number(l.debe) || 0) - (Number(l.haber) || 0) : 0), 0), 0);
-      /* Ventas y compras ya tienen su asiento, factura por factura: lo hace la
+      /* Saldos HASTA el período que se cierra (asientos.periodo): así entra el
+         crédito que sobró de meses sin liquidación, y no entran las compras
+         del mes siguiente que ya se hayan registrado.
+         Ventas y compras ya tienen su asiento, factura por factura: lo hace la
          base (sql/contabilidad_04_motor.sql). Antes aquí se creaban los
-         resumen LV/LC del mes; hoy contarían todo dos veces. El crédito y las
-         retenciones de la liquidación salen del libro de ESTE período, no del
-         saldo, porque el saldo ya trae las compras del mes siguiente si se
-         registraron antes de cerrar. */
-      const credDisp = r2c(c.iva), retDisp = r2c(retMes);
+         resumen LV/LC del mes; hoy contarían todo dos veces. */
+      const { data: asiAll } = await window.__sbAll((q) => q.eq('empresa_id', empId), 'asientos', 'lineas,periodo');
+      const saldoDe = (pref) => (asiAll || []).filter((a) => String(a.periodo || '') <= perDecl).reduce((s, a) =>
+        s + (Array.isArray(a.lineas) ? a.lineas : []).reduce((x, l) => x + (String(l.cta || '').indexOf(pref) === 0 ? (Number(l.debe) || 0) - (Number(l.haber) || 0) : 0), 0), 0);
+      const credDisp = r2c(saldoDe('1.1.3.01'));
+      let retDisp = r2c(saldoDe('1.1.3.03'));
       const nuevos = [];
       // El número lo pone la base (trg_asiento_numero).
       const mkAsiento = (desc, ref, lineas) => { nuevos.push({ cuenta_id: window.__CUENTA_ID, empresa_id: empId, fecha: fechaAsi, descripcion: desc, referencia: ref, origen: 'auto', lineas: lineas, total: r2c(lineas.reduce((s, l) => s + l.debe, 0)) }); };
@@ -7131,6 +7153,7 @@
           { cta: '1.1.3.03 · Retenciones IVA soportadas', debe: r2c(retMes), haber: 0 },
           { cta: '1.1.2.01 · Cuentas por cobrar comerciales (clientes)', debe: 0, haber: r2c(retMes) },
         ]);
+        retDisp = r2c(retDisp + retMes);   // va en el mismo lote que la liquidación: aún no está en el saldo
       }
       const { data: yaF30 } = await window.sb.from('asientos').select('id').eq('empresa_id', empId).eq('referencia', 'F30-' + mm + '/' + anio).limit(1);
       if (!(yaF30 && yaF30.length) && v.iva > 0.005 && !(yaLV && yaLV.length)) {

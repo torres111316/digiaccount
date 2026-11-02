@@ -29,6 +29,10 @@ insert into empresas (id, cuenta_id, nombre, fiscal_activo) values
 insert into terceros (cuenta_id, rif, nombre, es_proveedor, cuenta_gasto) values
   ('a0000000-0000-0000-0000-000000000001', 'J000000111', 'ESTUDIO CONTABLE, C.A.', true, '6.1.1.05'),
   ('a0000000-0000-0000-0000-000000000001', 'J000000222', 'DISTRIBUIDORA DIDAR, C.A.', true, null);
+-- Otra cuenta, con un proveedor del mismo RIF: nunca debe mezclarse con la firma de prueba.
+insert into cuentas (id, nombre, segmento, plan_id) values ('b0000000-0000-0000-0000-000000000002', 'Otra cuenta', 'empresa', 'contador_basico');
+insert into terceros (cuenta_id, rif, nombre, es_proveedor, cuenta_gasto) values
+  ('b0000000-0000-0000-0000-000000000002', 'J000000111', 'ESTUDIO CONTABLE, C.A.', true, '6.2.1.01');
 
 -- Fecha del asiento (spec §4.3)
 select pg_temp.igual('registrado dentro de su período: manda el día del registro',
@@ -84,6 +88,21 @@ select pg_temp.igual('venta de una empresa en modo recibos: la contabiliza el re
   from libro_fiscal l where id = '10000000-0000-0000-0000-000000000009';
 select pg_temp.igual('contab_cta nombra la cuenta desde el plan',
   contab_cta('2.1.3.01'), '2.1.3.01 · IVA débito fiscal');
+
+-- Revisión final del plan 1 (I3, I5, M5)
+insert into libro_fiscal (id, cuenta_id, empresa_id, tipo, fecha, periodo, tercero_nombre, tercero_rif, numero_factura, tipo_doc, exento, base, iva, igtf, total) values
+  ('10000000-0000-0000-0000-000000000010', 'a0000000-0000-0000-0000-000000000001', 'e0000000-0000-0000-0000-000000000001', 'venta', '15/10/26', '2026-10', 'CLIENTE DIVISAS', 'J000000777', '000150', 'FV', 0, 1000, 160, 30, 1190),
+  ('10000000-0000-0000-0000-000000000011', 'a0000000-0000-0000-0000-000000000001', 'e0000000-0000-0000-0000-000000000001', 'compra', '16/10/26', '2026-10', 'ESTUDIO CONTABLE, C.A.', '', 'H-78', 'FC', 0, 100, 16, 0, 116),
+  ('10000000-0000-0000-0000-000000000012', 'b0000000-0000-0000-0000-000000000002', 'e0000000-0000-0000-0000-000000000001', 'compra', '17/10/26', '2026-10', 'ESTUDIO CONTABLE, C.A.', 'J000000111', 'H-79', 'FC', 0, 100, 16, 0, 116);
+select pg_temp.igual('venta con IGTF percibido: va al pasivo y CxC lo incluye',
+  pg_temp.lin(contab_lineas_libro(l)), '1.1.2.01 D1190.00 H0.00 | 4.1.1.01 D0.00 H1000.00 | 2.1.3.01 D0.00 H160.00 | 2.1.4.03 D0.00 H30.00')
+  from libro_fiscal l where id = '10000000-0000-0000-0000-000000000010';
+select pg_temp.igual('compra sin RIF: el proveedor se reconoce por su nombre',
+  split_part(contab_lineas_libro(l)->0->>'cta', ' · ', 1), '6.1.1.05')
+  from libro_fiscal l where id = '10000000-0000-0000-0000-000000000011';
+select pg_temp.igual('el proveedor sale de la cuenta DUEÑA de la empresa, no del cuenta_id que traiga la fila',
+  split_part(contab_lineas_libro(l)->0->>'cta', ' · ', 1), '6.1.1.05')
+  from libro_fiscal l where id = '10000000-0000-0000-0000-000000000012';
 
 select 'TODO OK · contabilidad 03' as resultado;
 rollback;

@@ -1160,6 +1160,18 @@ ok('cerrar mes ya no genera el resumen de compras', /Compras del mes \(resumen L
 ok('cerrar mes registra las retenciones de IVA sufridas contra CxC', /'RIVA-' \+ mm/.test(_appjs), true);
 ok('cerrar mes no numera en el navegador', /numero: maxNum/.test(_appjs), false);
 ok('el asiento manual no numera en el navegador', /const numero = \(asientoNum/.test(_conta), false);
+/* Revisión final del plan 1. */
+ok('cerrar mes no cierra si hay facturas del período sin asiento',
+  /rpc\('contab_filas_sin_asiento'/.test(_appjs), true);
+ok('la liquidación toma los saldos hasta el período que se cierra, no solo el mes',
+  /periodo <= perDecl|String\(a\.periodo \|\| ''\) <= perDecl/.test(_appjs), true);
+ok('elegir «Compra de Mercancía» a propósito se respeta aunque el proveedor tenga cuenta',
+  /__cuentaContableAGuardar = [\s\S]{0,300}return delProveedor \? '5\.1\.1\.02' : null/.test(_appjs), true);
+ok('registrar y editar compra guardan la cuenta con la misma regla',
+  (_appjs.match(/cuenta_contable: esCompra \? window\.__cuentaContableAGuardar\(/g) || []).length, 2);
+ok('la cuenta del proveedor se busca solo entre los terceros de la cuenta activa',
+  /x\.cuenta === window\.__CUENTA_ID/.test(_appjs), true);
+ok('anular ya no promete un asiento de reverso', /Se generará el asiento de reverso/i.test(_appjs), false);
 ok('__postAsiento acepta la fecha como quinto parámetro',
   /__postAsiento = async function \(descripcion, referencia, lineas, origen, fecha\)/.test(_conta), true);
 
