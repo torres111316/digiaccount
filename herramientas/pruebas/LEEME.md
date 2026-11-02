@@ -78,7 +78,7 @@ de cubrir el caso que la motivó.
 
 Los SQL de la contabilidad (`sql/contabilidad_*.sql`) se prueban sin tocar
 Supabase, en PGlite (un Postgres dentro de Node), con un espejo mínimo del
-esquema (`sql/espejo.sql`):
+esquema (`herramientas/pruebas/sql/espejo.sql`):
 
     cd herramientas/pruebas/sql
     npm install          # la primera vez
