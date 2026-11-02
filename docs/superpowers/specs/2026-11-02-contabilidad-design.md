@@ -50,6 +50,8 @@ foliadas por el Registro Mercantil.
 - Consolidar varias empresas en un solo estado financiero.
 - Que los agentes de Telegram generen estos reportes. Va después y consume lo
   que aquí se construya.
+- La reexpresión de estados financieros por inflación (VEN-NIF) y el ajuste
+  por inflación fiscal. Se conversan aparte si Luis los necesita.
 
 **Anti-metas**: aunque funcione técnicamente, esto sería un fracaso si:
 - una cifra de un estado financiero no sale de los asientos guardados, es
@@ -149,6 +151,47 @@ el proveedor»).
   compras históricas se reclasifican solas. Hay que mostrarle la lista de
   proveedores sin cuenta, ordenada por monto.
 - Las cuentas de costo y de gasto que hagan falta se agregan al plan.
+
+**Activos fijos y depreciación** (Luis: hay proveedores a los que se les
+compran activos fijos, como mobiliario, equipos o vehículos, «eso hay que
+integrar y también la parte de depreciaciones»).
+
+Lo que existe hoy en `assets/contabilidad.js` (~704–820) está a medias:
+- Registrar un activo no genera el asiento de adquisición.
+- El botón de depreciación deprecia de nuevo cada vez que se aprieta, sin
+  control de período.
+- Usa siempre línea recta aunque se elija «saldos decrecientes», y no
+  considera valor residual.
+- Lleva todo a una sola cuenta de gasto y una sola de depreciación
+  acumulada.
+- En `assets/app.js` ~7655–7676 hay dos botones con cifras de ejemplo fijas
+  («Mayo 2026 · Bs 148.750», «#0314»). Van fuera, por la regla de no mostrar
+  datos falsos.
+
+Lo que se construye:
+1. **La compra de un activo nace de la factura del proveedor.** Al
+   registrar una compra se puede marcar como activo fijo, factura por
+   factura: un mismo proveedor puede vender mercancía y también un equipo.
+   Al marcarla se piden la categoría (Mobiliario, Equipos, Vehículos,
+   Maquinaria, Inmuebles), la vida útil y el valor residual. Queda creado el
+   activo en el registro, enlazado a su factura. Asiento: Debe *Activo fijo
+   (cuenta de su categoría)* + Debe IVA crédito / Haber CxP.
+2. **El registro de activos** guarda código, nombre, categoría, factura de
+   origen, fecha de adquisición, costo, valor residual, vida útil, método,
+   depreciación acumulada y estado (en uso, vendido o desincorporado).
+3. **La depreciación mensual sale sola al cerrar el mes**, una sola vez por
+   período: por categoría, Debe *Gasto de depreciación* / Haber
+   *Depreciación acumulada* de esa categoría. Nunca pasa de costo menos
+   valor residual. Se calcula con el método elegido en cada activo.
+   Decisión mía: arranca el mes siguiente a la adquisición.
+4. **Venta o desincorporación:** asiento de retiro (sale el costo, sale la
+   depreciación acumulada y entra el cobro si lo hay), con la ganancia o
+   pérdida en venta de activos.
+5. **Migración:** los activos con que llega una empresa se cargan con su
+   depreciación acumulada a la fecha y forman parte del asiento de
+   apertura.
+6. Cuentas nuevas por categoría: activo, depreciación acumulada y gasto de
+   depreciación, más ganancia y pérdida en venta de activos.
 
 **Moneda** (Luis: «todo debe reflejarse en bolívares según ley, pero para
 tema informativo podemos tener la información en multimoneda»).
@@ -377,7 +420,7 @@ a junio de 2026 debe dar 20.228,88, igual que su Forma 30 real.
 2. Generación en la base para ventas (incluidos los Z), compras, NC y
    anulaciones, con trazabilidad, fecha y período.
 3. Retenciones (practicadas y sufridas) e impuestos: declaración y pago.
-4. Nómina con aportes patronales.
+4. Nómina con aportes patronales, y activos fijos con su depreciación.
 5. Conciliación que genera cobros y pagos, más «Dar por cobrado y pagado».
 6. Reportes con la barra común, Flujo de Efectivo y cuadre con la Forma 30.
 7. Asiento de apertura y flujo de migración.
