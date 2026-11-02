@@ -17,9 +17,15 @@
 --       Debe Retenciones IVA soportadas (1.1.3.03) / Haber CxC (1.1.2.01)
 --   · ISLR sufrida:    Debe ISLR retenido por terceros (1.1.3.02) / Haber CxC
 --   · Anulada o en cero: sin asiento.
---   · Las sufridas de IVA de un mes que ya está en un resumen LV (Agüero
---     oct-25 a jun-26) o en un RIVA provisional no se vuelven a contar: ya
---     están adentro. Las de ISLR sí, porque esos asientos no las traían.
+--   · Meses contabilizados en RESUMEN (LV/LC de Agüero, oct-25 a jun-26):
+--     allí el cobro y el pago se presumieron por Bancos, así que sus
+--     retenciones no llevan asiento aquí. O ya están dentro del LV (si trae la
+--     línea 1.1.3.03) o quedan pendientes para la reconstrucción (plan 6), y
+--     «Cerrar mes» las cuenta como pendientes. Ver contab_ret_en_resumen.
+--   · Solo las columnas que cambian el asiento disparan el motor: los scripts
+--     que reescriben la quincena o el RIF no contabilizan retenciones viejas.
+--   · Además descarta la liquidación (F30) que mande una pestaña con la app
+--     vieja (v184), que contaría dos veces.
 --   · Fecha y período con la misma regla que las facturas (§4.3).
 -- ============================================================
 
@@ -45,6 +51,43 @@ begin
   return null;
 end $$;
 
+-- ¿Qué pasa con una retención de un mes contabilizado en RESUMEN (los LV/LC
+-- de Agüero, oct-25 a jun-26, o un RIVA provisional)? En esos meses el cobro y
+-- el pago se presumieron por Bancos, no por CxC/CxP, así que una retención no
+-- puede rebajar una CxC/CxP que allí no existe:
+--   'cubierta'   ya está dentro: sufrida de IVA en un mes RIVA, o en un mes
+--                cuyo LV TRAE la línea 1.1.3.03 (en Agüero, dic-25 y ene-26
+--                no la traen: las retenciones se cargaron después del resumen)
+--   'pendiente'  no lleva asiento aquí; la contabiliza la reconstrucción (plan 6)
+--   'normal'     mes contabilizado factura por factura: lleva su asiento
+create or replace function public.contab_ret_en_resumen(r public.retenciones)
+returns text language plpgsql stable set search_path = public, pg_temp as $$
+declare
+  per text := contab_periodo_de(r.fecha, r.periodo);
+  mm text;
+  suf boolean := lower(coalesce(r.direccion, '')) like 'sufrida%';
+  iva boolean := lower(coalesce(r.tipo, '')) = 'iva';
+begin
+  if per is null then return 'normal'; end if;
+  mm := substr(per, 6, 2) || '/' || substr(per, 1, 4);
+  if suf then
+    if iva and exists (select 1 from asientos where empresa_id = r.empresa_id and referencia = 'RIVA-' || mm) then
+      return 'cubierta';
+    end if;
+    if exists (select 1 from asientos where empresa_id = r.empresa_id and referencia = 'LV-' || mm) then
+      if iva and exists (select 1 from asientos a, jsonb_array_elements(a.lineas) e
+                          where a.empresa_id = r.empresa_id and a.referencia = 'LV-' || mm
+                            and e->>'cta' like '1.1.3.03%' and coalesce((e->>'debe')::numeric, 0) > 0) then
+        return 'cubierta';
+      end if;
+      return 'pendiente';
+    end if;
+  elsif exists (select 1 from asientos where empresa_id = r.empresa_id and referencia = 'LC-' || mm) then
+    return 'pendiente';
+  end if;
+  return 'normal';
+end $$;
+
 create or replace function public.contab_sync_retencion()
 returns trigger language plpgsql security definer set search_path = public, pg_temp as $$
 declare
@@ -55,7 +98,6 @@ declare
   fec text;
   tot numeric;
   dueña uuid;
-  mmaaaa text;
 begin
   if tg_op = 'DELETE' then
     delete from asientos where origen_tabla = 'retenciones' and origen_id = old.id;
@@ -65,14 +107,8 @@ begin
   r := new;
   lin := contab_lineas_retencion(r);
   per := contab_periodo_de(r.fecha, r.periodo);
-
-  -- Sufridas de IVA de un mes que ya las trae en un resumen viejo.
-  if lin is not null and lower(coalesce(r.tipo, '')) = 'iva' and lower(coalesce(r.direccion, '')) like 'sufrida%' and per is not null then
-    mmaaaa := substr(per, 6, 2) || '/' || substr(per, 1, 4);
-    if exists (select 1 from asientos where empresa_id = r.empresa_id
-                 and referencia in ('LV-' || mmaaaa, 'RIVA-' || mmaaaa)) then
-      lin := null;
-    end if;
+  if lin is not null and contab_ret_en_resumen(r) <> 'normal' then
+    lin := null;   -- mes en resumen: ya está dentro, o la contabiliza la reconstrucción
   end if;
 
   if lin is null then
@@ -97,9 +133,38 @@ begin
   return new;
 end $$;
 
+-- Solo las columnas que cambian el asiento: los scripts de rutina que
+-- reescriben la quincena o el RIF (quincena_retenciones.py,
+-- terceros_duplicados.py) no deben contabilizar de a poco las 382
+-- retenciones viejas; esas las hace la reconstrucción, con aprobación.
 drop trigger if exists trg_contab_retencion on public.retenciones;
-create trigger trg_contab_retencion after insert or update or delete on public.retenciones
+create trigger trg_contab_retencion
+  after insert or delete
+     or update of monto, estado, direccion, tipo, fecha, periodo, comprobante, factura, tercero_nombre, empresa_id
+  on public.retenciones
   for each row execute function public.contab_sync_retencion();
+
+-- Una pestaña con la app VIEJA (v184) que cierra un mes manda su liquidación
+-- (F30) con número propio y calculada con la lógica anterior, que suma otra
+-- vez el crédito y las retenciones del mes. Se descarta al llegar; la app
+-- nueva no manda número. Reemplaza la versión de contabilidad_04 agregando
+-- solo esa condición.
+create or replace function public.contab_asiento_numero()
+returns trigger language plpgsql security definer set search_path = public, pg_temp as $$
+begin
+  if new.origen = 'auto' and (
+       coalesce(new.descripcion, '') ~ '^(Compra s/factura |Venta s/libro|Reverso (compra|venta) s/factura|Anulación (compra|venta) N°)'
+       or coalesce(new.referencia, '') ~ '^L[VC]-[0-9]{2}/[0-9]{4}$'
+       or (coalesce(new.referencia, '') ~ '^F30-' and new.numero is not null)) then
+    return null;
+  end if;
+  perform pg_advisory_xact_lock(hashtext('asientos:' || new.empresa_id::text));
+  select coalesce(max(numero), 0) + 1 into new.numero from asientos where empresa_id = new.empresa_id;
+  if new.periodo is null then
+    new.periodo := to_char(contab_fecha_factura(new.fecha), 'YYYY-MM');
+  end if;
+  return new;
+end $$;
 
 -- «Cerrar mes» no cierra un período con facturas O retenciones sin asiento
 -- (las cargadas antes de los motores; se reconstruyen en el plan 6). Se
@@ -126,10 +191,7 @@ returns integer language sql stable security invoker set search_path = public, p
        and public.contab_periodo_de(t.fecha, t.periodo) = p_periodo
        and public.contab_lineas_retencion(t) is not null
        and not exists (select 1 from asientos a where a.origen_tabla = 'retenciones' and a.origen_id = t.id)
-       and not (lower(coalesce(t.tipo, '')) = 'iva' and lower(coalesce(t.direccion, '')) like 'sufrida%'
-                and exists (select 1 from asientos a where a.empresa_id = t.empresa_id
-                               and a.referencia in ('LV-' || substr(p_periodo, 6, 2) || '/' || substr(p_periodo, 1, 4),
-                                                    'RIVA-' || substr(p_periodo, 6, 2) || '/' || substr(p_periodo, 1, 4))))
+       and public.contab_ret_en_resumen(t) <> 'cubierta'
   )
 $$;
 grant execute on function public.contab_filas_sin_asiento(uuid, text) to authenticated;

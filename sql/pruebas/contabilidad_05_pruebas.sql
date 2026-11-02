@@ -77,15 +77,33 @@ select pg_temp.igual('monto cero: sin asiento', pg_temp.n('40000000-0000-0000-00
 
 -- Meses viejos: las sufridas de IVA ya están en el resumen LV (Agüero) o en el
 -- asiento provisional RIVA de un mes cerrado con la v186.
+-- Marzo: su LV TRAE la línea 1.1.3.03 (las retenciones ya están adentro).
+-- Diciembre: su LV NO la trae (pasó en Agüero: las retenciones se cargaron
+-- después del resumen). En los meses en resumen la contrapartida fue Bancos,
+-- no CxC/CxP, así que ninguna retención de esos meses se contabiliza aquí:
+-- o ya está adentro, o queda pendiente para la reconstrucción (plan 6).
 select pg_temp.viejo('LV-03/2026', 'Ventas del mes (resumen Libro de Ventas) · marzo 2026');
+update asientos set lineas = '[{"cta": "1.1.1.03 · Bancos", "debe": 88, "haber": 0}, {"cta": "1.1.3.03 · Retenciones IVA soportadas", "debe": 12, "haber": 0}, {"cta": "4.1.1.01 · Venta de mercancía", "debe": 0, "haber": 100}]'
+ where empresa_id = 'e0000000-0000-0000-0000-000000000001' and referencia = 'LV-03/2026';
+select pg_temp.viejo('LV-12/2025', 'Ventas del mes (resumen Libro de Ventas) · diciembre 2025');
+select pg_temp.viejo('LC-01/2026', 'Compras del mes (resumen Libro de Compras) · enero 2026');
 select pg_temp.viejo('RIVA-09/2026', 'Retenciones de IVA sufridas del mes · septiembre 2026');
 insert into retenciones (id, cuenta_id, empresa_id, direccion, tipo, fecha, comprobante, tercero_nombre, factura, base, pct, monto, periodo) values
   ('40000000-0000-0000-0000-000000000011', 'a0000000-0000-0000-0000-000000000001', 'e0000000-0000-0000-0000-000000000001', 'sufrida', 'iva',  '10/03/26', 'C-MAR', 'CLIENTE', 'V-9', 100, 75, 12, '2026-03'),
   ('40000000-0000-0000-0000-000000000012', 'a0000000-0000-0000-0000-000000000001', 'e0000000-0000-0000-0000-000000000001', 'sufrida', 'islr', '11/03/26', 'I-MAR', 'CLIENTE', 'V-9', 100, 2, 2, '2026-03'),
-  ('40000000-0000-0000-0000-000000000013', 'a0000000-0000-0000-0000-000000000001', 'e0000000-0000-0000-0000-000000000001', 'sufrida', 'iva',  '12/09/26', 'C-SEP', 'CLIENTE', 'V-8', 100, 75, 12, '2026-09');
-select pg_temp.igual('IVA sufrida en mes con resumen LV: sin asiento', pg_temp.n('40000000-0000-0000-0000-000000000011'), '0');
-select pg_temp.igual('ISLR sufrida del mismo mes: sí (el LV no la traía)', pg_temp.n('40000000-0000-0000-0000-000000000012'), '1');
+  ('40000000-0000-0000-0000-000000000013', 'a0000000-0000-0000-0000-000000000001', 'e0000000-0000-0000-0000-000000000001', 'sufrida', 'iva',  '12/09/26', 'C-SEP', 'CLIENTE', 'V-8', 100, 75, 12, '2026-09'),
+  ('40000000-0000-0000-0000-000000000014', 'a0000000-0000-0000-0000-000000000001', 'e0000000-0000-0000-0000-000000000001', 'sufrida', 'iva',  '10/12/25', 'C-DIC', 'CLIENTE', 'V-7', 100, 75, 649.88, '2025-12'),
+  ('40000000-0000-0000-0000-000000000015', 'a0000000-0000-0000-0000-000000000001', 'e0000000-0000-0000-0000-000000000001', 'practicada', 'islr', '10/01/26', 'I-ENE', 'PROVEEDOR', 'F-9', 100, 2, 2, '2026-01');
+select pg_temp.igual('IVA sufrida en mes cuyo LV ya la trae: sin asiento', pg_temp.n('40000000-0000-0000-0000-000000000011'), '0');
+select pg_temp.igual('ISLR sufrida en mes con LV: sin asiento (allí se cobró por Bancos)', pg_temp.n('40000000-0000-0000-0000-000000000012'), '0');
 select pg_temp.igual('IVA sufrida en mes con RIVA provisional: sin asiento', pg_temp.n('40000000-0000-0000-0000-000000000013'), '0');
+select pg_temp.igual('IVA sufrida en mes cuyo LV NO la trae: sin asiento', pg_temp.n('40000000-0000-0000-0000-000000000014'), '0');
+select pg_temp.igual('practicada en mes con LC: sin asiento (allí se pagó por Bancos)', pg_temp.n('40000000-0000-0000-0000-000000000015'), '0');
+select pg_temp.igual('pendientes para la reconstrucción: marzo 1 (la ISLR), diciembre 1, enero 1, septiembre 0',
+  contab_filas_sin_asiento('e0000000-0000-0000-0000-000000000001', '2026-03')::text || ' ' ||
+  contab_filas_sin_asiento('e0000000-0000-0000-0000-000000000001', '2025-12')::text || ' ' ||
+  contab_filas_sin_asiento('e0000000-0000-0000-0000-000000000001', '2026-01')::text || ' ' ||
+  contab_filas_sin_asiento('e0000000-0000-0000-0000-000000000001', '2026-09')::text, '1 1 1 0');
 
 -- Carga masiva (quincena de retenciones).
 insert into retenciones (cuenta_id, empresa_id, direccion, tipo, fecha, comprobante, tercero_nombre, factura, base, pct, monto, periodo)
@@ -103,8 +121,25 @@ insert into retenciones (id, cuenta_id, empresa_id, direccion, tipo, fecha, comp
 delete from asientos where origen_id = '40000000-0000-0000-0000-000000000021';
 select pg_temp.igual('julio tiene 1 retención sin asiento: no se puede cerrar',
   contab_filas_sin_asiento('e0000000-0000-0000-0000-000000000001', '2026-07')::text, '1');
-select pg_temp.igual('marzo: la sufrida de IVA está en el LV y la de ISLR tiene asiento',
-  contab_filas_sin_asiento('e0000000-0000-0000-0000-000000000001', '2026-03')::text, '0');
+
+-- Un script de rutina que toca una columna que no cambia el asiento (la
+-- quincena, el RIF) no le crea asiento a una retención vieja.
+update retenciones set quincena = 2, tercero_rif = 'J999999999' where id = '40000000-0000-0000-0000-000000000021';
+select pg_temp.igual('cambiar quincena o RIF no contabiliza una retención vieja', pg_temp.n('40000000-0000-0000-0000-000000000021'), '0');
+update retenciones set monto = 13 where id = '40000000-0000-0000-0000-000000000021';
+select pg_temp.igual('cambiar el monto sí la contabiliza', pg_temp.n('40000000-0000-0000-0000-000000000021'), '1');
+
+-- Una pestaña con la app VIEJA (v184) que cierra un mes manda su F30 con
+-- número propio y con la lógica anterior (contaría dos veces): se descarta.
+-- La app nueva no manda número.
+insert into asientos (cuenta_id, empresa_id, numero, fecha, descripcion, referencia, origen, lineas, total) values
+  ('a0000000-0000-0000-0000-000000000001', 'e0000000-0000-0000-0000-000000000001', 9100, '31/10/2026', 'Liquidación IVA declarado (Forma 30) · octubre 2026', 'F30-10/2026', 'auto', '[]', 0);
+select pg_temp.igual('la F30 de la app vieja se descarta',
+  (select count(*)::text from asientos where empresa_id = 'e0000000-0000-0000-0000-000000000001' and referencia = 'F30-10/2026'), '0');
+insert into asientos (cuenta_id, empresa_id, fecha, descripcion, referencia, origen, lineas, total) values
+  ('a0000000-0000-0000-0000-000000000001', 'e0000000-0000-0000-0000-000000000001', '31/10/2026', 'Liquidación IVA declarado (Forma 30) · octubre 2026', 'F30-10/2026', 'auto', '[]', 0);
+select pg_temp.igual('la F30 de la app nueva entra',
+  (select count(*)::text from asientos where empresa_id = 'e0000000-0000-0000-0000-000000000001' and referencia = 'F30-10/2026'), '1');
 
 select 'TODO OK · contabilidad 05' as resultado;
 rollback;

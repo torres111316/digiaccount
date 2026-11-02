@@ -129,15 +129,16 @@ def main():
             falla('anular la retención debía quitar su asiento')
         print('  OK  anular la retención quita su asiento')
     finally:
+        # PRIMERO se borra todo y DESPUÉS se comprueba: si una comprobación
+        # fallara en medio, el resto de las filas de prueba quedaría en producción.
         if ret_ids:
             api('retenciones?id=in.(%s)' % ','.join(ret_ids), token, 'DELETE')
-            if asientos_de(token, ret_ids, 'retenciones'):
-                falla('quedaron asientos huérfanos de la retención de prueba')
         if ids:
             api('libro_fiscal?id=in.(%s)' % ','.join(ids), token, 'DELETE')
-            resto = asientos_de(token, ids)
-            if resto:
-                falla('quedaron %d asientos huérfanos de las filas de prueba' % len(resto))
+        huerfanos = (len(asientos_de(token, ret_ids, 'retenciones')) if ret_ids else 0) + (len(asientos_de(token, ids)) if ids else 0)
+        if huerfanos:
+            falla('quedaron %d asientos huérfanos de las filas de prueba' % huerfanos)
+        if ids or ret_ids:
             print('  OK  filas de prueba borradas, sin asientos huérfanos')
 
     if sin_periodo:
