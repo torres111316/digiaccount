@@ -466,7 +466,7 @@
           } else {
             lineas = [{ cta: ctaCash, debe: monto, haber: 0 }];
             if (aplicado > 0.005) lineas.push({ cta: '2.1.1.01 · Cuentas por pagar comerciales', debe: 0, haber: aplicado });
-            if (exceso > 0.005) lineas.push({ cta: '1.1.4.01 · Anticipos a proveedores', debe: 0, haber: exceso });
+            if (exceso > 0.005) lineas.push({ cta: '1.1.2.04 · Anticipos a proveedores', debe: 0, haber: exceso });
           }
           window.__postAsiento('Reverso ' + (mov.tipo === 'ingreso' ? 'cobro' : 'pago') + ' ' + refDoc + ' · ' + (mov.tercero_nombre || ''), refDoc, lineas, 'auto')
             .then((r) => { if (r && r.error) console.warn('[DigiAccount] Reverso:', r.error.message); });
@@ -752,7 +752,7 @@
                 } else {
                   lineas = [];
                   if (aplicado > 0.005) lineas.push({ cta: '2.1.1.01 · Cuentas por pagar comerciales', debe: aplicado, haber: 0 });
-                  if (exceso > 0.005) lineas.push({ cta: '1.1.4.01 · Anticipos a proveedores', debe: exceso, haber: 0 });
+                  if (exceso > 0.005) lineas.push({ cta: '1.1.2.04 · Anticipos a proveedores', debe: exceso, haber: 0 });
                   lineas.push({ cta: ctaCash, debe: 0, haber: monto });
                   desc = 'Pago factura ' + v.factura + ' · ' + v.tercero + ' (' + cashName + ')' + (exceso > 0.005 ? ' · anticipo Bs ' + fmt(exceso) : '');
                 }

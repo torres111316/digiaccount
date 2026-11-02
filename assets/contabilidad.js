@@ -365,24 +365,34 @@
       });
     });
 
-    // ---- Plan de cuentas: cuentas PROPIAS de la empresa (persisten en Supabase) ----
-    function filaCuentaCustom(c) {
+    /* ---- Plan de cuentas: viene completo de la base ----
+       La base (plan_cuentas_base, una para todos) más las cuentas propias de
+       la empresa (cuentas_contables). Antes la base eran filas fijas dentro de
+       index.html, y la base de datos no podía nombrar las cuentas de los
+       asientos que genera ella misma. data-uso marca en qué cuentas se puede
+       clasificar una compra (costo, gasto, activo fijo). */
+    function filaCuenta(c) {
+      const esc = window.__esc || ((s) => String(s == null ? '' : s));
       const tagTipo = c.tipo === 'Grupo' ? 'navy' : 'slate';
       const nivel = (c.codigo || '').split('.').length - 1;
       const indent = '&nbsp;'.repeat(nivel * 3);
-      return '<tr data-custom="1"><td class="mono">' + (c.codigo || '') + '</td><td class="primary">' + indent + (c.nombre || '') + '</td>'
-        + '<td><span class="tag ' + tagTipo + '">' + (c.tipo || 'Cuenta') + '</span></td><td>' + (c.naturaleza || '') + '</td>'
-        + '<td class="num">0,00</td><td><span class="tag cyan">Propia</span></td></tr>';
+      const estado = c.propia ? '<span class="tag cyan">Propia</span>' : '<span class="tag success">Activa</span>';
+      return '<tr' + (c.propia ? ' data-custom="1"' : '') + (c.uso ? ' data-uso="' + esc(c.uso) + '"' : '') + '>'
+        + '<td class="mono">' + esc(c.codigo) + '</td><td class="primary">' + indent + esc(c.nombre) + '</td>'
+        + '<td><span class="tag ' + tagTipo + '">' + esc(c.tipo || 'Cuenta') + '</span></td><td>' + esc(c.naturaleza) + '</td>'
+        + '<td class="num">0,00</td><td>' + estado + '</td></tr>';
     }
     async function cargarCuentasContables() {
       if (!window.sb || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) return;
       const tbody = view.querySelector('.conta-tab[data-tab="plan"] table.data-table tbody');
       if (!tbody) return;
-      tbody.querySelectorAll('tr[data-custom]').forEach((tr) => tr.remove());   // limpia las de la empresa anterior
-      const { data, error } = await window.sb.from('cuentas_contables').select('*').eq('empresa_id', window.__EMPRESA_ACTIVA.id).order('codigo');
-      if (error) { console.warn('[DigiAccount] No se pudieron cargar cuentas contables:', error.message); return; }
-      (data || []).forEach((c) => tbody.insertAdjacentHTML('beforeend', filaCuentaCustom(c)));
-      console.log('[DigiAccount] Cuentas contables propias:', (data || []).length);
+      const { data, error } = await window.sb.rpc('plan_de_empresa', { p_empresa: window.__EMPRESA_ACTIVA.id });
+      if (error) {
+        console.warn('[DigiAccount] No se pudo cargar el plan de cuentas:', error.message);
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--fg-muted);padding:14px;">No se pudo cargar el plan de cuentas.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = (data || []).map(filaCuenta).join('');
       if (window.refreshTables) window.refreshTables();
       drawIcons();
     }

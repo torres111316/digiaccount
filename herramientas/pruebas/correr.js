@@ -1110,5 +1110,22 @@ bloque('Importador de libros');
   ok('la NC toma su propio número', notas.ops[0].factura, 'NC-0007');
 }
 
+/* -- CONTABILIDAD · PLAN 1 ---------------------------------------------------
+   El plan de cuentas base vivía como filas fijas dentro de index.html. La base
+   no lo conocía, así que no podía generar asientos con nombres de cuenta. Ahora
+   vive en la tabla plan_cuentas_base y la pantalla lo pide con plan_de_empresa. */
+bloque('Plan de cuentas desde la base');
+var _leer = function (p) { try { return fs.readFileSync(path.join(RAIZ, p), 'utf8'); } catch (e) { return ''; } };
+var _html = _leer('index.html');
+var _conta = _leer('assets/contabilidad.js');
+var _sqlPlan = _leer('sql/contabilidad_01_plan_base.sql');
+var _tbodyPlan = (_html.match(/<div class="conta-tab" data-tab="plan">[\s\S]*?<tbody>([\s\S]*?)<\/tbody>/) || [])[1];
+ok('index.html ya no trae filas fijas en el plan de cuentas',
+  typeof _tbodyPlan === 'string' && !/<tr/.test(_tbodyPlan), true);
+ok('el plan se carga con plan_de_empresa', /rpc\('plan_de_empresa'/.test(_conta), true);
+ok('nadie usa 1.1.4.01 para anticipos a proveedores',
+  /1\.1\.4\.01 · Anticipos a proveedores/.test(app), false);
+ok('el SQL siembra las 101 cuentas de siempre y las 30 nuevas', (_sqlPlan.match(/^\s*\('/gm) || []).length, 131);
+
 console.log('\n' + (fallas ? 'HAY ' + fallas + ' FALLA(S) de ' + total : 'TODO OK · ' + total + ' comprobaciones'));
 process.exit(fallas ? 1 : 0);
