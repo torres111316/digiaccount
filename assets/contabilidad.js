@@ -393,9 +393,14 @@
         return;
       }
       tbody.innerHTML = (data || []).map(filaCuenta).join('');
+      _clasificables = (data || []).filter((c) => c.uso && c.tipo !== 'Grupo').map((c) => ({ codigo: c.codigo, nombre: c.nombre, uso: c.uso }));
       if (window.refreshTables) window.refreshTables();
       drawIcons();
     }
+    // Cuentas en que se puede clasificar una compra (costo, gasto o activo
+    // fijo): las usan la ficha del proveedor y el registro de compras.
+    let _clasificables = [];
+    window.__cuentasClasificables = () => _clasificables.slice();
     window.cargarCuentasContables = cargarCuentasContables;
 
     // ======= ETAPA 3: Libro Mayor + Balance de Comprobación (de los asientos reales) =======

@@ -285,6 +285,7 @@
         cli: !!r.es_cliente, prov: !!r.es_proveedor,
         fiscal: r.condicion_fiscal || 'Contribuyente ordinario',
         agenteRet: r.agente_retencion ? 'Sí' : 'No',
+        cuentaGasto: r.cuenta_gasto || '',
         tel: r.telefono || '', email: r.email || '', dom: r.domicilio || '',
         cxc: Number(r.cxc) || 0, cxp: Number(r.cxp) || 0,
         cont: Array.isArray(r.contactos) ? r.contactos : []
@@ -404,7 +405,18 @@
       setV('tel', (t && t.tel) || ''); setV('email', (t && t.email) || ''); setV('dom', (t && t.dom) || '');
       setV('fiscalCond', (t && t.fiscal) || 'Contribuyente ordinario');
       setV('agenteRet', (t && t.agenteRet) || 'No');
-      const out = (k, v) => { const e = overlay.querySelector('[data-tk-out="' + k + '"]'); if (e) e.textContent = v; };
+      // Cuenta contable de sus compras: las del plan que sirven para clasificar.
+      const selCta = get('cuentaGasto');
+      if (selCta) {
+        const esc = window.__esc || ((s) => String(s == null ? '' : s));
+        const ctas = window.__cuentasClasificables ? window.__cuentasClasificables() : [];
+        const actual = (t && t.cuentaGasto) || '';
+        if (actual && !ctas.some((c) => c.codigo === actual)) ctas.push({ codigo: actual, nombre: '(cuenta guardada)' });
+        selCta.innerHTML = '<option value="">Sin asignar · Compra de Mercancía</option>'
+          + ctas.map((c) => '<option value="' + esc(c.codigo) + '">' + esc(c.codigo + ' · ' + c.nombre) + '</option>').join('');
+        selCta.value = actual;
+      }
+      const out =(k, v) => { const e = overlay.querySelector('[data-tk-out="' + k + '"]'); if (e) e.textContent = v; };
       out('saldoCxc', 'Bs ' + fmt((t && t.cxc) || 0));
       out('saldoCxp', 'Bs ' + fmt((t && t.cxp) || 0));
       contactsEl.innerHTML = '';
@@ -445,6 +457,7 @@
         es_cliente: cli, es_proveedor: prov,
         condicion_fiscal: get('fiscalCond').value,
         agente_retencion: !!(get('agenteRet') && get('agenteRet').value === 'Sí'),
+        cuenta_gasto: (prov && get('cuentaGasto') && get('cuentaGasto').value) || null,
         telefono: get('tel').value.trim(), email: get('email').value.trim(),
         domicilio: get('dom').value.trim().toUpperCase(),
         contactos: cont,

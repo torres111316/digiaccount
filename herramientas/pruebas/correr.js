@@ -1127,5 +1127,20 @@ ok('nadie usa 1.1.4.01 para anticipos a proveedores',
   /1\.1\.4\.01 · Anticipos a proveedores/.test(app), false);
 ok('el SQL siembra las 101 cuentas de siempre y las 30 nuevas', (_sqlPlan.match(/^\s*\('/gm) || []).length, 131);
 
+/* Costo o gasto lo da el proveedor (regla de Luis): cada proveedor tiene su
+   cuenta por defecto y cada factura de compra puede cambiarla. La ficha traía
+   un selector «Categoría de gasto» que nunca se guardaba. */
+bloque('Clasificación de compras');
+var _terceros = _leer('assets/terceros.js');
+var _appjs = _leer('assets/app.js');
+ok('la ficha del proveedor tiene su cuenta contable por defecto', /data-tk="cuentaGasto"/.test(_html), true);
+ok('la ficha ya no trae la «Categoría de gasto» que no se guardaba', /data-tk="provCat"/.test(_html), false);
+ok('el tercero guarda cuenta_gasto', /cuenta_gasto:/.test(_terceros), true);
+ok('la compra guarda cuenta_contable', /cuenta_contable:/.test(_appjs), true);
+ok('la compra propone la cuenta del proveedor', /selCta\.value = cuentaDeProveedor\(/.test(_appjs), true);
+ok('editar una compra muestra su cuenta o la del proveedor',
+  /__campoCuentaCompra\(r\.cuenta_contable \|\| window\.__cuentaDeProveedor\(/.test(_appjs), true);
+ok('hay una lista de cuentas clasificables', /window\.__cuentasClasificables\s*=/.test(_conta), true);
+
 console.log('\n' + (fallas ? 'HAY ' + fallas + ' FALLA(S) de ' + total : 'TODO OK · ' + total + ' comprobaciones'));
 process.exit(fallas ? 1 : 0);

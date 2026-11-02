@@ -5218,6 +5218,24 @@
       // Terceros del rol correspondiente (proveedores para compras, clientes para ventas) → autocompletado
       const terceros = (window.__getTerceros ? window.__getTerceros() : []).filter((t) => (esCompra ? t.prov : t.cli) && t.nombre);
       const normRif = (s) => (s || '').toUpperCase().replace(/[\s.\-]/g, '');
+      /* COMPRAS: costo o gasto lo da el proveedor (regla de Luis). El campo se
+         llena solo con la cuenta de su ficha y se puede cambiar en esta
+         factura. Se guarda en cuenta_contable SOLO si difiere de la del
+         proveedor: así, si mañana se corrige la ficha, sus facturas la siguen. */
+      window.__cuentaDeProveedor = window.__cuentaDeProveedor || ((nombre, rif) => {
+        const nr = (s) => (s || '').toUpperCase().replace(/[\s.\-]/g, '');
+        const r = nr(rif), n = String(nombre || '').trim().toUpperCase();
+        const t = (window.__getTerceros ? window.__getTerceros() : [])
+          .find((x) => x.prov && ((r && nr(x.rif) === r) || (n && String(x.nombre || '').toUpperCase() === n)));
+        return (t && t.cuentaGasto) || '';
+      });
+      window.__campoCuentaCompra = window.__campoCuentaCompra || ((valor) => {
+        const ctas = window.__cuentasClasificables ? window.__cuentasClasificables() : [];
+        return { name: 'cuentaContable', label: 'Cuenta contable (costo o gasto · la propone el proveedor)', col: 2, type: 'select', value: valor || '',
+          options: [{ value: '', label: 'Compra de Mercancía (sin clasificar)' }].concat(ctas.map((c) => ({ value: c.codigo, label: c.codigo + ' · ' + c.nombre }))) };
+      });
+      const cuentaDeProveedor = window.__cuentaDeProveedor;
+      const campoCuentaCompra = window.__campoCuentaCompra;
       // VENTAS: sugiere el siguiente N° de factura/control consultando el máximo real en la BD.
       // forzar=true (tras guardar, para la siguiente factura) sobreescribe aunque el campo tenga valor;
       // si no, solo rellena si está vacío (apertura inicial del formulario).
@@ -5325,10 +5343,11 @@
           { name: 'rif', label: 'RIF / C.I. (mayúscula, sin guiones — también busca por RIF)', upper: true, placeholder: 'J123456789', type: 'datalist', options: terceros.filter((t) => t.rif).map((t) => ({ value: normRif(t.rif), label: t.nombre })) },
           { name: 'numFactura', label: 'N° de Factura', placeholder: 'F-00000000' },
           { name: 'numControl', label: 'N° de Control', placeholder: '00-00000000' },
+        ].concat(esCompra ? [campoCuentaCompra()] : []).concat([
           {
             name: 'numResumen', col: 2, type: 'static', label: '', html: montosHTML(),
           },
-        ].concat(esCompra ? [
+        ]).concat(esCompra ? [
           // La condición de pago se quitó: solo servía para abrir el cuadro de
           // pago, y esa decisión pertenece a Tesorería, no al libro fiscal.
         ] : [
@@ -5382,6 +5401,11 @@
           // COMPRAS: se avisa qué se borra y qué no al pasar a la siguiente factura, para que
           // nadie descubra por accidente que el código de la máquina fiscal se quedó puesto.
           if (esCompra) {
+            // La cuenta contable sigue al proveedor elegido (por nombre o por RIF).
+            const selCta = body.querySelector('[data-name="cuentaContable"]');
+            const proponerCuenta = () => { if (selCta) selCta.value = cuentaDeProveedor(prov.value, rif && rif.value); };
+            prov.addEventListener('change', proponerCuenta);
+            if (rif) rif.addEventListener('change', proponerCuenta);
             const ncWrap = body.querySelector('[data-name="numControl"]');
             const wrap = ncWrap && ncWrap.closest('.fm-field');
             if (wrap) {
@@ -5733,6 +5757,8 @@
             base_gen: M.base_gen, iva_gen: M.iva_gen,
             base_red: M.base_red, iva_red: M.iva_red,
             base_adic: M.base_adic, iva_adic: M.iva_adic,
+            // Solo si se cambió en esta factura; si no, manda la del proveedor.
+            cuenta_contable: (esCompra && v.cuentaContable && v.cuentaContable !== cuentaDeProveedor(v.nombre, v.rif)) ? v.cuentaContable : null,
           }).select('id').then(({ data: guardado, error }) => {
             if (saveBtnEl) saveBtnEl.disabled = false;
             if (error) {
@@ -6619,6 +6645,8 @@
           { name: 'rif', label: 'RIF', upper: true, value: r.tercero_rif || '' },
           { name: 'numFactura', label: 'N° de Factura', value: r.numero_factura || '' },
           { name: 'numControl', label: 'N° de Control', value: r.numero_control || '' },
+        ].concat(esCompra && window.__campoCuentaCompra
+          ? [window.__campoCuentaCompra(r.cuenta_contable || window.__cuentaDeProveedor(r.tercero_nombre, r.tercero_rif))] : []).concat([
           { name: 'numResumen', col: 2, type: 'static', label: '', html: montosHTML() },
           /* Atajo a la retención.
 
@@ -6638,7 +6666,7 @@
             + '</span></div>' },
         ].concat(esCompra ? [] : [
         ]).concat(camposIgtf(Number(r.igtf) || 0, 'Base: cuánto de esta factura se cobró así (Bs)')).concat([
-        ]).concat(campoSucursal(r.sucursal_id))),
+        ]).concat(campoSucursal(r.sucursal_id)))),
         afterRender: (body) => {
           // Se monta con la fila ya cargada: si trae varias alícuotas salen
           // sus renglones, y si es anterior al desglose se reparte por su
@@ -6772,6 +6800,8 @@
             base_gen: M.base_gen, iva_gen: M.iva_gen,
             base_red: M.base_red, iva_red: M.iva_red,
             base_adic: M.base_adic, iva_adic: M.iva_adic,
+            // Solo si se cambió en esta factura; si no, manda la del proveedor.
+            cuenta_contable: (esCompra && v.cuentaContable && v.cuentaContable !== window.__cuentaDeProveedor(v.nombre, v.rif)) ? v.cuentaContable : null,
           }).eq('id', id).then(({ error }) => {
             if (error) { toast('No se pudo actualizar: ' + error.message, 'error'); return; }
             if (window.__invalidarArrastres) window.__invalidarArrastres();
