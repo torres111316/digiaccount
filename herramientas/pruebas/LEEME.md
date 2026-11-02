@@ -73,3 +73,16 @@ impuesto contra el monto exento.
 
 Si algún día se "arregla" la codificación de este archivo, la prueba deja
 de cubrir el caso que la motivó.
+
+## Pruebas de los SQL (`sql/pruebas/`)
+
+Los SQL de la contabilidad (`sql/contabilidad_*.sql`) se prueban sin tocar
+Supabase, en PGlite (un Postgres dentro de Node), con un espejo mínimo del
+esquema (`sql/espejo.sql`):
+
+    cd herramientas/pruebas/sql
+    npm install          # la primera vez
+    node correr-sql.js   # todos; con un número (03) solo hasta ese y su prueba
+
+Las mismas pruebas se pueden pegar en el SQL Editor de Supabase: van entre
+`begin` y `rollback`, así que no dejan nada. Una falla dice «FALLA: …».

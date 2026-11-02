@@ -1,0 +1,8 @@
+{
+  "name": "digiaccount-pruebas-sql",
+  "private": true,
+  "description": "Corre los SQL de sql/ y sus pruebas en un Postgres de bolsillo (PGlite), sin tocar Supabase.",
+  "dependencies": {
+    "@electric-sql/pglite": "0.2.17"
+  }
+}
