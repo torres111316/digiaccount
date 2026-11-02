@@ -1157,7 +1157,14 @@ ok('__postAsiento no manda numero', /numero:\s*\(asientoNum/.test(_conta), false
    asiento con las retenciones de IVA sufridas del mes contra CxC (§5). */
 ok('cerrar mes ya no genera el resumen de ventas', /Ventas del mes \(resumen Libro de Ventas\)/.test(_appjs), false);
 ok('cerrar mes ya no genera el resumen de compras', /Compras del mes \(resumen Libro de Compras\)/.test(_appjs), false);
-ok('cerrar mes registra las retenciones de IVA sufridas contra CxC', /'RIVA-' \+ mm/.test(_appjs), true);
+/* Plan 2: cada retención tiene su asiento (sql/contabilidad_05_retenciones.sql),
+   así que cerrar mes ya no arma el provisional RIVA, y lo que queda por pagar
+   de IVA va a «IVA por pagar» (al declarar va al pasivo; al pagar se cruza). */
+ok('cerrar mes ya no crea el asiento provisional RIVA', /'RIVA-' \+ mm/.test(_appjs), false);
+ok('la liquidación no suma las retenciones del mes al saldo', /retDisp = r2c\(retDisp \+ retMes\)/.test(_appjs), false);
+ok('lo que queda por pagar va a IVA por pagar, no a Bancos', /'2\.1\.4\.04 · IVA por pagar'/.test(_appjs), true);
+var _bloqueF30 = (_appjs.match(/const \{ data: yaF30 \}[\s\S]*?mkAsiento\('Liquidación IVA/) || [''])[0];
+ok('la liquidación ya no abona Bancos', _bloqueF30.length > 0 && /1\.1\.1\.03 · Bancos/.test(_bloqueF30), false);
 ok('cerrar mes no numera en el navegador', /numero: maxNum/.test(_appjs), false);
 ok('el asiento manual no numera en el navegador', /const numero = \(asientoNum/.test(_conta), false);
 /* Revisión final del plan 1. */

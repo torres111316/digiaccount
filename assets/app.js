@@ -7099,7 +7099,7 @@
         toast('Período ' + _perLabel() + ' reabierto para modificaciones');
         return;
       }
-      if (!window.confirm('¿CERRAR ' + _perLabel() + '?\n\nSe generan la liquidación de IVA del mes y el asiento de sus retenciones sufridas, si aún no existen (ventas y compras ya tienen su asiento, factura por factura), y las transacciones del período quedan BLOQUEADAS. Podrás reabrirlo cuando quieras.')) return;
+      if (!window.confirm('¿CERRAR ' + _perLabel() + '?\n\nSe genera la liquidación de IVA del mes, si aún no existe: lo que haya que pagar queda en IVA por pagar (ventas, compras y retenciones ya tienen su asiento, documento por documento), y las transacciones del período quedan BLOQUEADAS. Podrás reabrirlo cuando quieras.')) return;
       const mm = _fiscalPer.mm, anio = '20' + _fiscalPer.aa;
       const perDecl = anio + '-' + mm, sufPer = '/' + mm + '/' + _fiscalPer.aa;
       /* Un mes cargado antes del motor contable tiene facturas sin asiento
@@ -7109,7 +7109,7 @@
       const { data: sinAsi, error: eSin } = await window.sb.rpc('contab_filas_sin_asiento', { p_empresa: empId, p_periodo: perDecl });
       if (eSin) { toast('No se pudo comprobar la contabilidad del período: ' + eSin.message, 'error'); return; }
       if (sinAsi > 0) {
-        toast(_perLabel() + ' tiene ' + sinAsi + ' factura(s) sin asiento contable: se cargaron antes del motor contable. Ese mes se reconstruye antes de cerrarlo.', 'error');
+        toast(_perLabel() + ' tiene ' + sinAsi + ' factura(s) o retención(es) sin asiento contable: se cargaron antes del motor contable. Ese mes se reconstruye antes de cerrarlo.', 'error');
         return;
       }
       // ¿Ya existen los asientos del mes? (meses migrados o cierres previos → solo bloquear)
@@ -7124,8 +7124,6 @@
          nota de crédito sumara en vez de restar, el débito fiscal quedaría
          inflado y el asiento arrastraría el error a la contabilidad. */
       mes.forEach((r) => { const o = r.tipo === 'venta' ? v : c; o.tot += window.__montoDoc(r); o.be += window.__montoDoc(r, 'base') + window.__montoDoc(r, 'exento'); o.iva += window.__montoDoc(r, 'iva'); });
-      const { data: rets } = await window.__sbAll((q) => q.eq('empresa_id', empId).eq('direccion', 'sufrida').eq('tipo', 'iva'), 'retenciones', 'monto,fecha,periodo');
-      const retMes = (rets || []).filter((r) => r.periodo ? r.periodo === perDecl : String(r.fecha || '').endsWith(sufPer)).reduce((s, r) => s + (Number(r.monto) || 0), 0);
       const r2c = (x) => Math.round(x * 100) / 100;
       const ultDia = new Date(parseInt(anio, 10), parseInt(mm, 10), 0).getDate();
       const fechaAsi = String(ultDia).padStart(2, '0') + '/' + mm + '/' + anio;
@@ -7139,22 +7137,12 @@
       const saldoDe = (pref) => (asiAll || []).filter((a) => String(a.periodo || '') <= perDecl).reduce((s, a) =>
         s + (Array.isArray(a.lineas) ? a.lineas : []).reduce((x, l) => x + (String(l.cta || '').indexOf(pref) === 0 ? (Number(l.debe) || 0) - (Number(l.haber) || 0) : 0), 0), 0);
       const credDisp = r2c(saldoDe('1.1.3.01'));
-      let retDisp = r2c(saldoDe('1.1.3.03'));
+      // Las retenciones de IVA sufridas ya tienen su asiento, comprobante por
+      // comprobante (sql/contabilidad_05_retenciones.sql): están en este saldo.
+      const retDisp = r2c(saldoDe('1.1.3.03'));
       const nuevos = [];
       // El número lo pone la base (trg_asiento_numero).
       const mkAsiento = (desc, ref, lineas) => { nuevos.push({ cuenta_id: window.__CUENTA_ID, empresa_id: empId, fecha: fechaAsi, descripcion: desc, referencia: ref, origen: 'auto', lineas: lineas, total: r2c(lineas.reduce((s, l) => s + l.debe, 0)) }); };
-      /* Retenciones de IVA que los clientes le hicieron a la empresa en el mes:
-         el cliente pagó menos, así que bajan la CxC y quedan como crédito a
-         descontar (spec §5). PROVISIONAL: un solo asiento por mes, hasta que
-         el plan 2 registre cada comprobante; ese plan debe quitar este. */
-      const { data: yaRiva } = await window.sb.from('asientos').select('id').eq('empresa_id', empId).eq('referencia', 'RIVA-' + mm + '/' + anio).limit(1);
-      if (!(yaLV && yaLV.length) && !(yaRiva && yaRiva.length) && retMes > 0.005) {
-        mkAsiento('Retenciones de IVA sufridas del mes · ' + _perLabel(), 'RIVA-' + mm + '/' + anio, [
-          { cta: '1.1.3.03 · Retenciones IVA soportadas', debe: r2c(retMes), haber: 0 },
-          { cta: '1.1.2.01 · Cuentas por cobrar comerciales (clientes)', debe: 0, haber: r2c(retMes) },
-        ]);
-        retDisp = r2c(retDisp + retMes);   // va en el mismo lote que la liquidación: aún no está en el saldo
-      }
       const { data: yaF30 } = await window.sb.from('asientos').select('id').eq('empresa_id', empId).eq('referencia', 'F30-' + mm + '/' + anio).limit(1);
       if (!(yaF30 && yaF30.length) && v.iva > 0.005 && !(yaLV && yaLV.length)) {
         // Modelo de cuentas dedicadas: el crédito y las retenciones del mes se
@@ -7182,9 +7170,11 @@
         else if (net04 < -0.005) ln.push({ cta: '1.1.3.04 · Excedente de crédito fiscal IVA', debe: 0, haber: r2c(-net04) });
         if (net05 > 0.005) ln.push({ cta: '1.1.3.05 · Retenciones de IVA por descontar', debe: r2c(net05), haber: 0 });
         else if (net05 < -0.005) ln.push({ cta: '1.1.3.05 · Retenciones de IVA por descontar', debe: 0, haber: r2c(-net05) });
-        if (pago > 0.005) ln.push({ cta: '1.1.1.03 · Bancos', debe: 0, haber: r2c(pago) });
+        // Lo que hay que pagar queda en el PASIVO al declarar (regla de Luis);
+        // se cruza contra el banco cuando se registre el pago (plan 2b).
+        if (pago > 0.005) ln.push({ cta: '2.1.4.04 · IVA por pagar', debe: 0, haber: r2c(pago) });
         const difL = r2c(ln.reduce((s, l) => s + l.debe, 0) - ln.reduce((s, l) => s + l.haber, 0));
-        if (Math.abs(difL) > 0.005) { if (pago > 0.005) ln[ln.length - 1].haber = r2c(ln[ln.length - 1].haber + difL); else ln.push({ cta: '1.1.1.03 · Bancos', debe: 0, haber: difL }); }
+        if (Math.abs(difL) > 0.005) { if (pago > 0.005) ln[ln.length - 1].haber = r2c(ln[ln.length - 1].haber + difL); else ln.push({ cta: '2.1.4.04 · IVA por pagar', debe: 0, haber: difL }); }
         mkAsiento('Liquidación IVA declarado (Forma 30) · ' + _perLabel(), 'F30-' + mm + '/' + anio, ln);
       }
       if (nuevos.length) {
