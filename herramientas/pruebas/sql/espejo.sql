@@ -88,6 +88,27 @@ create table public.libro_fiscal (
   creado_en timestamptz default now()
 );
 
+create table public.retenciones (
+  id uuid primary key default gen_random_uuid(),
+  cuenta_id uuid,
+  empresa_id uuid,
+  direccion text,          -- 'practicada' (la empresa retiene) o 'sufrida' (le retienen)
+  tipo text,               -- 'iva' o 'islr'
+  fecha text,              -- dd/mm/aa
+  comprobante text,
+  tercero_nombre text,
+  tercero_rif text,
+  factura text,
+  base numeric,
+  pct numeric,
+  monto numeric,
+  estado text default 'Registrado',
+  concepto text,
+  periodo text,
+  quincena integer,
+  creado_en timestamptz default now()
+);
+
 create table public.asientos (
   id uuid primary key default gen_random_uuid(),
   cuenta_id uuid,
