@@ -49,8 +49,8 @@ def cuadra(asiento):
     return abs(d - h) < 0.005
 
 
-def asientos_de(token, ids):
-    return api('asientos?origen_tabla=eq.libro_fiscal&origen_id=in.(%s)&select=*' % ','.join(ids), token)
+def asientos_de(token, ids, tabla='libro_fiscal'):
+    return api('asientos?origen_tabla=eq.%s&origen_id=in.(%s)&select=*' % (tabla, ','.join(ids)), token)
 
 
 def main():
@@ -84,6 +84,7 @@ def main():
     ]
     print('Voy a insertar 3 filas de prueba (venta, compra y reporte Z) marcadas %s y las borraré al final.' % MARCA)
     ids = []
+    ret_ids = []
     try:
         creadas = api('libro_fiscal', token, 'POST', filas, prefer='return=representation')
         ids = [f['id'] for f in creadas]
@@ -108,7 +109,30 @@ def main():
         if asientos_de(token, [venta]):
             falla('anular la venta debía quitar su asiento')
         print('  OK  anular la venta quita su asiento')
+
+        # Una retención de IVA practicada sobre la compra (sql/contabilidad_05_retenciones.sql).
+        ret = api('retenciones', token, 'POST', [{
+            'cuenta_id': emp['cuenta_id'], 'empresa_id': emp['id'], 'direccion': 'practicada', 'tipo': 'iva',
+            'fecha': '02/11/26', 'periodo': '2026-11', 'comprobante': MARCA + '-R', 'tercero_nombre': 'PROVEEDOR ' + MARCA,
+            'tercero_rif': 'J000000002', 'factura': MARCA + '-C', 'base': 700, 'pct': 75, 'monto': 84}],
+            prefer='return=representation')
+        ret_ids.append(ret[0]['id'])
+        a = asientos_de(token, ret_ids, 'retenciones')
+        if len(a) != 1:
+            falla('la retención de prueba no generó asiento (¿se corrió contabilidad_05_retenciones.sql?)')
+        cods = [l['cta'].split(' · ')[0] for l in a[0]['lineas']]
+        if cods != ['2.1.1.01', '2.1.3.02'] or not cuadra(a[0]):
+            falla('la retención debía dar Debe 2.1.1.01 / Haber 2.1.3.02 y dio %s' % cods)
+        print('  OK  la retención de IVA practicada tiene su asiento (CxP → Retenciones IVA por pagar)')
+        api('retenciones?id=eq.' + ret_ids[0], token, 'PATCH', {'estado': 'Anulada'})
+        if asientos_de(token, ret_ids, 'retenciones'):
+            falla('anular la retención debía quitar su asiento')
+        print('  OK  anular la retención quita su asiento')
     finally:
+        if ret_ids:
+            api('retenciones?id=in.(%s)' % ','.join(ret_ids), token, 'DELETE')
+            if asientos_de(token, ret_ids, 'retenciones'):
+                falla('quedaron asientos huérfanos de la retención de prueba')
         if ids:
             api('libro_fiscal?id=in.(%s)' % ','.join(ids), token, 'DELETE')
             resto = asientos_de(token, ids)
