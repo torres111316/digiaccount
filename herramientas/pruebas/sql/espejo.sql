@@ -15,7 +15,8 @@ create function public.mi_cuenta_id() returns uuid language sql as 'select null:
 create table public.cuentas (
   id uuid primary key default gen_random_uuid(),
   nombre text not null,
-  segmento text not null   -- 'empresa' o 'contador'; obligatorio y sin valor por defecto, igual que en Supabase
+  segmento text not null,  -- 'empresa' o 'contador'; obligatorio y sin valor por defecto, igual que en Supabase
+  plan_id text
 );
 
 create table public.empresas (
@@ -28,6 +29,20 @@ create table public.empresas (
   declara_dpp boolean not null default true,
   activa boolean default true
 );
+
+-- La regla de Supabase que limita las empresas por plan (sql/planes_dos_apps.sql),
+-- resumida: sin plan, 1 empresa; contador_basico, 3.
+create function public.validar_limite_empresas() returns trigger language plpgsql as $$
+declare lim int; n int;
+begin
+  select case plan_id when 'contador_basico' then 3 when 'contador_pro' then 10 else 1 end into lim
+    from public.cuentas where id = new.cuenta_id;
+  select count(*) into n from public.empresas where cuenta_id = new.cuenta_id;
+  if n >= coalesce(lim, 1) then raise exception 'Tu plan permite hasta % empresa(s).', coalesce(lim, 1); end if;
+  return new;
+end $$;
+create trigger trg_limite_empresas before insert on public.empresas
+  for each row execute function public.validar_limite_empresas();
 
 create table public.terceros (
   id uuid primary key default gen_random_uuid(),

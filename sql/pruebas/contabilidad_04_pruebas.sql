@@ -23,7 +23,7 @@ create function pg_temp.cuadra(fila uuid) returns text language sql as $$
             from asientos a where a.origen_tabla = 'libro_fiscal' and a.origen_id = fila) x
 $$;
 
-insert into cuentas (id, nombre, segmento) values ('a0000000-0000-0000-0000-000000000001', 'Firma de prueba', 'contador');
+insert into cuentas (id, nombre, segmento, plan_id) values ('a0000000-0000-0000-0000-000000000001', 'Firma de prueba', 'contador', 'contador_basico');  -- el plan permite 3 empresas (validar_limite_empresas)
 insert into empresas (id, cuenta_id, nombre, fiscal_activo) values
   ('e0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001', 'Empresa libro', true),
   ('e0000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000001', 'Empresa recibos', false);
