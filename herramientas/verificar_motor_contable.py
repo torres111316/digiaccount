@@ -71,7 +71,9 @@ def main():
     print('  plan_cuentas_base: %d cuentas' % len(plan))
     sin_periodo = api('asientos?periodo=is.null&select=id&limit=5', token)
 
-    comunes = {'cuenta_id': emp['cuenta_id'], 'empresa_id': emp['id'], 'periodo': '2026-11'}
+    # Todas las filas con las mismas columnas: PostgREST lo exige en una inserción múltiple.
+    comunes = {'cuenta_id': emp['cuenta_id'], 'empresa_id': emp['id'], 'periodo': '2026-11',
+               'numero_zeta': None, 'maquina_fiscal': None}
     filas = [
         dict(comunes, tipo='venta', fecha='02/11/26', tercero_nombre='CLIENTE ' + MARCA, tercero_rif='J000000001',
              numero_factura=MARCA + '-V', tipo_doc='FV', exento=0, base=1000, iva=160, total=1160),
