@@ -29,3 +29,6 @@ _sonda.html
 
 # Entregas a clientes generadas a mano (datos de terceros)
 entregas/
+
+# Maquetas de brainstorming (locales, no van al repo)
+.superpowers/
