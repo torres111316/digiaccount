@@ -6057,7 +6057,7 @@
             if (window.cargarDashboard) window.cargarDashboard();   // y los KPIs del Dashboard
             toast(esAnulada ? ('N° ' + v.numFactura + ' reservado como ANULADO') : ((esCompra ? 'Compra' : 'Venta') + ' registrada en el libro · Bs ' + fmtF(total)), 'success');
             const _ctaAF = esCompra ? (window.__cuentaContableAGuardar(v.cuentaContable, v.nombre, v.rif) || window.__cuentaDeProveedor(v.nombre, v.rif)) : '';
-            if (!esAnulada && guardado && guardado[0] && window.__esCuentaActivoFijo(_ctaAF)) {
+            if (!esAnulada && guardado && guardado[0] && (v.tipoDoc || '').slice(0, 2) !== 'NC' && window.__esCuentaActivoFijo(_ctaAF)) {
               const cancelarAF = document.getElementById('fmCancel');
               if (cancelarAF) cancelarAF.click();
               setTimeout(() => window.__activoDeCompra({ id: guardado[0].id, cuenta: _ctaAF, nombre: v.nombre, fechaISO: v.fecha,
@@ -7081,9 +7081,16 @@
             toast('Este documento tiene ' + (esCompra ? 'pagos' : 'cobros') + ' registrados. Elimínalos primero en Tesorería (X del movimiento).', 'error');
             return;
           }
+          const { data: afsAn } = await window.sb.from('activos_fijos').select('id, codigo, depreciacion_acum, estado').eq('libro_fiscal_id', id);
+          const afAn = afsAn && afsAn[0];
+          if (afAn && (Number(afAn.depreciacion_acum) > 0 || afAn.estado !== 'en uso')) {
+            toast('Esta compra es el activo ' + afAn.codigo + ', que ya se depreció o se dio de baja. Dalo de baja en Contabilidad → Activos fijos en vez de anular la factura.', 'error');
+            return;
+          }
           if (!window.confirm('¿ANULAR el N° ' + (r.numero_factura || '') + '?\n\nEl número queda RESERVADO en el correlativo (no se borra ni se reutiliza), pero deja de sumar en el libro y en la Forma 30. Su asiento contable se quita con él.')) return;
           window.sb.from('libro_fiscal').update({ tercero_nombre: 'ANULADA', tercero_rif: '', exento: 0, base: 0, iva: 0, igtf: 0, total: 0 }).eq('id', id).then(({ error }) => {
             if (error) { toast('No se pudo anular: ' + error.message, 'error'); return; }
+            if (afAn) window.sb.from('activos_fijos').delete().eq('id', afAn.id).then(() => { if (window.cargarActivosFijos) window.cargarActivosFijos(); });
             // El asiento lo crea, actualiza o borra la base (sql/contabilidad_04_motor.sql):
             // aquí solo se recarga el Libro Diario.
             if (window.cargarAsientos) window.cargarAsientos();

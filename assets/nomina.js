@@ -153,16 +153,19 @@
       const ref = 'NOM-' + freq + '-' + isoDe(rango.ini);
       const emp = window.__EMPRESA_ACTIVA && window.__EMPRESA_ACTIVA.id;
       if (!window.sb || !emp) { if (window.toast) window.toast('No hay una empresa activa.', 'error'); return false; }
-      const { data: previo } = await window.sb.from('asientos').select('id, numero').eq('empresa_id', emp).eq('referencia', ref);
+      const { data: previo, error: eP } = await window.sb.from('asientos').select('id, numero').eq('empresa_id', emp).eq('referencia', ref);
+      if (eP) { if (window.toast) window.toast('No se pudo revisar si ya estaba contabilizada: ' + eP.message, 'error'); return false; }
       const yaEsta = previo && previo.length;
       if (!window.confirm((yaEsta ? 'Esta nómina ya está contabilizada (asiento ' + (previo[0].numero || '') + ').\n¿Reemplazarla por el cálculo de ahora?\n\n' : '¿Contabilizar la nómina ' + freq + '?\n')
         + per + '\n\n' + lista.length + ' trabajadores · Neto pagado por banco: Bs ' + fmt(neto))) return false;
-      if (yaEsta) {
-        const { error: eB } = await window.sb.from('asientos').delete().eq('empresa_id', emp).eq('referencia', ref);
-        if (eB) { if (window.toast) window.toast('No se pudo reemplazar el asiento anterior: ' + eB.message, 'error'); return false; }
-      }
+      // Primero el nuevo y después se borra el anterior: si el nuevo falla, el viejo queda.
       const r = await window.__postAsiento('Nómina ' + freq + ' · ' + per + ' · ' + lista.length + ' trabajadores (pagada por banco)', ref, lineas, 'auto', fechaAsiento);
       if (r && r.error) { if (window.toast) window.toast('No se pudo contabilizar: ' + r.error.message, 'error'); return false; }
+      if (yaEsta) {
+        const { error: eB } = await window.sb.from('asientos').delete().in('id', previo.map((x) => x.id));
+        if (eB) { if (window.toast) window.toast('Quedó el asiento nuevo, pero no se pudo borrar el anterior (' + eB.message + '): bórralo en el Libro Diario.', 'error'); return false; }
+        if (window.cargarAsientos) await window.cargarAsientos();
+      }
       if (window.toast) window.toast('Nómina ' + freq + ' contabilizada · revisa el asiento en el Libro Diario', 'success');
       return true;
     }

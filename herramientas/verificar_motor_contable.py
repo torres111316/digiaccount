@@ -147,7 +147,10 @@ def main():
         print('  OK  quitar el pago deja solo el asiento de la declaración')
 
         # Un activo fijo con su depreciación y su baja (sql/contabilidad_07_activos.sql).
-        # En 2020, para no tocar ningún mes real de la empresa.
+        # En 2020, para no tocar ningún mes real de la empresa. Depreciar recalcula
+        # TODOS sus activos: si la empresa tiene alguno de verdad, no se prueba aquí.
+        if api('activos_fijos?empresa_id=eq.%s&select=id&limit=1' % emp['id'], token):
+            falla('la empresa DigiAccount tiene activos fijos reales: la prueba de depreciación los tocaría')
         af = api('activos_fijos', token, 'POST', [{
             'cuenta_id': emp['cuenta_id'], 'empresa_id': emp['id'], 'codigo': MARCA + '-AF', 'nombre': 'Activo ' + MARCA,
             'categoria': 'Equipos', 'fecha_adq': '15/01/2020', 'costo': 1200, 'vida_util': 1, 'metodo': 'Línea recta',

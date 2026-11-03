@@ -1235,7 +1235,11 @@ ok('sin una línea a la cuenta de grupo 2.1.5', /'2\.1\.5 · /.test(_nom), false
 var _contabNom = (_nom.match(/async function contabilizarNomina[\s\S]*?\n    window\.__contabilizarNomina/) || [''])[0];
 ok('el asiento va con la fecha del fin del período', /__postAsiento\([^;]*fechaAsiento\)/.test(_contabNom), true);
 ok('la referencia es estable por frecuencia y período', /'NOM-' \+ freq \+ '-' \+ isoDe\(rango\.ini\)/.test(_contabNom), true);
-ok('contabilizar de nuevo reemplaza el asiento anterior', /from\('asientos'\)\.delete\(\)[\s\S]{0,200}eq\('referencia', ref\)/.test(_contabNom), true);
+ok('contabilizar de nuevo busca el asiento anterior por su referencia', /from\('asientos'\)\.select\('id, numero'\)[\s\S]{0,80}eq\('referencia', ref\)/.test(_contabNom), true);
+ok('el anterior se borra DESPUÉS de guardar el nuevo (si el nuevo falla, el viejo queda)',
+  /__postAsiento\([\s\S]{0,400}from\('asientos'\)\.delete\(\)\.in\('id', previo\.map/.test(_contabNom), true);
+ok('una nota de crédito a cuenta de activo no abre una ficha nueva', /slice\(0, 2\) !== 'NC' && window\.__esCuentaActivoFijo/.test(_appjs), true);
+ok('anular la compra de un activo depreciado se niega', /en vez de anular la factura/.test(_appjs), true);
 ok('calcPago devuelve el salario normal', /salarioNormal, asigSalarial, asig, neto/.test(_nom), true);
 /* Los activos fijos nacen de su compra; la depreciación y la baja las hace la
    base (sql/contabilidad_07_activos.sql). */

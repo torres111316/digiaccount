@@ -31,6 +31,15 @@ alter table public.activos_fijos add column if not exists depreciacion_inicial n
 alter table public.activos_fijos add column if not exists libro_fiscal_id uuid references public.libro_fiscal(id) on delete set null;
 alter table public.activos_fijos add column if not exists estado text not null default 'en uso';
 alter table public.activos_fijos add column if not exists fecha_baja date;
+alter table public.activos_fijos add column if not exists precio_baja numeric;
+alter table public.activos_fijos add column if not exists cuenta_cobro_baja text;
+
+-- Lo que haya depreciado el botón viejo del navegador (que escribía
+-- depreciacion_acum a mano) pasa a ser depreciación inicial: si no, el primer
+-- mes que deprecie la base lo borraría de la ficha y lo volvería a depreciar.
+update public.activos_fijos set depreciacion_inicial = depreciacion_acum
+ where depreciacion_inicial = 0 and coalesce(depreciacion_acum, 0) > 0
+   and not exists (select 1 from information_schema.tables where table_schema = 'public' and table_name = 'activos_depreciacion');
 
 alter table public.activos_fijos drop constraint if exists activos_fijos_estado_valido;
 alter table public.activos_fijos add constraint activos_fijos_estado_valido
@@ -65,7 +74,9 @@ alter table public.activos_depreciacion enable row level security;
 drop policy if exists activos_depreciacion_todo on public.activos_depreciacion;
 create policy activos_depreciacion_todo on public.activos_depreciacion for all
   using (empresa_id in (select public.mis_empresas()))
-  with check (empresa_id in (select public.mis_empresas()));
+  with check (empresa_id in (select public.mis_empresas())
+              and exists (select 1 from public.activos_fijos f
+                           where f.id = activos_depreciacion.activo_id and f.empresa_id = activos_depreciacion.empresa_id));
 grant select, insert, update, delete on public.activos_depreciacion to authenticated;
 
 -- Las cuentas de cada categoría. Un terreno no tiene depreciación.
@@ -157,6 +168,12 @@ begin
                            + coalesce((select sum(d.monto) from activos_depreciacion d where d.activo_id = f.id), 0)
    where f.empresa_id = p_empresa;
 
+  -- Las bajas posteriores a este mes llevan la acumulada a su fecha: se rehacen.
+  for a in select * from activos_fijos where empresa_id = p_empresa and fecha_baja is not null
+                and to_char(fecha_baja, 'YYYY-MM') > p_periodo loop
+    perform contab_asentar_baja(a.id);
+  end loop;
+
   select round(coalesce(sum(monto), 0), 2) into tot
     from activos_depreciacion where empresa_id = p_empresa and periodo = p_periodo;
   ref := 'DEPR-' || substr(p_periodo, 6, 2) || '/' || substr(p_periodo, 1, 4);
@@ -192,46 +209,43 @@ begin
   return tot;
 end $$;
 
--- Venta (precio > 0) o desincorporación (precio 0) de un activo.
--- p_cuenta_cobro: dónde entra el dinero (por defecto 1.1.1.03 Bancos).
-create or replace function public.contab_baja_activo(p_activo uuid, p_fecha date, p_precio numeric, p_cuenta_cobro text default null)
+-- El asiento de la baja de un activo, con lo depreciado HASTA ESE MOMENTO.
+-- Se rehace cada vez que se deprecia un mes anterior a la baja (cerrar
+-- octubre después de vender el 5 de noviembre cambia la acumulada que sale).
+-- Si el activo está en uso, borra el asiento.
+create or replace function public.contab_asentar_baja(p_activo uuid)
 returns void language plpgsql security invoker set search_path = public, pg_temp as $$
 declare
   a activos_fijos;
   c record;
-  per text;
-  p text;
-  precio numeric := round(coalesce(p_precio, 0), 2);
+  precio numeric;
   acum numeric;
   dif numeric;
-  cobro text := coalesce(nullif(trim(p_cuenta_cobro), ''), '1.1.1.03');
+  cobro text;
   lin jsonb := '[]'::jsonb;
   dueña uuid;
-  vendido boolean := round(coalesce(p_precio, 0), 2) > 0;
+  vendido boolean;
 begin
-  select * into a from activos_fijos where id = p_activo for update;
-  if not found then raise exception 'El activo no existe o no tienes acceso a él'; end if;
-  if a.estado <> 'en uso' then raise exception 'El activo % ya fue dado de baja (%)', a.codigo, a.estado; end if;
-  if p_fecha is null then raise exception 'Falta la fecha de la baja'; end if;
-  if precio < 0 then raise exception 'El precio de venta no puede ser negativo'; end if;
-  if contab_fecha_factura(a.fecha_adq) > p_fecha then raise exception 'La baja no puede ser antes de la adquisición'; end if;
-  per := to_char(p_fecha, 'YYYY-MM');
+  select * into a from activos_fijos where id = p_activo;
+  if not found then return; end if;
+  if a.estado = 'en uso' or a.fecha_baja is null then
+    delete from asientos where origen_tabla = 'activos_fijos' and origen_id = a.id;
+    return;
+  end if;
+  precio := round(coalesce(a.precio_baja, 0), 2);
+  vendido := precio > 0;
+  cobro := coalesce(nullif(trim(a.cuenta_cobro_baja), ''), '1.1.1.03');
   select cuenta_id into dueña from empresas where id = a.empresa_id;
-  perform pg_advisory_xact_lock(hashtext('depreciacion:' || a.empresa_id::text));
-
-  update activos_fijos set estado = case when vendido then 'vendido' else 'desincorporado' end, fecha_baja = p_fecha
-   where id = a.id;
-  -- Los meses ya depreciados desde la baja se rehacen sin este activo.
-  for p in select distinct periodo from activos_depreciacion where activo_id = a.id and periodo >= per order by periodo loop
-    perform contab_depreciar(a.empresa_id, p);
-  end loop;
-
-  select round(coalesce(a.depreciacion_inicial, 0) + coalesce(sum(monto), 0), 2) into acum
-    from activos_depreciacion where activo_id = a.id;
   select * into c from contab_cuentas_activo(a.categoria);
+  if c.acumulada is null then
+    acum := 0;   -- un terreno no tiene depreciación acumulada
+  else
+    select round(coalesce(a.depreciacion_inicial, 0) + coalesce(sum(monto), 0), 2) into acum
+      from activos_depreciacion where activo_id = a.id;
+  end if;
   dif := round(precio + acum - coalesce(a.costo, 0), 2);
 
-  if acum > 0 and c.acumulada is not null then
+  if acum > 0 then
     lin := lin || jsonb_build_object('cta', contab_cta(c.acumulada, a.empresa_id), 'debe', acum, 'haber', 0);
   end if;
   if precio > 0 then
@@ -247,26 +261,72 @@ begin
 
   delete from asientos where origen_tabla = 'activos_fijos' and origen_id = a.id;
   insert into asientos (cuenta_id, empresa_id, fecha, periodo, descripcion, referencia, origen, origen_tabla, origen_id, lineas, total)
-  values (coalesce(dueña, a.cuenta_id), a.empresa_id, to_char(p_fecha, 'DD/MM/YYYY'), per,
+  values (coalesce(dueña, a.cuenta_id), a.empresa_id, to_char(a.fecha_baja, 'DD/MM/YYYY'), to_char(a.fecha_baja, 'YYYY-MM'),
           case when vendido then 'Venta del activo ' else 'Desincorporación del activo ' end
             || coalesce(a.codigo, '') || ' · ' || coalesce(a.nombre, ''),
           'BAJA-' || coalesce(a.codigo, ''), 'motor', 'activos_fijos', a.id, lin,
           (select round(sum(coalesce((e->>'debe')::numeric, 0)), 2) from jsonb_array_elements(lin) e));
 end $$;
 
--- Deshace una baja hecha por error: borra su asiento y el activo vuelve a
--- estar en uso. Los meses posteriores se deprecian de nuevo al cerrarlos.
-create or replace function public.contab_anular_baja(p_activo uuid)
+-- Venta (precio > 0) o desincorporación (precio 0) de un activo.
+-- p_cuenta_cobro: dónde entra el dinero (por defecto 1.1.1.03 Bancos).
+create or replace function public.contab_baja_activo(p_activo uuid, p_fecha date, p_precio numeric, p_cuenta_cobro text default null)
 returns void language plpgsql security invoker set search_path = public, pg_temp as $$
-declare a activos_fijos;
+declare
+  a activos_fijos;
+  emp uuid;
+  p text;
+  precio numeric := round(coalesce(p_precio, 0), 2);
 begin
-  select * into a from activos_fijos where id = p_activo for update;
+  -- Primero el candado de la empresa y después la fila, en el mismo orden que
+  -- contab_depreciar: al revés, las dos a la vez se interbloquean.
+  select empresa_id into emp from activos_fijos where id = p_activo;
   if not found then raise exception 'El activo no existe o no tienes acceso a él'; end if;
-  if a.estado = 'en uso' then return; end if;
-  delete from asientos where origen_tabla = 'activos_fijos' and origen_id = a.id;
-  update activos_fijos set estado = 'en uso', fecha_baja = null where id = a.id;
+  perform pg_advisory_xact_lock(hashtext('depreciacion:' || emp::text));
+  select * into a from activos_fijos where id = p_activo for update;
+  if a.estado <> 'en uso' then raise exception 'El activo % ya fue dado de baja (%)', a.codigo, a.estado; end if;
+  if p_fecha is null then raise exception 'Falta la fecha de la baja'; end if;
+  if precio < 0 then raise exception 'El precio de venta no puede ser negativo'; end if;
+  if contab_fecha_factura(a.fecha_adq) > p_fecha then raise exception 'La baja no puede ser antes de la adquisición'; end if;
+
+  update activos_fijos
+     set estado = case when precio > 0 then 'vendido' else 'desincorporado' end, fecha_baja = p_fecha,
+         precio_baja = precio, cuenta_cobro_baja = nullif(trim(p_cuenta_cobro), '')
+   where id = a.id;
+  -- Los meses ya depreciados desde la baja se rehacen sin este activo.
+  for p in select distinct periodo from activos_depreciacion where activo_id = a.id and periodo >= to_char(p_fecha, 'YYYY-MM') order by periodo loop
+    perform contab_depreciar(a.empresa_id, p);
+  end loop;
+  perform contab_asentar_baja(a.id);
 end $$;
 
+-- Deshace una baja hecha por error: borra su asiento, el activo vuelve a
+-- estar en uso y los meses ya contabilizados desde la baja se deprecian de nuevo.
+create or replace function public.contab_anular_baja(p_activo uuid)
+returns void language plpgsql security invoker set search_path = public, pg_temp as $$
+declare
+  a activos_fijos;
+  emp uuid;
+  hasta text;
+  d date;
+begin
+  select empresa_id into emp from activos_fijos where id = p_activo;
+  if not found then raise exception 'El activo no existe o no tienes acceso a él'; end if;
+  perform pg_advisory_xact_lock(hashtext('depreciacion:' || emp::text));
+  select * into a from activos_fijos where id = p_activo for update;
+  if a.estado = 'en uso' then return; end if;
+  update activos_fijos set estado = 'en uso', fecha_baja = null, precio_baja = null, cuenta_cobro_baja = null where id = a.id;
+  perform contab_asentar_baja(a.id);
+  -- Hasta el último mes que la empresa ya depreció (con o sin este activo).
+  select max(periodo) into hasta from asientos where empresa_id = a.empresa_id and origen_tabla = 'depreciacion';
+  if hasta is not null and hasta >= to_char(a.fecha_baja, 'YYYY-MM') then
+    for d in select generate_series(date_trunc('month', a.fecha_baja)::date, to_date(hasta || '-01', 'YYYY-MM-DD'), interval '1 month')::date loop
+      perform contab_depreciar(a.empresa_id, to_char(d, 'YYYY-MM'));
+    end loop;
+  end if;
+end $$;
+
+grant execute on function public.contab_asentar_baja(uuid) to authenticated;
 grant execute on function public.contab_cuentas_activo(text) to authenticated;
 grant execute on function public.contab_depreciar(uuid, text) to authenticated;
 grant execute on function public.contab_baja_activo(uuid, date, numeric, text) to authenticated;
@@ -275,5 +335,5 @@ grant execute on function public.contab_anular_baja(uuid) to authenticated;
 -- Comprobación: las columnas nuevas y las funciones.
 select (select count(*) from information_schema.columns
          where table_schema = 'public' and table_name = 'activos_fijos'
-           and column_name in ('valor_residual', 'depreciacion_inicial', 'libro_fiscal_id', 'estado', 'fecha_baja')) as columnas_nuevas,
-       (select count(*) from pg_proc where proname in ('contab_depreciar', 'contab_baja_activo', 'contab_anular_baja', 'contab_cuota_depreciacion')) as funciones;
+           and column_name in ('valor_residual', 'depreciacion_inicial', 'libro_fiscal_id', 'estado', 'fecha_baja', 'precio_baja', 'cuenta_cobro_baja')) as columnas_nuevas,
+       (select count(*) from pg_proc where proname in ('contab_depreciar', 'contab_baja_activo', 'contab_anular_baja', 'contab_cuota_depreciacion', 'contab_asentar_baja')) as funciones;

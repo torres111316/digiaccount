@@ -129,6 +129,27 @@ select pg_temp.igual('anular la baja borra su asiento', pg_temp.baja('af000000-0
 select pg_temp.igual('anular la baja deja el activo en uso',
   (select estado || coalesce(fecha_baja::text, '') from activos_fijos where id = 'af000000-0000-0000-0000-000000000007'), 'en uso');
 
+select pg_temp.igual('anular la baja devuelve las cuotas de los meses ya depreciados',
+  (select sum(monto)::text from activos_depreciacion where activo_id = 'af000000-0000-0000-0000-000000000007'), '1200.00');
+
+-- Vender antes de cerrar el mes anterior: al depreciar ese mes, el asiento de la baja se rehace.
+insert into activos_fijos (id, cuenta_id, empresa_id, codigo, nombre, categoria, fecha_adq, costo, vida_util, metodo) values
+  ('af000000-0000-0000-0000-000000000008', 'a0000000-0000-0000-0000-000000000071', 'e0000000-0000-0000-0000-000000000071', 'AF-8', 'Laptop', 'Equipos', '15/09/2027', 1200, 1, 'Línea recta');
+select contab_depreciar('e0000000-0000-0000-0000-000000000071', '2027-10');
+select contab_baja_activo('af000000-0000-0000-0000-000000000008', '2027-12-10', 900, null);
+select pg_temp.igual('baja con noviembre sin depreciar: lo depreciado hasta ahí', pg_temp.baja('af000000-0000-0000-0000-000000000008'),
+  '1.2.1.09 D100.00 H0.00 | 1.1.1.03 D900.00 H0.00 | 6.3.1.05 D200.00 H0.00 | 1.2.1.04 D0.00 H1200.00');
+select contab_depreciar('e0000000-0000-0000-0000-000000000071', '2027-11');
+select pg_temp.igual('al depreciar noviembre, la baja toma la nueva acumulada', pg_temp.baja('af000000-0000-0000-0000-000000000008'),
+  '1.2.1.09 D200.00 H0.00 | 1.1.1.03 D900.00 H0.00 | 6.3.1.05 D100.00 H0.00 | 1.2.1.04 D0.00 H1200.00');
+
+-- Un terreno con depreciación inicial (dato mal cargado) igual cuadra al venderlo.
+insert into activos_fijos (id, cuenta_id, empresa_id, codigo, nombre, categoria, fecha_adq, costo, vida_util, metodo, depreciacion_inicial) values
+  ('af000000-0000-0000-0000-000000000009', 'a0000000-0000-0000-0000-000000000071', 'e0000000-0000-0000-0000-000000000071', 'AF-9', 'Lote', 'Terrenos', '01/01/2026', 5000, 20, 'Línea recta', 500);
+select contab_baja_activo('af000000-0000-0000-0000-000000000009', '2027-12-10', 6000, null);
+select pg_temp.igual('venta de un terreno', pg_temp.baja('af000000-0000-0000-0000-000000000009'),
+  '1.1.1.03 D6000.00 H0.00 | 1.2.1.01 D0.00 H5000.00 | 4.2.3.01 D0.00 H1000.00');
+
 -- Cada mes, el asiento suma lo mismo que sus cuotas (también los rehechos por las bajas).
 select pg_temp.igual('cada asiento de depreciación suma sus cuotas',
   (select count(*)::text from (

@@ -861,7 +861,7 @@
       const bBaja = ev.target.closest('[data-af-baja]'), bAnular = ev.target.closest('[data-af-anular]');
       if (bAnular) {
         const a = (activosData || []).find((x) => x.id === bAnular.dataset.afAnular);
-        if (!a || !window.confirm('¿Anular la baja de ' + a.codigo + '?\n\nSe borra su asiento y el activo vuelve a estar en uso. Los meses desde la baja se deprecian de nuevo al cerrarlos.')) return;
+        if (!a || !window.confirm('¿Anular la baja de ' + a.codigo + '?\n\nSe borra su asiento, el activo vuelve a estar en uso y los meses ya depreciados desde la baja se rehacen con él.')) return;
         const { error } = await window.sb.rpc('contab_anular_baja', { p_activo: a.id });
         if (error) { toast('No se pudo anular la baja: ' + error.message, 'error'); return; }
         if (window.cargarAsientos) window.cargarAsientos();
@@ -877,7 +877,7 @@
         title: 'Dar de baja ' + a.codigo + ' · ' + a.nombre, saveLabel: 'Dar de baja',
         fields: [
           { name: 'x', label: ' ', col: 2, type: 'static', html: '<div style="font-size:12.5px;color:var(--fg-body);">Costo Bs ' + fmt2(Number(a.costo) || 0)
-            + ' · depreciado Bs ' + fmt2(Number(a.depreciacion_acum) || 0) + '. Con precio 0 es una desincorporación (la pérdida va a 6.3.1.05); con precio, una venta.</div>' },
+            + ' · depreciado Bs ' + fmt2(Number(a.depreciacion_acum) || 0) + '. Con precio 0 es una desincorporación (la pérdida va a 6.3.1.05); con precio, una venta. Ojo: el ingreso lo registra esta baja; si además cargas la factura de la venta en el libro de ventas, entraría dos veces.</div>' },
           { name: 'fecha', label: 'Fecha de la baja', type: 'date', value: window.__hoyISO() },
           { name: 'precio', label: 'Precio de venta (Bs, sin IVA)', type: 'number', step: '0.01', value: '0' },
           { name: 'cobro', label: 'Dónde entra el dinero', type: 'select', value: '1.1.1.03',
