@@ -1237,6 +1237,24 @@ ok('el asiento va con la fecha del fin del período', /__postAsiento\([^;]*fecha
 ok('la referencia es estable por frecuencia y período', /'NOM-' \+ freq \+ '-' \+ isoDe\(rango\.ini\)/.test(_contabNom), true);
 ok('contabilizar de nuevo reemplaza el asiento anterior', /from\('asientos'\)\.delete\(\)[\s\S]{0,200}eq\('referencia', ref\)/.test(_contabNom), true);
 ok('calcPago devuelve el salario normal', /salarioNormal, asigSalarial, asig, neto/.test(_nom), true);
+/* Los activos fijos nacen de su compra; la depreciación y la baja las hace la
+   base (sql/contabilidad_07_activos.sql). */
+bloque('Activos fijos');
+ok('una compra a una cuenta de activo fijo abre su ficha', /__esCuentaActivoFijo\(_ctaAF\)[\s\S]{0,400}__activoDeCompra\(/.test(_appjs), true);
+ok('la ficha se guarda enlazada a su factura', /libro_fiscal_id: pref\.libro_fiscal_id/.test(_conta), true);
+ok('la ficha pide valor residual, vida útil y método', /name: 'residual'[\s\S]{0,200}name: 'vida'[\s\S]{0,200}name: 'metodo'/.test(_conta), true);
+ok('el registro manual pide lo ya depreciado', /Depreciación acumulada a la fecha/.test(_conta), true);
+ok('el botón de depreciación lo hace la base', /rpc\('contab_depreciar'/.test(_conta), true);
+ok('el navegador ya no escribe el asiento de depreciación', /referencia: 'DEPR'/.test(_conta), false);
+ok('«Cerrar mes» deprecia antes de liquidar',
+  _appjs.indexOf("rpc('contab_depreciar'") > _appjs.indexOf("rpc('contab_filas_sin_asiento'")
+  && _appjs.indexOf("rpc('contab_depreciar'") < _appjs.indexOf("'F30-'", _appjs.indexOf("rpc('contab_filas_sin_asiento'")), true);
+ok('hay venta y desincorporación con su asiento', /rpc\('contab_baja_activo'/.test(_conta), true);
+ok('una baja por error se puede anular', /rpc\('contab_anular_baja'/.test(_conta), true);
+ok('editar la compra actualiza su ficha', /actualizada · Bs[\s\S]{0,300}__activoDeCompra\(/.test(_appjs), true);
+ok('no se borra la compra de un activo ya depreciado', /ya se depreció o se dio de baja/.test(_appjs), true);
+ok('sin las cifras de ejemplo de la depreciación', /148\.750|#0314|Detalle de depreciación · Mayo/.test(_appjs + _conta), false);
+ok('la tabla de activos tiene la columna de acciones', /colspan="11"[^>]*>Sin activos registrados/.test(_html), true);
 
 console.log('\n' + (fallas ? 'HAY ' + fallas + ' FALLA(S) de ' + total : 'TODO OK · ' + total + ' comprobaciones'));
 process.exit(fallas ? 1 : 0);

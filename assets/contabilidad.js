@@ -724,39 +724,77 @@
     // Al cargar (sin empresa/datos), pinta los reportes en cero → limpia el mock estático del HTML
     setTimeout(() => { try { renderReportes(); } catch (e) { console.warn('[DigiAccount] reportes init:', e.message); } }, 0);
 
-    // ---- Registrar activo fijo ----
-    const registrarActivo = document.getElementById('registrarActivoBtn');
-    if (registrarActivo) registrarActivo.addEventListener('click', () => {
+    // ---- Activos fijos ----
+    /* La ficha vive en activos_fijos; las cuotas, la depreciación y la baja
+       las hace la base (sql/contabilidad_07_activos.sql). Un activo comprado
+       nace de su factura (libro_fiscal_id): el asiento de la compra ya lo hizo
+       el motor del libro con la cuenta 1.2.1.x de la factura. */
+    const CATEGORIAS_AF = ['Equipos', 'Mobiliario', 'Maquinaria', 'Vehículos', 'Inmuebles', 'Terrenos'];
+    const CAT_DE_CUENTA = { '1.2.1.01': 'Terrenos', '1.2.1.02': 'Inmuebles', '1.2.1.03': 'Maquinaria', '1.2.1.04': 'Equipos', '1.2.1.05': 'Vehículos' };
+    window.__categoriaDeCuentaActivo = (cta) => CAT_DE_CUENTA[cta] || 'Equipos';
+    const esTerreno = (a) => /terreno/i.test(a.categoria || '');
+    function siguienteCodigoAF() {
+      const n = (activosData || []).reduce((m, a) => Math.max(m, parseInt(String(a.codigo || '').replace(/\D/g, ''), 10) || 0), 0);
+      return 'AF-' + String(n + 1).padStart(3, '0');
+    }
+    /* Formulario de la ficha. `pref` viene de la compra (libro_fiscal_id,
+       nombre, categoria, fecha ISO, costo); sin él es un registro manual
+       (migraciones), que además pide lo ya depreciado. */
+    window.__abrirFichaActivo = function (pref) {
+      pref = pref || {};
+      const deCompra = !!pref.libro_fiscal_id;
+      const fields = [
+        { name: 'cod', label: 'Código', value: siguienteCodigoAF() },
+        { name: 'nombre', label: 'Activo', col: 2, value: pref.nombre || '', placeholder: 'Ej. Computador de oficina' },
+        { name: 'cat', label: 'Categoría', type: 'select', options: CATEGORIAS_AF, value: pref.categoria || 'Equipos' },
+        { name: 'fecha', label: 'Fecha de adquisición', type: 'date', value: pref.fecha || window.__hoyISO() },
+        { name: 'costo', label: 'Costo (Bs, sin IVA)', type: 'number', step: '0.01', value: pref.costo != null ? pref.costo : '' },
+        { name: 'residual', label: 'Valor residual (Bs)', type: 'number', step: '0.01', value: '0' },
+        { name: 'vida', label: 'Vida útil (años)', type: 'number', value: '5' },
+        { name: 'metodo', label: 'Método', type: 'select', options: ['Línea recta', 'Saldos decrecientes'] },
+      ];
+      if (!deCompra) fields.push({ name: 'inicial', label: 'Depreciación acumulada a la fecha (Bs)', type: 'number', step: '0.01', value: '0' });
       window.openFormModal({
-        title: 'Registrar activo fijo',
+        title: deCompra ? 'Ficha del activo comprado' : 'Registrar activo fijo',
         saveLabel: 'Registrar activo',
-        fields: [
-          { name: 'cod', label: 'Código', placeholder: 'Ej. AF-025' },
-          { name: 'nombre', label: 'Activo', col: 2, placeholder: 'Ej. Computador de oficina' },
-          { name: 'cat', label: 'Categoría', type: 'select', options: ['Equipos', 'Vehículos', 'Inmuebles', 'Mobiliario', 'Maquinaria'] },
-          { name: 'fecha', label: 'Fecha de adquisición', type: 'date', value: window.__hoyISO() },
-          { name: 'costo', label: 'Costo (Bs)', type: 'number', step: '0.01', placeholder: '0.00' },
-          { name: 'vida', label: 'Vida útil (años)', type: 'number', value: '5' },
-          { name: 'metodo', label: 'Método', type: 'select', options: ['Línea recta', 'Saldos decrecientes'] },
-        ],
+        fields: fields,
         onSave: (v) => {
-          const costo = parseFloat(v.costo);
+          const costo = Math.round((parseFloat(v.costo) || 0) * 100) / 100;
+          const residual = Math.round((parseFloat(v.residual) || 0) * 100) / 100;
+          const inicial = deCompra ? 0 : Math.round((parseFloat(v.inicial) || 0) * 100) / 100;
+          const vida = parseInt(v.vida, 10);
           if (!v.cod || !v.nombre) return 'El código y el nombre del activo son obligatorios.';
           if (!(costo > 0)) return 'El costo debe ser mayor a cero.';
+          if (!(vida > 0)) return 'La vida útil debe ser de al menos un año.';
+          if (residual < 0 || residual >= costo) return 'El valor residual debe ser menor que el costo.';
+          if (inicial < 0 || inicial > costo - residual) return 'Lo ya depreciado no puede pasar de costo menos valor residual.';
+          if (!v.fecha) return 'Falta la fecha de adquisición.';
           if (!window.sb || !window.__CUENTA_ID || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) return 'No hay una empresa activa seleccionada.';
-          const fecha = v.fecha ? v.fecha.split('-').reverse().join('/') : '';
           window.sb.from('activos_fijos').insert({
             cuenta_id: window.__CUENTA_ID, empresa_id: window.__EMPRESA_ACTIVA.id,
-            codigo: v.cod, nombre: v.nombre, categoria: v.cat, fecha_adq: fecha,
-            costo: costo, vida_util: parseInt(v.vida, 10) || 5, metodo: v.metodo,
+            codigo: v.cod, nombre: v.nombre, categoria: v.cat, fecha_adq: v.fecha.split('-').reverse().join('/'),
+            costo: costo, valor_residual: residual, vida_util: vida, metodo: v.metodo,
+            depreciacion_inicial: inicial, depreciacion_acum: inicial,
+            libro_fiscal_id: pref.libro_fiscal_id || null,
           }).then(({ error }) => {
             if (error) { toast('No se pudo guardar: ' + error.message, 'error'); return; }
             if (window.cargarActivosFijos) window.cargarActivosFijos();
-            toast('Activo ' + v.cod + ' registrado · valor neto Bs ' + fmt2(costo));
+            toast('Activo ' + v.cod + ' registrado · se deprecia desde el mes siguiente a su compra', 'success');
           });
         },
       });
-    });
+    };
+    const registrarActivo = document.getElementById('registrarActivoBtn');
+    if (registrarActivo) registrarActivo.addEventListener('click', () => window.__abrirFichaActivo());
+
+    // Cuota estimada del mes en curso (la de verdad la calcula la base al depreciar).
+    function cuotaEstimada(a) {
+      if ((a.estado || 'en uso') !== 'en uso' || esTerreno(a)) return 0;
+      const costo = Number(a.costo) || 0, res = Number(a.valor_residual) || 0, dep = Number(a.depreciacion_acum) || 0, vida = Number(a.vida_util) || 0;
+      if (!(vida > 0)) return 0;
+      const q = /decreciente/i.test(a.metodo || '') ? (costo - dep) * 2 / vida / 12 : (costo - res) / (vida * 12);
+      return Math.max(0, Math.min(q, costo - res - dep));
+    }
 
     // Carga los activos fijos de la empresa activa y arma la tabla (con depreciación y valor neto)
     async function cargarActivosFijos() {
@@ -778,7 +816,7 @@
         const hab = document.getElementById('deprAsientoHaber'); if (hab) hab.textContent = '(' + fmt2(v) + ')';
       };
       const vacio = (txt) => {
-        tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--fg-muted);padding:14px;">' + txt + '</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--fg-muted);padding:14px;">' + txt + '</td></tr>';
         setStats(0, 0, 0, 0); setDepPreview(0);
         if (footer) footer.textContent = '0 activos registrados';
         if (dmsg) dmsg.textContent = 'Sin depreciación pendiente';
@@ -786,23 +824,29 @@
       };
       if (!window.sb || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) { activosData = []; vacio('Sin activos registrados.'); return; }
       const { data, error } = await window.sb.from('activos_fijos').select('*').eq('empresa_id', window.__EMPRESA_ACTIVA.id).order('codigo');
-      if (error) { console.warn('[DigiAccount] No se pudieron cargar activos fijos:', error.message); activosData = []; vacio('No se pudieron cargar los activos (¿creaste la tabla?).'); return; }
+      if (error) { console.warn('[DigiAccount] No se pudieron cargar activos fijos:', error.message); activosData = []; vacio('No se pudieron cargar los activos.'); return; }
       activosData = data || [];
-      if (!activosData.length) { vacio('Sin activos registrados. Usa "Registrar activo fijo".'); if (window.refreshTables) window.refreshTables(); return; }
-      let cTot = 0, dTot = 0, mesTot = 0;
+      if (!activosData.length) { vacio('Sin activos registrados. Nacen al registrar una compra con una cuenta de activo fijo, o con «Registrar activo».'); if (window.refreshTables) window.refreshTables(); return; }
+      let cTot = 0, dTot = 0, mesTot = 0, enUso = 0;
       tbody.innerHTML = activosData.map((a) => {
-        const costo = Number(a.costo) || 0, dep = Number(a.depreciacion_acum) || 0, neto = costo - dep, vida = Number(a.vida_util) || 5;
-        cTot += costo; dTot += dep; mesTot += Math.min(vida > 0 ? costo / (vida * 12) : 0, Math.max(0, costo - dep));
+        const costo = Number(a.costo) || 0, dep = Number(a.depreciacion_acum) || 0, neto = costo - dep;
+        const activo = (a.estado || 'en uso') === 'en uso';
+        if (activo) { cTot += costo; dTot += dep; enUso++; mesTot += cuotaEstimada(a); }
         const pct = costo ? Math.round(dep / costo * 100) : 0;
-        return '<tr><td class="mono">' + (a.codigo || '') + '</td><td class="primary">' + (a.nombre || '') + '</td>'
+        const accion = activo
+          ? '<button class="btn btn-ghost" style="height:26px;font-size:11px;" data-af-baja="' + a.id + '">Dar de baja</button>'
+          : '<span class="tag slate">' + (a.estado === 'vendido' ? 'Vendido' : 'Desincorporado') + ' · ' + String(a.fecha_baja || '').split('-').reverse().join('/') + '</span> '
+            + '<button class="btn btn-ghost" style="height:26px;font-size:11px;" data-af-anular="' + a.id + '">Anular baja</button>';
+        return '<tr' + (activo ? '' : ' style="opacity:.6;"') + '><td class="mono">' + (a.codigo || '') + '</td><td class="primary">' + (a.nombre || '') + '</td>'
           + '<td><span class="tag slate">' + (a.categoria || '') + '</span></td><td>' + (a.fecha_adq || '') + '</td>'
           + '<td class="num">' + fmt2(costo) + '</td><td>' + (a.vida_util || 5) + ' años</td><td>' + (a.metodo || 'Línea recta') + '</td>'
           + '<td class="num">' + fmt2(dep) + '</td><td class="num">' + fmt2(neto) + '</td>'
-          + '<td><span class="depr-bar"><span style="width:' + pct + '%"></span></span><span class="depr-pct">' + pct + '%</span></td></tr>';
+          + '<td><span class="depr-bar"><span style="width:' + pct + '%"></span></span><span class="depr-pct">' + pct + '%</span></td>'
+          + '<td>' + accion + '</td></tr>';
       }).join('');
       setStats(cTot, dTot, cTot - dTot, mesTot);
-      if (footer) footer.textContent = activosData.length + ' activos · Costo total Bs ' + fmt2(cTot);
-      if (dmsg) dmsg.textContent = mesTot > 0.009 ? ('Depreciación pendiente de contabilizar · ' + activosData.length + ' activos · Bs ' + fmt2(mesTot)) : 'Sin depreciación pendiente';
+      if (footer) footer.textContent = activosData.length + ' activos (' + enUso + ' en uso) · Costo en uso Bs ' + fmt2(cTot);
+      if (dmsg) dmsg.textContent = mesTot > 0.009 ? ('Depreciación estimada del mes · ' + enUso + ' activos en uso · Bs ' + fmt2(mesTot) + ' · se contabiliza al cerrar el mes') : 'Sin depreciación pendiente';
       if (tabCount) tabCount.textContent = String(activosData.length);
       setDepPreview(mesTot);
       if (window.refreshTables) window.refreshTables();
@@ -811,35 +855,75 @@
     window.cargarActivosFijos = cargarActivosFijos;
     cargarActivosFijos();   // limpia los activos de ejemplo al cargar la página
 
-    // ---- Depreciación del mes (genera asiento contable real) ----
+    // Venta o desincorporación: el asiento lo hace la base (contab_baja_activo).
+    const tbodyAF = view.querySelector('.conta-tab[data-tab="activos"] table.data-table tbody');
+    if (tbodyAF) tbodyAF.addEventListener('click', async (ev) => {
+      const bBaja = ev.target.closest('[data-af-baja]'), bAnular = ev.target.closest('[data-af-anular]');
+      if (bAnular) {
+        const a = (activosData || []).find((x) => x.id === bAnular.dataset.afAnular);
+        if (!a || !window.confirm('¿Anular la baja de ' + a.codigo + '?\n\nSe borra su asiento y el activo vuelve a estar en uso. Los meses desde la baja se deprecian de nuevo al cerrarlos.')) return;
+        const { error } = await window.sb.rpc('contab_anular_baja', { p_activo: a.id });
+        if (error) { toast('No se pudo anular la baja: ' + error.message, 'error'); return; }
+        if (window.cargarAsientos) window.cargarAsientos();
+        cargarActivosFijos();
+        toast('Baja anulada · ' + a.codigo + ' vuelve a estar en uso', 'success');
+        return;
+      }
+      if (!bBaja) return;
+      const a = (activosData || []).find((x) => x.id === bBaja.dataset.afBaja);
+      if (!a) return;
+      const bancos = window.__cuentasEfectivo ? window.__cuentasEfectivo() : [];
+      window.openFormModal({
+        title: 'Dar de baja ' + a.codigo + ' · ' + a.nombre, saveLabel: 'Dar de baja',
+        fields: [
+          { name: 'x', label: ' ', col: 2, type: 'static', html: '<div style="font-size:12.5px;color:var(--fg-body);">Costo Bs ' + fmt2(Number(a.costo) || 0)
+            + ' · depreciado Bs ' + fmt2(Number(a.depreciacion_acum) || 0) + '. Con precio 0 es una desincorporación (la pérdida va a 6.3.1.05); con precio, una venta.</div>' },
+          { name: 'fecha', label: 'Fecha de la baja', type: 'date', value: window.__hoyISO() },
+          { name: 'precio', label: 'Precio de venta (Bs, sin IVA)', type: 'number', step: '0.01', value: '0' },
+          { name: 'cobro', label: 'Dónde entra el dinero', type: 'select', value: '1.1.1.03',
+            options: (bancos.length ? bancos : [{ codigo: '1.1.1.03', nombre: 'Bancos' }]).map((c) => ({ value: c.codigo, label: c.codigo + ' · ' + c.nombre }))
+              .concat([{ value: '1.1.2.01', label: '1.1.2.01 · Cuentas por cobrar (a crédito)' }]) },
+        ],
+        onSave: (v) => {
+          const precio = parseFloat(v.precio) || 0;
+          if (!v.fecha) return 'Falta la fecha de la baja.';
+          if (precio < 0) return 'El precio no puede ser negativo.';
+          window.sb.rpc('contab_baja_activo', { p_activo: a.id, p_fecha: v.fecha, p_precio: precio, p_cuenta_cobro: v.cobro }).then(({ error }) => {
+            if (error) { toast('No se pudo dar de baja: ' + error.message, 'error'); return; }
+            if (window.cargarAsientos) window.cargarAsientos();
+            cargarActivosFijos();
+            toast((precio > 0 ? 'Venta' : 'Desincorporación') + ' de ' + a.codigo + ' contabilizada · revisa el asiento en el Libro Diario', 'success');
+          });
+        },
+      });
+    });
+
+    // ---- Depreciación de un mes (la calcula y contabiliza la base) ----
+    /* Rehacer un mes da lo mismo: la base guarda una cuota por activo y mes.
+       «Cerrar mes» también la corre antes de la liquidación. */
     const deprBtn = document.getElementById('deprRunBtn');
-    if (deprBtn) deprBtn.addEventListener('click', async () => {
-      if (!window.sb || !window.__CUENTA_ID || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) { toast('No hay una empresa activa', 'error'); return; }
-      let total = 0; const updates = [];
-      (activosData || []).forEach((a) => {
-        const costo = Number(a.costo) || 0, dep = Number(a.depreciacion_acum) || 0, vida = Number(a.vida_util) || 5;
-        const mensual = vida > 0 ? costo / (vida * 12) : 0;       // línea recta
-        const cuota = Math.min(mensual, Math.max(0, costo - dep)); // sin pasar del costo
-        if (cuota > 0.009) { total += cuota; updates.push(window.sb.from('activos_fijos').update({ depreciacion_acum: dep + cuota }).eq('id', a.id)); }
+    if (deprBtn) deprBtn.addEventListener('click', () => {
+      if (!window.sb || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) { toast('No hay una empresa activa', 'error'); return; }
+      const MES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+      const h = window.__hoyISO().split('-');
+      const meses = [];
+      for (let i = 0; i < 13; i++) {
+        const d = new Date(+h[0], +h[1] - 1 - i, 1, 12);
+        meses.push({ value: d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'), label: MES[d.getMonth()] + ' ' + d.getFullYear() });
+      }
+      window.openFormModal({
+        title: 'Depreciación del mes', saveLabel: 'Calcular y contabilizar',
+        fields: [{ name: 'mes', label: 'Mes', type: 'select', options: meses, value: meses[1].value }],
+        onSave: (v) => {
+          window.sb.rpc('contab_depreciar', { p_empresa: window.__EMPRESA_ACTIVA.id, p_periodo: v.mes }).then(({ data: total, error }) => {
+            if (error) { toast('No se pudo depreciar: ' + error.message, 'error'); return; }
+            if (window.cargarAsientos) window.cargarAsientos();        // refresca Diario, Mayor, Balance, Estados
+            cargarActivosFijos();
+            const et = (meses.find((m) => m.value === v.mes) || {}).label || v.mes;
+            toast(Number(total) > 0 ? ('Depreciación de ' + et + ' contabilizada · Bs ' + fmt2(Number(total))) : ('Sin depreciación en ' + et), Number(total) > 0 ? 'success' : 'info');
+          });
+        },
       });
-      if (total < 0.009) { toast('No hay depreciación pendiente este mes', 'info'); return; }
-      const hoy = new Date();
-      const fecha = String(hoy.getDate()).padStart(2, '0') + '/' + String(hoy.getMonth() + 1).padStart(2, '0') + '/' + hoy.getFullYear();
-      const { error: eAsi } = await window.sb.from('asientos').insert({
-        cuenta_id: window.__CUENTA_ID, empresa_id: window.__EMPRESA_ACTIVA.id,
-        fecha: fecha, descripcion: 'Depreciación del período', referencia: 'DEPR', origen: 'auto',
-        lineas: [{ cta: '6.1.1.06 · Depreciación', debe: total, haber: 0 }, { cta: '1.2.1.06 · Depreciación acumulada (−)', debe: 0, haber: total }],
-        total: total,
-      });
-      if (eAsi) { toast('No se pudo generar el asiento: ' + eAsi.message, 'error'); return; }
-      await Promise.all(updates);
-      const msg = document.getElementById('deprStatusMsg');
-      if (msg) msg.textContent = 'Depreciación contabilizada · asiento generado por Bs ' + fmt2(total);
-      const bar = document.getElementById('deprStatusBar'); if (bar) bar.classList.remove('pending');
-      if (window.cargarAsientos) window.cargarAsientos();        // refresca Diario, Mayor, Balance, Estados
-      if (window.cargarActivosFijos) window.cargarActivosFijos();
-      drawIcons();
-      toast('Depreciación del mes contabilizada · Bs ' + fmt2(total));
     });
 
     // ---- Exportar (libro diario) ----

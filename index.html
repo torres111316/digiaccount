@@ -3974,10 +3974,11 @@
                   <th class="num">Depr. acum.</th>
                   <th class="num">Valor neto</th>
                   <th>Vida consumida</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
-                <tr><td colspan="10" style="text-align:center;color:var(--fg-muted);padding:14px;">Sin activos registrados. Usa "Registrar activo fijo".</td></tr>
+                <tr><td colspan="11" style="text-align:center;color:var(--fg-muted);padding:14px;">Sin activos registrados.</td></tr>
               </tbody>
             </table>
           </div>
@@ -3997,15 +3998,15 @@
         <div class="recon-cuadre" style="margin-top:16px;">
           <div class="cuadre-card">
             <div class="ch"><i data-lucide="calculator"></i> Cédula de depreciación del mes</div>
-            <div class="cuadre-line total"><span class="lbl">Total depreciación pendiente</span><span class="amt" id="deprCedulaTotal">0,00</span></div>
+            <div class="cuadre-line total"><span class="lbl">Depreciación estimada del mes</span><span class="amt" id="deprCedulaTotal">0,00</span></div>
           </div>
           <div class="cuadre-card">
             <div class="ch"><i data-lucide="book-text"></i> Asiento contable a generar</div>
-            <div class="cuadre-line"><span class="lbl">6.1.1.06 Gasto de depreciación<small>Débito</small></span><span class="amt" id="deprAsientoDebe">0,00</span></div>
-            <div class="cuadre-line"><span class="lbl">1.2.1.06 Depreciación acumulada<small>Crédito</small></span><span class="amt neg" id="deprAsientoHaber">(0,00)</span></div>
+            <div class="cuadre-line"><span class="lbl">6.1.1.17–20 Gasto de depreciación (por categoría)<small>Débito</small></span><span class="amt" id="deprAsientoDebe">0,00</span></div>
+            <div class="cuadre-line"><span class="lbl">1.2.1.07–10 Depreciación acumulada (por categoría)<small>Crédito</small></span><span class="amt neg" id="deprAsientoHaber">(0,00)</span></div>
             <div class="cuadre-line total"><span class="lbl">Partida doble</span><span class="amt" style="color:var(--da-success);">Cuadrada · 0,00</span></div>
             <div style="padding:14px 16px;">
-              <span class="caption" style="font-size:11px;color:var(--fg-muted);">Usa el botón <strong>"Calcular y contabilizar mes"</strong> de arriba para generar el asiento.</span>
+              <span class="caption" style="font-size:11px;color:var(--fg-muted);">Es una estimación. El asiento lo hace «Cerrar mes», o el botón <strong>"Calcular y contabilizar mes"</strong> de arriba; rehacer un mes no lo duplica.</span>
             </div>
           </div>
         </div>
