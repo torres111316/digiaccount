@@ -85,6 +85,7 @@ def main():
     print('Voy a insertar 3 filas de prueba (venta, compra y reporte Z) marcadas %s y las borraré al final.' % MARCA)
     ids = []
     ret_ids = []
+    decl_ids = []
     try:
         creadas = api('libro_fiscal', token, 'POST', filas, prefer='return=representation')
         ids = [f['id'] for f in creadas]
@@ -128,17 +129,34 @@ def main():
         if asientos_de(token, ret_ids, 'retenciones'):
             falla('anular la retención debía quitar su asiento')
         print('  OK  anular la retención quita su asiento')
+
+        # Una declaración de DPP con su pago (sql/contabilidad_06_declaraciones.sql).
+        dec = api('declaraciones', token, 'POST', [{
+            'cuenta_id': emp['cuenta_id'], 'empresa_id': emp['id'], 'impuesto': 'DPP', 'periodo': '2026-10',
+            'numero': MARCA + '-D', 'fecha': '2026-11-02', 'tipo': 'ORIGINARIA', 'monto': 900, 'a_pagar': 900,
+            'fecha_pago': '2026-11-02', 'numero_pago': MARCA + '-P'}], prefer='return=representation')
+        decl_ids.append(dec[0]['id'])
+        a = asientos_de(token, decl_ids, 'declaraciones') + asientos_de(token, decl_ids, 'declaraciones_pago')
+        if len(a) != 2 or not all(cuadra(x) for x in a):
+            falla('la declaración de prueba debía dar 2 asientos cuadrados y dio %d (¿se corrió contabilidad_06_declaraciones.sql?)' % len(a))
+        print('  OK  declaración de DPP y su pago: 2 asientos cuadrados')
+        api('declaraciones?id=eq.' + decl_ids[0], token, 'PATCH', {'fecha_pago': None})
+        if asientos_de(token, decl_ids, 'declaraciones_pago') or not asientos_de(token, decl_ids, 'declaraciones'):
+            falla('quitar el pago debía dejar solo el asiento de la declaración')
+        print('  OK  quitar el pago deja solo el asiento de la declaración')
     finally:
         # PRIMERO se borra todo y DESPUÉS se comprueba: si una comprobación
         # fallara en medio, el resto de las filas de prueba quedaría en producción.
+        if decl_ids:
+            api('declaraciones?id=in.(%s)' % ','.join(decl_ids), token, 'DELETE')
         if ret_ids:
             api('retenciones?id=in.(%s)' % ','.join(ret_ids), token, 'DELETE')
         if ids:
             api('libro_fiscal?id=in.(%s)' % ','.join(ids), token, 'DELETE')
-        huerfanos = (len(asientos_de(token, ret_ids, 'retenciones')) if ret_ids else 0) + (len(asientos_de(token, ids)) if ids else 0)
+        huerfanos = (len(asientos_de(token, ret_ids, 'retenciones')) if ret_ids else 0) + (len(asientos_de(token, ids)) if ids else 0)             + (len(asientos_de(token, decl_ids, 'declaraciones')) + len(asientos_de(token, decl_ids, 'declaraciones_pago')) if decl_ids else 0)
         if huerfanos:
             falla('quedaron %d asientos huérfanos de las filas de prueba' % huerfanos)
-        if ids or ret_ids:
+        if ids or ret_ids or decl_ids:
             print('  OK  filas de prueba borradas, sin asientos huérfanos')
 
     if sin_periodo:
