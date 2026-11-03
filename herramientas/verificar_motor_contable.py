@@ -86,6 +86,7 @@ def main():
     ids = []
     ret_ids = []
     decl_ids = []
+    af_ids = []
     try:
         creadas = api('libro_fiscal', token, 'POST', filas, prefer='return=representation')
         ids = [f['id'] for f in creadas]
@@ -144,11 +145,35 @@ def main():
         if asientos_de(token, decl_ids, 'declaraciones_pago') or not asientos_de(token, decl_ids, 'declaraciones'):
             falla('quitar el pago debía dejar solo el asiento de la declaración')
         print('  OK  quitar el pago deja solo el asiento de la declaración')
+
+        # Un activo fijo con su depreciación y su baja (sql/contabilidad_07_activos.sql).
+        # En 2020, para no tocar ningún mes real de la empresa.
+        af = api('activos_fijos', token, 'POST', [{
+            'cuenta_id': emp['cuenta_id'], 'empresa_id': emp['id'], 'codigo': MARCA + '-AF', 'nombre': 'Activo ' + MARCA,
+            'categoria': 'Equipos', 'fecha_adq': '15/01/2020', 'costo': 1200, 'vida_util': 1, 'metodo': 'Línea recta',
+            'valor_residual': 0}], prefer='return=representation')
+        af_ids.append(af[0]['id'])
+        total = api('rpc/contab_depreciar', token, 'POST', {'p_empresa': emp['id'], 'p_periodo': '2020-02'})
+        total = api('rpc/contab_depreciar', token, 'POST', {'p_empresa': emp['id'], 'p_periodo': '2020-02'})
+        dep = api('asientos?empresa_id=eq.%s&origen_tabla=eq.depreciacion&referencia=eq.DEPR-02/2020&select=*' % emp['id'], token)
+        if abs(float(total or 0) - 100) > 0.005 or len(dep) != 1 or not cuadra(dep[0]):
+            falla('depreciar febrero de 2020 dos veces debía dar 1 asiento de 100 y dio %s / %d asientos' % (total, len(dep)))
+        print('  OK  depreciar dos veces el mismo mes: una cuota de 100 y un solo asiento')
+        api('rpc/contab_baja_activo', token, 'POST', {'p_activo': af_ids[0], 'p_fecha': '2020-03-10', 'p_precio': 0, 'p_cuenta_cobro': None})
+        a = asientos_de(token, af_ids, 'activos_fijos')
+        cods = [l['cta'].split(' · ')[0] for l in a[0]['lineas']] if a else []
+        if cods != ['1.2.1.09', '6.3.1.05', '1.2.1.04'] or not cuadra(a[0]):
+            falla('la desincorporación debía dar 1.2.1.09 / 6.3.1.05 / 1.2.1.04 y dio %s' % cods)
+        print('  OK  la desincorporación sale con su pérdida y cuadra')
     finally:
         # PRIMERO se borra todo y DESPUÉS se comprueba: si una comprobación
         # fallara en medio, el resto de las filas de prueba quedaría en producción.
         if decl_ids:
             api('declaraciones?id=in.(%s)' % ','.join(decl_ids), token, 'DELETE')
+        if af_ids:
+            api('asientos?origen_tabla=eq.activos_fijos&origen_id=in.(%s)' % ','.join(af_ids), token, 'DELETE')
+            api('activos_fijos?id=in.(%s)' % ','.join(af_ids), token, 'DELETE')
+            api('asientos?empresa_id=eq.%s&origen_tabla=eq.depreciacion&referencia=eq.DEPR-02/2020' % emp['id'], token, 'DELETE')
         if ret_ids:
             api('retenciones?id=in.(%s)' % ','.join(ret_ids), token, 'DELETE')
         if ids:
@@ -156,13 +181,15 @@ def main():
         huerfanos = (len(asientos_de(token, ret_ids, 'retenciones')) if ret_ids else 0) + (len(asientos_de(token, ids)) if ids else 0)             + (len(asientos_de(token, decl_ids, 'declaraciones')) + len(asientos_de(token, decl_ids, 'declaraciones_pago')) if decl_ids else 0)
         if huerfanos:
             falla('quedaron %d asientos huérfanos de las filas de prueba' % huerfanos)
-        if ids or ret_ids or decl_ids:
+        if af_ids and (asientos_de(token, af_ids, 'activos_fijos') or api('activos_depreciacion?activo_id=in.(%s)&select=id' % ','.join(af_ids), token)):
+            falla('quedaron restos del activo de prueba')
+        if ids or ret_ids or decl_ids or af_ids:
             print('  OK  filas de prueba borradas, sin asientos huérfanos')
 
     if sin_periodo:
         falla('hay asientos sin período (¿se corrió contabilidad_04_motor.sql completo?)')
-    if len(plan) != 131:
-        falla('plan_cuentas_base debía tener 131 cuentas y tiene %d' % len(plan))
+    if len(plan) != 132:
+        falla('plan_cuentas_base debía tener 132 cuentas y tiene %d (¿se corrió contabilidad_07_activos.sql?)' % len(plan))
     print('TODO OK')
 
 
