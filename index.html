@@ -742,6 +742,7 @@
         <button data-tab="patrimonios"><i data-lucide="gem"></i> Grandes Patrimonios</button>
         <button data-tab="igtf"><i data-lucide="coins"></i> IGTF (Forma 21)</button>
         <button data-tab="islranual"><i data-lucide="trending-up"></i> ISLR del ejercicio</button>
+        <button data-tab="declaraciones"><i data-lucide="file-check-2"></i> Declaraciones y pagos <span class="count" data-count="declaraciones">0</span></button>
         <button data-tab="boveda"><i data-lucide="archive"></i> Bóveda Fiscal</button>
       </div>
 
@@ -2037,6 +2038,46 @@
             </div>
           </div>
         </section>
+      </div>
+
+      <!-- TAB: Declaraciones y pagos.
+           Cada declaración presentada en el portal del SENIAT y su pago, copiados
+           de la planilla. De cada fila nacen solos los asientos
+           (sql/contabilidad_06_declaraciones.sql): al declarar el impuesto va al
+           pasivo; al pagar se cruza contra el banco. Cuando esté la Bóveda, a
+           cada fila se le adjuntarán sus PDF. -->
+      <div class="fiscal-tab" data-tab="declaraciones">
+        <div class="panel">
+          <div class="panel-head">
+            <div class="panel-title-block">
+              <div class="title">Declaraciones y pagos</div>
+              <div class="sub">Copia los datos de la planilla de declaración y, cuando se pague, los del recibo. Los asientos se generan solos.</div>
+            </div>
+            <div class="panel-actions" style="display:flex;gap:8px;align-items:center;">
+              <button class="btn btn-primary" style="height:32px;font-size:12px;" id="declNuevaBtn"><i data-lucide="plus"></i> Registrar declaración</button>
+            </div>
+          </div>
+          <div class="table-scroll">
+            <table class="data-table" style="min-width:860px;">
+              <thead>
+                <tr>
+                  <th>Impuesto</th>
+                  <th>Período</th>
+                  <th>Tipo</th>
+                  <th>N° planilla</th>
+                  <th>Fecha</th>
+                  <th class="num">A pagar</th>
+                  <th class="num" title="Lo que la contabilidad dice que se debe por ese impuesto y período">Según contabilidad</th>
+                  <th>Estado</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="declTabla">
+                <tr><td colspan="9" style="text-align:center;color:var(--fg-muted);padding:18px;">Sin declaraciones registradas.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
 
       <!-- TAB: Bóveda Fiscal (respaldo de planillas y certificados SENIAT) -->

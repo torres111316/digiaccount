@@ -182,6 +182,7 @@
           ['DPP', () => window.__renderDPP && window.__renderDPP()],
           ['IGP', () => window.__renderIGP && window.__renderIGP()],
           ['bóveda', () => window.cargarBoveda && window.cargarBoveda()],
+          ['declaraciones y pagos', () => window.cargarDeclaraciones && window.cargarDeclaraciones()],
           ['tesorería', () => window.cargarTesoreria && window.cargarTesoreria()],
           // Antes de recargar las retenciones: la empresa nueva puede no
           // enterar por quincena, y quedarse en "1ra" le escondería la mitad.
@@ -795,6 +796,179 @@
         gotoFiscalTab(el.dataset.gotoFiscaltab);
       });
     });
+  })();
+
+  /* =========================================================
+     DECLARACIONES Y PAGOS (Fiscal)
+
+     Se declara en el portal del SENIAT, se paga en el banco y se guardan la
+     planilla, el recibo y el certificado; nada de eso llegaba al sistema.
+     Aquí se copian los datos de la planilla (a mano mientras no esté la
+     Bóveda; después la leerá un agente) y los asientos los hace la base
+     (sql/contabilidad_06_declaraciones.sql): al declarar el impuesto va al
+     pasivo, al pagar se cruza contra el banco.
+     ========================================================= */
+  (function declaracionesYPagos() {
+    const tbody = document.getElementById('declTabla');
+    if (!tbody) return;
+    const esc = (s) => (window.__esc ? window.__esc(s) : String(s == null ? '' : s));
+    const fmtB = (n) => (Number(n) || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const toast = (m, t) => { if (window.toast) window.toast(m, t); };
+    // q = se declara por quincena (los especiales); comparable = la contabilidad sabe cuánto se debe
+    const IMPUESTOS = [
+      { v: 'IVA', n: 'IVA (Forma 30)', q: false, comparable: true },
+      { v: 'RET_IVA', n: 'Retenciones de IVA', q: true, comparable: true },
+      { v: 'RET_ISLR', n: 'Retenciones de ISLR', q: true, comparable: true },
+      { v: 'IGTF', n: 'IGTF (Forma 21)', q: true, comparable: true },
+      { v: 'DPP', n: 'Protección de Pensiones (DPP)', q: false },
+      { v: 'IGP', n: 'Grandes Patrimonios (IGP)', q: false },
+      { v: 'ISLR_ANTICIPO', n: 'Anticipo de ISLR', q: false },
+      { v: 'ISLR_ANUAL', n: 'ISLR anual', q: false },
+      { v: 'MUNICIPAL', n: 'Impuesto municipal', q: false },
+    ];
+    const impDe = (v) => IMPUESTOS.find((i) => i.v === v) || { v: v, n: v };
+    const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+    const etiquetaPer = (p) => { const m = parseInt(String(p).slice(5, 7), 10); return (MESES[m - 1] || '') + ' ' + String(p).slice(0, 4); };
+    const isoADia = (iso) => { const p = String(iso || '').slice(0, 10).split('-'); return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : ''; };
+    // Del mes actual hacia atrás 24 meses (fecha armada a mano, no del formato regional).
+    const periodos = () => {
+      const h = window.__hoyISO().split('-');
+      let y = parseInt(h[0], 10), m = parseInt(h[1], 10);
+      const out = [];
+      for (let i = 0; i < 24; i++) {
+        const k = y + '-' + String(m).padStart(2, '0');
+        out.push({ value: k, label: etiquetaPer(k) });
+        m--; if (m < 1) { m = 12; y--; }
+      }
+      return out;
+    };
+    let filas = [];
+
+    async function cargarDeclaraciones() {
+      const emp = window.__EMPRESA_ACTIVA;
+      const vacio = (t) => { tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--fg-muted);padding:18px;">' + t + '</td></tr>'; };
+      if (!window.sb || !emp || !emp.id) { filas = []; vacio('Selecciona una empresa.'); return; }
+      const { data, error } = await window.sb.from('declaraciones').select('*').eq('empresa_id', emp.id)
+        .order('periodo', { ascending: false }).order('fecha', { ascending: false });
+      if (error) { vacio('No se pudieron cargar las declaraciones: ' + esc(error.message)); return; }
+      filas = data || [];
+      if (!filas.length) { vacio('Sin declaraciones registradas. Usa «Registrar declaración» con los datos de la planilla.'); if (window.__setTabCount) window.__setTabCount('declaraciones', 0); return; }
+      // Lo que la contabilidad dice que se debe, una consulta por impuesto y período.
+      const comp = {};
+      await Promise.all(filas.filter((d) => impDe(d.impuesto).comparable).map((d) => {
+        const k = d.impuesto + '|' + d.periodo + '|' + (d.quincena || '');
+        if (k in comp) return null;
+        comp[k] = null;
+        return window.sb.rpc('contab_declarado_vs_contable', { p_empresa: emp.id, p_impuesto: d.impuesto, p_periodo: d.periodo, p_quincena: d.quincena || null })
+          .then(({ data: v, error: e }) => { if (!e) comp[k] = v; });
+      }));
+      let pendientes = 0;
+      tbody.innerHTML = filas.map((d, i) => {
+        const k = d.impuesto + '|' + d.periodo + '|' + (d.quincena || '');
+        const c = comp[k];
+        const dif = c == null ? 0 : (Number(d.a_pagar) || 0) - Number(c);
+        const celdaComp = c == null ? '<span style="color:var(--fg-muted);">—</span>'
+          : fmtB(c) + (Math.abs(dif) > 0.01 ? '<br><span style="color:var(--da-danger);font-size:11px;" title="Revisa la declaración o la contabilidad del período">diferencia ' + fmtB(dif) + '</span>' : '');
+        const aPagar = Number(d.a_pagar) || 0;
+        const estado = d.fecha_pago ? '<span class="tag success">Pagada · ' + isoADia(d.fecha_pago) + '</span>'
+          : aPagar > 0.005 ? '<span class="tag warn">Pendiente de pago</span>' : '<span class="tag slate">Sin pago</span>';
+        if (!d.fecha_pago && aPagar > 0.005) pendientes++;
+        return '<tr><td>' + esc(impDe(d.impuesto).n) + '</td>'
+          + '<td>' + esc(etiquetaPer(d.periodo)) + (d.quincena ? ' · ' + d.quincena + (d.quincena === 1 ? 'ra' : 'da') + ' q.' : '') + '</td>'
+          + '<td>' + esc(d.tipo === 'SUSTITUTIVA' ? 'Sustitutiva' : 'Originaria') + '</td>'
+          + '<td class="mono">' + esc(d.numero) + '</td><td>' + isoADia(d.fecha) + '</td>'
+          + '<td class="num">' + fmtB(aPagar) + '</td><td class="num">' + celdaComp + '</td><td>' + estado + '</td>'
+          + '<td style="white-space:nowrap;">'
+          + (aPagar > 0.005 ? '<button class="btn btn-ghost" data-decl-pago="' + i + '" style="height:28px;font-size:11px;padding:0 9px;"><i data-lucide="banknote"></i> ' + (d.fecha_pago ? 'Pago' : 'Registrar pago') + '</button> ' : '')
+          + '<button class="btn btn-ghost" data-decl-edit="' + i + '" title="Editar declaración" style="height:28px;font-size:11px;padding:0 9px;"><i data-lucide="pencil"></i></button> '
+          + '<button class="btn btn-ghost" data-decl-del="' + i + '" title="Eliminar" style="height:28px;font-size:11px;padding:0 9px;color:var(--da-danger);"><i data-lucide="trash-2"></i></button>'
+          + '</td></tr>';
+      }).join('');
+      if (window.__setTabCount) window.__setTabCount('declaraciones', pendientes);
+      tbody.querySelectorAll('[data-decl-pago]').forEach((b) => b.addEventListener('click', () => formPago(filas[+b.dataset.declPago])));
+      tbody.querySelectorAll('[data-decl-edit]').forEach((b) => b.addEventListener('click', () => formDeclaracion(filas[+b.dataset.declEdit])));
+      tbody.querySelectorAll('[data-decl-del]').forEach((b) => b.addEventListener('click', () => eliminar(filas[+b.dataset.declDel])));
+      drawIcons();
+    }
+    window.cargarDeclaraciones = cargarDeclaraciones;
+
+    const recargar = () => { cargarDeclaraciones(); if (window.cargarAsientos) window.cargarAsientos(); };
+
+    function formDeclaracion(d) {
+      const emp = window.__EMPRESA_ACTIVA;
+      if (!emp || !emp.id) { toast('Selecciona una empresa.', 'error'); return; }
+      window.openFormModal({
+        title: d ? 'Editar declaración' : 'Registrar declaración',
+        saveLabel: 'Guardar',
+        fields: [
+          { name: 'impuesto', label: 'Impuesto', type: 'select', value: d ? d.impuesto : 'IVA', options: IMPUESTOS.map((i) => ({ value: i.v, label: i.n })) },
+          { name: 'periodo', label: 'Período', type: 'select', value: d ? d.periodo : periodos()[1].value, options: periodos() },
+          { name: 'quincena', label: 'Quincena (retenciones e IGTF de los especiales)', type: 'select', value: d && d.quincena ? String(d.quincena) : '',
+            options: [{ value: '', label: 'Mes completo' }, { value: '1', label: '1ra quincena' }, { value: '2', label: '2da quincena' }] },
+          { name: 'tipo', label: 'Tipo', type: 'select', value: d ? d.tipo : 'ORIGINARIA', options: [{ value: 'ORIGINARIA', label: 'Originaria' }, { value: 'SUSTITUTIVA', label: 'Sustitutiva' }] },
+          { name: 'numero', label: 'N° de planilla (el que asigna el SENIAT)', value: d ? d.numero : '' },
+          { name: 'fecha', label: 'Fecha de presentación', type: 'date', value: d && d.fecha ? String(d.fecha).slice(0, 10) : window.__hoyISO() },
+          { name: 'monto', label: 'Monto del impuesto (Bs)', type: 'number', step: '0.01', value: d ? String(d.monto) : '' },
+          { name: 'a_pagar', label: 'A pagar (Bs) · solo el ISLR anual puede ser distinto del monto', type: 'number', step: '0.01', value: d ? String(d.a_pagar) : '' },
+        ],
+        onSave: async (v) => {
+          const numero = String(v.numero || '').trim();
+          const monto = parseFloat(v.monto);
+          if (!numero) return 'Escribe el N° de planilla.';
+          if (!(monto >= 0)) return 'Escribe el monto del impuesto.';
+          const imp = impDe(v.impuesto);
+          const aPagar = v.impuesto === 'ISLR_ANUAL' ? (parseFloat(v.a_pagar) >= 0 ? parseFloat(v.a_pagar) : monto) : monto;
+          const fila = {
+            cuenta_id: window.__CUENTA_ID, empresa_id: emp.id, impuesto: v.impuesto, periodo: v.periodo,
+            quincena: imp.q && v.quincena ? parseInt(v.quincena, 10) : null,
+            tipo: v.tipo, numero: numero, fecha: v.fecha || null, monto: monto, a_pagar: aPagar,
+          };
+          const q = d ? window.sb.from('declaraciones').update(fila).eq('id', d.id) : window.sb.from('declaraciones').insert(fila);
+          const { error } = await q;
+          if (error) return error.code === '23505' ? 'Esa planilla ya está registrada para esta empresa.' : 'No se pudo guardar: ' + error.message;
+          toast(d ? 'Declaración actualizada' : 'Declaración registrada · su asiento se generó solo', 'success');
+          recargar();
+          return undefined;
+        },
+      });
+    }
+
+    function formPago(d) {
+      const ctas = window.__cuentasEfectivo ? window.__cuentasEfectivo() : [];
+      const opts = ctas.length ? ctas.map((c) => ({ value: c.codigo, label: c.codigo + ' · ' + c.nombre })) : [{ value: '1.1.1.03', label: '1.1.1.03 · Bancos' }];
+      window.openFormModal({
+        title: 'Pago · ' + impDe(d.impuesto).n + ' · ' + etiquetaPer(d.periodo),
+        saveLabel: 'Guardar pago',
+        fields: [
+          { name: 'fecha_pago', label: 'Fecha del pago', type: 'date', value: d.fecha_pago ? String(d.fecha_pago).slice(0, 10) : window.__hoyISO() },
+          { name: 'numero_pago', label: 'N° del recibo o del certificado', value: d.numero_pago || '' },
+          { name: 'cuenta_pago', label: 'Banco desde el que se pagó', type: 'select', value: d.cuenta_pago || '1.1.1.03', options: opts },
+        ].concat(d.fecha_pago ? [{ name: 'quitar', label: '¿Quitar este pago? (su asiento se elimina)', type: 'select', value: 'No', options: ['No', 'Sí, quitar el pago'] }] : []),
+        onSave: async (v) => {
+          const quitar = /^s[ií]/i.test(v.quitar || '');
+          if (!quitar && !v.fecha_pago) return 'Indica la fecha del pago.';
+          const { error } = await window.sb.from('declaraciones').update(quitar
+            ? { fecha_pago: null, numero_pago: null, cuenta_pago: null }
+            : { fecha_pago: v.fecha_pago, numero_pago: String(v.numero_pago || '').trim() || null, cuenta_pago: v.cuenta_pago || null })
+            .eq('id', d.id);
+          if (error) return 'No se pudo guardar el pago: ' + error.message;
+          toast(quitar ? 'Pago quitado' : 'Pago registrado · su asiento se generó solo', 'success');
+          recargar();
+          return undefined;
+        },
+      });
+    }
+
+    async function eliminar(d) {
+      if (!window.confirm('¿Eliminar la declaración ' + d.numero + ' (' + impDe(d.impuesto).n + ', ' + etiquetaPer(d.periodo) + ')?\n\nSus asientos de declaración y de pago se eliminan con ella.')) return;
+      const { error } = await window.sb.from('declaraciones').delete().eq('id', d.id);
+      if (error) { toast('No se pudo eliminar: ' + error.message, 'error'); return; }
+      toast('Declaración eliminada', 'success');
+      recargar();
+    }
+
+    const btn = document.getElementById('declNuevaBtn');
+    if (btn) btn.addEventListener('click', () => formDeclaracion(null));
   })();
 
   /* Las RETENCIONES viven ahora en assets/retenciones.js — se saco de aqui

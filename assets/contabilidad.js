@@ -397,6 +397,7 @@
       }
       tbody.innerHTML = (data || []).map(filaCuenta).join('');
       _clasificables = (data || []).filter((c) => c.uso && c.tipo !== 'Grupo').map((c) => ({ codigo: c.codigo, nombre: c.nombre, uso: c.uso }));
+      _efectivo = (data || []).filter((c) => String(c.codigo).indexOf('1.1.1.') === 0 && c.tipo !== 'Grupo').map((c) => ({ codigo: c.codigo, nombre: c.nombre }));
       if (window.refreshTables) window.refreshTables();
       drawIcons();
     }
@@ -404,6 +405,10 @@
     // fijo): las usan la ficha del proveedor y el registro de compras.
     let _clasificables = [];
     window.__cuentasClasificables = () => _clasificables.slice();
+    // Cuentas de efectivo y bancos (grupo 1.1.1, incluidas las subcuentas
+    // propias de cada banco): de dónde salió el pago de un impuesto.
+    let _efectivo = [];
+    window.__cuentasEfectivo = () => _efectivo.slice();
     window.cargarCuentasContables = cargarCuentasContables;
 
     // ======= ETAPA 3: Libro Mayor + Balance de Comprobación (de los asientos reales) =======

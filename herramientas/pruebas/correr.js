@@ -1182,5 +1182,16 @@ ok('anular ya no promete un asiento de reverso', /Se generará el asiento de rev
 ok('__postAsiento acepta la fecha como quinto parámetro',
   /__postAsiento = async function \(descripcion, referencia, lineas, origen, fecha\)/.test(_conta), true);
 
+/* -- CONTABILIDAD · PLAN 2b ----------------------------------------------------
+   Luis registra cada declaración y su pago copiando la planilla; los asientos
+   los hace la base (sql/contabilidad_06_declaraciones.sql). */
+bloque('Declaraciones y pagos');
+ok('Fiscal tiene la pestaña de declaraciones', /data-tab="declaraciones"/.test(_html), true);
+ok('se registra una declaración en la tabla declaraciones', /from\('declaraciones'\)\.insert/.test(_appjs), true);
+ok('el pago guarda fecha, recibo y banco', /fecha_pago:[\s\S]{0,200}numero_pago:[\s\S]{0,200}cuenta_pago:/.test(_appjs), true);
+ok('se avisa la diferencia con la contabilidad', /rpc\('contab_declarado_vs_contable'/.test(_appjs), true);
+ok('una planilla repetida da un mensaje claro', /23505/.test(_appjs) && /ya está registrada/.test(_appjs), true);
+ok('hay lista de cuentas de efectivo para el banco del pago', /window\.__cuentasEfectivo\s*=/.test(_conta), true);
+
 console.log('\n' + (fallas ? 'HAY ' + fallas + ' FALLA(S) de ' + total : 'TODO OK · ' + total + ' comprobaciones'));
 process.exit(fallas ? 1 : 0);
