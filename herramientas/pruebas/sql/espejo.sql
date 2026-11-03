@@ -109,6 +109,24 @@ create table public.retenciones (
   creado_en timestamptz default now()
 );
 
+create table public.declaraciones (
+  id uuid primary key default gen_random_uuid(),
+  cuenta_id uuid not null,
+  empresa_id uuid not null,
+  impuesto text not null,
+  periodo text not null,
+  quincena smallint,
+  numero text not null,
+  fecha date,
+  tipo text not null default 'ORIGINARIA',
+  monto numeric(18,2) not null default 0,
+  a_pagar numeric(18,2) not null default 0,
+  estado text,
+  nota text,
+  creado_en timestamptz not null default now(),
+  unique (empresa_id, impuesto, numero)
+);
+
 create table public.asientos (
   id uuid primary key default gen_random_uuid(),
   cuenta_id uuid,
