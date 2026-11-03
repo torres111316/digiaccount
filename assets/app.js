@@ -814,15 +814,16 @@
     const esc = (s) => (window.__esc ? window.__esc(s) : String(s == null ? '' : s));
     const fmtB = (n) => (Number(n) || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const toast = (m, t) => { if (window.toast) window.toast(m, t); };
-    // q = se declara por quincena (los especiales); comparable = la contabilidad sabe cuánto se debe
+    // q = se declara por quincena (los especiales); pasa = ya está en el pasivo por los
+    // motores (declararlo no asienta nada y la contabilidad sabe cuánto se debe)
     const IMPUESTOS = [
-      { v: 'IVA', n: 'IVA (Forma 30)', q: false, comparable: true },
-      { v: 'RET_IVA', n: 'Retenciones de IVA', q: true, comparable: true },
-      { v: 'RET_ISLR', n: 'Retenciones de ISLR', q: true, comparable: true },
-      { v: 'IGTF', n: 'IGTF (Forma 21)', q: true, comparable: true },
+      { v: 'IVA', n: 'IVA (Forma 30)', q: false, pasa: true },
+      { v: 'RET_IVA', n: 'Retenciones de IVA', q: true, pasa: true },
+      { v: 'RET_ISLR', n: 'Retenciones de ISLR', q: true, pasa: true },
+      { v: 'IGTF', n: 'IGTF (Forma 21)', q: true, pasa: true },
       { v: 'DPP', n: 'Protección de Pensiones (DPP)', q: false },
       { v: 'IGP', n: 'Grandes Patrimonios (IGP)', q: false },
-      { v: 'ISLR_ANTICIPO', n: 'Anticipo de ISLR', q: false },
+      { v: 'ISLR_ANTICIPO', n: 'Anticipo de ISLR', q: true },
       { v: 'ISLR_ANUAL', n: 'ISLR anual', q: false },
       { v: 'MUNICIPAL', n: 'Impuesto municipal', q: false },
     ];
@@ -830,8 +831,11 @@
     const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
     const etiquetaPer = (p) => { const m = parseInt(String(p).slice(5, 7), 10); return (MESES[m - 1] || '') + ' ' + String(p).slice(0, 4); };
     const isoADia = (iso) => { const p = String(iso || '').slice(0, 10).split('-'); return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : ''; };
-    // Del mes actual hacia atrás 24 meses (fecha armada a mano, no del formato regional).
-    const periodos = () => {
+    /* Del mes actual hacia atrás 24 meses (fecha armada a mano, no del formato
+       regional). `extra` es el período de la fila que se edita: si es más
+       viejo, va en la lista; si no, el select marcaría otro mes y al guardar
+       el período cambiaría sin que nadie lo pidiera. */
+    const periodos = (extra) => {
       const h = window.__hoyISO().split('-');
       let y = parseInt(h[0], 10), m = parseInt(h[1], 10);
       const out = [];
@@ -840,54 +844,75 @@
         out.push({ value: k, label: etiquetaPer(k) });
         m--; if (m < 1) { m = 12; y--; }
       }
+      if (extra && !out.some((o) => o.value === extra)) out.push({ value: extra, label: etiquetaPer(extra) });
       return out;
     };
     let filas = [];
+    let _cargaDecl = 0;   // cada carga lleva su número: la respuesta de una empresa anterior se descarta
 
     async function cargarDeclaraciones() {
+      const carga = ++_cargaDecl;
       const emp = window.__EMPRESA_ACTIVA;
       const vacio = (t) => { tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--fg-muted);padding:18px;">' + t + '</td></tr>'; };
       if (!window.sb || !emp || !emp.id) { filas = []; vacio('Selecciona una empresa.'); return; }
       const { data, error } = await window.sb.from('declaraciones').select('*').eq('empresa_id', emp.id)
         .order('periodo', { ascending: false }).order('fecha', { ascending: false });
+      if (carga !== _cargaDecl) return;
       if (error) { vacio('No se pudieron cargar las declaraciones: ' + esc(error.message)); return; }
-      filas = data || [];
-      if (!filas.length) { vacio('Sin declaraciones registradas. Usa «Registrar declaración» con los datos de la planilla.'); if (window.__setTabCount) window.__setTabCount('declaraciones', 0); return; }
+      const lista = data || [];
+      if (!lista.length) { filas = []; vacio('Sin declaraciones registradas. Usa «Registrar declaración» con los datos de la planilla.'); if (window.__setTabCount) window.__setTabCount('declaraciones', 0); return; }
+      /* ¿Cuáles ya tienen su asiento de declaración? Las de DPP, IGP, municipal
+         y anticipos que no lo tienen se cargaron antes del motor (las 19 de
+         DPP): son históricas, entran en la reconstrucción y aquí no se pagan
+         ni se editan, porque un pago sin su declaración dejaría el pasivo en
+         negativo. */
+      const ids = lista.map((d) => d.id);
+      const { data: conAsi } = await window.sb.from('asientos').select('origen_id').eq('origen_tabla', 'declaraciones').in('origen_id', ids);
+      if (carga !== _cargaDecl) return;
+      const tieneAsiento = new Set((conAsi || []).map((a) => a.origen_id));
       // Lo que la contabilidad dice que se debe, una consulta por impuesto y período.
       const comp = {};
-      await Promise.all(filas.filter((d) => impDe(d.impuesto).comparable).map((d) => {
+      await Promise.all(lista.filter((d) => impDe(d.impuesto).pasa).map((d) => {
         const k = d.impuesto + '|' + d.periodo + '|' + (d.quincena || '');
         if (k in comp) return null;
         comp[k] = null;
         return window.sb.rpc('contab_declarado_vs_contable', { p_empresa: emp.id, p_impuesto: d.impuesto, p_periodo: d.periodo, p_quincena: d.quincena || null })
           .then(({ data: v, error: e }) => { if (!e) comp[k] = v; });
       }));
+      if (carga !== _cargaDecl) return;
+      filas = lista.map((d) => Object.assign({}, d, {
+        _comp: comp[d.impuesto + '|' + d.periodo + '|' + (d.quincena || '')],
+        _historica: !impDe(d.impuesto).pasa && !tieneAsiento.has(d.id) && (Number(d.monto) || 0) > 0.005,
+      }));
       let pendientes = 0;
       tbody.innerHTML = filas.map((d, i) => {
-        const k = d.impuesto + '|' + d.periodo + '|' + (d.quincena || '');
-        const c = comp[k];
-        const dif = c == null ? 0 : (Number(d.a_pagar) || 0) - Number(c);
-        const celdaComp = c == null ? '<span style="color:var(--fg-muted);">—</span>'
-          : fmtB(c) + (Math.abs(dif) > 0.01 ? '<br><span style="color:var(--da-danger);font-size:11px;" title="Revisa la declaración o la contabilidad del período">diferencia ' + fmtB(dif) + '</span>' : '');
+        const c = d._comp;
         const aPagar = Number(d.a_pagar) || 0;
+        const dif = c == null ? 0 : aPagar - Number(c);
+        const celdaComp = !impDe(d.impuesto).pasa ? '<span style="color:var(--fg-muted);">—</span>'
+          : c == null ? '<span style="color:var(--fg-muted);" title="El mes no tiene liquidación con IVA por pagar (sin cerrar, o histórico)">sin liquidar</span>'
+          : fmtB(c) + (Math.abs(dif) > 0.01 ? '<br><span style="color:var(--da-danger);font-size:11px;" title="Revisa la declaración o la contabilidad del período">diferencia ' + fmtB(dif) + '</span>' : '');
         const estado = d.fecha_pago ? '<span class="tag success">Pagada · ' + isoADia(d.fecha_pago) + '</span>'
+          : d._historica ? '<span class="tag slate" title="Se cargó antes del motor contable: entra en la reconstrucción">Histórica · sin asiento</span>'
           : aPagar > 0.005 ? '<span class="tag warn">Pendiente de pago</span>' : '<span class="tag slate">Sin pago</span>';
-        if (!d.fecha_pago && aPagar > 0.005) pendientes++;
+        if (!d.fecha_pago && !d._historica && aPagar > 0.005) pendientes++;
         return '<tr><td>' + esc(impDe(d.impuesto).n) + '</td>'
           + '<td>' + esc(etiquetaPer(d.periodo)) + (d.quincena ? ' · ' + d.quincena + (d.quincena === 1 ? 'ra' : 'da') + ' q.' : '') + '</td>'
           + '<td>' + esc(d.tipo === 'SUSTITUTIVA' ? 'Sustitutiva' : 'Originaria') + '</td>'
-          + '<td class="mono">' + esc(d.numero) + '</td><td>' + isoADia(d.fecha) + '</td>'
+          + '<td class="mono">' + esc(d.numero || '—') + '</td><td>' + isoADia(d.fecha) + '</td>'
           + '<td class="num">' + fmtB(aPagar) + '</td><td class="num">' + celdaComp + '</td><td>' + estado + '</td>'
           + '<td style="white-space:nowrap;">'
-          + (aPagar > 0.005 ? '<button class="btn btn-ghost" data-decl-pago="' + i + '" style="height:28px;font-size:11px;padding:0 9px;"><i data-lucide="banknote"></i> ' + (d.fecha_pago ? 'Pago' : 'Registrar pago') + '</button> ' : '')
-          + '<button class="btn btn-ghost" data-decl-edit="' + i + '" title="Editar declaración" style="height:28px;font-size:11px;padding:0 9px;"><i data-lucide="pencil"></i></button> '
+          + (!d._historica && aPagar > 0.005 ? '<button class="btn btn-ghost" data-decl-pago="' + i + '" style="height:28px;font-size:11px;padding:0 9px;"><i data-lucide="banknote"></i> ' + (d.fecha_pago ? 'Pago' : 'Registrar pago') + '</button> ' : '')
+          + (!d._historica ? '<button class="btn btn-ghost" data-decl-edit="' + i + '" title="Editar declaración" style="height:28px;font-size:11px;padding:0 9px;"><i data-lucide="pencil"></i></button> ' : '')
           + '<button class="btn btn-ghost" data-decl-del="' + i + '" title="Eliminar" style="height:28px;font-size:11px;padding:0 9px;color:var(--da-danger);"><i data-lucide="trash-2"></i></button>'
           + '</td></tr>';
       }).join('');
       if (window.__setTabCount) window.__setTabCount('declaraciones', pendientes);
-      tbody.querySelectorAll('[data-decl-pago]').forEach((b) => b.addEventListener('click', () => formPago(filas[+b.dataset.declPago])));
-      tbody.querySelectorAll('[data-decl-edit]').forEach((b) => b.addEventListener('click', () => formDeclaracion(filas[+b.dataset.declEdit])));
-      tbody.querySelectorAll('[data-decl-del]').forEach((b) => b.addEventListener('click', () => eliminar(filas[+b.dataset.declDel])));
+      // Cada botón se queda con SU fila (no con un índice de una lista que puede cambiar).
+      const deEstaCarga = filas;
+      tbody.querySelectorAll('[data-decl-pago]').forEach((b) => b.addEventListener('click', () => formPago(deEstaCarga[+b.dataset.declPago])));
+      tbody.querySelectorAll('[data-decl-edit]').forEach((b) => b.addEventListener('click', () => formDeclaracion(deEstaCarga[+b.dataset.declEdit])));
+      tbody.querySelectorAll('[data-decl-del]').forEach((b) => b.addEventListener('click', () => eliminar(deEstaCarga[+b.dataset.declDel])));
       drawIcons();
     }
     window.cargarDeclaraciones = cargarDeclaraciones;
@@ -897,35 +922,43 @@
     function formDeclaracion(d) {
       const emp = window.__EMPRESA_ACTIVA;
       if (!emp || !emp.id) { toast('Selecciona una empresa.', 'error'); return; }
+      const lista = periodos(d ? d.periodo : null);
       window.openFormModal({
         title: d ? 'Editar declaración' : 'Registrar declaración',
         saveLabel: 'Guardar',
         fields: [
           { name: 'impuesto', label: 'Impuesto', type: 'select', value: d ? d.impuesto : 'IVA', options: IMPUESTOS.map((i) => ({ value: i.v, label: i.n })) },
-          { name: 'periodo', label: 'Período', type: 'select', value: d ? d.periodo : periodos()[1].value, options: periodos() },
-          { name: 'quincena', label: 'Quincena (retenciones e IGTF de los especiales)', type: 'select', value: d && d.quincena ? String(d.quincena) : '',
+          { name: 'periodo', label: 'Período', type: 'select', value: d ? d.periodo : lista[1].value, options: lista },
+          { name: 'quincena', label: 'Quincena (retenciones, IGTF y anticipos de los especiales)', type: 'select', value: d && d.quincena ? String(d.quincena) : '',
             options: [{ value: '', label: 'Mes completo' }, { value: '1', label: '1ra quincena' }, { value: '2', label: '2da quincena' }] },
           { name: 'tipo', label: 'Tipo', type: 'select', value: d ? d.tipo : 'ORIGINARIA', options: [{ value: 'ORIGINARIA', label: 'Originaria' }, { value: 'SUSTITUTIVA', label: 'Sustitutiva' }] },
-          { name: 'numero', label: 'N° de planilla (el que asigna el SENIAT)', value: d ? d.numero : '' },
+          { name: 'numero', label: 'N° de planilla (el que asigna el SENIAT)', value: d ? (d.numero || '') : '' },
           { name: 'fecha', label: 'Fecha de presentación', type: 'date', value: d && d.fecha ? String(d.fecha).slice(0, 10) : window.__hoyISO() },
-          { name: 'monto', label: 'Monto del impuesto (Bs)', type: 'number', step: '0.01', value: d ? String(d.monto) : '' },
-          { name: 'a_pagar', label: 'A pagar (Bs) · solo el ISLR anual puede ser distinto del monto', type: 'number', step: '0.01', value: d ? String(d.a_pagar) : '' },
+          { name: 'monto', label: 'Impuesto declarado (Bs)', type: 'number', step: '0.01', value: d ? String(d.monto) : '' },
+          { name: 'a_pagar', label: 'A pagar según la planilla (Bs) · en una sustitutiva, solo la diferencia · vacío = igual al impuesto', type: 'number', step: '0.01', value: d ? String(d.a_pagar) : '' },
         ],
         onSave: async (v) => {
           const numero = String(v.numero || '').trim();
           const monto = parseFloat(v.monto);
           if (!numero) return 'Escribe el N° de planilla.';
-          if (!(monto >= 0)) return 'Escribe el monto del impuesto.';
-          const imp = impDe(v.impuesto);
-          const aPagar = v.impuesto === 'ISLR_ANUAL' ? (parseFloat(v.a_pagar) >= 0 ? parseFloat(v.a_pagar) : monto) : monto;
-          const fila = {
-            cuenta_id: window.__CUENTA_ID, empresa_id: emp.id, impuesto: v.impuesto, periodo: v.periodo,
-            quincena: imp.q && v.quincena ? parseInt(v.quincena, 10) : null,
+          if (!(monto >= 0)) return 'Escribe el impuesto declarado.';
+          const aPagar = String(v.a_pagar || '').trim() === '' ? monto : parseFloat(v.a_pagar);
+          if (!(aPagar >= 0)) return 'El monto a pagar no es válido.';
+          if (aPagar > monto + 0.005) return 'Lo que se paga no puede ser mayor que el impuesto declarado.';
+          // Al editar NO se mandan empresa ni cuenta: la declaración se queda donde nació.
+          const cambios = {
+            impuesto: v.impuesto, periodo: v.periodo,
+            quincena: impDe(v.impuesto).q && v.quincena ? parseInt(v.quincena, 10) : null,
             tipo: v.tipo, numero: numero, fecha: v.fecha || null, monto: monto, a_pagar: aPagar,
           };
-          const q = d ? window.sb.from('declaraciones').update(fila).eq('id', d.id) : window.sb.from('declaraciones').insert(fila);
-          const { error } = await q;
-          if (error) return error.code === '23505' ? 'Esa planilla ya está registrada para esta empresa.' : 'No se pudo guardar: ' + error.message;
+          const { error } = d
+            ? await window.sb.from('declaraciones').update(cambios).eq('id', d.id)
+            : await window.sb.from('declaraciones').insert(Object.assign({ cuenta_id: window.__CUENTA_ID, empresa_id: emp.id }, cambios));
+          if (error) {
+            if (error.code === '23505') return 'Esa planilla ya está registrada para esta empresa.';
+            if (error.code === '23514') return 'Lo que se paga no puede ser mayor que el impuesto declarado.';
+            return 'No se pudo guardar: ' + error.message;
+          }
           toast(d ? 'Declaración actualizada' : 'Declaración registrada · su asiento se generó solo', 'success');
           recargar();
           return undefined;
@@ -934,10 +967,23 @@
     }
 
     function formPago(d) {
+      const aPagar = Number(d.a_pagar) || 0;
+      /* IVA, retenciones e IGTF se pagan contra lo que dejaron los motores en el
+         pasivo. Si la contabilidad no lo tiene (mes sin liquidar, o histórico),
+         el pago dejaría esa cuenta en negativo. */
+      if (impDe(d.impuesto).pasa && !d.fecha_pago) {
+        if (d.impuesto === 'IVA' && d._comp == null) {
+          toast('Ese mes no tiene liquidación con IVA por pagar. Cierra primero el mes en Fiscal (o es un mes histórico, que entra en la reconstrucción).', 'error');
+          return;
+        }
+        const enLibros = Number(d._comp) || 0;
+        if (enLibros + 0.01 < aPagar && !window.confirm('La contabilidad solo tiene Bs ' + fmtB(enLibros) + ' por pagar de ' + impDe(d.impuesto).n + ' en ese período, y vas a pagar Bs ' + fmtB(aPagar) + '.\n\nSi lo registras, la cuenta quedará en negativo hasta que se complete la contabilidad del mes. ¿Registrar el pago igual?')) return;
+      }
       const ctas = window.__cuentasEfectivo ? window.__cuentasEfectivo() : [];
       const opts = ctas.length ? ctas.map((c) => ({ value: c.codigo, label: c.codigo + ' · ' + c.nombre })) : [{ value: '1.1.1.03', label: '1.1.1.03 · Bancos' }];
+      if (d.cuenta_pago && !opts.some((o) => o.value === d.cuenta_pago)) opts.push({ value: d.cuenta_pago, label: d.cuenta_pago + ' · (cuenta guardada)' });
       window.openFormModal({
-        title: 'Pago · ' + impDe(d.impuesto).n + ' · ' + etiquetaPer(d.periodo),
+        title: 'Pago · ' + impDe(d.impuesto).n + ' · ' + etiquetaPer(d.periodo) + ' · Bs ' + fmtB(aPagar),
         saveLabel: 'Guardar pago',
         fields: [
           { name: 'fecha_pago', label: 'Fecha del pago', type: 'date', value: d.fecha_pago ? String(d.fecha_pago).slice(0, 10) : window.__hoyISO() },
@@ -960,7 +1006,7 @@
     }
 
     async function eliminar(d) {
-      if (!window.confirm('¿Eliminar la declaración ' + d.numero + ' (' + impDe(d.impuesto).n + ', ' + etiquetaPer(d.periodo) + ')?\n\nSus asientos de declaración y de pago se eliminan con ella.')) return;
+      if (!window.confirm('¿Eliminar la declaración ' + (d.numero || '(sin número)') + ' (' + impDe(d.impuesto).n + ', ' + etiquetaPer(d.periodo) + ')?\n\nSus asientos de declaración y de pago se eliminan con ella.')) return;
       const { error } = await window.sb.from('declaraciones').delete().eq('id', d.id);
       if (error) { toast('No se pudo eliminar: ' + error.message, 'error'); return; }
       toast('Declaración eliminada', 'success');

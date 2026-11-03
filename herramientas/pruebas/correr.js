@@ -1192,6 +1192,15 @@ ok('el pago guarda fecha, recibo y banco', /fecha_pago:[\s\S]{0,200}numero_pago:
 ok('se avisa la diferencia con la contabilidad', /rpc\('contab_declarado_vs_contable'/.test(_appjs), true);
 ok('una planilla repetida da un mensaje claro', /23505/.test(_appjs) && /ya está registrada/.test(_appjs), true);
 ok('hay lista de cuentas de efectivo para el banco del pago', /window\.__cuentasEfectivo\s*=/.test(_conta), true);
+/* Revisión final del plan 2b. */
+ok('el a pagar es el de la planilla (en una sustitutiva, la diferencia), no siempre el monto',
+  /v\.impuesto === 'ISLR_ANUAL' \? \(parseFloat\(v\.a_pagar\)/.test(_appjs), false);
+ok('a pagar mayor que el impuesto da un mensaje claro', /23514/.test(_appjs) && /no puede ser mayor que el impuesto/.test(_appjs), true);
+ok('las declaraciones de antes del motor se marcan como históricas y no se pagan aquí', /Histórica · sin asiento/.test(_appjs), true);
+ok('editar una declaración no cambia su empresa ni su cuenta', /from\('declaraciones'\)\.update\(cambios\)/.test(_appjs), true);
+ok('al cambiar de empresa se descartan las respuestas viejas', /_cargaDecl/.test(_appjs), true);
+ok('el período de la fila siempre está en la lista al editarla', /periodos\(d \? d\.periodo/.test(_appjs), true);
+ok('pagar un impuesto que la contabilidad no tiene por pagar pide confirmación', /quedará en negativo/.test(_appjs), true);
 
 console.log('\n' + (fallas ? 'HAY ' + fallas + ' FALLA(S) de ' + total : 'TODO OK · ' + total + ' comprobaciones'));
 process.exit(fallas ? 1 : 0);
