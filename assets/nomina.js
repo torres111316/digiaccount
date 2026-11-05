@@ -95,34 +95,77 @@
     const paramBtn = document.getElementById('parametrosNominaBtn');
     if (paramBtn) paramBtn.addEventListener('click', formParametros);
 
+    /* Las líneas del asiento de la nómina, a partir de lo que calcula calcPago
+       para cada trabajador. Lleva lo que retiene al trabajador y también lo que
+       aporta el patrono (IVSS, RPE, FAOV e INCES, con las tasas de
+       parametros_nomina), cada uno con su pasivo. La DPP no va aquí: se causa
+       al declararla. Las bases son las mismas de las retenciones del trabajador
+       (IVSS y RPE con sus topes; FAOV sobre el salario normal); el INCES, sobre
+       el total de los salarios. */
+    function lineasAsientoNomina(pagos, tasas) {
+      const r2n = (x) => Math.round(x * 100) / 100;
+      const t = { salarial: 0, beneficios: 0, ivss: 0, spf: 0, faov: 0, otras: 0, ivssP: 0, rpeP: 0, faovP: 0, incesP: 0 };
+      pagos.forEach((p) => {
+        t.salarial += p.asigSalarial;
+        t.beneficios += p.bonoContingencia + p.cestaticket + p.transporteBs;
+        t.ivss += p.ivss; t.spf += p.spf; t.faov += p.faov; t.otras += p.dedOtras;
+        t.ivssP += p.baseIvss * tasas.ivssP;
+        t.rpeP += p.baseRpe * tasas.rpeP;
+        t.faovP += p.salarioNormal * tasas.faovP;
+        t.incesP += p.asigSalarial * tasas.incesP;
+      });
+      const lineas = [];
+      const d = (cta, m) => { if (r2n(m) > 0) lineas.push({ cta: cta, debe: r2n(m), haber: 0 }); };
+      const h = (cta, m) => { if (r2n(m) > 0) lineas.push({ cta: cta, debe: 0, haber: r2n(m) }); };
+      d('6.1.1.01 · Sueldos y salarios', t.salarial);
+      d('6.1.1.02 · Beneficios laborales', t.beneficios);
+      d('6.1.1.08 · Aportes patronales IVSS', t.ivssP);
+      d('6.1.1.09 · Aportes patronales RPE', t.rpeP);
+      d('6.1.1.10 · Aportes patronales FAOV', t.faovP);
+      d('6.1.1.11 · Aportes patronales INCES', t.incesP);
+      h('2.1.3.04 · S.S.O. por pagar', t.ivss);
+      h('2.1.3.05 · Régimen Prestacional de Empleo (RPE) por pagar', t.spf);
+      h('2.1.3.06 · FAOV por pagar', t.faov);
+      h('2.1.3.08 · IVSS patronal por pagar', t.ivssP);
+      h('2.1.3.09 · RPE patronal por pagar', t.rpeP);
+      h('2.1.3.10 · FAOV patronal por pagar', t.faovP);
+      h('2.1.3.11 · INCES patronal por pagar', t.incesP);
+      h('2.1.5.01 · Otras cuentas por pagar', t.otras);
+      // Lo que sale del banco es el neto del trabajador: los aportes patronales
+      // quedan por pagar, igual que las retenciones.
+      const dif = lineas.reduce((s, l) => s + l.debe - l.haber, 0);
+      lineas.push({ cta: '1.1.1.03 · Bancos', debe: 0, haber: r2n(dif) });
+      return lineas;
+    }
+
     // ---- Contabilizar la nómina del período: UN asiento resumen (modelo del contador) ----
-    // Gastos (sueldos + beneficios) / retenciones parafiscales por enterar + pago neto por banco.
+    // Con la fecha del último día del período y una referencia fija por
+    // frecuencia y período: contabilizarla de nuevo reemplaza el asiento anterior.
     async function contabilizarNomina(freq) {
       const lista = empleados.filter((e) => (e.frecHabitual || 'quincenal') === freq);
       if (!lista.length) { if (window.toast) window.toast('No hay trabajadores con pago ' + freq + '.', 'info'); return false; }
-      let salarial = 0, beneficios = 0, ivssT = 0, spfT = 0, faovT = 0, otrasDed = 0;
-      lista.forEach((e) => {
-        const p = calcPago(e, freq);
-        salarial += p.asigSalarial;
-        beneficios += p.bonoContingencia + p.cestaticket + p.transporteBs;
-        ivssT += p.ivss; spfT += p.spf; faovT += p.faov;
-        otrasDed += p.dedOtras;
-      });
-      const per = periodoNomina(freq);
-      const r2n = (x) => Math.round(x * 100) / 100;
-      const lineas = [
-        { cta: '6.1.1.01 · Sueldos y salarios', debe: r2n(salarial), haber: 0 },
-        { cta: '6.1.1.02 · Beneficios laborales', debe: r2n(beneficios), haber: 0 },
-      ];
-      if (ivssT > 0.005) lineas.push({ cta: '2.1.3.04 · S.S.O. por pagar', debe: 0, haber: r2n(ivssT) });
-      if (spfT > 0.005) lineas.push({ cta: '2.1.3.05 · Régimen Prestacional de Empleo (RPE) por pagar', debe: 0, haber: r2n(spfT) });
-      if (faovT > 0.005) lineas.push({ cta: '2.1.3.06 · FAOV por pagar', debe: 0, haber: r2n(faovT) });
-      if (otrasDed > 0.005) lineas.push({ cta: '2.1.5 · Otras Cuentas por Pagar', debe: 0, haber: r2n(otrasDed) });
-      const debeT = lineas.reduce((s, l) => s + l.debe, 0), habT = lineas.reduce((s, l) => s + l.haber, 0);
-      lineas.push({ cta: '1.1.1.03 · Bancos', debe: 0, haber: r2n(debeT - habT) }); // neto pagado
-      if (!window.confirm('¿Contabilizar la nómina ' + freq + '?\n' + per + '\n\n' + lista.length + ' trabajadores · Neto pagado por banco: Bs ' + fmt(r2n(debeT - habT)))) return false;
-      const r = await window.__postAsiento('Nómina ' + freq + ' · ' + per + ' · ' + lista.length + ' trabajadores (pagada por banco)', 'NOM-' + per.replace(/[^0-9]/g, '').slice(0, 8), lineas, 'auto');
+      const lineas = lineasAsientoNomina(lista.map((e) => calcPago(e, freq)),
+        { ivssP: R_IVSS_P, rpeP: R_RPE_P, faovP: R_FAOV_P, incesP: R_INCES_P });
+      const neto = lineas[lineas.length - 1].haber;
+      const per = periodoNomina(freq), rango = rangoNomina(freq);
+      const f2 = (n) => String(n).padStart(2, '0');
+      const fechaAsiento = f2(rango.fin.getDate()) + '/' + f2(rango.fin.getMonth() + 1) + '/' + rango.fin.getFullYear();
+      const ref = 'NOM-' + freq + '-' + isoDe(rango.ini);
+      const emp = window.__EMPRESA_ACTIVA && window.__EMPRESA_ACTIVA.id;
+      if (!window.sb || !emp) { if (window.toast) window.toast('No hay una empresa activa.', 'error'); return false; }
+      const { data: previo, error: eP } = await window.sb.from('asientos').select('id, numero').eq('empresa_id', emp).eq('referencia', ref);
+      if (eP) { if (window.toast) window.toast('No se pudo revisar si ya estaba contabilizada: ' + eP.message, 'error'); return false; }
+      const yaEsta = previo && previo.length;
+      if (!window.confirm((yaEsta ? 'Esta nómina ya está contabilizada (asiento ' + (previo[0].numero || '') + ').\n¿Reemplazarla por el cálculo de ahora?\n\n' : '¿Contabilizar la nómina ' + freq + '?\n')
+        + per + '\n\n' + lista.length + ' trabajadores · Neto pagado por banco: Bs ' + fmt(neto))) return false;
+      // Primero el nuevo y después se borra el anterior: si el nuevo falla, el viejo queda.
+      const r = await window.__postAsiento('Nómina ' + freq + ' · ' + per + ' · ' + lista.length + ' trabajadores (pagada por banco)', ref, lineas, 'auto', fechaAsiento);
       if (r && r.error) { if (window.toast) window.toast('No se pudo contabilizar: ' + r.error.message, 'error'); return false; }
+      if (yaEsta) {
+        const { error: eB } = await window.sb.from('asientos').delete().in('id', previo.map((x) => x.id));
+        if (eB) { if (window.toast) window.toast('Quedó el asiento nuevo, pero no se pudo borrar el anterior (' + eB.message + '): bórralo en el Libro Diario.', 'error'); return false; }
+        if (window.cargarAsientos) await window.cargarAsientos();
+      }
       if (window.toast) window.toast('Nómina ' + freq + ' contabilizada · revisa el asiento en el Libro Diario', 'success');
       return true;
     }
@@ -1208,7 +1251,7 @@
         diasFeriado, montoFeriado, comision, bonoProd,
         cestaticket, cestaUsdPeriodo, ivss, spf, faov, dedLey,
         cajaAhorro, prestamo, anticipo, dedOtras, ded,
-        asigSalarial, asig, neto,
+        salarioNormal, asigSalarial, asig, neto,
       };
     }
 

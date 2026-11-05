@@ -1202,5 +1202,63 @@ ok('al cambiar de empresa se descartan las respuestas viejas', /_cargaDecl/.test
 ok('el período de la fila siempre está en la lista al editarla', /periodos\(d \? d\.periodo/.test(_appjs), true);
 ok('pagar un impuesto que la contabilidad no tiene por pagar pide confirmación', /quedará en negativo/.test(_appjs), true);
 
+/* -- CONTABILIDAD · PLAN 3 -----------------------------------------------------
+   El asiento de la nómina lleva también lo que pone el patrono (IVSS, RPE,
+   FAOV, INCES) y su pasivo. La DPP no: se causa al declararla. */
+bloque('Nómina: el asiento con los aportes patronales');
+eval(tramo('    function lineasAsientoNomina(pagos, tasas) {', '    // ---- Contabilizar la nómina del período'));
+var _pagosNom = [
+  { asigSalarial: 1000, salarioNormal: 1000, baseIvss: 1000, baseRpe: 1000, bonoContingencia: 200, cestaticket: 100, transporteBs: 0, ivss: 40, spf: 5, faov: 10, dedOtras: 0 },
+  { asigSalarial: 2000, salarioNormal: 2000, baseIvss: 2000, baseRpe: 2000, bonoContingencia: 100, cestaticket: 100, transporteBs: 0, ivss: 80, spf: 10, faov: 20, dedOtras: 0 },
+];
+var _tasasNom = { ivssP: 0.11, rpeP: 0.02, faovP: 0.02, incesP: 0.02 };
+var _lnNom = lineasAsientoNomina(_pagosNom, _tasasNom);
+var _ln = function (lineas, pref, lado) { var l = lineas.find(function (x) { return x.cta.indexOf(pref + ' ') === 0; }); return l ? l[lado] : null; };
+ok('sueldos al debe', _ln(_lnNom, '6.1.1.01', 'debe'), 3000);
+ok('beneficios al debe', _ln(_lnNom, '6.1.1.02', 'debe'), 500);
+ok('aporte patronal IVSS al gasto', _ln(_lnNom, '6.1.1.08', 'debe'), 330);
+ok('aporte patronal RPE al gasto', _ln(_lnNom, '6.1.1.09', 'debe'), 60);
+ok('aporte patronal FAOV al gasto', _ln(_lnNom, '6.1.1.10', 'debe'), 60);
+ok('aporte patronal INCES al gasto', _ln(_lnNom, '6.1.1.11', 'debe'), 60);
+ok('IVSS del trabajador por pagar', _ln(_lnNom, '2.1.3.04', 'haber'), 120);
+ok('RPE del trabajador por pagar', _ln(_lnNom, '2.1.3.05', 'haber'), 15);
+ok('FAOV del trabajador por pagar', _ln(_lnNom, '2.1.3.06', 'haber'), 30);
+ok('IVSS patronal por pagar', _ln(_lnNom, '2.1.3.08', 'haber'), 330);
+ok('RPE patronal por pagar', _ln(_lnNom, '2.1.3.09', 'haber'), 60);
+ok('FAOV patronal por pagar', _ln(_lnNom, '2.1.3.10', 'haber'), 60);
+ok('INCES patronal por pagar', _ln(_lnNom, '2.1.3.11', 'haber'), 60);
+ok('el banco paga el neto', _ln(_lnNom, '1.1.1.03', 'haber'), 3335);
+ok('Debe = Haber', Math.round(_lnNom.reduce(function (s, l) { return s + l.debe - l.haber; }, 0) * 100), 0);
+var _lnOtras = lineasAsientoNomina([Object.assign({}, _pagosNom[0], { dedOtras: 50 })], _tasasNom);
+ok('caja de ahorro y préstamos a 2.1.5.01 (no a la cuenta de grupo)', _ln(_lnOtras, '2.1.5.01', 'haber'), 50);
+ok('sin una línea a la cuenta de grupo 2.1.5', /'2\.1\.5 · /.test(_nom), false);
+var _contabNom = (_nom.match(/async function contabilizarNomina[\s\S]*?\n    window\.__contabilizarNomina/) || [''])[0];
+ok('el asiento va con la fecha del fin del período', /__postAsiento\([^;]*fechaAsiento\)/.test(_contabNom), true);
+ok('la referencia es estable por frecuencia y período', /'NOM-' \+ freq \+ '-' \+ isoDe\(rango\.ini\)/.test(_contabNom), true);
+ok('contabilizar de nuevo busca el asiento anterior por su referencia', /from\('asientos'\)\.select\('id, numero'\)[\s\S]{0,80}eq\('referencia', ref\)/.test(_contabNom), true);
+ok('el anterior se borra DESPUÉS de guardar el nuevo (si el nuevo falla, el viejo queda)',
+  /__postAsiento\([\s\S]{0,400}from\('asientos'\)\.delete\(\)\.in\('id', previo\.map/.test(_contabNom), true);
+ok('una nota de crédito a cuenta de activo no abre una ficha nueva', /slice\(0, 2\) !== 'NC' && window\.__esCuentaActivoFijo/.test(_appjs), true);
+ok('anular la compra de un activo depreciado se niega', /en vez de anular la factura/.test(_appjs), true);
+ok('calcPago devuelve el salario normal', /salarioNormal, asigSalarial, asig, neto/.test(_nom), true);
+/* Los activos fijos nacen de su compra; la depreciación y la baja las hace la
+   base (sql/contabilidad_07_activos.sql). */
+bloque('Activos fijos');
+ok('una compra a una cuenta de activo fijo abre su ficha', /__esCuentaActivoFijo\(_ctaAF\)[\s\S]{0,400}__activoDeCompra\(/.test(_appjs), true);
+ok('la ficha se guarda enlazada a su factura', /libro_fiscal_id: pref\.libro_fiscal_id/.test(_conta), true);
+ok('la ficha pide valor residual, vida útil y método', /name: 'residual'[\s\S]{0,200}name: 'vida'[\s\S]{0,200}name: 'metodo'/.test(_conta), true);
+ok('el registro manual pide lo ya depreciado', /Depreciación acumulada a la fecha/.test(_conta), true);
+ok('el botón de depreciación lo hace la base', /rpc\('contab_depreciar'/.test(_conta), true);
+ok('el navegador ya no escribe el asiento de depreciación', /referencia: 'DEPR'/.test(_conta), false);
+ok('«Cerrar mes» deprecia antes de liquidar',
+  _appjs.indexOf("rpc('contab_depreciar'") > _appjs.indexOf("rpc('contab_filas_sin_asiento'")
+  && _appjs.indexOf("rpc('contab_depreciar'") < _appjs.indexOf("'F30-'", _appjs.indexOf("rpc('contab_filas_sin_asiento'")), true);
+ok('hay venta y desincorporación con su asiento', /rpc\('contab_baja_activo'/.test(_conta), true);
+ok('una baja por error se puede anular', /rpc\('contab_anular_baja'/.test(_conta), true);
+ok('editar la compra actualiza su ficha', /actualizada · Bs[\s\S]{0,300}__activoDeCompra\(/.test(_appjs), true);
+ok('no se borra la compra de un activo ya depreciado', /ya se depreció o se dio de baja/.test(_appjs), true);
+ok('sin las cifras de ejemplo de la depreciación', /148\.750|#0314|Detalle de depreciación · Mayo/.test(_appjs + _conta), false);
+ok('la tabla de activos tiene la columna de acciones', /colspan="11"[^>]*>Sin activos registrados/.test(_html), true);
+
 console.log('\n' + (fallas ? 'HAY ' + fallas + ' FALLA(S) de ' + total : 'TODO OK · ' + total + ' comprobaciones'));
 process.exit(fallas ? 1 : 0);

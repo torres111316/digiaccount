@@ -5466,6 +5466,34 @@
         return { name: 'cuentaContable', label: 'Cuenta contable (costo o gasto · la propone el proveedor)', col: 2, type: 'select', value: valor || '',
           options: [{ value: '', label: 'Compra de Mercancía (sin clasificar)' }].concat(ctas.map((c) => ({ value: c.codigo, label: c.codigo + ' · ' + c.nombre }))) };
       });
+      /* Una compra a una cuenta de activo fijo (uso 'activo_fijo') tiene su
+         ficha en activos_fijos, enlazada por libro_fiscal_id. Al registrarla
+         se pide la ficha; al editarla, la ficha sigue a la factura (costo y
+         fecha) mientras no se haya depreciado. Ya depreciada, no se toca: se
+         avisa. `fila`: { id, cuenta, nombre, fechaISO, costo }. */
+      window.__esCuentaActivoFijo = window.__esCuentaActivoFijo || ((cta) => !!cta
+        && (window.__cuentasClasificables ? window.__cuentasClasificables() : []).some((c) => c.codigo === cta && c.uso === 'activo_fijo'));
+      window.__activoDeCompra = window.__activoDeCompra || (async (fila) => {
+        if (!window.sb || !fila || !fila.id) return;
+        const { data: afs } = await window.sb.from('activos_fijos').select('id, codigo, depreciacion_acum, estado').eq('libro_fiscal_id', fila.id);
+        const af = afs && afs[0];
+        const esActivo = window.__esCuentaActivoFijo(fila.cuenta);
+        if (af) {
+          const tocado = Number(af.depreciacion_acum) > 0 || af.estado !== 'en uso';
+          if (tocado) { toast('El activo ' + af.codigo + ' de esta compra ya tiene depreciación o baja: su ficha no cambia con la factura.', 'info'); return; }
+          const { error } = esActivo
+            ? await window.sb.from('activos_fijos').update({ costo: fila.costo, fecha_adq: fila.fechaISO.split('-').reverse().join('/') }).eq('id', af.id)
+            : await window.sb.from('activos_fijos').delete().eq('id', af.id);
+          if (error) toast('No se pudo actualizar la ficha del activo ' + af.codigo + ': ' + error.message, 'error');
+          else if (!esActivo) toast('La compra ya no es un activo fijo: se quitó la ficha ' + af.codigo, 'info');
+          if (window.cargarActivosFijos) window.cargarActivosFijos();
+          return;
+        }
+        if (esActivo && window.__abrirFichaActivo) {
+          window.__abrirFichaActivo({ libro_fiscal_id: fila.id, nombre: fila.nombre, fecha: fila.fechaISO, costo: fila.costo,
+            categoria: window.__categoriaDeCuentaActivo ? window.__categoriaDeCuentaActivo(fila.cuenta) : 'Equipos' });
+        }
+      });
       const cuentaDeProveedor = window.__cuentaDeProveedor;
       const campoCuentaCompra = window.__campoCuentaCompra;
       // VENTAS: sugiere el siguiente N° de factura/control consultando el máximo real en la BD.
@@ -6028,6 +6056,13 @@
             if (window.cargarTesoreria) window.cargarTesoreria();   // refresca CxP/CxC (panel de Compras/Ventas)
             if (window.cargarDashboard) window.cargarDashboard();   // y los KPIs del Dashboard
             toast(esAnulada ? ('N° ' + v.numFactura + ' reservado como ANULADO') : ((esCompra ? 'Compra' : 'Venta') + ' registrada en el libro · Bs ' + fmtF(total)), 'success');
+            const _ctaAF = esCompra ? (window.__cuentaContableAGuardar(v.cuentaContable, v.nombre, v.rif) || window.__cuentaDeProveedor(v.nombre, v.rif)) : '';
+            if (!esAnulada && guardado && guardado[0] && (v.tipoDoc || '').slice(0, 2) !== 'NC' && window.__esCuentaActivoFijo(_ctaAF)) {
+              const cancelarAF = document.getElementById('fmCancel');
+              if (cancelarAF) cancelarAF.click();
+              setTimeout(() => window.__activoDeCompra({ id: guardado[0].id, cuenta: _ctaAF, nombre: v.nombre, fechaISO: v.fecha,
+                costo: Math.round(((Number(base) || 0) + (Number(exento) || 0)) * 100) / 100 }), 150);
+            }
             /* El formulario se limpia AQUÍ, no al final.
 
                Debajo vienen el asiento contable, la reposición de inventario y
@@ -7030,6 +7065,11 @@
             if (window.cargarTesoreria) window.cargarTesoreria();
             if (window.cargarDashboard) window.cargarDashboard();
             toast((esCompra ? 'Compra' : 'Venta') + ' actualizada · Bs ' + fmtF(total), 'success');
+            if (esCompra) {
+              const pf = fechaOk.split('/');
+              window.__activoDeCompra({ id: id, cuenta: window.__cuentaContableAGuardar(v.cuentaContable, v.nombre, v.rif) || window.__cuentaDeProveedor(v.nombre, v.rif),
+                nombre: v.nombre, fechaISO: '20' + pf[2] + '-' + pf[1] + '-' + pf[0], costo: Math.round(((Number(base) || 0) + (Number(exento) || 0)) * 100) / 100 });
+            }
           });
         },
         extraLabel: 'Anular',
@@ -7041,9 +7081,16 @@
             toast('Este documento tiene ' + (esCompra ? 'pagos' : 'cobros') + ' registrados. Elimínalos primero en Tesorería (X del movimiento).', 'error');
             return;
           }
+          const { data: afsAn } = await window.sb.from('activos_fijos').select('id, codigo, depreciacion_acum, estado').eq('libro_fiscal_id', id);
+          const afAn = afsAn && afsAn[0];
+          if (afAn && (Number(afAn.depreciacion_acum) > 0 || afAn.estado !== 'en uso')) {
+            toast('Esta compra es el activo ' + afAn.codigo + ', que ya se depreció o se dio de baja. Dalo de baja en Contabilidad → Activos fijos en vez de anular la factura.', 'error');
+            return;
+          }
           if (!window.confirm('¿ANULAR el N° ' + (r.numero_factura || '') + '?\n\nEl número queda RESERVADO en el correlativo (no se borra ni se reutiliza), pero deja de sumar en el libro y en la Forma 30. Su asiento contable se quita con él.')) return;
           window.sb.from('libro_fiscal').update({ tercero_nombre: 'ANULADA', tercero_rif: '', exento: 0, base: 0, iva: 0, igtf: 0, total: 0 }).eq('id', id).then(({ error }) => {
             if (error) { toast('No se pudo anular: ' + error.message, 'error'); return; }
+            if (afAn) window.sb.from('activos_fijos').delete().eq('id', afAn.id).then(() => { if (window.cargarActivosFijos) window.cargarActivosFijos(); });
             // El asiento lo crea, actualiza o borra la base (sql/contabilidad_04_motor.sql):
             // aquí solo se recarga el Libro Diario.
             if (window.cargarAsientos) window.cargarAsientos();
@@ -7065,9 +7112,16 @@
             toast('Este documento tiene ' + (esCompra ? 'pagos' : 'cobros') + ' registrados. Elimínalos primero en Tesorería (X del movimiento).', 'error');
             return;
           }
+          const { data: afs } = await window.sb.from('activos_fijos').select('id, codigo, depreciacion_acum, estado').eq('libro_fiscal_id', id);
+          const afDel = afs && afs[0];
+          if (afDel && (Number(afDel.depreciacion_acum) > 0 || afDel.estado !== 'en uso')) {
+            toast('Esta compra es el activo ' + afDel.codigo + ', que ya se depreció o se dio de baja. Dalo de baja en Contabilidad → Activos fijos en vez de borrar la factura.', 'error');
+            return;
+          }
           if (!window.confirm('¿Eliminar este registro del libro?\n\nSu asiento contable se elimina con él. Si esta compra repuso inventario, ajusta el stock manualmente en Inventario.')) return;
           window.sb.from('libro_fiscal').delete().eq('id', id).then(({ error }) => {
             if (error) { toast('No se pudo eliminar: ' + error.message, 'error'); return; }
+            if (afDel) window.sb.from('activos_fijos').delete().eq('id', afDel.id).then(() => { if (window.cargarActivosFijos) window.cargarActivosFijos(); });
             // El asiento lo crea, actualiza o borra la base (sql/contabilidad_04_motor.sql):
             // aquí solo se recarga el Libro Diario.
             if (window.cargarAsientos) window.cargarAsientos();
@@ -7332,6 +7386,10 @@
         toast(_perLabel() + ' tiene ' + sinAsi + ' factura(s) o retención(es) sin asiento contable: se cargaron antes del motor contable. Ese mes se reconstruye antes de cerrarlo.', 'error');
         return;
       }
+      // La depreciación del mes entra antes de la liquidación (sql/contabilidad_07_activos.sql).
+      const { error: eDep } = await window.sb.rpc('contab_depreciar', { p_empresa: empId, p_periodo: perDecl });
+      if (eDep) { toast('No se pudo contabilizar la depreciación del mes: ' + eDep.message, 'error'); return; }
+      if (window.cargarActivosFijos) window.cargarActivosFijos();
       // ¿Ya existen los asientos del mes? (meses migrados o cierres previos → solo bloquear)
       const { data: yaLV } = await window.sb.from('asientos').select('id').eq('empresa_id', empId).eq('referencia', 'LV-' + mm + '/' + anio).limit(1);
       // Del PERÍODO DE DECLARACIÓN que se cierra (no por fecha de factura)
@@ -7870,29 +7928,6 @@
     const view = document.getElementById('view-contabilidad');
     if (!view) return;
     const toast = (m, t) => { if (window.toast) window.toast(m, t); };
-
-    // Ver detalle de la cédula de depreciación
-    const deprView = document.getElementById('deprViewBtn');
-    if (deprView) deprView.addEventListener('click', () => {
-      window.openFormModal && window.openFormModal({
-        title: 'Detalle de depreciación · Mayo 2026', saveLabel: 'Cerrar',
-        fields: [{ name: 'x', label: ' ', col: 2, type: 'static', html: '<div style="font-size:12.5px;line-height:1.8;color:var(--fg-body);">'
-          + 'Vehículos · <strong>Bs 70.000,00</strong><br>Inmuebles · <strong>Bs 12.500,00</strong><br>Maquinaria · <strong>Bs 9.833,00</strong><br>Equipos · <strong>Bs 45.250,00</strong><br>Mobiliario · <strong>Bs 11.167,00</strong>'
-          + '<hr style="border:0;border-top:1px solid var(--border-default);margin:9px 0;">Total del mes · <strong style="color:var(--da-cyan-700);">Bs 148.750,00</strong> · método de línea recta sobre 24 activos.</div>' }],
-        onSave: () => {},
-      });
-    });
-
-    // Contabilizar el asiento de depreciación
-    const deprPost = document.getElementById('deprPostBtn');
-    if (deprPost) deprPost.addEventListener('click', () => {
-      const num = document.getElementById('deprAsientoNum');
-      if (num) num.textContent = '#0314';
-      deprPost.disabled = true;
-      deprPost.innerHTML = '<i data-lucide="check"></i> Contabilizado';
-      if (window.lucide) window.lucide.createIcons();
-      toast('Asiento de depreciación contabilizado · Bs 148.750,00', 'success');
-    });
 
     // Filtros por categoría en Activos Fijos
     const activosPane = view.querySelector('.conta-tab[data-tab="activos"]');

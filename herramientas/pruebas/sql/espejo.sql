@@ -11,6 +11,7 @@
 create role authenticated;
 create function public.soy_superadmin() returns boolean language sql as 'select false';
 create function public.mi_cuenta_id() returns uuid language sql as 'select null::uuid';
+create function public.mis_empresas() returns setof uuid language plpgsql as 'begin return query select id from public.empresas; end';
 
 create table public.cuentas (
   id uuid primary key default gen_random_uuid(),
@@ -125,6 +126,22 @@ create table public.declaraciones (
   nota text,
   creado_en timestamptz not null default now(),
   unique (empresa_id, impuesto, numero)
+);
+
+-- Como en Supabase: fecha_adq es texto dd/mm/aaaa y vida_util, años.
+create table public.activos_fijos (
+  id uuid primary key default gen_random_uuid(),
+  cuenta_id uuid,
+  empresa_id uuid,
+  codigo text,
+  nombre text,
+  categoria text,
+  fecha_adq text,
+  costo numeric default 0,
+  vida_util integer default 5,
+  metodo text default 'Línea recta',
+  depreciacion_acum numeric default 0,
+  creado_en timestamptz default now()
 );
 
 create table public.asientos (
