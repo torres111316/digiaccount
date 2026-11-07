@@ -1098,10 +1098,13 @@
           { name: 'tipo', label: 'Impuesto', type: 'select', options: ['IVA', 'ISLR'] },
           { name: 'concepto', label: 'Concepto de retención (ISLR)', col: 2, type: 'select', options: CONCEPTOS_ISLR.map((c) => c.act) },
           { name: 'sujeto', label: 'Tipo de sujeto (ISLR)', type: 'select', options: [{ value: 'PNR', label: 'PN Residente' }, { value: 'PNNR', label: 'PN No Residente' }, { value: 'PJD', label: 'PJ Domiciliada' }, { value: 'PJND', label: 'PJ No Domiciliada' }] },
-          // Arranca en la fecha de la factura que se retiene, no en la de hoy:
-          // se puede cambiar, pero el punto de partida es la operación.
+          /* Arranca en HOY, se abra desde donde se abra. Antes, abierto desde
+             la factura, arrancaba en la fecha de la factura, y esa fecha movía
+             el período: una retención de un Z del 25/09 que se registraba en
+             octubre se guardaba en septiembre (RADIAN, 07/11/2026). La fecha
+             de la factura sigue a un clic, en los atajos de abajo. */
           { name: 'fecha', label: 'Fecha de emisión del comprobante — cuándo practicas la retención, no la de la factura',
-            type: 'date', value: pre.fechaFactura || window.__hoyISO() },
+            type: 'date', value: window.__hoyISO() },
           /* EL PERÍODO SIGUE AL COMPROBANTE, NO A LA FACTURA.
 
              Aquí decía lo contrario —«sigue a la factura»— y era un error de
@@ -1154,7 +1157,7 @@
                una retención sin quincena no entra en ningún TXT. */
             value: (pre.quincena === 1 || pre.quincena === 2)
               ? String(pre.quincena)
-              : _quincenaDeISO(pre.fechaFactura || window.__hoyISO()) },
+              : _quincenaDeISO(window.__hoyISO()) },
         ] : []).concat([
           { name: 'nombre', label: 'Tercero (escribe iniciales y elige)', col: 2, type: 'datalist', options: terceros.map((t) => t.nombre), placeholder: 'Proveedor o cliente…', value: pre.nombre || '' },
           { name: 'rif', label: 'RIF (mayúscula, sin guiones)', upper: true, placeholder: 'J123456789', value: pre.rif || '' },
@@ -1214,10 +1217,13 @@
                 + 'el mes que elijas aquí es para ordenar tu trabajo.';
             } else if (delComp && puesto && delComp !== puesto) {
               alerta = true;
+              const esSuf = !/practicada/i.test((body.querySelector('[data-name="direccion"]') || {}).value || '');
               msg = 'El comprobante dice <strong>' + esc(nombreMes(delComp)) + '</strong> '
                 + '(empieza por ' + esc(String(_cmp.value).replace(/[^0-9]/g, '').slice(0, 6)) + ') '
-                + 'y elegiste ' + esc(nombreMes(puesto)) + '. '
-                + 'El IVA retenido se descuenta en el período del comprobante — revísalo.';
+                + 'y se va a registrar en <strong>' + esc(nombreMes(puesto)) + '</strong>. '
+                + (esSuf
+                  ? 'Si el comprobante te llegó tarde, está bien: se descuenta en el mes en que lo recibiste.'
+                  : 'Una retención que practicas se declara en el mes del comprobante — revísalo.');
             } else if (delComp) {
               msg = 'Período tomado del <strong>número</strong> del comprobante: <strong>' + esc(nombreMes(delComp)) + '</strong>. '
                 + 'Aunque la factura sea de un mes anterior, la retención se descuenta aquí.';
@@ -1479,25 +1485,13 @@
             const fac = facturas.find((f) => (f.numero_factura || '').trim().toLowerCase() === nf);
             const esSufrida = !/practicada/i.test((body.querySelector('[data-name="direccion"]') || {}).value || '');
             const perFac = fac && fac.periodo ? fac.periodo : null;
-            const fechaComp = (body.querySelector('[data-name="fecha"]') || {}).value || '';
-            const perComp = fechaComp.length >= 7 ? fechaComp.slice(0, 7) : null;
 
             if (!perFac) { perPista.innerHTML = ''; return; }
 
-            // Se propone el período de la FACTURA, que es lo que se declara.
-            if ([...perEl.options].some((o) => o.value === perFac)) perEl.value = perFac;
-
-            let txt = 'La factura es de <strong>' + esc(_mesTxt(perFac)) + '</strong>';
-            if (perComp && perComp !== perFac) {
-              txt += ' y el comprobante es de <strong>' + esc(_mesTxt(perComp)) + '</strong>. '
-                + 'Se declara con la factura.';
-              if (esSufrida) {
-                txt += ' Tu cliente la declarará como <strong>practicada en ' + esc(_mesTxt(perComp))
-                  + '</strong>: son períodos distintos y ambos son correctos.';
-              }
-            } else {
-              txt += '.';
-            }
+            // Solo informa: el período lo deciden el comprobante o quien registra, nunca la factura.
+            let txt = 'La factura es de <strong>' + esc(_mesTxt(perFac)) + '</strong>. '
+              + 'La retención no va con la factura: se descuenta en el mes del comprobante'
+              + (esSufrida ? ', o en el mes en que lo recibiste si te llegó tarde.' : '.');
             perPista.innerHTML = txt;
           };
           if (factEl) {
@@ -1865,6 +1859,12 @@
           { name: 'concepto', label: 'Concepto de retención (ISLR)', col: 2, type: 'select', options: CONCEPTOS_ISLR.map((c) => c.act), value: r.concepto || CONCEPTOS_ISLR[0].act },
           { name: 'sujeto', label: 'Tipo de sujeto (ISLR)', type: 'select', options: [{ value: 'PNR', label: 'PN Residente' }, { value: 'PNNR', label: 'PN No Residente' }, { value: 'PJD', label: 'PJ Domiciliada' }, { value: 'PJND', label: 'PJ No Domiciliada' }], value: r.sujeto || 'PNR' },
           { name: 'fecha', label: 'Fecha (dd/mm/aa)', value: r.fecha || '', placeholder: '27/08/26' },
+          /* El período se ve y se elige también al editar. Antes salía siempre
+             de la fecha, y una sufrida que llegó tarde (comprobante del 25/09,
+             recibido en octubre) no se podía dejar en octubre. */
+          { name: 'periodo', label: 'Período en que se descuenta', type: 'select',
+            options: (function () { const o = _opcionesPeriodoRet(); if (r.periodo && !o.some((x) => x.value === r.periodo)) o.push({ value: r.periodo, label: r.periodo }); return o; })(),
+            value: r.periodo || '' },
           { name: 'nombre', label: 'Tercero', col: 2, value: r.tercero_nombre || '' },
           { name: 'rif', label: 'RIF', upper: true, value: r.tercero_rif || '' },
           { name: 'factura', label: 'Factura afectada', value: r.factura || '' },
@@ -1933,7 +1933,8 @@
           const pf = String(fechaOk || '').split('/');        // dd/mm/aa
           const periodoFecha = pf.length === 3 ? ('20' + pf[2].slice(-2) + '-' + pf[1]) : null;
           let compOk = (v.comprobante || '').trim();
-          const periodoOk = periodoFecha;
+          // El que se elija; si no hay, el de la fecha (como antes).
+          const periodoOk = /^\d{4}-\d{2}$/.test(v.periodo || '') ? v.periodo : periodoFecha;
           if (!esIslr) {
             /* El numero del comprobante se revisa TAMBIEN al editar: antes no
                se miraba, y se podia dejar uno de 13 digitos o con letras que
@@ -1948,7 +1949,7 @@
             /* Si el comprobante no empieza por el año y mes de la retención
                se AVISA y se guarda igual: el número puede venir así del
                documento del proveedor, y quien declara es quien sabe. */
-            const espera = periodoOk ? periodoOk.replace('-', '') : '';
+            const espera = periodoFecha ? periodoFecha.replace('-', '') : '';
             if (espera && rev.valor.slice(0, 6) !== espera && window.toast) {
               window.toast('Ojo: la retención es del ' + fechaOk + ' y su comprobante empieza por '
                 + rev.valor.slice(0, 6) + ', no por ' + espera + '. Se guardó igual; revísalo antes de declarar.', 'warn');
