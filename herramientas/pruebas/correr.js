@@ -1260,21 +1260,24 @@ ok('no se borra la compra de un activo ya depreciado', /ya se depreció o se dio
 ok('sin las cifras de ejemplo de la depreciación', /148\.750|#0314|Detalle de depreciación · Mayo/.test(_appjs + _conta), false);
 ok('la tabla de activos tiene la columna de acciones', /colspan="11"[^>]*>Sin activos registrados/.test(_html), true);
 
-/* RADIAN, 07/11/2026: la retención sufrida de un Z del 25/09 que Luis
+/* RADIAN, 07/11/2026: la retención SUFRIDA de un Z del 25/09 que Luis
    registraba en octubre se guardó en septiembre. Abierto desde la factura,
    el cuadro arrancaba con la fecha de la factura (y esa fecha movía el
    período), y además la factura volvía a poner su mes aunque se hubiera
-   elegido otro a mano. */
-bloque('Retenciones: el período lo decide quien registra');
-ok('la fecha del comprobante arranca en hoy, se abra desde donde se abra',
-  /name: 'fecha', label: 'Fecha de emisión del comprobante[^\n]*\n\s*type: 'date', value: window\.__hoyISO\(\) \}/.test(_ret), true);
-ok('la quincena tampoco sale de la fecha de la factura', /_quincenaDeISO\(pre\.fechaFactura/.test(_ret), false);
+   elegido otro a mano. Solo en las sufridas: las practicadas siguen como
+   estaban (Luis: «con las practicadas es otra cosa y ahí está bien»). */
+bloque('Retenciones sufridas: el período lo decide quien registra');
+ok('sufrida: la fecha del comprobante arranca en hoy, se abra desde donde se abra',
+  /value: \(_dirInicial === 'sufrida' \? null : pre\.fechaFactura\) \|\| window\.__hoyISO\(\) \}/.test(_ret), true);
+ok('sufrida: la quincena tampoco sale de la fecha de la factura',
+  /_quincenaDeISO\(\(_dirInicial === 'sufrida' \? null : pre\.fechaFactura\)/.test(_ret), true);
 ok('la fecha de la factura sigue a un clic', /Fecha de la factura · /.test(_ret), true);
-ok('la factura ya no cambia el período elegido', /perEl\.value = perFac/.test(_ret), false);
+ok('sufrida: la factura no cambia el período (solo informa y sale)',
+  /if \(esSufrida\) \{[\s\S]{0,400}return;\s*\}\s*\/\/ PRACTICADA: como siempre[\s\S]{0,200}perEl\.value = perFac/.test(_ret), true);
 ok('el comprobante no pisa un período elegido a mano', /if \(_perAMano \|\| !_selPer\)/.test(_ret), true);
-ok('ya no dice que la retención se declara con la factura', /Se declara con la factura/.test(_ret), false);
-ok('al editar también se elige el período', /name: 'periodo', label: 'Período en que se descuenta', type: 'select',\s*\n\s*options: \(function/.test(_ret), true);
-ok('al editar se guarda el período elegido', /const periodoOk = \/\^\\d\{4\}-\\d\{2\}\$\/\.test\(v\.periodo/.test(_ret), true);
+ok('sufrida: al editar se elige el período', /r\.direccion !== 'practicada' \? \[\{ name: 'periodo'/.test(_ret), true);
+ok('al editar, el período elegido cuenta solo en una sufrida',
+  /const periodoOk = dir === 'sufrida' && \/\^\\d\{4\}-\\d\{2\}\$\/\.test\(v\.periodo/.test(_ret), true);
 
 console.log('\n' + (fallas ? 'HAY ' + fallas + ' FALLA(S) de ' + total : 'TODO OK · ' + total + ' comprobaciones'));
 process.exit(fallas ? 1 : 0);
