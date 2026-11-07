@@ -1924,7 +1924,11 @@
             <div class="comp-controls-body">
               <div class="comp-field">
                 <span class="lbl">Período / Quincena</span>
-                <div class="select-box" id="igtfPerSel" data-perfiscal="quincena">—</div>
+                <div class="select-box" id="igtfPerSel" data-perfiscal="mes">—</div>
+                <div class="date-range" id="igtfQuinSel" style="margin-top:6px;display:flex;">
+                  <button type="button" data-igtf-q="1" style="flex:1;">1ra quincena (01–15)</button>
+                  <button type="button" data-igtf-q="2" style="flex:1;">2da quincena (16–fin)</button>
+                </div>
               </div>
               <div class="comp-field">
                 <span class="lbl">Tipo de declaración</span>
@@ -1976,7 +1980,7 @@
               <tbody>
                 <tr><td class="item">1</td><td class="concepto">Pagos en moneda extranjera, criptomonedas o criptoactivos</td><td class="num" id="igtf3BaseDoc">0,00</td><td class="cod" id="igtf3OpsDoc">0</td><td class="cod">3%</td><td class="num" id="igtf3MontoDoc">0,00</td></tr>
                 <tr><td class="item">2</td><td class="concepto">Transacciones / débitos en bolívares</td><td class="num" id="igtf2BaseDoc">0,00</td><td class="cod" id="igtf2OpsDoc">0</td><td class="cod">2%</td><td class="num" id="igtf2MontoDoc">0,00</td></tr>
-                <tr class="total"><td class="item">III</td><td class="concepto">Total IGTF a pagar del período</td><td class="num"></td><td class="cod"></td><td class="cod"></td><td class="num" id="igtfTotalDoc">0,00</td></tr>
+                <tr class="total"><td class="item">III</td><td class="concepto">Total IGTF a pagar de la quincena</td><td class="num"></td><td class="cod"></td><td class="cod"></td><td class="num" id="igtfTotalDoc">0,00</td></tr>
               </tbody>
             </table>
 

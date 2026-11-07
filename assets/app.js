@@ -919,12 +919,15 @@
 
     const recargar = () => { cargarDeclaraciones(); if (window.cargarAsientos) window.cargarAsientos(); };
 
+    /* `d` con id = editar esa declaración; sin id = registrar una nueva con
+       esos datos ya puestos (lo usa la Forma 21 del IGTF). */
     function formDeclaracion(d) {
+      const editando = !!(d && d.id);
       const emp = window.__EMPRESA_ACTIVA;
       if (!emp || !emp.id) { toast('Selecciona una empresa.', 'error'); return; }
       const lista = periodos(d ? d.periodo : null);
       window.openFormModal({
-        title: d ? 'Editar declaración' : 'Registrar declaración',
+        title: editando ? 'Editar declaración' : 'Registrar declaración',
         saveLabel: 'Guardar',
         fields: [
           { name: 'impuesto', label: 'Impuesto', type: 'select', value: d ? d.impuesto : 'IVA', options: IMPUESTOS.map((i) => ({ value: i.v, label: i.n })) },
@@ -951,7 +954,7 @@
             quincena: impDe(v.impuesto).q && v.quincena ? parseInt(v.quincena, 10) : null,
             tipo: v.tipo, numero: numero, fecha: v.fecha || null, monto: monto, a_pagar: aPagar,
           };
-          const { error } = d
+          const { error } = editando
             ? await window.sb.from('declaraciones').update(cambios).eq('id', d.id)
             : await window.sb.from('declaraciones').insert(Object.assign({ cuenta_id: window.__CUENTA_ID, empresa_id: emp.id }, cambios));
           if (error) {
@@ -959,7 +962,7 @@
             if (error.code === '23514') return 'Lo que se paga no puede ser mayor que el impuesto declarado.';
             return 'No se pudo guardar: ' + error.message;
           }
-          toast(d ? 'Declaración actualizada' : 'Declaración registrada · su asiento se generó solo', 'success');
+          toast(editando ? 'Declaración actualizada' : 'Declaración registrada', 'success');
           recargar();
           return undefined;
         },
@@ -1015,6 +1018,7 @@
 
     const btn = document.getElementById('declNuevaBtn');
     if (btn) btn.addEventListener('click', () => formDeclaracion(null));
+    window.__registrarDeclaracion = (pre) => formDeclaracion(pre || null);
   })();
 
   /* Las RETENCIONES viven ahora en assets/retenciones.js — se saco de aqui
@@ -1425,19 +1429,48 @@
     if (!view) return;
     const fmt = (n) => Number(n || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const $ = (id) => document.getElementById(id);
+    /* LA FORMA 21 ES DE UNA QUINCENA.
+       El documento sumaba el mes entero, así que al declarar la 2da
+       quincena volvía a salir a pagar lo que ya se pagó en la 1ra (RADIAN,
+       octubre 2026: Bs 130,86 del Z del 06/10). Tiene su propio selector
+       porque la Forma 21 va por quincena aunque el IVA de la empresa sea
+       mensual. Sin elegir: un mes ya pasado arranca en la 2da; el mes en
+       curso, en la 1ra. */
+    let _igtfQ = null;
+    const _igtf2 = { 1: { base: 0, ops: 0 }, 2: { base: 0, ops: 0 } };   // el 2% manual, aparte por quincena
+    function quincenaIgtf() {
+      if (_igtfQ) return _igtfQ;
+      const p = window.__fiscalPer || {};
+      const h = (window.__hoyISO ? window.__hoyISO() : '').split('-');
+      const mirado = '20' + p.aa + '-' + p.mm, hoy = h[0] + '-' + h[1];
+      return p.mm && mirado < hoy ? 2 : 1;
+    }
+    let _igtfMes = null;
     function render() {
-      const v = window.__IGTF_VENTAS || { base: 0, ops: 0, monto: 0 };
-      const base2 = parseFloat(($('igtf2BaseInput') || {}).value) || 0;
-      const ops2 = parseInt(($('igtf2OpsInput') || {}).value, 10) || 0;
-      const monto2 = base2 * 0.02;
-      const total = (Number(v.monto) || 0) + monto2;
+      // Otro mes: se vuelve a la quincena por defecto y el 2% manual arranca en cero.
+      const pm = window.__fiscalPer || {}, claveMes = pm.aa + '-' + pm.mm;
+      if (claveMes !== _igtfMes) { _igtfMes = claveMes; _igtfQ = null; _igtf2[1] = { base: 0, ops: 0 }; _igtf2[2] = { base: 0, ops: 0 }; }
+      const q = quincenaIgtf();
+      const mes = window.__IGTF_VENTAS || { base: 0, ops: 0, monto: 0 };
+      const v = (q === 1 ? mes.q1 : mes.q2) || { base: 0, ops: 0, monto: 0 };
+      document.querySelectorAll('#igtfQuinSel [data-igtf-q]').forEach((b) => {
+        if (+b.dataset.igtfQ === q) b.dataset.active = 'true'; else b.removeAttribute('data-active');
+      });
+      const in2 = $('igtf2BaseInput'), op2 = $('igtf2OpsInput');
+      if (in2 && document.activeElement !== in2) in2.value = String(_igtf2[q].base || 0);
+      if (op2 && document.activeElement !== op2) op2.value = String(_igtf2[q].ops || 0);
+      const base2 = _igtf2[q].base, ops2 = _igtf2[q].ops;
+      const monto2 = Math.round(base2 * 0.02 * 100) / 100;
+      const total = Math.round(((Number(v.monto) || 0) + monto2) * 100) / 100;
+      window.__IGTF_QUINCENA = { q: q, monto: total };
       const set = (id, t) => { const e = $(id); if (e) e.textContent = t; };
       set('igtf3BaseDoc', fmt(v.base)); set('igtf3OpsDoc', String(v.ops || 0)); set('igtf3MontoDoc', fmt(v.monto)); set('igtf3MontoMini', fmt(v.monto));
       set('igtf2BaseDoc', fmt(base2)); set('igtf2OpsDoc', String(ops2)); set('igtf2MontoDoc', fmt(monto2)); set('igtf2MontoMini', fmt(monto2));
       set('igtfTotalDoc', fmt(total)); set('igtfTotalMini', fmt(total));
       const emp = window.__EMPRESA_ACTIVA || {};
       set('igtfDocCo', emp.n || 'Empresa'); set('igtfDocRif', 'RIF ' + (emp.rif || '—'));
-      const perEl = $('igtfPerSel'); if (perEl) set('igtfDocPeriodo', (perEl.textContent || '').trim());
+      const perEl = $('igtfPerSel');
+      if (perEl) set('igtfDocPeriodo', (perEl.textContent || '').trim().replace(/\s*\(.*\)$/, '') + ' · ' + (q === 1 ? '1ra quincena (01–15)' : '2da quincena (16 al último día)'));
 
       /* La Forma 21 se presenta DOS VECES AL MES, aunque el IVA de la
          empresa sea mensual. Mostrar solo el total del mes obliga a partirlo
@@ -1456,18 +1489,23 @@
           + '<span><strong>' + rot + '</strong> <span style="color:var(--fg-muted);">' + dias + '</span></span>'
           + '<span style="color:var(--fg-muted);">' + (d.ops || 0) + ' oper. · base ' + fmt(d.base) + '</span>'
           + '<span class="mono"><strong>' + fmt(d.monto) + '</strong></span></div>';
-        const q1 = v.q1 || { ops: 0, monto: 0, base: 0 };
-        const q2 = v.q2 || { ops: 0, monto: 0, base: 0 };
+        const q1 = mes.q1 || { ops: 0, monto: 0, base: 0 };
+        const q2 = mes.q2 || { ops: 0, monto: 0, base: 0 };
         caja.innerHTML = '<div style="padding:8px 12px;background:var(--bg-subtle,var(--bg-surface));font-weight:600;">'
           + 'IGTF 3% por quincena <span style="font-weight:400;color:var(--fg-muted);">— la Forma 21 se presenta una por quincena</span></div>'
           + fila('1ra quincena', q1, '(01–15)')
           + fila('2da quincena', q2, '(16 al último día)')
-          + (Number(v.monto) > 0 ? '' : '<div style="padding:8px 12px;border-top:1px solid var(--border);color:var(--fg-muted);">'
+          + (Number(mes.monto) > 0 ? '' : '<div style="padding:8px 12px;border-top:1px solid var(--border);color:var(--fg-muted);">'
             + 'Sin cobros en divisas ni cripto en el período: las dos declaraciones van en cero.</div>');
       }
     }
     window.__renderIGTF = render;
-    ['igtf2BaseInput', 'igtf2OpsInput'].forEach((id) => { const e = $(id); if (e) e.addEventListener('input', render); });
+    ['igtf2BaseInput', 'igtf2OpsInput'].forEach((id) => { const e = $(id); if (e) e.addEventListener('input', () => {
+      const q = quincenaIgtf();
+      _igtf2[q] = { base: parseFloat(($('igtf2BaseInput') || {}).value) || 0, ops: parseInt(($('igtf2OpsInput') || {}).value, 10) || 0 };
+      render();
+    }); });
+    document.querySelectorAll('#igtfQuinSel [data-igtf-q]').forEach((b) => b.addEventListener('click', () => { _igtfQ = +b.dataset.igtfQ; render(); }));
     function imprimir() {
       const doc = $('igtfDoc'); if (!doc) return;
       let portal = $('printPortal');
@@ -1481,7 +1519,14 @@
     window.addEventListener('afterprint', () => { document.body.classList.remove('printing-comp'); const p = $('printPortal'); if (p) p.innerHTML = ''; });
     const wire = (id, fn) => { const b = $(id); if (b) b.addEventListener('click', fn); };
     wire('igtfPrintBtn', imprimir); wire('igtfPdfBtn', imprimir);
-    wire('igtfRegistrarBtn', () => { if (window.toast) window.toast('Declaración de IGTF (Forma 21) registrada · lista para transmitir al portal SENIAT', 'success'); });
+    /* Antes decía «registrada» sin guardar nada. Ahora abre «Declaraciones y
+       pagos» con la quincena ya puesta: falta el N° de planilla del portal. */
+    wire('igtfRegistrarBtn', () => {
+      const p = window.__fiscalPer || {};
+      if (!p.mm || !window.__registrarDeclaracion) { if (window.toast) window.toast('Elige primero el período.', 'error'); return; }
+      const iq = window.__IGTF_QUINCENA || { q: quincenaIgtf(), monto: 0 };
+      window.__registrarDeclaracion({ impuesto: 'IGTF', periodo: '20' + p.aa + '-' + p.mm, quincena: iq.q, tipo: 'ORIGINARIA', monto: iq.monto, a_pagar: iq.monto });
+    });
     render();
   })();
 

@@ -1279,5 +1279,18 @@ ok('sufrida: al editar se elige el período', /r\.direccion !== 'practicada' \? 
 ok('al editar, el período elegido cuenta solo en una sufrida',
   /const periodoOk = dir === 'sufrida' && \/\^\\d\{4\}-\\d\{2\}\$\/\.test\(v\.periodo/.test(_ret), true);
 
+/* RADIAN, 07/11/2026: la Forma 21 sumaba el mes entero y en la 2da quincena
+   de octubre volvía a salir a pagar el IGTF ya pagado en la 1ra. */
+bloque('IGTF: la Forma 21 es de una quincena');
+ok('la pestaña IGTF tiene su selector de quincena', /id="igtfQuinSel"[\s\S]{0,300}data-igtf-q="1"[\s\S]{0,200}data-igtf-q="2"/.test(_html), true);
+ok('el documento toma la quincena elegida, no el mes', /const v = \(q === 1 \? mes\.q1 : mes\.q2\)/.test(_appjs), true);
+ok('el total a pagar ya no suma el mes entero', /const total = \(Number\(v\.monto\) \|\| 0\) \+ monto2;/.test(_appjs), false);
+ok('el 2% manual va aparte por quincena', /_igtf2\[q\] = \{ base:/.test(_appjs), true);
+ok('al cambiar de mes se reinician la quincena y el 2%', /claveMes !== _igtfMes/.test(_appjs), true);
+ok('«Registrar y declarar» ya no dice que registró sin guardar nada', /Forma 21\) registrada · lista para transmitir/.test(_appjs), false);
+ok('«Registrar y declarar» abre la declaración con la quincena puesta',
+  /__registrarDeclaracion\(\{ impuesto: 'IGTF', periodo: '20' \+ p\.aa \+ '-' \+ p\.mm, quincena: iq\.q/.test(_appjs), true);
+ok('una declaración sin id se registra, no se edita', /const editando = !!\(d && d\.id\);[\s\S]{0,3000}const \{ error \} = editando/.test(_appjs), true);
+
 console.log('\n' + (fallas ? 'HAY ' + fallas + ' FALLA(S) de ' + total : 'TODO OK · ' + total + ' comprobaciones'));
 process.exit(fallas ? 1 : 0);
