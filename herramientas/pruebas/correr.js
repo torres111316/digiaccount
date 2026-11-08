@@ -19,7 +19,7 @@ const RAIZ = path.resolve(__dirname, '..', '..');
 /* Se busca en el nucleo y en la app: al partir el archivo, cada funcion
    puede estar en cualquiera de los dos y la prueba no tiene por que saberlo. */
 const leer = (f) => { try { return fs.readFileSync(path.join(RAIZ, 'assets', f), 'utf8'); } catch (e) { return ''; } };
-const app = ['core.js', 'app.js', 'retenciones.js', 'tesoreria.js', 'facturas.js', 'contabilidad.js', 'inventario.js', 'terceros.js', 'nomina.js', 'importador.js'].map(leer).join(String.fromCharCode(10));
+const app = ['core.js', 'app.js', 'retenciones.js', 'tesoreria.js', 'facturas.js', 'contabilidad.js', 'inventario.js', 'terceros.js', 'nomina.js', 'importador.js', 'conciliacion.js'].map(leer).join(String.fromCharCode(10));
 
 /* Se toma el código TAL COMO ESTÁ en app.js: si alguien cambia el cálculo,
    estas pruebas prueban el cálculo nuevo, no una copia que envejece. */
@@ -1375,6 +1375,48 @@ ok('la ficha no escribe la condición nueva antes de elegir desde cuándo', /con
 ok('la configuración tampoco', /if \(condCambia\) fila\.condicion_fiscal = condAntes;/.test(_appjs), true);
 ok('la condición se escribe al guardar desde cuándo rige, historial y ficha juntos', /window\.sb\.rpc\('cambiar_condicion_fiscal', \{ p_empresa: empId, p_desde: siempre \? null : v\.desde, p_condicion: nueva \}\)/.test(_appjs), true);
 ok('la ficha muestra el historial de la condición', /name: 'condHist'[^\n]*_historialCondicionHtml\(emp\.id\)/.test(_appjs), true);
+
+/* -- CONTABILIDAD · PLAN 4a ----------------------------------------------------
+   Sugerencias de la conciliación. Regla de Luis: para asignar una línea a una
+   factura o una declaración hace falta el monto Y otra coincidencia; con una
+   sola, solo se sugiere (no se aprueba en bloque). Con el código de verdad. */
+bloque('Conciliación: sugerencias con doble coincidencia');
+eval(tramo('  function sugerirLinea(linea, ctx) {', '  window.__sugerirLinea = sugerirLinea;'));
+var _ctxC = {
+  documentos: [{ id: 'v166', tipo: 'venta', numero: '000166', rif: 'J406912345', tercero: 'LIGNUM, C.A.', saldo: 446820.19 }],
+  declaraciones: [{ id: 'dpp1', impuesto: 'DPP', numero: '2611000123', a_pagar: 9000, pagada: false }],
+  terceros: [{ nombre: 'LIGNUM, C.A.', rif: 'J406912345', telefono: '0414-5551234' }],
+  otrasLineas: [],
+};
+var _l = function (desc, monto, ref, fecha) { return { id: 'x', fecha: fecha || '05/11/2026', descripcion: desc, referencia: ref || '', monto: monto }; };
+var _s = sugerirLinea(_l('COMISION MANTENIMIENTO', -12.5), _ctxC);
+ok('comisión del banco: por la descripción, segura', _s && (_s.clase + '/' + _s.seguro), 'comision/true');
+_s = sugerirLinea(_l('COBRO IGTF 3%', -30), _ctxC);
+ok('IGTF del banco: segura', _s && (_s.clase + '/' + _s.seguro), 'igtf/true');
+_s = sugerirLinea(_l('PAGO FACT 166 LIGNUM', 446820.19), _ctxC);
+ok('cobro con monto y número de factura: seguro, con su documento', _s && (_s.clase + '/' + _s.seguro + '/' + _s.libro_fiscal_id), 'cobro/true/v166');
+_s = sugerirLinea(_l('PAGO MOVIL 04121112233', 446820.19), _ctxC);
+ok('solo coincide el monto: se sugiere, no es seguro', _s && (_s.clase + '/' + _s.seguro), 'cobro/false');
+ok('y dice por qué', _s && /solo coincide el monto/i.test(_s.motivo), true);
+_s = sugerirLinea(_l('PAGO MOVIL 04145551234', 446820.19), _ctxC);
+ok('monto y teléfono del cliente: seguro', _s && (_s.clase + '/' + _s.seguro), 'cobro/true');
+_s = sugerirLinea(_l('TRANSF J-40691234-5', 446820.19), _ctxC);
+ok('monto y RIF: seguro', _s && _s.seguro, true);
+var _ctx2 = Object.assign({}, _ctxC, { documentos: [
+  { id: 'a', tipo: 'venta', numero: '000201', rif: 'J1', tercero: 'UNO', saldo: 500 },
+  { id: 'b', tipo: 'venta', numero: '000202', rif: 'J2', tercero: 'DOS', saldo: 500 }] });
+_s = sugerirLinea(_l('DEPOSITO', 500), _ctx2);
+ok('dos facturas con el mismo saldo y nada más: no es seguro', _s && _s.seguro, false);
+ok('y no elige ninguna sola', _s && (_s.libro_fiscal_id || null), null);
+_s = sugerirLinea(_l('PAGO SENIAT', -9000), _ctxC);
+ok('impuesto: monto y SENIAT, seguro, con su declaración', _s && (_s.clase + '/' + _s.seguro + '/' + _s.declaracion_id), 'impuesto/true/dpp1');
+_s = sugerirLinea(_l('PAGO VARIOS', -9000), _ctxC);
+ok('impuesto solo por monto: no es seguro', _s && (_s.clase + '/' + _s.seguro), 'impuesto/false');
+var _ctx3 = Object.assign({}, _ctxC, { otrasLineas: [{ id: 'p', cuenta_contable: '1.1.1.03.02', fecha: '06/11/2026', monto: 300 }] });
+_s = sugerirLinea(_l('TRF A BDV', -300), _ctx3);
+ok('transferencia a otro banco propio: no es segura, con su par', _s && (_s.clase + '/' + _s.seguro + '/' + _s.extracto_par_id + '/' + _s.cuenta_contra), 'transferencia/false/p/1.1.1.03.02');
+ok('una línea sin nada que reconocer: nada', sugerirLinea(_l('OPERACION MASTER DEBIT', -8063), _ctxC), null);
+ok('un cobro no se sugiere contra una compra', sugerirLinea(_l('PAGO FACT 166 LIGNUM', -446820.19), _ctxC), null);
 
 console.log('\n' + (fallas ? 'HAY ' + fallas + ' FALLA(S) de ' + total : 'TODO OK · ' + total + ' comprobaciones'));
 process.exit(fallas ? 1 : 0);
