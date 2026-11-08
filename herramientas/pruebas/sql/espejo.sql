@@ -86,6 +86,9 @@ create table public.libro_fiscal (
   quincena integer,
   maquina_fiscal text,
   numero_zeta text,
+  moneda text,
+  tasa numeric,
+  total_usd numeric,
   creado_en timestamptz default now()
 );
 
