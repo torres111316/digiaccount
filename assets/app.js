@@ -7610,6 +7610,10 @@
       // La depreciación del mes entra antes de la liquidación (sql/contabilidad_07_activos.sql).
       const { error: eDep } = await window.sb.rpc('contab_depreciar', { p_empresa: empId, p_periodo: perDecl });
       if (eDep) { toast('No se pudo contabilizar la depreciación del mes: ' + eDep.message, 'error'); return; }
+      // Los saldos en dólares (bancos, CxC y CxP) a la tasa BCV del cierre (sql/contabilidad_12_diferencial.sql).
+      const { error: eRev } = await window.sb.rpc('contab_revaluar', { p_empresa: empId, p_periodo: perDecl });
+      if (eRev && !/No hay tasa BCV/i.test(eRev.message || '')) { toast('No se pudo revaluar los saldos en dólares: ' + eRev.message, 'error'); return; }
+      if (eRev) toast('Sin tasa BCV al cierre de ' + _perLabel() + ': no se revaluaron los saldos en dólares.', 'info');
       if (window.cargarActivosFijos) window.cargarActivosFijos();
       // ¿Ya existen los asientos del mes? (meses migrados o cierres previos → solo bloquear)
       const { data: yaLV } = await window.sb.from('asientos').select('id').eq('empresa_id', empId).eq('referencia', 'LV-' + mm + '/' + anio).limit(1);

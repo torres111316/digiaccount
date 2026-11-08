@@ -62,9 +62,9 @@
     const mov = (ctx.movimientos || []).filter((x) => igual(Number(x.monto) || 0, monto));
     if (mov.length) {
       const conRef = mov.find((x) => { const r = String(x.referencia || '').replace(/\D/g, '').replace(/^0+/, ''); return r.length >= 4 && numeros.some((n) => n === r || n.endsWith(r) || r.endsWith(n)); });
-      if (conRef) return { clase: 'registrado', seguro: true, motivo: 'Ya está registrado en Tesorería (mismo monto y referencia).' };
+      if (conRef) return { clase: 'registrado', seguro: true, movimiento_id: conRef.id, motivo: 'Ya está registrado en Tesorería (mismo monto y referencia).' };
       const cerca = mov.find((x) => dias(x.fecha, linea.fecha) <= 3);
-      if (cerca) return { clase: 'registrado', seguro: false, motivo: 'Hay un movimiento de Tesorería por el mismo monto: revisa si es este.' };
+      if (cerca) return { clase: 'registrado', seguro: false, movimiento_id: cerca.id, motivo: 'Hay un movimiento de Tesorería por el mismo monto: revisa si es este.' };
     }
 
     // Comisión e IGTF del banco: solo si SALE dinero (un abono no es un gasto).
@@ -308,7 +308,7 @@
     const body = st.$('lineas');
     if (!st.banco) { body.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--fg-muted);padding:14px;">Agrega un banco con «+ Banco» para empezar.</td></tr>'; pintarResumen(st, null); return; }
     const bAct = st.bancos.find((b) => b.id === st.banco) || {};
-    st.divisas = !/^\s*(bs|ves|bol)/i.test(bAct.moneda || 'Bs');
+    st.divisas = !/^\s*(bs|ves|bol)/i.test(bAct.moneda || 'Bs');   // se concilia en Bs a la tasa BCV del día (sql/contabilidad_12)
     const { data, error } = await window.sb.from('extracto_bancario').select('*').eq('cuenta_teso_id', st.banco).eq('periodo', st.mes);
     if (error) { st.msg('No se pudieron leer las líneas: ' + esc(error.message)); return; }
     st.lineas = (data || []).sort((a, b) => fechaNum(a.fecha) - fechaNum(b.fecha));
@@ -344,7 +344,7 @@
           const s = l._sug;
           clas = s ? (esc(nombreClase(s.clase)) + '<br><span style="font-size:11px;color:var(--fg-muted);">' + esc(s.motivo || '') + '</span>') : '<span style="color:var(--fg-muted);">Sin sugerencia</span>';
           estado = s ? (s.seguro ? '<span class="tag" style="background:#e0f2fe;color:#075985;">Segura</span>' : '<span class="tag" style="background:#fff8e6;color:#9a6700;">Revisar</span>') : '<span class="tag slate">Pendiente</span>';
-          accion = st.divisas ? '' : '<button class="btn btn-primary" data-conciliar="' + l.id + '" style="height:26px;font-size:11px;">Conciliar…</button>';
+          accion = '<button class="btn btn-primary" data-conciliar="' + l.id + '" style="height:26px;font-size:11px;">Conciliar…</button>';
           if (l.estado === 'historica') estado = '<span class="tag slate" title="Cargada antes del motor contable: puede estar registrada ya">Histórica</span>';
         }
         return '<tr><td>' + esc(l.fecha) + '</td><td class="primary">' + esc(l.descripcion || '—') + '</td><td class="mono">' + esc(l.referencia || '') + '</td>'
@@ -352,14 +352,13 @@
           + '<td style="font-size:12px;">' + clas + '</td><td>' + estado + '</td><td>' + accion + '</td></tr>';
       }).join('');
     }
-    const seguras = st.divisas ? 0 : st.lineas.filter((l) => l.estado !== 'conciliada' && l._sug && l._sug.seguro).length;
+    const seguras = st.lineas.filter((l) => l.estado !== 'conciliada' && l._sug && l._sug.seguro).length;
     const ap = st.$('aprobar');
     ap.disabled = !seguras;
     ap.innerHTML = '<i data-lucide="check-check"></i> Aprobar las seguras (' + seguras + ')';
     const conc = st.lineas.filter((l) => l.estado === 'conciliada').length;
-    st.msg(st.divisas ? 'Esta cuenta no es en bolívares: se concilia cuando esté el diferencial cambiario (plan 4b). Puedes cargar su estado de cuenta, pero todavía no conciliarlo.'
-      : st.lineas.length ? (st.lineas.length + ' líneas · ' + conc + ' conciliadas · ' + seguras + ' sugerencias seguras. Las que dicen «Revisar» coinciden solo en un dato: ábrelas y decide.')
-      : 'Elige el banco y el mes, y carga su estado de cuenta.');
+    st.msg((st.divisas ? 'Cuenta en dólares: cada línea se contabiliza en bolívares a la tasa BCV de su fecha. ' : '') + (st.lineas.length ? (st.lineas.length + ' líneas · ' + conc + ' conciliadas · ' + seguras + ' sugerencias seguras. Las que dicen «Revisar» coinciden solo en un dato: ábrelas y decide.')
+      : 'Elige el banco y el mes, y carga su estado de cuenta.'));
     if (window.lucide) window.lucide.createIcons();
   }
 
@@ -402,7 +401,10 @@
           options: st.plan.map((c) => ({ value: c.codigo, label: c.codigo + ' · ' + c.nombre })) },
       ],
       onSave: (v) => {
-        const fila = { clase: v.clase, libro_fiscal_id: null, declaracion_id: null, cuenta_contra: null, extracto_par_id: null, tercero_nombre: null, tercero_rif: null, estado: 'conciliada' };
+        const fila = { clase: v.clase, libro_fiscal_id: null, declaracion_id: null, cuenta_contra: null, extracto_par_id: null, movimiento_id: null, tercero_nombre: null, tercero_rif: null, estado: 'conciliada' };
+        // «Ya registrado» con el movimiento de Tesorería que se sugirió: si ese movimiento ya lo
+        // contabilizó la base, la línea no repite el asiento.
+        if (v.clase === 'registrado' && s.movimiento_id) fila.movimiento_id = s.movimiento_id;
         if (v.clase === 'cobro' || v.clase === 'pago') {
           const d = docs.find((x) => x.id === v.doc);
           if (d) { fila.libro_fiscal_id = d.id; fila.tercero_nombre = d.tercero || null; fila.tercero_rif = d.rif || null; }
@@ -455,7 +457,7 @@
     if (!window.confirm('¿Aprobar ' + sel.length + ' sugerencias seguras?\n\nSon las que coinciden en el monto y en otro dato (número, RIF, teléfono o nombre), o las comisiones e IGTF del banco. Cada una genera su asiento.')) return;
     guardar(st, sel.map((l) => ({ id: l.id, fila: {
       clase: l._sug.clase, libro_fiscal_id: l._sug.libro_fiscal_id || null, declaracion_id: l._sug.declaracion_id || null,
-      cuenta_contra: l._sug.cuenta_contra || null, extracto_par_id: l._sug.extracto_par_id || null,
+      cuenta_contra: l._sug.cuenta_contra || null, extracto_par_id: l._sug.extracto_par_id || null, movimiento_id: l._sug.movimiento_id || null,
       tercero_nombre: l._sug.tercero_nombre || null, tercero_rif: l._sug.tercero_rif || null, estado: 'conciliada' } })));
   }
 

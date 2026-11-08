@@ -439,11 +439,13 @@
       } else if (dm) {
         const mov = _movs.find((m) => m.id === dm.dataset.tesoDelmov);
         const vinculado = mov && mov.factura_ref && mov.tercero_nombre;
-        if (!window.confirm('¿Eliminar este movimiento?' + (vinculado ? '\n\nComo está vinculado al documento ' + mov.factura_ref + ', se generará el asiento de REVERSO y se recalculará su estado (vuelve a quedar por cobrar/pagar).' : ''))) return;
+        if (!window.confirm('¿Eliminar este movimiento?\n\nSu asiento contable se elimina con él.' + (vinculado ? ' El documento ' + mov.factura_ref + ' vuelve a quedar por cobrar/pagar.' : ''))) return;
         const { error } = await window.sb.from('movimientos_tesoreria').delete().eq('id', dm.dataset.tesoDelmov);
         if (error) { toast('No se pudo eliminar: ' + error.message, 'error'); return; }
-        // Reverso contable del cobro/pago eliminado (misma lógica de anticipos con que se contabilizó)
-        if (vinculado && window.__postAsiento) {
+        /* Un movimiento de ANTES del motor (contab_motor = false) tenía su asiento hecho
+           por el navegador: se reversa como siempre. El de uno nuevo lo borra la base. */
+        if (vinculado && mov.tipo === 'ingreso' && mov.contab_motor !== false) actualizarEstadoRecibo((mov.factura_ref || '').trim());
+        if (vinculado && mov.contab_motor === false && window.__postAsiento) {
           const refDoc = (mov.factura_ref || '').trim();
           const doc = _facturas.find((x) => (x.ref || '') === refDoc && x.tipo === (mov.tipo === 'ingreso' ? 'venta' : 'compra'));
           const totalDoc = doc ? (Number(doc.total) || 0) : null;
@@ -471,7 +473,7 @@
             .then((r) => { if (r && r.error) console.warn('[DigiAccount] Reverso:', r.error.message); });
           if (mov.tipo === 'ingreso') actualizarEstadoRecibo(refDoc);
         }
-        toast('Movimiento eliminado' + (vinculado ? ' · asiento reversado y estado recalculado' : ''), 'success');
+        toast('Movimiento eliminado' + (vinculado ? ' · su documento vuelve a quedar pendiente' : ''), 'success');
         cargarTesoreria();
         if (window.cargarFacturas) window.cargarFacturas();
         if (window.cargarDashboard) window.cargarDashboard();
@@ -557,6 +559,13 @@
       // ventas = RECIBOS (cobros) · compras = libro de compras (pagos). Ya cargados en _facturas.
       const terceros = (window.__getTerceros ? window.__getTerceros() : []);
       const facturas = _facturas;
+      // El plan de cuentas: un movimiento SIN factura (luz, alquiler, un aporte…) necesita
+      // su cuenta para que la base haga su asiento (sql/contabilidad_11_tesoreria.sql).
+      let planCtas = [];
+      try {
+        const { data: pl } = await window.sb.rpc('plan_de_empresa', { p_empresa: window.__EMPRESA_ACTIVA.id });
+        planCtas = (pl || []).filter((c) => c.tipo !== 'Grupo');
+      } catch (ePl) { planCtas = []; }
       window.openFormModal && window.openFormModal({
         /* El título tiene que decir de qué lado está el dinero.
 
@@ -579,6 +588,8 @@
           { name: 'tercero', label: 'Cliente (a quién le cobras)', col: 2, type: 'datalist', value: pre.tercero || '', options: [], placeholder: 'Escribe las iniciales y elige' },
           { name: 'factura', label: 'Recibo de venta asociado', type: 'datalist', value: pre.factura || '', options: [], placeholder: 'Elige primero el cliente' },
           { name: 'concepto', label: 'Concepto', col: 2, placeholder: 'Se completa solo al elegir la factura' },
+          { name: 'cuentaContra', label: 'Cuenta contable · solo si NO es el cobro o pago de una factura (luz, alquiler, aporte…)', col: 2, type: 'datalist',
+            options: planCtas.map((c) => ({ value: c.codigo, label: c.codigo + ' · ' + c.nombre })), placeholder: 'Ej. 6.1.1.04 Servicios públicos' },
           { name: 'referencia', label: 'Referencia (N° transferencia, pago móvil…)', placeholder: 'Ej. 0123456789' },
           { name: 'monto', label: 'Monto a cobrar/pagar (Bs) — edítalo si es un abono parcial', type: 'number', step: '0.01', value: pre.monto != null ? String(pre.monto) : '', placeholder: '0.00' },
           { name: 'igtfDivisas', label: 'IGTF (solo si el PAGO es en divisas/cripto)', type: 'select', options: [{ value: 'no', label: 'No aplica' }, { value: 'si', label: 'Sí — sumar 3% IGTF' }] },
@@ -700,6 +711,9 @@
           if (!window.sb || !window.__CUENTA_ID || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) return 'No hay una empresa activa seleccionada.';
           if (!v.cuenta) return 'Elige la cuenta o caja.';
           const monto = parseFloat(v.monto) || 0; if (monto <= 0) return 'Indica un monto mayor a cero.';
+          const ctaC = String(v.cuentaContra || '').trim().split(' ')[0];
+          if (!String(v.factura || '').trim() && !ctaC) return 'Sin factura asociada, elige la cuenta contable del movimiento: con ella se hace su asiento.';
+          if (ctaC && planCtas.length && !planCtas.some((c) => c.codigo === ctaC)) return 'La cuenta ' + ctaC + ' no está en el plan de cuentas.';
           // Aviso ANTES de guardar si el monto excede el saldo pendiente (¿error de tipeo o anticipo real?)
           if (v.factura) {
             const refDoc = v.factura.trim();
@@ -723,59 +737,23 @@
               cuenta_id: window.__CUENTA_ID, empresa_id: window.__EMPRESA_ACTIVA.id, cuenta_teso_id: cuentaId,
               fecha: fecha, concepto: v.concepto, tipo: v.tipo, referencia: v.referencia, monto: monto, comprobante_path: comprobante_path || null,
               tercero_nombre: v.tercero || null, tercero_rif: tercRif || null, factura_ref: v.factura || null,
+              cuenta_contra: String(v.factura || '').trim() ? null : (ctaC || null),
             }).then(({ error }) => {
               if (error) { toast('No se pudo guardar: ' + error.message, 'error'); return; }
               toast((v.tipo === 'ingreso' ? 'Ingreso (cobro)' : 'Egreso (pago)') + ' registrado' + (comprobante_path ? ' con comprobante' : ''), 'success');
-              // Asiento contable automático: solo si el movimiento está vinculado a un recibo/factura
-              if (v.factura && v.tercero && window.__postAsiento) {
-                const cta = _cuentas.find((c) => c.id === cuentaId);
-                const esCaja = cta && /efectivo|caja/i.test((cta.tipo || '') + ' ' + (cta.nombre || ''));
-                const ctaCash = esCaja ? '1.1.1.01 · Caja' : '1.1.1.03 · Bancos';
-                const cashName = cta ? cta.nombre : (esCaja ? 'Caja' : 'Bancos');
-                // PAGO EN EXCESO → ANTICIPO: lo que exceda el saldo pendiente del documento
-                // NO abona a CxC/CxP (quedaría en negativo): va a una cuenta de anticipos.
-                const refDoc = (v.factura || '').trim();
-                const doc = _facturas.find((x) => (x.ref || '') === refDoc && x.tipo === (v.tipo === 'ingreso' ? 'venta' : 'compra'));
-                const totalDoc = doc ? (Number(doc.total) || 0) : null;
-                const previo = _movs.filter((m) => m.tipo === v.tipo && (m.factura_ref || '').trim() === refDoc)
-                  .reduce((s, m) => s + (Number(m.monto) || 0), 0);
-                const pendiente = (totalDoc == null) ? monto : Math.max(0, totalDoc - previo);
-                const aplicado = Math.min(monto, pendiente);
-                const exceso = Math.round((monto - aplicado) * 100) / 100;
-                let lineas, desc;
-                if (v.tipo === 'ingreso') {
-                  lineas = [{ cta: ctaCash, debe: monto, haber: 0 }];
-                  if (aplicado > 0.005) lineas.push({ cta: '1.1.2.01 · Cuentas por cobrar comerciales', debe: 0, haber: aplicado });
-                  if (exceso > 0.005) lineas.push({ cta: '2.1.6.01 · Anticipos de clientes', debe: 0, haber: exceso });
-                  desc = 'Cobro recibo ' + v.factura + ' · ' + v.tercero + ' (' + cashName + ')' + (exceso > 0.005 ? ' · anticipo Bs ' + fmt(exceso) : '');
-                } else {
-                  lineas = [];
-                  if (aplicado > 0.005) lineas.push({ cta: '2.1.1.01 · Cuentas por pagar comerciales', debe: aplicado, haber: 0 });
-                  if (exceso > 0.005) lineas.push({ cta: '1.1.2.04 · Anticipos a proveedores', debe: exceso, haber: 0 });
-                  lineas.push({ cta: ctaCash, debe: 0, haber: monto });
-                  desc = 'Pago factura ' + v.factura + ' · ' + v.tercero + ' (' + cashName + ')' + (exceso > 0.005 ? ' · anticipo Bs ' + fmt(exceso) : '');
-                }
-                window.__postAsiento(desc, v.factura, lineas, 'auto').then((r) => { if (r && r.error) console.warn('[DigiAccount] No se pudo contabilizar el movimiento:', r.error.message); });
-                if (exceso > 0.005) {
-                  toast(v.tipo === 'ingreso'
-                    ? 'Bs ' + fmt(exceso) + ' exceden el recibo: quedaron como SALDO A FAVOR del cliente (Anticipos de clientes)'
-                    : 'Bs ' + fmt(exceso) + ' exceden la factura: quedaron como saldo a TU favor (Anticipos a proveedores)', 'info');
-                }
-              }
+              /* El asiento lo hace la base (sql/contabilidad_11_tesoreria.sql), en la
+                 subcuenta del banco: lo que pase del documento va a anticipos, y en un
+                 documento en dólares, la diferencia de tasa a ganancia o pérdida en cambio. */
               // IGTF 3% cuando el PAGO se hace en divisas/cripto: egreso adicional + asiento de gasto
               if (v.tipo === 'egreso' && v.igtfDivisas === 'si') {
                 const igtf = Math.round(monto * 0.03 * 100) / 100;
                 if (igtf > 0.005) {
-                  const cta = _cuentas.find((c) => c.id === cuentaId);
-                  const esCaja = cta && /efectivo|caja/i.test((cta.tipo || '') + ' ' + (cta.nombre || ''));
-                  const ctaCash = esCaja ? '1.1.1.01 · Caja' : '1.1.1.03 · Bancos';
                   const concIgtf = 'IGTF 3% s/pago en divisas' + (v.factura ? ' · ' + v.factura : '');
                   window.sb.from('movimientos_tesoreria').insert({
                     cuenta_id: window.__CUENTA_ID, empresa_id: window.__EMPRESA_ACTIVA.id, cuenta_teso_id: cuentaId,
-                    fecha: fecha, concepto: concIgtf, tipo: 'egreso', referencia: v.referencia, monto: igtf,
+                    fecha: fecha, concepto: concIgtf, tipo: 'egreso', referencia: v.referencia, monto: igtf, cuenta_contra: '6.3.1.04',
                   }).then(({ error: e2 }) => {
                     if (e2) { console.warn('[DigiAccount] IGTF:', e2.message); return; }
-                    if (window.__postAsiento) window.__postAsiento(concIgtf, v.factura || 'IGTF', [{ cta: '6.3.1.04 · IGTF (gasto)', debe: igtf, haber: 0 }, { cta: ctaCash, debe: 0, haber: igtf }], 'auto');
                     cargarTesoreria();
                   });
                 }
@@ -833,12 +811,7 @@
             Object.assign({}, base, { cuenta_teso_id: v.destino, tipo: 'ingreso', concepto: v.concepto + ' ← ' + (cOri ? cOri.nombre : '') }),
           ]).then(({ error }) => {
             if (error) { toast('No se pudo transferir: ' + error.message, 'error'); return; }
-            const code = (c) => (c && /efectivo|caja/i.test((c.tipo || '') + ' ' + (c.nombre || ''))) ? '1.1.1.01 · Caja' : '1.1.1.03 · Bancos';
-            const oc = code(cOri), dc = code(cDes);
-            if (window.__postAsiento && oc !== dc) {
-              window.__postAsiento('Transferencia ' + (cOri ? cOri.nombre : '') + ' → ' + (cDes ? cDes.nombre : ''), ref,
-                [{ cta: dc, debe: monto, haber: 0 }, { cta: oc, debe: 0, haber: monto }], 'auto');
-            }
+            // El asiento lo hace la base: Debe la subcuenta del destino / Haber la del origen.
             toast('Transferencia registrada · Bs ' + fmt(monto), 'success');
             cargarTesoreria();
           });
