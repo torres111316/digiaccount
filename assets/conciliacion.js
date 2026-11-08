@@ -19,9 +19,29 @@
      ctx:   { documentos: [{ id, tipo:'venta'|'compra', numero, rif, tercero, saldo }],
               declaraciones: [{ id, impuesto, numero, a_pagar, pagada }],
               terceros: [{ nombre, rif, telefono }],
-              otrasLineas: [{ id, cuenta_contable, fecha, monto }] }
+              otrasLineas: [{ id, cuenta_contable, fecha, monto }],
+              movimientos: [{ id, monto, referencia, fecha }] }   ← lo ya registrado en Tesorería
+     Un documento con `presumido` (la cuenta de un «Dar por cobrado y pagado»
+     que ya lo canceló) se concilia como «registrado» contra esa cuenta.
      Devuelve { clase, seguro, motivo, ... } o null. */
+  // Palabras de nombres de empresa que no identifican a nadie: no cuentan
+  // como segunda coincidencia («INVERSIONES GATMA» vs «TRF INVERSIONES LARA»).
+  const GENERICAS = ['INVERSIONES', 'COMERCIAL', 'COMERCIALIZADORA', 'DISTRIBUIDORA', 'DISTRIBUCIONES', 'SERVICIOS',
+    'GRUPO', 'CORPORACION', 'CORPORACIÓN', 'INDUSTRIAS', 'INDUSTRIAL', 'SOCIEDAD', 'COMPAÑIA', 'COMPAÑÍA', 'COMPANIA',
+    'EMPRESA', 'EMPRESAS', 'VENEZUELA', 'TRANSPORTE', 'TRANSPORTES', 'SUMINISTROS', 'CONSTRUCCIONES', 'ASOCIACION',
+    'FIRMA', 'PERSONAL', 'HERMANOS', 'PAGO', 'PAGOS', 'MOVIL', 'MÓVIL', 'TRANSFERENCIA', 'BANCO', 'CENTRO', 'TIENDA',
+    'MATERIALES', 'MULTISERVICIOS', 'ALIMENTOS', 'PANADERIA', 'PANADERÍA', 'FARMACIA', 'AUTO', 'REPUESTOS'];
   function sugerirLinea(linea, ctx) {
+    const r = sugerirLineaBase(linea, ctx);
+    // Una línea cargada antes del motor pudo registrarse a mano con la
+    // conciliación vieja: nunca es «segura».
+    if (r && linea.estado === 'historica') {
+      r.seguro = false;
+      r.motivo = 'Línea cargada antes del motor contable: revisa que no esté registrada ya. ' + (r.motivo || '');
+    }
+    return r;
+  }
+  function sugerirLineaBase(linea, ctx) {
     ctx = ctx || {};
     const monto = Number(linea.monto) || 0;
     const abs = Math.round(Math.abs(monto) * 100) / 100;
@@ -36,10 +56,22 @@
       return Math.abs(d(f1) - d(f2)) / 86400000;
     };
 
-    if (/comisi[oó]n|cargo por servicio|mantenimiento de cuenta/i.test(texto)) {
+    // Lo que ya está registrado en Tesorería (cobro, pago, IGTF…) ya tiene su
+    // asiento contra «Bancos» o «Caja»: solo se pasa a la subcuenta. Va antes
+    // que todo lo demás para no contabilizarlo dos veces.
+    const mov = (ctx.movimientos || []).filter((x) => igual(Number(x.monto) || 0, monto));
+    if (mov.length) {
+      const conRef = mov.find((x) => { const r = String(x.referencia || '').replace(/\D/g, '').replace(/^0+/, ''); return r.length >= 4 && numeros.some((n) => n === r || n.endsWith(r) || r.endsWith(n)); });
+      if (conRef) return { clase: 'registrado', seguro: true, motivo: 'Ya está registrado en Tesorería (mismo monto y referencia).' };
+      const cerca = mov.find((x) => dias(x.fecha, linea.fecha) <= 3);
+      if (cerca) return { clase: 'registrado', seguro: false, motivo: 'Hay un movimiento de Tesorería por el mismo monto: revisa si es este.' };
+    }
+
+    // Comisión e IGTF del banco: solo si SALE dinero (un abono no es un gasto).
+    if (monto < 0 && /comisi[oó]n|cargo por servicio|mantenimiento de cuenta/i.test(texto)) {
       return { clase: 'comision', seguro: true, motivo: 'La descripción dice que es una comisión del banco.' };
     }
-    if (/\bigtf\b|grandes transacciones/i.test(texto)) {
+    if (monto < 0 && /\bigtf\b|grandes transacciones/i.test(texto)) {
       return { clase: 'igtf', seguro: true, motivo: 'La descripción dice que es IGTF.' };
     }
 
@@ -49,7 +81,7 @@
       if (num.length >= 3 && numeros.indexOf(num) >= 0) return 'el número ' + doc.numero;
       const rif = String(doc.rif || '').replace(/\D/g, '');
       if (rif.length >= 6 && digitosTexto.indexOf(rif) >= 0) return 'el RIF';
-      const palabras = String(doc.tercero || '').toUpperCase().split(/[^A-ZÁÉÍÓÚÑ]+/).filter((w) => w.length >= 4);
+      const palabras = String(doc.tercero || '').toUpperCase().split(/[^A-ZÁÉÍÓÚÑ]+/).filter((w) => w.length >= 4 && GENERICAS.indexOf(w) < 0);
       if (palabras.some((w) => new RegExp('(^|[^A-ZÁÉÍÓÚÑ])' + w + '([^A-ZÁÉÍÓÚÑ]|$)').test(texto.toUpperCase()))) return 'el nombre';
       const ter = (ctx.terceros || []).find((t) => (doc.rif && t.rif === doc.rif) || (t.nombre && t.nombre === doc.tercero));
       const tel = String((ter && ter.telefono) || '').replace(/\D/g, '');
@@ -77,14 +109,18 @@
     if (cand.length) {
       const seguros = cand.map((d) => ({ d: d, por: segunda(d) })).filter((x) => x.por);
       const clase = monto > 0 ? 'cobro' : 'pago';
+      // Una factura ya cancelada por «Dar por cobrado y pagado»: su dinero ya
+      // está en la cuenta de la presunción; solo se pasa de ahí al banco.
+      const conPres = (d, r) => (d && d.presumido ? Object.assign(r, { clase: 'registrado', cuenta_contra: d.presumido,
+        motivo: r.motivo + ' Ya se dio por ' + (monto > 0 ? 'cobrada' : 'pagada') + ' contra ' + d.presumido + ': pasa de esa cuenta a este banco.' }) : r);
       if (seguros.length === 1) {
         const d = seguros[0].d;
-        return { clase: clase, seguro: true, libro_fiscal_id: d.id, tercero_nombre: d.tercero || null, tercero_rif: d.rif || null,
-          motivo: 'Monto de la factura ' + (d.numero || '') + ' y ' + seguros[0].por + '.' };
+        return conPres(d, { clase: clase, seguro: true, libro_fiscal_id: d.id, tercero_nombre: d.tercero || null, tercero_rif: d.rif || null,
+          motivo: 'Monto de la factura ' + (d.numero || '') + ' y ' + seguros[0].por + '.' });
       }
-      return { clase: clase, seguro: false, libro_fiscal_id: cand.length === 1 ? cand[0].id : null,
+      return conPres(cand.length === 1 ? cand[0] : null, { clase: clase, seguro: false, libro_fiscal_id: cand.length === 1 ? cand[0].id : null,
         motivo: cand.length === 1 ? 'Solo coincide el monto con la factura ' + (cand[0].numero || '') + ': revísala.'
-          : 'Solo coincide el monto, con ' + cand.length + ' facturas: elige cuál.' };
+          : 'Solo coincide el monto, con ' + cand.length + ' facturas: elige cuál.' });
     }
 
     // Transferencia entre bancos propios: el monto contrario en otro banco, a 3 días o menos.
@@ -125,6 +161,14 @@
     else if (s.indexOf(',') > -1) s = s.replace(',', '.');
     return parseFloat(s) || 0;
   }
+  /* La fecha de una línea: como la trae el banco si ya es dd/mm/aa(aa) (así la
+     huella de una línea ya cargada no cambia); si no, por window.__normFecha,
+     la única puerta de las fechas. '' si no se entiende. */
+  function fechaBanco(f) {
+    const t = String(f || '').trim();
+    if (/^\d{1,2}\/\d{1,2}\/(\d{2}|\d{4})$/.test(t)) return t;
+    return (window.__normFecha && window.__normFecha(t)) || '';
+  }
   function leerCSV(text) {
     const first = (text.split(/\r?\n/).find((r) => r.trim()) || '');
     const delim = first.split(';').length > first.split(',').length ? ';' : ',';
@@ -140,7 +184,7 @@
     if (!conCab) { cF = 0; cD = 1; cR = 2; cM = 3; }
     return cuerpo.map((r) => {
       const monto = cM > -1 ? numCsv(r[cM]) : ((cCre > -1 ? numCsv(r[cCre]) : 0) - (cDeb > -1 ? numCsv(r[cDeb]) : 0));
-      return { fecha: (cF > -1 && r[cF]) || '', descripcion: (cD > -1 && r[cD]) || '', referencia: (cR > -1 && r[cR]) || '', monto: monto };
+      return { fecha: fechaBanco((cF > -1 && r[cF]) || ''), descripcion: (cD > -1 && r[cD]) || '', referencia: (cR > -1 && r[cR]) || '', monto: monto };
     }).filter((l) => Math.abs(l.monto) > 0.005);
   }
 
@@ -157,7 +201,7 @@
       + '<button class="btn btn-ghost" data-c="nuevoBanco" style="height:32px;font-size:12px;"><i data-lucide="plus"></i> Banco</button>'
       + '<label style="font-size:12px;display:flex;align-items:center;gap:6px;">Mes: <select data-c="mes" style="height:32px;border:1px solid var(--border);border-radius:8px;padding:0 8px;font:inherit;background:var(--bg-elev);color:inherit;">'
       + opcMes.map((m) => '<option value="' + m + '"' + (m === st.mes ? ' selected' : '') + '>' + mesTxt(m) + '</option>').join('') + '</select></label>'
-      + '<label class="btn btn-ghost" style="height:32px;font-size:12px;cursor:pointer;"><i data-lucide="upload"></i> Estado de cuenta (PDF o Excel/CSV)'
+      + '<label class="btn btn-ghost" style="height:32px;font-size:12px;cursor:pointer;"><i data-lucide="upload"></i> Estado de cuenta (PDF, o CSV desde Excel)'
       + '<input type="file" data-c="archivo" accept=".pdf,.csv,.txt,application/pdf,text/csv" style="display:none;"></label>'
       + '<span data-c="archivoNombre" style="font-size:11px;color:var(--fg-muted);"></span>'
       + '<button class="btn btn-primary" data-c="cargar" style="height:32px;font-size:12px;"><i data-lucide="file-up"></i> Cargar</button>'
@@ -197,7 +241,7 @@
   async function cargarTodo(st) {
     if (!listo()) return;
     st.cargado = true;
-    const { data: bancos, error } = await window.sb.from('cuentas_tesoreria').select('id, nombre, banco, tipo, cuenta_contable').eq('empresa_id', empresa().id).order('creado_en');
+    const { data: bancos, error } = await window.sb.from('cuentas_tesoreria').select('id, nombre, banco, tipo, moneda, cuenta_contable').eq('empresa_id', empresa().id).order('creado_en');
     if (error) { st.msg('No se pudieron leer los bancos: ' + esc(error.message)); return; }
     st.bancos = bancos || [];
     const sel = st.$('banco');
@@ -215,13 +259,23 @@
   async function cargarContexto(st) {
     const e = empresa().id;
     const meses = [st.mes, mesMas(st.mes, -1), mesMas(st.mes, -2)];
-    const [lib, ret, lig, dec, otras] = await Promise.all([
+    const [lib, ret, lig, dec, otras, movs, pres] = await Promise.all([
       window.sb.from('libro_fiscal').select('id, tipo, numero_factura, numero_zeta, tercero_nombre, tercero_rif, total, igtf, periodo').eq('empresa_id', e).in('periodo', meses),
       window.sb.from('retenciones').select('factura, tercero_rif, direccion, monto, estado').eq('empresa_id', e).gte('periodo', meses[2]),
       window.sb.from('extracto_bancario').select('libro_fiscal_id, monto').eq('empresa_id', e).eq('estado', 'conciliada').not('libro_fiscal_id', 'is', null),
       window.sb.from('declaraciones').select('id, impuesto, periodo, quincena, numero, a_pagar, fecha_pago').eq('empresa_id', e).gt('a_pagar', 0).gte('periodo', mesMas(st.mes, -3)),
-      window.sb.from('extracto_bancario').select('id, cuenta_teso_id, fecha, monto, estado').eq('empresa_id', e).eq('periodo', st.mes).neq('cuenta_teso_id', st.banco || '00000000-0000-0000-0000-000000000000'),
+      window.sb.from('extracto_bancario').select('id, cuenta_teso_id, fecha, monto, estado, clase, extracto_par_id').eq('empresa_id', e).eq('periodo', st.mes).neq('cuenta_teso_id', st.banco || '00000000-0000-0000-0000-000000000000'),
+      // Lo registrado en Tesorería: ya tiene su asiento (contra «Bancos» o «Caja»).
+      window.sb.from('movimientos_tesoreria').select('id, cuenta_teso_id, fecha, tipo, monto, referencia, factura_ref').eq('empresa_id', e),
+      window.sb.from('asientos').select('periodo, lineas').eq('empresa_id', e).eq('origen_tabla', 'presuncion'),
     ]);
+    const cobradoTeso = {};
+    (movs.data || []).forEach((m) => { if (m.factura_ref) { const k = (m.tipo === 'ingreso' ? 'venta|' : 'compra|') + normNum(m.factura_ref); cobradoTeso[k] = (cobradoTeso[k] || 0) + (Number(m.monto) || 0); } });
+    // La presunción de cada mes: la cuenta contra la que se dio por cobrado y pagado.
+    const presunciones = (pres.data || []).map((a) => ({ periodo: a.periodo,
+      cuenta: ((a.lineas || []).map((l) => String(l.cta || '').split(' · ')[0]).find((c) => c.indexOf('1.1.1.') === 0)) || '1.1.1.03' }))
+      .sort((x, y) => (x.periodo < y.periodo ? -1 : 1));
+    const presumidoEn = (per) => { const p = presunciones.find((x) => x.periodo >= per); return p ? p.cuenta : null; };
     const retenido = (doc) => (ret.data || []).filter((r) => !/anulad/i.test(r.estado || '')
         && r.direccion === (doc.tipo === 'venta' ? 'sufrida' : 'practicada')
         && normNum(r.factura) && normNum(r.factura) === normNum(doc.numero_factura || doc.numero_zeta)
@@ -234,11 +288,18 @@
     st.ctx = {
       documentos: (lib.data || []).filter((d) => !/anulad/i.test(d.tercero_nombre || '')).map((d) => ({
         id: d.id, tipo: d.tipo, numero: d.numero_factura || d.numero_zeta || '', rif: d.tercero_rif || '', tercero: d.tercero_nombre || '',
-        saldo: Math.round(((Number(d.total) || 0) + (d.tipo === 'venta' ? (Number(d.igtf) || 0) : 0) - retenido(d) - (cobrado[d.id] || 0)) * 100) / 100,
+        saldo: Math.round(((Number(d.total) || 0) + (d.tipo === 'venta' ? (Number(d.igtf) || 0) : 0) - retenido(d) - (cobrado[d.id] || 0)
+          - (cobradoTeso[d.tipo + '|' + normNum(d.numero_factura || d.numero_zeta)] || 0)) * 100) / 100,
+        presumido: presumidoEn(d.periodo),
       })).filter((d) => d.saldo > 0.01),
       declaraciones: (dec.data || []).map((d) => ({ id: d.id, impuesto: d.impuesto, periodo: d.periodo, quincena: d.quincena, numero: d.numero, a_pagar: Number(d.a_pagar) || 0, pagada: !!d.fecha_pago })),
       terceros: (window.__getTerceros ? window.__getTerceros() : []).map((t) => ({ nombre: t.nombre, rif: t.rif, telefono: t.tel })),
-      otrasLineas: (otras.data || []).filter((o) => o.estado !== 'conciliada').map((o) => ({ id: o.id, cuenta_contable: subDe[o.cuenta_teso_id], fecha: o.fecha, monto: o.monto })),
+      // Las de otros bancos que aún pueden ser la otra punta de una transferencia
+      // (también las ya conciliadas como transferencia que no tienen pareja).
+      otrasLineas: (otras.data || []).filter((o) => o.estado !== 'conciliada' || (o.clase === 'transferencia' && !o.extracto_par_id))
+        .map((o) => ({ id: o.id, cuenta_contable: subDe[o.cuenta_teso_id], fecha: o.fecha, monto: o.monto })),
+      movimientos: (movs.data || []).filter((m) => m.cuenta_teso_id === st.banco)
+        .map((m) => ({ id: m.id, fecha: m.fecha, referencia: m.referencia, monto: (m.tipo === 'ingreso' ? 1 : -1) * (Number(m.monto) || 0) })),
     };
   }
 
@@ -246,6 +307,8 @@
     if (!listo()) return;
     const body = st.$('lineas');
     if (!st.banco) { body.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--fg-muted);padding:14px;">Agrega un banco con «+ Banco» para empezar.</td></tr>'; pintarResumen(st, null); return; }
+    const bAct = st.bancos.find((b) => b.id === st.banco) || {};
+    st.divisas = !/^\s*(bs|ves|bol)/i.test(bAct.moneda || 'Bs');
     const { data, error } = await window.sb.from('extracto_bancario').select('*').eq('cuenta_teso_id', st.banco).eq('periodo', st.mes);
     if (error) { st.msg('No se pudieron leer las líneas: ' + esc(error.message)); return; }
     st.lineas = (data || []).sort((a, b) => fechaNum(a.fecha) - fechaNum(b.fecha));
@@ -281,19 +344,21 @@
           const s = l._sug;
           clas = s ? (esc(nombreClase(s.clase)) + '<br><span style="font-size:11px;color:var(--fg-muted);">' + esc(s.motivo || '') + '</span>') : '<span style="color:var(--fg-muted);">Sin sugerencia</span>';
           estado = s ? (s.seguro ? '<span class="tag" style="background:#e0f2fe;color:#075985;">Segura</span>' : '<span class="tag" style="background:#fff8e6;color:#9a6700;">Revisar</span>') : '<span class="tag slate">Pendiente</span>';
-          accion = '<button class="btn btn-primary" data-conciliar="' + l.id + '" style="height:26px;font-size:11px;">Conciliar…</button>';
+          accion = st.divisas ? '' : '<button class="btn btn-primary" data-conciliar="' + l.id + '" style="height:26px;font-size:11px;">Conciliar…</button>';
+          if (l.estado === 'historica') estado = '<span class="tag slate" title="Cargada antes del motor contable: puede estar registrada ya">Histórica</span>';
         }
         return '<tr><td>' + esc(l.fecha) + '</td><td class="primary">' + esc(l.descripcion || '—') + '</td><td class="mono">' + esc(l.referencia || '') + '</td>'
           + '<td class="num" style="color:' + (neg ? '#b42318' : '#0a7a44') + ';">' + (neg ? '− ' : '+ ') + fmt(Math.abs(m)) + '</td>'
           + '<td style="font-size:12px;">' + clas + '</td><td>' + estado + '</td><td>' + accion + '</td></tr>';
       }).join('');
     }
-    const seguras = st.lineas.filter((l) => l.estado !== 'conciliada' && l._sug && l._sug.seguro).length;
+    const seguras = st.divisas ? 0 : st.lineas.filter((l) => l.estado !== 'conciliada' && l._sug && l._sug.seguro).length;
     const ap = st.$('aprobar');
     ap.disabled = !seguras;
     ap.innerHTML = '<i data-lucide="check-check"></i> Aprobar las seguras (' + seguras + ')';
     const conc = st.lineas.filter((l) => l.estado === 'conciliada').length;
-    st.msg(st.lineas.length ? (st.lineas.length + ' líneas · ' + conc + ' conciliadas · ' + seguras + ' sugerencias seguras. Las que dicen «Revisar» coinciden solo en el monto: ábrelas y decide.')
+    st.msg(st.divisas ? 'Esta cuenta no es en bolívares: se concilia cuando esté el diferencial cambiario (plan 4b). Puedes cargar su estado de cuenta, pero todavía no conciliarlo.'
+      : st.lineas.length ? (st.lineas.length + ' líneas · ' + conc + ' conciliadas · ' + seguras + ' sugerencias seguras. Las que dicen «Revisar» coinciden solo en un dato: ábrelas y decide.')
       : 'Elige el banco y el mes, y carga su estado de cuenta.');
     if (window.lucide) window.lucide.createIcons();
   }
@@ -341,6 +406,9 @@
         if (v.clase === 'cobro' || v.clase === 'pago') {
           const d = docs.find((x) => x.id === v.doc);
           if (d) { fila.libro_fiscal_id = d.id; fila.tercero_nombre = d.tercero || null; fila.tercero_rif = d.rif || null; }
+          // Ya se dio por cobrada o pagada: el dinero está en la cuenta de la
+          // presunción; contabilizarla de nuevo contra CxC/CxP la cancelaría dos veces.
+          if (d && d.presumido) { fila.clase = 'registrado'; fila.cuenta_contra = d.presumido; }
         } else if (v.clase === 'impuesto') {
           if (!v.decl) return 'Elige la declaración que se pagó.';
           fila.declaracion_id = v.decl;
@@ -348,6 +416,13 @@
           if (!v.banco2) return 'Elige el otro banco.';
           fila.cuenta_contra = v.banco2;
           if (s.extracto_par_id && s.cuenta_contra === v.banco2) fila.extracto_par_id = s.extracto_par_id;
+          else {
+            // La otra punta en ese banco: el monto contrario a 3 días o menos.
+            const fn = (f) => { const q = String(f || '').split('/'); return q.length === 3 ? Date.UTC(+q[2] < 100 ? 2000 + +q[2] : +q[2], +q[1] - 1, +q[0]) : NaN; };
+            const par = (st.ctx.otrasLineas || []).find((o) => o.cuenta_contable === v.banco2 && Math.abs((Number(o.monto) || 0) + m) <= 0.01
+              && Math.abs(fn(o.fecha) - fn(l.fecha)) <= 3 * 86400000);
+            if (par) fila.extracto_par_id = par.id;
+          }
         } else if (v.clase === 'otra') {
           const c = String(v.cuenta || '').trim().split(' ')[0];
           if (!st.plan.some((x) => x.codigo === c)) return 'Elige una cuenta del plan.';
@@ -368,7 +443,7 @@
       const { error } = await window.sb.from('extracto_bancario').update(c.fila).eq('id', c.id);
       if (error) { fallas++; console.warn('[Conciliación]', error.message); if (fallas === 1) toast('No se pudo conciliar: ' + error.message, 'error'); }
     }
-    if (!fallas) toast(cambios.length === 1 ? 'Línea conciliada · su asiento está en el Libro Diario' : cambios.length + ' líneas conciliadas', 'success');
+    if (!fallas) toast(cambios.length === 1 ? 'Línea conciliada' : cambios.length + ' líneas conciliadas', 'success');
     if (window.cargarAsientos) window.cargarAsientos();
     if (window.cargarDeclaraciones) window.cargarDeclaraciones();
     await cargarMes(st);
@@ -455,8 +530,11 @@
     const { error: eC } = await window.sb.from('estados_cuenta').upsert(filaCab, { onConflict: 'cuenta_teso_id,periodo' });
     if (eC) { st.msg('No se pudo guardar el estado de cuenta: ' + esc(eC.message) + ' (¿se corrió sql/contabilidad_08_conciliacion.sql?)'); return; }
     // Las líneas, con la misma huella de siempre: cargar el mismo archivo dos veces no las duplica.
+    // Las líneas con una fecha que no se entiende no entran: se dice cuántas.
+    const conFecha = movs.map((m) => Object.assign({}, m, { fecha: fechaBanco(m.fecha) })).filter((m) => m.fecha);
+    const sinFecha = movs.length - conFecha.length;
     const vistos = {};
-    const filas = movs.map((m) => {
+    const filas = conFecha.map((m) => {
       const base = [m.fecha, m.referencia, m.monto, m.descripcion].join('|');
       const k = (vistos[base] = (vistos[base] || 0) + 1);
       return { cuenta_id: window.__CUENTA_ID, empresa_id: empresa().id, cuenta_teso_id: st.banco, fecha: m.fecha || '', descripcion: m.descripcion || '',
@@ -470,7 +548,7 @@
     const selM = st.$('mes');
     if (![...selM.options].some((o) => o.value === st.mes)) selM.insertAdjacentHTML('beforeend', '<option value="' + st.mes + '">' + mesTxt(st.mes) + '</option>');
     selM.value = st.mes;
-    toast(filas.length + ' líneas de ' + mesTxt(st.mes) + ' cargadas', 'success');
+    toast(filas.length + ' líneas de ' + mesTxt(st.mes) + ' leídas · las que ya estaban no se duplican' + (sinFecha ? ' · ' + sinFecha + ' sin fecha legible quedaron fuera' : ''), sinFecha ? 'info' : 'success');
     await cargarMes(st);
     if (cab.saldo_final == null) editarSaldoBanco(st);
   }
@@ -504,7 +582,7 @@
     window.openFormModal({
       title: 'Dar por cobrado y pagado', saveLabel: 'Aplicar',
       fields: [
-        { name: 'x', label: ' ', col: 2, type: 'static', html: '<div style="font-size:12px;line-height:1.55;">Para el cliente que no manda estado de cuenta: lo que quede por cobrar (CxC) y por pagar (CxP) al cierre del mes pasa a la cuenta que elijas, en un solo asiento al último día del mes. Lo ya conciliado no se vuelve a cancelar, y correrlo de nuevo lo recalcula.</div>' },
+        { name: 'x', label: ' ', col: 2, type: 'static', html: '<div style="font-size:12px;line-height:1.55;">Para el cliente que no manda estado de cuenta: lo que quede por cobrar (CxC) y por pagar (CxP) al cierre del mes pasa a la cuenta que elijas, en un solo asiento al último día del mes. Lo ya conciliado hasta ese día no se vuelve a cancelar, y correrlo de nuevo lo recalcula. Si después llega el estado de cuenta, esos cobros y pagos se concilian como «ya registrado» contra esta cuenta (el sistema lo propone).</div>' },
         { name: 'mes', label: 'Mes', type: 'select', value: mesFijo || st.mes, options: [...st.$('mes').options].map((o) => ({ value: o.value, label: o.textContent })) },
         { name: 'cuenta', label: 'Contra', type: 'select', value: opciones[0].value, options: opciones },
       ],
@@ -518,7 +596,7 @@
       },
     });
   }
-  window.__darPorCobrado = (mes) => { const st = instancias[0]; if (!st) return; (st.cargado ? Promise.resolve() : cargarTodo(st)).then(() => darPorCobrado(st, mes)); };
+  window.__darPorCobrado = (mes) => { const st = instancias.find((i) => i.el.dataset.concilPuerta === 'contabilidad') || instancias[0]; if (!st) return; (st.cargado ? Promise.resolve() : cargarTodo(st)).then(() => darPorCobrado(st, mes)); };
 
   document.querySelectorAll('[data-concil-puerta]').forEach(montar);
   // Se cargan al abrir su pestaña (no al arrancar) y al cambiar de empresa.
