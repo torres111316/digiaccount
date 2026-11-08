@@ -42,7 +42,12 @@
       get n() { return (window.__EMPRESA_ACTIVA || {}).n || '—'; },
       get rif() { return (window.__EMPRESA_ACTIVA || {}).rif || '—'; },
       get dom() { return (window.__EMPRESA_ACTIVA || {}).dom || ''; },
-      get cond() { return (window.__EMPRESA_ACTIVA || {}).cond || ''; },
+      // La de HOY: el documento se emite hoy, aunque en Fiscal se esté mirando otro mes.
+      get cond() {
+        const e = window.__EMPRESA_ACTIVA || {};
+        return window.__condicionActual && window.__rotuloCondicion && e.id
+          ? window.__rotuloCondicion(window.__condicionActual(e.id, e.condBase || e.cond), e.rif) : (e.cond || '');
+      },
     };
     const IMPRENTA = { n: 'Gráficas El Sol, C.A.', rif: 'J-31002030-4', prov: 'SNAT/INTI/GRTI/RCO/2024/0185', desde: '00012001', hasta: '00015000' };
     const MAQ = { n: 'Z7C0025982', serial: 'VE-FISCAL-0044712', modelo: 'The Factory HKA PP-80 (homologado SENIAT)' };
