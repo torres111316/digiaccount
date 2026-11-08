@@ -117,6 +117,89 @@ begin
 exception when unique_violation then null;
 end $$;
 
+-- REVISIÓN FINAL · C1: la transferencia en el orden inverso y deshaciendo la primera punta.
+insert into extracto_bancario (id, cuenta_id, empresa_id, cuenta_teso_id, fecha, descripcion, referencia, monto, periodo, huella) values
+  ('c0000000-0000-0000-0000-000000000011', 'a0000000-0000-0000-0000-000000000081', 'e0000000-0000-0000-0000-000000000081', 'b0000000-0000-0000-0000-000000000001', '20/03/2026', 'TRF A BDV 2', '0011', -70, '2026-03', 'h11'),
+  ('c0000000-0000-0000-0000-000000000012', 'a0000000-0000-0000-0000-000000000081', 'e0000000-0000-0000-0000-000000000081', 'b0000000-0000-0000-0000-000000000002', '20/03/2026', 'TRF DE BANESCO 2', '0012', 70, '2026-03', 'h12');
+-- Primero la entrada (con su par puesto), después la salida SIN par: igual un solo asiento.
+update extracto_bancario set clase = 'transferencia', cuenta_contra = '1.1.1.03.01', extracto_par_id = 'c0000000-0000-0000-0000-000000000011', estado = 'conciliada'
+ where id = 'c0000000-0000-0000-0000-000000000012';
+update extracto_bancario set clase = 'transferencia', cuenta_contra = '1.1.1.03.02', estado = 'conciliada' where id = 'c0000000-0000-0000-0000-000000000011';
+select pg_temp.igual('transferencia en orden inverso: un solo asiento entre las dos puntas',
+  (select count(*)::text from asientos where origen_tabla = 'extracto_bancario'
+      and origen_id in ('c0000000-0000-0000-0000-000000000011', 'c0000000-0000-0000-0000-000000000012')), '1');
+-- Deshacer la punta que tiene el asiento: la otra lo toma.
+update extracto_bancario set estado = 'pendiente' where id = (select origen_id from asientos where origen_tabla = 'extracto_bancario'
+  and origen_id in ('c0000000-0000-0000-0000-000000000011', 'c0000000-0000-0000-0000-000000000012'));
+select pg_temp.igual('deshacer la punta con asiento: la otra punta lo hace',
+  (select count(*)::text from asientos where origen_tabla = 'extracto_bancario'
+      and origen_id in ('c0000000-0000-0000-0000-000000000011', 'c0000000-0000-0000-0000-000000000012')), '1');
+
+-- I2: una línea no puede usar el banco ni la declaración de otra empresa.
+insert into cuentas (id, nombre, segmento, plan_id) values ('a0000000-0000-0000-0000-000000000082', 'Otra firma', 'contador', 'contador_basico');
+insert into empresas (id, cuenta_id, nombre, fiscal_activo) values ('e0000000-0000-0000-0000-000000000082', 'a0000000-0000-0000-0000-000000000082', 'Empresa ajena', true);
+insert into declaraciones (id, cuenta_id, empresa_id, impuesto, periodo, numero, fecha, tipo, monto, a_pagar) values
+  ('d0000000-0000-0000-0000-000000000082', 'a0000000-0000-0000-0000-000000000082', 'e0000000-0000-0000-0000-000000000082', 'DPP', '2026-02', 'D-82', '2026-03-10', 'ORIGINARIA', 9000, 9000);
+do $$
+begin
+  update extracto_bancario set clase = 'impuesto', declaracion_id = 'd0000000-0000-0000-0000-000000000082', estado = 'conciliada'
+   where id = 'c0000000-0000-0000-0000-000000000006';
+  raise exception 'FALLA: se enlazó la declaración de otra empresa';
+exception when others then
+  if sqlerrm like 'FALLA:%' then raise; end if;
+end $$;
+select pg_temp.igual('la declaración ajena quedó sin pago',
+  (select coalesce(fecha_pago::text, 'sin pago') from declaraciones where id = 'd0000000-0000-0000-0000-000000000082'), 'sin pago');
+do $$
+begin
+  insert into extracto_bancario (cuenta_id, empresa_id, cuenta_teso_id, fecha, descripcion, monto, periodo, huella, clase, estado)
+  values ('a0000000-0000-0000-0000-000000000082', 'e0000000-0000-0000-0000-000000000082', 'b0000000-0000-0000-0000-000000000001', '05/03/2026', 'X', 10, '2026-03', 'ajena', 'cobro', 'conciliada');
+  raise exception 'FALLA: una empresa usó el banco de otra';
+exception when others then
+  if sqlerrm like 'FALLA:%' then raise; end if;
+end $$;
+do $$
+begin
+  insert into cuentas_tesoreria (cuenta_id, empresa_id, nombre, tipo, moneda)
+  values ('a0000000-0000-0000-0000-000000000082', 'e0000000-0000-0000-0000-000000000081', 'Banco intruso', 'Corriente', 'Bs');
+  raise exception 'FALLA: se dio de alta un banco en una empresa ajena';
+exception when others then
+  if sqlerrm like 'FALLA:%' then raise; end if;
+end $$;
+
+-- I3: dos bancos con el mismo nombre no comparten subcuenta.
+insert into cuentas_tesoreria (id, cuenta_id, empresa_id, nombre, banco, tipo, moneda) values
+  ('b0000000-0000-0000-0000-000000000004', 'a0000000-0000-0000-0000-000000000081', 'e0000000-0000-0000-0000-000000000081', 'Banesco', 'Banesco', 'Ahorro', 'Bs');
+select pg_temp.igual('otro «Banesco» recibe su propia subcuenta', (pg_temp.sub('b0000000-0000-0000-0000-000000000004') <> '1.1.1.03.01')::text, 'true');
+
+-- I4: una fecha que no se entiende no se concilia.
+insert into extracto_bancario (id, cuenta_id, empresa_id, cuenta_teso_id, fecha, descripcion, monto, periodo, huella) values
+  ('c0000000-0000-0000-0000-000000000013', 'a0000000-0000-0000-0000-000000000081', 'e0000000-0000-0000-0000-000000000081', 'b0000000-0000-0000-0000-000000000001', '2026-03-10', 'FECHA ISO', 5, '2026-03', 'h13');
+do $$
+begin
+  update extracto_bancario set clase = 'cobro', estado = 'conciliada' where id = 'c0000000-0000-0000-0000-000000000013';
+  raise exception 'FALLA: se concilió una línea con una fecha que no se entiende';
+exception when others then
+  if sqlerrm like 'FALLA:%' then raise; end if;
+end $$;
+
+-- I6: un banco en dólares no se concilia todavía (plan 4b).
+insert into cuentas_tesoreria (id, cuenta_id, empresa_id, nombre, tipo, moneda) values
+  ('b0000000-0000-0000-0000-000000000005', 'a0000000-0000-0000-0000-000000000081', 'e0000000-0000-0000-0000-000000000081', 'Cuenta USD', 'Corriente', 'USD');
+insert into extracto_bancario (id, cuenta_id, empresa_id, cuenta_teso_id, fecha, descripcion, monto, periodo, huella) values
+  ('c0000000-0000-0000-0000-000000000014', 'a0000000-0000-0000-0000-000000000081', 'e0000000-0000-0000-0000-000000000081', 'b0000000-0000-0000-0000-000000000005', '10/03/2026', 'USD', 100, '2026-03', 'h14');
+do $$
+begin
+  update extracto_bancario set clase = 'cobro', estado = 'conciliada' where id = 'c0000000-0000-0000-0000-000000000014';
+  raise exception 'FALLA: se concilió una cuenta en dólares como si fueran bolívares';
+exception when others then
+  if sqlerrm like 'FALLA:%' then raise; end if;
+end $$;
+
+-- C2: las líneas que ya estaban cargadas antes de este SQL quedan como «histórica».
+select pg_temp.igual('el estado «histórica» existe', (select count(*)::text from pg_constraint where conname = 'extracto_estado_valido'
+   and pg_get_constraintdef(oid) like '%historica%'), '1');
+
 select pg_temp.igual('todos los asientos cuadran',
   (select count(*)::text from asientos a where a.empresa_id = 'e0000000-0000-0000-0000-000000000081'
       and (select round(sum(coalesce((e->>'debe')::numeric, 0) - coalesce((e->>'haber')::numeric, 0)), 2) from jsonb_array_elements(a.lineas) e) <> 0), '0');

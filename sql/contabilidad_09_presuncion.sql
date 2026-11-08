@@ -5,15 +5,20 @@
 --
 -- POR QUÉ:
 --   · El informe de conciliación (spec §6): por banco y mes, el saldo según el
---     banco, el saldo según libros, lo que el banco trae y aún no se concilia,
---     y lo que hay en libros sin línea del banco (en tránsito). La diferencia
---     tiene que dar cero.
+--     banco, el saldo según libros (más el saldo inicial de su primer estado de
+--     cuenta, hasta que exista el asiento de apertura), lo que el banco trae y
+--     aún no se concilia y lo que hay en libros sin línea del banco (en
+--     tránsito), acumulados hasta el fin del mes. La diferencia tiene que dar
+--     cero.
 --   · «Dar por cobrado y pagado» (spec §3.7): para los clientes que no mandan
 --     estado de cuenta, la presunción de contado. No recorre facturas: lleva a
 --     cero el saldo de 1.1.2.01 CxC y el de 2.1.1.01 CxP al último día del
 --     período, contra la cuenta de efectivo elegida, en UN asiento PRES-mm/aaaa
 --     que se rehace igual si se corre de nuevo (no se cuenta a sí mismo). Lo ya
---     cobrado o pagado por conciliación no se vuelve a cancelar.
+--     cobrado o pagado por conciliación HASTA ESE DÍA no se vuelve a cancelar.
+--     Si después llega el estado de cuenta, el cobro de una factura ya
+--     presumida se concilia como «registrado» contra la cuenta de la
+--     presunción (la pantalla lo propone): pasa de esa cuenta al banco.
 -- Pruebas: sql/pruebas/contabilidad_09_pruebas.sql.
 -- ============================================================
 
@@ -84,6 +89,7 @@ declare
   fin date;
   sb numeric;
   sl numeric;
+  ap numeric;
   pc int; ps numeric;
   tc int; ts numeric;
 begin
@@ -94,27 +100,33 @@ begin
   fin := (ini + interval '1 month - 1 day')::date;
   select saldo_final into sb from estados_cuenta where cuenta_teso_id = b.id and periodo = p_periodo;
   sl := contab_saldo_cuenta(b.empresa_id, b.cuenta_contable, fin);
-  -- Lo que trae el banco en el mes y todavía no está conciliado.
+  -- El saldo con que arrancó el banco: el inicial de su PRIMER estado de cuenta.
+  -- Mientras no haya asiento de apertura (plan 5), se suma aparte a los libros.
+  select coalesce(saldo_inicial, 0) into ap from estados_cuenta where cuenta_teso_id = b.id order by periodo limit 1;
+  ap := coalesce(ap, 0);
+  -- Lo que trae el banco hasta el fin del mes y todavía no está conciliado
+  -- (también lo de meses anteriores: una conciliación arrastra lo abierto).
   select count(*), round(coalesce(sum(monto), 0), 2) into pc, ps
     from extracto_bancario x
    where x.cuenta_teso_id = b.id and x.estado <> 'conciliada'
-     and to_char(contab_fecha_factura(x.fecha), 'YYYY-MM') = p_periodo;
-  -- Lo que hay en libros en el mes y no vino de una línea del banco (ni del
-  -- pago de una declaración que una línea enlazó).
+     and contab_fecha_factura(x.fecha) <= fin;
+  -- Lo que hay en libros hasta el fin del mes y no vino de una línea del banco
+  -- (ni del pago de una declaración que una línea enlazó).
   select count(*), round(coalesce(sum(coalesce((e->>'debe')::numeric, 0) - coalesce((e->>'haber')::numeric, 0)), 0), 2) into tc, ts
     from asientos a
     cross join lateral jsonb_array_elements(a.lineas) e
    where a.empresa_id = b.empresa_id
      and split_part(e->>'cta', ' · ', 1) = b.cuenta_contable
-     and contab_fecha_factura(a.fecha) between ini and fin
+     and contab_fecha_factura(a.fecha) <= fin
      and a.origen_tabla is distinct from 'extracto_bancario'
      and not (a.origen_tabla = 'declaraciones_pago' and a.origen_id in
               (select x.declaracion_id from extracto_bancario x where x.cuenta_teso_id = b.id and x.pago_puesto));
   return jsonb_build_object(
     'saldo_banco', sb,
     'saldo_libros', sl,
+    'saldo_apertura', round(ap, 2),
     'pendientes', jsonb_build_object('cantidad', pc, 'suma', ps),
     'transito', jsonb_build_object('cantidad', tc, 'suma', ts),
-    'diferencia', case when sb is null then null else round(sb - sl - ps + ts, 2) end);
+    'diferencia', case when sb is null then null else round(sb - (sl + ap) - ps + ts, 2) end);
 end $$;
 grant execute on function public.contab_conciliacion_resumen(uuid, text) to authenticated;

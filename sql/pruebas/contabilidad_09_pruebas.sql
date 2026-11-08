@@ -86,5 +86,18 @@ select pg_temp.igual('resumen: saldos, pendientes, tránsito y diferencia',
 select pg_temp.igual('resumen sin estado de cuenta cargado: sin diferencia que calcular',
   (select coalesce(contab_conciliacion_resumen('b0000000-0000-0000-0000-000000000091', '2026-03') ->> 'diferencia', 'null')), 'null');
 
+-- REVISIÓN FINAL · I5: con saldo inicial y una línea pendiente del mes anterior, la diferencia da 0.
+insert into cuentas_tesoreria (id, cuenta_id, empresa_id, nombre, banco, tipo, moneda) values
+  ('b0000000-0000-0000-0000-000000000093', 'a0000000-0000-0000-0000-000000000091', 'e0000000-0000-0000-0000-000000000091', 'Banco tres', 'Tres', 'Corriente', 'Bs');
+insert into estados_cuenta (cuenta_id, empresa_id, cuenta_teso_id, periodo, banco, saldo_inicial, saldo_final) values
+  ('a0000000-0000-0000-0000-000000000091', 'e0000000-0000-0000-0000-000000000091', 'b0000000-0000-0000-0000-000000000093', '2026-02', 'Tres', 1000, 1300),
+  ('a0000000-0000-0000-0000-000000000091', 'e0000000-0000-0000-0000-000000000091', 'b0000000-0000-0000-0000-000000000093', '2026-03', 'Tres', 1300, 1300);
+insert into extracto_bancario (cuenta_id, empresa_id, cuenta_teso_id, fecha, descripcion, referencia, monto, periodo, huella) values
+  ('a0000000-0000-0000-0000-000000000091', 'e0000000-0000-0000-0000-000000000091', 'b0000000-0000-0000-0000-000000000093', '15/02/2026', 'ABONO FEB', 'F1', 300, '2026-02', 't1');
+select pg_temp.igual('resumen con saldo de arranque y pendiente de febrero',
+  (select (r->>'saldo_apertura') || ' | ' || (r->'pendientes'->>'suma') || ' | ' || (r->>'diferencia')
+     from (select contab_conciliacion_resumen('b0000000-0000-0000-0000-000000000093', '2026-03') r) q),
+  '1000.00 | 300.00 | 0.00');
+
 select 'TODO OK · contabilidad 09';
 rollback;
