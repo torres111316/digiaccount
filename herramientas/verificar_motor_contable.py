@@ -89,6 +89,8 @@ def main():
     af_ids = []
     banco_ids = []
     sub_codigos = []
+    mov_ids = []
+    usd_ids = []
     try:
         creadas = api('libro_fiscal', token, 'POST', filas, prefer='return=representation')
         ids = [f['id'] for f in creadas]
@@ -204,11 +206,55 @@ def main():
         if len(asientos_de(token, lin_ids, 'extracto_bancario')) != 2:
             falla('desconciliar el cobro debía quitar su asiento')
         print('  OK  desconciliar una línea quita su asiento')
+
+        # Tesorería y diferencial cambiario (sql/contabilidad_10 a _12), en febrero de 2025
+        # (hay tasas reales del BCV y la empresa no tiene movimientos ahí).
+        t_doc = float(api('rpc/contab_tasa_bcv', token, 'POST', {'p_fecha': '2025-02-05'}))
+        t_dia = float(api('rpc/contab_tasa_bcv', token, 'POST', {'p_fecha': '2025-02-27'}))
+        if not (t_doc > 0 and t_dia > 0):
+            falla('no hay tasas BCV de febrero de 2025 (¿se corrió contabilidad_10_recibos.sql?)')
+        usd_doc = round(1160 / t_doc, 2)
+        vusd = api('libro_fiscal', token, 'POST', [dict(comunes, tipo='venta', fecha='05/02/25', periodo='2025-02', tercero_nombre='CLIENTE ' + MARCA,
+            tercero_rif='J000000003', numero_factura=MARCA + '-USD', tipo_doc='FV', exento=0, base=1000, iva=160, total=1160,
+            moneda='USD', tasa=t_doc, total_usd=usd_doc)], prefer='return=representation')
+        ids.append(vusd[0]['id'])
+        cobro = api('movimientos_tesoreria', token, 'POST', [{'cuenta_id': emp['cuenta_id'], 'empresa_id': emp['id'], 'cuenta_teso_id': banco_ids[0],
+            'fecha': '27/02/25', 'concepto': 'Cobro ' + MARCA, 'tipo': 'ingreso', 'referencia': MARCA, 'monto': round(usd_doc * t_dia, 2),
+            'tercero_nombre': 'CLIENTE ' + MARCA, 'factura_ref': MARCA + '-USD'}], prefer='return=representation')
+        mov_ids.append(cobro[0]['id'])
+        a = asientos_de(token, mov_ids, 'movimientos_tesoreria')
+        cods = [l['cta'].split(' · ')[0] for l in a[0]['lineas']] if a else []
+        cxc = [l for l in (a[0]['lineas'] if a else []) if l['cta'].startswith('1.1.2.01')]
+        if len(a) != 1 or not cuadra(a[0]) or cods[0] != subA or not cxc or abs(float(cxc[0]['haber']) - 1160) > 0.005:
+            falla('el cobro del documento en dólares debía cancelar CxC por 1160 desde la subcuenta, y dio %s (¿se corrió contabilidad_11_tesoreria.sql?)' % [(l['cta'][:12], l['debe'], l['haber']) for l in (a[0]['lineas'] if a else [])])
+        print('  OK  cobro en Tesorería de una factura en dólares: CxC a la tasa del documento y el diferencial (%s)' % ', '.join(cods))
+        cusd = api('cuentas_tesoreria', token, 'POST', [{'cuenta_id': emp['cuenta_id'], 'empresa_id': emp['id'], 'nombre': MARCA + ' USD',
+            'banco': 'Prueba', 'tipo': 'Corriente', 'moneda': 'USD', 'saldo_inicial': 0}], prefer='return=representation')
+        banco_ids.append(cusd[0]['id'])
+        if cusd[0].get('cuenta_contable'):
+            sub_codigos.append(cusd[0]['cuenta_contable'])
+        musd = api('movimientos_tesoreria', token, 'POST', [{'cuenta_id': emp['cuenta_id'], 'empresa_id': emp['id'], 'cuenta_teso_id': cusd[0]['id'],
+            'fecha': '27/02/25', 'concepto': 'Aporte ' + MARCA, 'tipo': 'ingreso', 'referencia': MARCA, 'monto': 10, 'cuenta_contra': '3.1.1.01'}],
+            prefer='return=representation')
+        mov_ids.append(musd[0]['id'])
+        a = asientos_de(token, [musd[0]['id']], 'movimientos_tesoreria')
+        if len(a) != 1 or str(a[0]['lineas'][0].get('usd')) not in ('10', '10.0', '10.00') or abs(float(a[0]['lineas'][0]['debe']) - round(10 * t_dia, 2)) > 0.005:
+            falla('el ingreso de 10 USD debía quedar en Bs a la tasa del día y guardar los dólares, y dio %s' % (a[0]['lineas'] if a else 'sin asiento'))
+        print('  OK  cuenta en dólares: 10 USD en Bs a la tasa del día (%.2f), con los dólares en la línea' % round(10 * t_dia, 2))
+        rev = api('rpc/contab_revaluar', token, 'POST', {'p_empresa': emp['id'], 'p_periodo': '2025-02'})
+        api('rpc/contab_revaluar', token, 'POST', {'p_empresa': emp['id'], 'p_periodo': '2025-02'})
+        r = api('asientos?empresa_id=eq.%s&origen_tabla=eq.revaluacion&referencia=eq.REV-02/2025&select=*' % emp['id'], token)
+        if len(r) > 1 or (r and not cuadra(r[0])):
+            falla('la revaluación de febrero debía dar a lo sumo un asiento cuadrado y dio %d' % len(r))
+        print('  OK  revaluación de febrero 2025 (dos veces): %s · %d asiento' % (rev, len(r)))
     finally:
         # PRIMERO se borra todo y DESPUÉS se comprueba: si una comprobación
         # fallara en medio, el resto de las filas de prueba quedaría en producción.
         if decl_ids:
             api('declaraciones?id=in.(%s)' % ','.join(decl_ids), token, 'DELETE')
+        if mov_ids:
+            api('movimientos_tesoreria?id=in.(%s)' % ','.join(mov_ids), token, 'DELETE')
+        api('asientos?empresa_id=eq.%s&origen_tabla=eq.revaluacion&referencia=eq.REV-02/2025' % emp['id'], token, 'DELETE')
         if banco_ids:
             ids_b = ','.join(banco_ids)
             api('extracto_bancario?cuenta_teso_id=in.(%s)' % ids_b, token, 'DELETE')
@@ -230,6 +276,8 @@ def main():
             falla('quedaron restos del activo de prueba')
         if banco_ids and api('asientos?empresa_id=eq.%s&origen_tabla=eq.extracto_bancario&referencia=eq.%s&select=id' % (emp['id'], MARCA), token):
             falla('quedaron asientos de las líneas de prueba')
+        if mov_ids and asientos_de(token, mov_ids, 'movimientos_tesoreria'):
+            falla('quedaron asientos de los movimientos de prueba')
         if ids or ret_ids or decl_ids or af_ids or banco_ids:
             print('  OK  filas de prueba borradas, sin asientos huérfanos')
 
