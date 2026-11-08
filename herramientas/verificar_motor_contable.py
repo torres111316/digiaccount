@@ -197,7 +197,7 @@ def main():
             falla('las 3 líneas conciliadas debían dar 3 asientos cuadrados y dieron %d' % len(a))
         print('  OK  cobro, comisión y transferencia conciliados: 3 asientos cuadrados')
         res = api('rpc/contab_conciliacion_resumen', token, 'POST', {'p_cuenta_teso': banco_ids[0], 'p_periodo': '2020-02'})
-        if abs(float(res.get('saldo_libros') or 0) - 65) > 0.005 or abs(float(res.get('diferencia') or 1)) > 0.005:
+        if abs(float(res.get('saldo_libros') or 0) - 65) > 0.005 or res.get('diferencia') is None or abs(float(res.get('diferencia'))) > 0.005:
             falla('el resumen debía dar 65 en libros y diferencia 0, y dio %s' % res)
         print('  OK  el resumen de la conciliación cuadra: libros 65, diferencia 0')
         api('extracto_bancario?id=eq.' + lin_ids[0], token, 'PATCH', {'estado': 'pendiente'})
