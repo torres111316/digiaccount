@@ -158,6 +158,9 @@
             if (!hay || !hay.length) filas.unshift({ empresa_id: empId, desde: '2000-01', condicion: anterior, nota: 'Condición antes del cambio' });
             ({ error } = await window.sb.from('empresa_condicion_historial').upsert(filas, { onConflict: 'empresa_id,desde' }));
           }
+          // La ficha cambia AQUÍ, una vez elegido desde cuándo: si se cierra esta
+          // ventana sin guardar, la empresa se queda como estaba.
+          if (!error) ({ error } = await window.sb.from('empresas').update({ condicion_fiscal: nueva }).eq('id', empId));
           if (error) { if (window.toast) window.toast('No se pudo guardar desde cuándo rige: ' + error.message + ' (¿se corrió sql/condicion_fiscal_historial.sql?)', 'error'); }
           else if (window.toast) window.toast(v.desde === 'siempre' ? 'Condición corregida en todos los meses' : 'Condición ' + nueva + ' ' + (opciones.find((o) => o.value === v.desde) || {}).label.toLowerCase(), 'success');
           if (alTerminar) alTerminar();
@@ -473,6 +476,16 @@
     });
   };
 
+  /* El historial de la condición, para verlo antes de cambiarla. */
+  function _historialCondicionHtml(empId) {
+    const MES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+    const h = (window.__COND_HIST || {})[empId] || [];
+    if (!h.length) return '<div style="font-size:11.5px;color:var(--fg-muted);">Sin cambios de condición registrados: la de arriba rige en todos los meses.</div>';
+    return '<div style="font-size:11.5px;color:var(--fg-muted);line-height:1.6;"><strong>Historial:</strong> '
+      + h.map((x) => (x.desde <= '2000-01' ? 'antes' : 'desde ' + MES[+x.desde.slice(5, 7) - 1] + '-' + x.desde.slice(0, 4)) + ' · <strong>' + x.condicion + '</strong>').join(' → ')
+      + '</div>';
+  }
+
   // Editar los datos básicos de una empresa (nombre, RIF, condición fiscal)
   function editarEmpresa(emp) {
     if (!window.openFormModal) return;
@@ -481,7 +494,8 @@
       fields: [
         { name: 'nombre', label: 'Nombre / Razón social', col: 2, value: emp.nombre || '' },
         { name: 'rif', label: 'RIF', value: emp.rif || '', placeholder: 'J-12345678-9' },
-        { name: 'cond', label: 'Condición fiscal', type: 'select', options: ['ordinario', 'formal', 'especial'], value: emp.condicion_fiscal || 'ordinario' },
+        { name: 'cond', label: 'Condición fiscal · si la cambias, te pregunto desde qué período', type: 'select', options: ['ordinario', 'formal', 'especial'], value: _normCond(emp.condicion_fiscal) },
+        { name: 'condHist', label: ' ', col: 2, type: 'static', html: _historialCondicionHtml(emp.id) },
         { name: 'direccion', label: 'Dirección (aparece en los recibos)', col: 2, placeholder: 'Ej. Cambural - Edo. Yaracuy', value: emp.direccion || '' },
         { name: 'telefono', label: 'Teléfono', placeholder: '0414-1234567', value: emp.telefono || '' },
         { name: 'ciudad', label: 'Ciudad / Estado (para contratos)', placeholder: 'Ej. San Felipe, Edo. Yaracuy', value: emp.ciudad || '' },
@@ -493,14 +507,15 @@
       onSave: (v) => {
         if (!v.nombre) return 'Indica el nombre de la empresa.';
         if (!v.rif) return 'Indica el RIF.';
-        window.sb.from('empresas').update({ nombre: v.nombre.trim(), rif: v.rif.trim(), condicion_fiscal: v.cond, direccion: (v.direccion || '').trim() || null, telefono: (v.telefono || '').trim() || null,
+        // La condición NO se escribe aquí si cambió: la cambia la ventana de «desde cuándo».
+        const condCambia = _normCond(v.cond) !== _normCond(emp.condicion_fiscal);
+        window.sb.from('empresas').update({ nombre: v.nombre.trim(), rif: v.rif.trim(), condicion_fiscal: condCambia ? emp.condicion_fiscal : v.cond, direccion: (v.direccion || '').trim() || null, telefono: (v.telefono || '').trim() || null,
             ciudad: (v.ciudad || '').trim() || null, registro_mercantil: (v.registroMercantil || '').trim() || null, representante: (v.representante || '').trim() || null, representante_ci: (v.representanteCi || '').trim() || null, representante_cargo: (v.representanteCargo || '').trim() || null })
           .eq('id', emp.id).then(({ error }) => {
             if (error) { if (window.toast) window.toast('No se pudo guardar: ' + error.message, 'error'); return; }
             if (window.toast) window.toast('Empresa actualizada ✓', 'success');
-            if (_normCond(v.cond) !== _normCond(emp.condicion_fiscal)) {
-              setTimeout(() => window.__registrarCambioCondicion(emp.id, emp.condicion_fiscal, v.cond, () => cargarEmpresas()), 200);
-            } else cargarEmpresas();
+            cargarEmpresas();
+            if (condCambia) setTimeout(() => window.__registrarCambioCondicion(emp.id, emp.condicion_fiscal, v.cond, () => cargarEmpresas()), 200);
           });
       },
     });
@@ -10187,11 +10202,15 @@
         medio_emision: ($c('cfgMedio') || {}).value || 'forma-libre',
         fuente_tasa: ($c('cfgFuenteTasa') || {}).value || 'bcv',
       };
-      const condAntes = emp.condBase;
+      // Si la condición cambia, aquí no se escribe: la cambia la ventana de
+      // «desde cuándo» (si se cierra sin guardar, la empresa queda como estaba).
+      const condAntes = emp.condBase, condNueva = fila.condicion_fiscal;
+      const condCambia = _normCond(condAntes) !== _normCond(condNueva);
+      if (condCambia) fila.condicion_fiscal = condAntes;
       const { error } = await window.sb.from('empresas').update(fila).eq('id', emp.id);
       if (error) { toast('No se pudo guardar: ' + error.message, 'error'); return; }
-      if (window.__registrarCambioCondicion && _normCond(condAntes) !== _normCond(fila.condicion_fiscal)) {
-        setTimeout(() => window.__registrarCambioCondicion(emp.id, condAntes, fila.condicion_fiscal, () => { if (window.cargarEmpresas) window.cargarEmpresas(); }), 200);
+      if (condCambia && window.__registrarCambioCondicion) {
+        setTimeout(() => window.__registrarCambioCondicion(emp.id, condAntes, condNueva, () => { if (window.cargarEmpresas) window.cargarEmpresas(); }), 200);
       }
 
       // Se refresca lo que depende de la empresa: nombre, selector y el cuadro

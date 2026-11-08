@@ -1358,6 +1358,14 @@ ok('al cambiar de período se toma la condición de ese período', /window\.__fi
 ok('cambiar la condición pregunta desde cuándo (ficha y configuración)', (_appjs.match(/__registrarCambioCondicion\(emp\.id, /g) || []).length, 2);
 ok('retención practicada de IVA en un período no especial: se pregunta', /no es agente de retención de IVA\.\\n\\n¿Registrar esta retención practicada de IVA igual\?/.test(_ret), true);
 ok('la Forma 21 avisa cuando la empresa no es especial en ese período', /no es agente de percepción del IGTF y no presenta la Forma 21/.test(_appjs), true);
+/* Luis: «no quiero que me cambies directamente, dame una opción en el
+   sistema». El SQL solo crea la estructura; el cambio lo hace él. */
+var _sqlCond = _leer('sql/condicion_fiscal_historial.sql');
+ok('el SQL no cambia ninguna empresa', /insert into public\.empresa_condicion_historial|update public\.empresas/i.test(_sqlCond), false);
+ok('la ficha no escribe la condición nueva antes de elegir desde cuándo', /condicion_fiscal: condCambia \? emp\.condicion_fiscal : v\.cond/.test(_appjs), true);
+ok('la configuración tampoco', /if \(condCambia\) fila\.condicion_fiscal = condAntes;/.test(_appjs), true);
+ok('la condición se escribe al guardar desde cuándo rige', /if \(!error\) \(\{ error \} = await window\.sb\.from\('empresas'\)\.update\(\{ condicion_fiscal: nueva \}\)/.test(_appjs), true);
+ok('la ficha muestra el historial de la condición', /name: 'condHist'[^\n]*_historialCondicionHtml\(emp\.id\)/.test(_appjs), true);
 
 console.log('\n' + (fallas ? 'HAY ' + fallas + ' FALLA(S) de ' + total : 'TODO OK · ' + total + ' comprobaciones'));
 process.exit(fallas ? 1 : 0);

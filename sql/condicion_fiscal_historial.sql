@@ -3,7 +3,7 @@
 -- Ejecutar en: Supabase SQL Editor. Re-ejecutable.
 --
 -- POR QUÉ: GATMA y RADIAN dejan de ser contribuyentes especiales desde
--- noviembre 2026 y pasan a ordinarios. La condición era un solo campo
+-- noviembre 2026 y pasan a ordinarios (Luis hace el cambio desde la app). La condición era un solo campo
 -- (empresas.condicion_fiscal): cambiarlo hacía que septiembre y octubre se
 -- vieran como ordinario (sin quincenas, sin retenciones practicadas, sin
 -- anticipo de ISLR) y dejaran de coincidir con lo ya declarado.
@@ -47,26 +47,11 @@ returns text language sql stable security invoker set search_path = public, pg_t
 $$;
 grant execute on function public.condicion_fiscal_en(uuid, text) to authenticated;
 
--- GATMA y RADIAN: especiales hasta octubre 2026, ordinarios desde noviembre
--- 2026 (Luis, 07/11/2026). Desde noviembre dejan de ser agentes de retención
--- de IVA y de percepción del IGTF.
-insert into public.empresa_condicion_historial (empresa_id, desde, condicion, nota)
-select e.id, x.desde, x.condicion, x.nota
-  from public.empresas e
-  cross join (values
-    ('2000-01', 'especial',  'Contribuyente especial (antes del cambio)'),
-    ('2026-11', 'ordinario', 'Pasa a ordinario desde noviembre 2026; deja de ser agente de retención de IVA y de percepción del IGTF')
-  ) as x(desde, condicion, nota)
- where e.id in ('2ebc4c53-7bbe-4aa1-b410-b8fd3d676085',   -- GATMA DISTRIBUIDORA Y COMERCIALIZADORA, C.A
-                '6b523033-8c5a-4eae-a4a3-3c3c5886af64')   -- RAFAEL JOSE GORDILLO (COMERCIALIZADORA RADIAN GORDILLO, F.P.)
-on conflict (empresa_id, desde) do update set condicion = excluded.condicion, nota = excluded.nota;
+-- No se cambia ninguna empresa aquí: el cambio lo hace quien lleva la
+-- empresa, desde la app (Editar empresa o Configuración → Condición fiscal),
+-- y la app pregunta desde qué período rige (Luis, 07/11/2026).
 
-update public.empresas set condicion_fiscal = 'ordinario'
- where id in ('2ebc4c53-7bbe-4aa1-b410-b8fd3d676085', '6b523033-8c5a-4eae-a4a3-3c3c5886af64');
-
--- Comprobación: octubre especial, noviembre ordinario.
-select e.nombre,
-       public.condicion_fiscal_en(e.id, '2026-10') as octubre,
-       public.condicion_fiscal_en(e.id, '2026-11') as noviembre
-  from public.empresas e
- where e.id in ('2ebc4c53-7bbe-4aa1-b410-b8fd3d676085', '6b523033-8c5a-4eae-a4a3-3c3c5886af64');
+-- Comprobación: la tabla y la función existen.
+select (select count(*) from information_schema.tables
+         where table_schema = 'public' and table_name = 'empresa_condicion_historial') as tabla,
+       (select count(*) from pg_proc where proname = 'condicion_fiscal_en') as funcion;
