@@ -1361,10 +1361,19 @@ ok('la Forma 21 avisa cuando la empresa no es especial en ese período', /no es 
 /* Luis: «no quiero que me cambies directamente, dame una opción en el
    sistema». El SQL solo crea la estructura; el cambio lo hace él. */
 var _sqlCond = _leer('sql/condicion_fiscal_historial.sql');
-ok('el SQL no cambia ninguna empresa', /insert into public\.empresa_condicion_historial|update public\.empresas/i.test(_sqlCond), false);
+ok('el SQL no cambia ninguna empresa (ni nombra a GATMA o Radian)', /2ebc4c53|6b523033|insert into public\.empresa_condicion_historial|update public\.empresas/i.test(_sqlCond), false);
+ok('la tabla se escribe solo por la función (el invitado lee, no edita)', /revoke insert, update, delete on public\.empresa_condicion_historial from authenticated;/.test(_sqlCond)
+  && /Solo el dueño de la empresa puede cambiar su condición fiscal/.test(_sqlCond), true);
+ok('un cambio posterior a la nueva fecha se borra (sin contradicciones)', /delete from empresa_condicion_historial where empresa_id = p_empresa and desde > p_desde;/.test(_sqlCond), true);
+ok('SQL y app reconocen la condición igual', /like '%especial%' then 'especial'/.test(_sqlCond) && /\/especial\/\.test\(s\) \? 'especial' : \/formal\/\.test\(s\) \? 'formal'/.test(_appjs), true);
+ok('al cambiar de período también se ajusta la quincena de Retenciones', /if \(window\.__syncRetQuincena\) window\.__syncRetQuincena\(\);/.test(_appjs), true);
+ok('lo que se guarda usa la periodicidad del período de la fila', (_appjs.match(/__ivaPorQuincenaEn\(periodo\)/g) || []).length === 3 && /__ivaPorQuincenaEn\(perNuevo\)/.test(_appjs) && /__ivaPorQuincenaEn\(key\)/.test(_appjs), true);
+ok('una retención de un período especial guarda su quincena aunque se mire uno ordinario', /__retencionesPorQuincenaEn\(v\.periodo \|\| _periodoVigente\(\)\)/.test(_ret), true);
+ok('el calendario se recarga si cambia el historial', /'\|' \+ y \+ '\|' \+ JSON\.stringify\(\(window\.__COND_HIST/.test(_appjs), true);
+ok('la factura impresa lleva la condición de hoy', /__rotuloCondicion\(window\.__condicionActual\(e\.id/.test(_leer('assets/facturas.js')), true);
 ok('la ficha no escribe la condición nueva antes de elegir desde cuándo', /condicion_fiscal: condCambia \? emp\.condicion_fiscal : v\.cond/.test(_appjs), true);
 ok('la configuración tampoco', /if \(condCambia\) fila\.condicion_fiscal = condAntes;/.test(_appjs), true);
-ok('la condición se escribe al guardar desde cuándo rige', /if \(!error\) \(\{ error \} = await window\.sb\.from\('empresas'\)\.update\(\{ condicion_fiscal: nueva \}\)/.test(_appjs), true);
+ok('la condición se escribe al guardar desde cuándo rige, historial y ficha juntos', /window\.sb\.rpc\('cambiar_condicion_fiscal', \{ p_empresa: empId, p_desde: siempre \? null : v\.desde, p_condicion: nueva \}\)/.test(_appjs), true);
 ok('la ficha muestra el historial de la condición', /name: 'condHist'[^\n]*_historialCondicionHtml\(emp\.id\)/.test(_appjs), true);
 
 console.log('\n' + (fallas ? 'HAY ' + fallas + ' FALLA(S) de ' + total : 'TODO OK · ' + total + ' comprobaciones'));

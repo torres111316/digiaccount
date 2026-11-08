@@ -1646,6 +1646,11 @@
             // Solo en quien entera por quincena existe el campo; en los demás
             // ni se pregunta y la retención es del mes, como debe ser.
             ...(v.quincena === undefined ? {} : { quincena: v.quincena === '1' ? 1 : v.quincena === '2' ? 2 : null }),
+            /* Sin el campo (se abrió mirando un período en que la empresa no
+               era especial) pero con un período elegido en que sí lo era: la
+               quincena sale del día del comprobante, para que no entre en las dos. */
+            ...(v.quincena === undefined && window.__retencionesPorQuincenaEn && window.__retencionesPorQuincenaEn(v.periodo || _periodoVigente())
+              ? { quincena: _quincenaDeISO(v.fecha || window.__hoyISO()) === '2' ? 2 : 1 } : {}),
           }).then(({ error }) => {
             if (error) {
               // 23505 = llave duplicada. Aquí solo puede ser la que impide dos

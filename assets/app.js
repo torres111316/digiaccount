@@ -139,32 +139,30 @@
       opciones.push({ value: d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'), label: 'Desde ' + MES[d.getMonth()] + ' ' + d.getFullYear() });
     }
     opciones.push({ value: 'siempre', label: 'Siempre fue así (corregir un dato mal cargado)' });
+    const posteriores = (desde) => ((window.__COND_HIST || {})[empId] || []).filter((x) => x.desde > desde);
     window.openFormModal({
       title: 'Cambio de condición fiscal', saveLabel: 'Guardar',
       fields: [
-        { name: 'x', label: ' ', col: 2, type: 'static', html: '<div style="font-size:12.5px;line-height:1.55;">La empresa pasa de <strong>' + anterior
-          + '</strong> a <strong>' + nueva + '</strong>. ¿Desde qué período? Los meses anteriores se siguen viendo como <strong>' + anterior
-          + '</strong>, así lo ya declarado no se descuadra.</div>' },
+        { name: 'x', label: ' ', col: 2, type: 'static', html: '<div style="font-size:12.5px;line-height:1.55;">La empresa pasa a <strong>' + nueva
+          + '</strong>. ¿Desde qué período? Los meses anteriores se siguen viendo con la condición que tenían, así lo ya declarado no se descuadra.</div>' },
         { name: 'desde', label: 'A partir de', col: 2, type: 'select', options: opciones, value: opciones[1].value },
       ],
       onSave: (v) => {
-        (async () => {
-          let error = null;
-          if (v.desde === 'siempre') {
-            ({ error } = await window.sb.from('empresa_condicion_historial').delete().eq('empresa_id', empId));
-          } else {
-            const { data: hay } = await window.sb.from('empresa_condicion_historial').select('id').eq('empresa_id', empId).limit(1);
-            const filas = [{ empresa_id: empId, desde: v.desde, condicion: nueva }];
-            if (!hay || !hay.length) filas.unshift({ empresa_id: empId, desde: '2000-01', condicion: anterior, nota: 'Condición antes del cambio' });
-            ({ error } = await window.sb.from('empresa_condicion_historial').upsert(filas, { onConflict: 'empresa_id,desde' }));
+        const siempre = v.desde === 'siempre';
+        const pisa = siempre ? [] : posteriores(v.desde);
+        if (pisa.length && !window.confirm('Hay un cambio de condición registrado después (' + pisa.map((x) => x.desde + ' · ' + x.condicion).join(', ')
+          + ').\nSi sigues, deja de valer y se borra. ¿Seguir?')) return 'No se guardó: revisa desde cuándo.';
+        // Historial y ficha juntos, en la base, y solo si eres el dueño de la empresa.
+        window.sb.rpc('cambiar_condicion_fiscal', { p_empresa: empId, p_desde: siempre ? null : v.desde, p_condicion: nueva }).then(({ error }) => {
+          if (error) {
+            const falta = /cambiar_condicion_fiscal|function|schema cache/i.test(error.message || '');
+            if (window.toast) window.toast(falta ? 'Falta correr sql/condicion_fiscal_historial.sql en Supabase: la condición no se cambió.' : 'No se cambió la condición: ' + error.message, 'error');
+          } else if (window.toast) {
+            window.toast(siempre ? 'Condición corregida en todos los meses' : 'Condición ' + nueva + ' ' + (opciones.find((o) => o.value === v.desde) || {}).label.toLowerCase(), 'success');
           }
-          // La ficha cambia AQUÍ, una vez elegido desde cuándo: si se cierra esta
-          // ventana sin guardar, la empresa se queda como estaba.
-          if (!error) ({ error } = await window.sb.from('empresas').update({ condicion_fiscal: nueva }).eq('id', empId));
-          if (error) { if (window.toast) window.toast('No se pudo guardar desde cuándo rige: ' + error.message + ' (¿se corrió sql/condicion_fiscal_historial.sql?)', 'error'); }
-          else if (window.toast) window.toast(v.desde === 'siempre' ? 'Condición corregida en todos los meses' : 'Condición ' + nueva + ' ' + (opciones.find((o) => o.value === v.desde) || {}).label.toLowerCase(), 'success');
           if (alTerminar) alTerminar();
-        })();
+        });
+        return undefined;
       },
     });
   };
@@ -352,6 +350,7 @@
       }
       window.__COND_HIST = mapa;
       if (window.__aplicarCondicionDelPeriodo) window.__aplicarCondicionDelPeriodo();   // la empresa ya activa, con el historial nuevo
+      if (window.cargarCalendarioFiscal) window.cargarCalendarioFiscal();   // su clave lleva el historial: se recarga si cambió
     } catch (eHist) { window.__COND_HIST = {}; }
     /* Empresas con acceso: lo que el administrador marcó al invitar o editar al
        usuario (tabla usuario_empresa). Antes se guardaba pero no se aplicaba:
@@ -513,7 +512,7 @@
             ciudad: (v.ciudad || '').trim() || null, registro_mercantil: (v.registroMercantil || '').trim() || null, representante: (v.representante || '').trim() || null, representante_ci: (v.representanteCi || '').trim() || null, representante_cargo: (v.representanteCargo || '').trim() || null })
           .eq('id', emp.id).then(({ error }) => {
             if (error) { if (window.toast) window.toast('No se pudo guardar: ' + error.message, 'error'); return; }
-            if (window.toast) window.toast('Empresa actualizada ✓', 'success');
+            if (window.toast) window.toast(condCambia ? 'Datos guardados · ahora elige desde cuándo cambia la condición' : 'Empresa actualizada ✓', 'success');
             cargarEmpresas();
             if (condCambia) setTimeout(() => window.__registrarCambioCondicion(emp.id, emp.condicion_fiscal, v.cond, () => cargarEmpresas()), 200);
           });
@@ -2196,7 +2195,8 @@
 
     async function refrescar() {
       const emp = window.__EMPRESA_ACTIVA;
-      const clave = (emp && emp.id ? emp.id : 'sin') + '|' + y;
+      // El historial de la condición va en la clave: si cambia, se recarga.
+      const clave = (emp && emp.id ? emp.id : 'sin') + '|' + y + '|' + JSON.stringify((window.__COND_HIST || {})[emp && emp.id] || []);
       /* Si algo falla aquí NO se puede perder en silencio: un calendario en
          blanco sin explicación es indistinguible de uno sin vencimientos, y
          hace perder el tiempo de los dos buscando en el lugar equivocado. */
@@ -4523,13 +4523,12 @@
     function _opcionesPeriodo() {
       // Del período actual hacia atrás 24 meses (para declarar facturas rezagadas)
       const out = [];
-      const esp = window.__ivaPorQuincena && window.__ivaPorQuincena();
       const base = _periodoActualKey();
       let y = parseInt(base.slice(0, 4), 10), m = parseInt(base.slice(5, 7), 10);
       for (let i = 0; i < 24; i++) {
         const key = y + '-' + String(m).padStart(2, '0');
         const mes = _MESES_PER[m - 1] + ' ' + y;
-        if (esp) {
+        if (window.__ivaPorQuincenaEn ? window.__ivaPorQuincenaEn(key) : (window.__ivaPorQuincena && window.__ivaPorQuincena())) {
           out.push({ value: key + '·1', label: mes + ' · 1ra quincena' });
           out.push({ value: key + '·2', label: mes + ' · 2da quincena' });
         } else {
@@ -5520,7 +5519,7 @@
           /* La quincena de una VENTA sí sale del día: la máquina emite el
              reporte el día que lo emite. No existe aquí el caso de la compra
              recibida tarde, que es el que obliga a preguntarla. */
-          const esEsp = window.__ivaPorQuincena && window.__ivaPorQuincena();
+          const esEsp = window.__ivaPorQuincenaEn ? window.__ivaPorQuincenaEn(periodo) : (window.__ivaPorQuincena && window.__ivaPorQuincena());
           const dia = parseInt(fp[2], 10);
           const M = bodyRef && bodyRef.__montos ? bodyRef.__montos.leer()
             : { exento: 0, base_gen: 0, iva_gen: 0, base_red: 0, iva_red: 0, base_adic: 0, iva_adic: 0, base: 0, iva: 0, total: 0 };
@@ -6154,7 +6153,7 @@
              deducirla del día la mandaría a la que no es. La de una VENTA sí
              sale del día, porque la emite la empresa el día que la emite.
              En un ordinario queda nula: declara el mes completo. */
-          const esEsp = window.__ivaPorQuincena && window.__ivaPorQuincena();
+          const esEsp = window.__ivaPorQuincenaEn ? window.__ivaPorQuincenaEn(periodo) : (window.__ivaPorQuincena && window.__ivaPorQuincena());
           const diaV = parseInt(fP[2], 10);
           const quincena = !esEsp ? null
             : (esCompra ? elegido.quincena : (diaV && diaV > 15 ? 2 : 1));
@@ -6420,6 +6419,14 @@
        obligación es — `esEspecial` a secas fue justo lo que confundió las
        dos periodicidades. */
     window.__ivaPorQuincena = _ivaPorQuincena;
+    /* Lo que se GUARDA va con la periodicidad del período de la fila, no la
+       del que se mira: una compra de octubre registrada mirando noviembre
+       lleva su quincena de octubre. */
+    window.__ivaPorQuincenaEn = _ivaPorQuincenaEn;
+    window.__retencionesPorQuincenaEn = (mes) => {
+      const e = window.__EMPRESA_ACTIVA || {};
+      return window.__condicionEn(e.id, mes, e.condBase || e.cond) === 'especial';
+    };
     window.__retencionesPorQuincena = _retencionesPorQuincena;
     let _fiscalPer = {
       mm: String(_hoyFis.getMonth() + 1).padStart(2, '0'),
@@ -7025,7 +7032,7 @@
           if (!fechaOk) return 'No entiendo la fecha "' + (v.fecha || '') + '". Escríbela como 27/08/26.';
           const p = fechaOk.split('/');
           const periodo = ('20' + p[2] + '-' + p[1]);
-          const esEsp = window.__ivaPorQuincena && window.__ivaPorQuincena();
+          const esEsp = window.__ivaPorQuincenaEn ? window.__ivaPorQuincenaEn(periodo) : (window.__ivaPorQuincena && window.__ivaPorQuincena());
           const dia = parseInt(p[0], 10);
           window.sb.from('libro_fiscal').update({
             fecha: fechaOk, periodo: periodo,
@@ -7205,7 +7212,7 @@
              en la declaracion que no es.
              La de una COMPRA sigue siendo la que se eligio; la de una VENTA
              sale del dia, porque la emite la empresa el dia que la emite. */
-          const _esEspEd = window.__ivaPorQuincena && window.__ivaPorQuincena();
+          const _esEspEd = window.__ivaPorQuincenaEn ? window.__ivaPorQuincenaEn(perNuevo) : (window.__ivaPorQuincena && window.__ivaPorQuincena());
           const _diaEd = parseInt(fechaOk.split('/')[0], 10);
           const _quincenaEd = !_esEspEd ? null
             : (esCompra ? (_elegidoEd.quincena || r.quincena || null)
@@ -7404,7 +7411,12 @@
             _fiscalPer = { mm: String(idx + 1).padStart(2, '0'), aa: p[1].slice(2), q: q };
             window.__fiscalPer = _fiscalPer;
             // La condición de la empresa es la de ESE período (puede haber cambiado).
-            if (window.__aplicarCondicionDelPeriodo && window.__aplicarCondicionDelPeriodo() && window.__renderIslrBox) window.__renderIslrBox(0);
+            if (window.__aplicarCondicionDelPeriodo && window.__aplicarCondicionDelPeriodo()) {
+              if (window.__renderIslrBox) window.__renderIslrBox(0);
+              // Y el selector de quincena de Retenciones: de noviembre (ordinario) a
+              // octubre (especial) tiene que volver a aparecer, y al revés irse.
+              if (window.__syncRetQuincena) window.__syncRetQuincena();
+            }
             if (mainBtn) mainBtn.textContent = _perLabel();
             /* Cada refresco va por su cuenta. El período YA cambió cuando se
                llega aquí, así que si uno falla no puede arrastrar a los
