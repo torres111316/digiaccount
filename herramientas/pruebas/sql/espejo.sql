@@ -144,6 +144,36 @@ create table public.activos_fijos (
   creado_en timestamptz default now()
 );
 
+-- Tesorería y estados de cuenta, con las columnas reales de Supabase.
+create table public.cuentas_tesoreria (
+  id uuid primary key default gen_random_uuid(),
+  cuenta_id uuid,
+  empresa_id uuid,
+  nombre text,
+  banco text,
+  tipo text,
+  moneda text,
+  numero text,
+  saldo_inicial numeric default 0,
+  color text,
+  creado_en timestamptz default now()
+);
+create table public.extracto_bancario (
+  id uuid primary key default gen_random_uuid(),
+  cuenta_id uuid,
+  empresa_id uuid,
+  cuenta_teso_id uuid,
+  fecha text,
+  descripcion text,
+  referencia text,
+  monto numeric,
+  conciliado_con uuid,
+  periodo text,
+  huella text,
+  creado_en timestamptz default now(),
+  unique (cuenta_teso_id, huella)
+);
+
 create table public.asientos (
   id uuid primary key default gen_random_uuid(),
   cuenta_id uuid,
