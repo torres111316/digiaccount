@@ -7600,7 +7600,9 @@
          pasa lo pendiente de CxC y CxP a Bancos o Caja (sql/contabilidad_09_presuncion.sql).
          Solo se ofrece si ese mes no tiene estados de cuenta cargados. */
       const { data: edoMes } = await window.sb.from('estados_cuenta').select('id').eq('empresa_id', empId).eq('periodo', perDecl).limit(1);
-      if (!(edoMes && edoMes.length) && window.__darPorCobrado
+      // Si ya se aplicó en este mes, no se vuelve a preguntar al cerrar.
+      const { data: presMes } = await window.sb.from('asientos').select('id').eq('empresa_id', empId).eq('origen_tabla', 'presuncion').eq('referencia', 'PRES-' + mm + '/' + anio).limit(1);
+      if (!(edoMes && edoMes.length) && !(presMes && presMes.length) && window.__darPorCobrado
         && window.confirm(_perLabel() + ' no tiene estados de cuenta cargados.\n\n¿Quieres «Dar por cobrado y pagado» lo pendiente de ese mes (presunción de contado)? Podrás elegir la cuenta. Si no, sigue el cierre sin eso.')) {
         window.__darPorCobrado(perDecl);
         return;
