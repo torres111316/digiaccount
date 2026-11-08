@@ -544,9 +544,27 @@
       return arr.filter((r) => r.sucursal_id === filtro);
     }
 
+    /* La quincena de IVA de una retención: la guardada o, si falta, la del
+       día. Es la MISMA regla de los arrastres (calcularArrastres en app.js):
+       si el ítem 66 y el 54 contaran distinto, una retención saldría en los
+       dos o en ninguno. */
+    function _quincenaIvaDe(r) {
+      if (r.quincena === 1 || r.quincena === 2) return r.quincena;
+      const d = parseInt(String(r.fecha || '').split('/')[0], 10);
+      return d && d > 15 ? 2 : 1;
+    }
     function aplicarAForma30(arr) {
       arr = arr || [];
-      const ivaSuf = arr.filter((r) => r.direccion === 'sufrida' && r.tipo === 'iva').reduce((s, r) => s + (Number(r.monto) || 0), 0);
+      /* ÍTEM 66: las sufridas de ESTE período de IVA. Si la empresa declara
+         el IVA por quincena (C.A. especial), son las de la quincena que se
+         mira, no las del mes: GATMA, 2da quincena de octubre 2026, volvía a
+         sumar en el 66 los 51.556,18 de la factura 166 (1ra quincena), que
+         ya venían arrastrados en el 54. Una firma personal (IVA mensual)
+         sigue sumando el mes entero. */
+      const perF = window.__fiscalPer || {};
+      const qIva = (window.__ivaPorQuincena && window.__ivaPorQuincena() && (perF.q === 1 || perF.q === 2)) ? perF.q : 0;
+      const ivaSuf = arr.filter((r) => r.direccion === 'sufrida' && r.tipo === 'iva' && (!qIva || _quincenaIvaDe(r) === qIva))
+        .reduce((s, r) => s + (Number(r.monto) || 0), 0);
       window.__RET_IVA_SUFRIDA = ivaSuf;
       if (window.__recalcAutoliq) window.__recalcAutoliq();
       /* De dónde salen las retenciones del cuadro del libro de compras.

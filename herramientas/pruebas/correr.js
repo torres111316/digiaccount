@@ -1292,5 +1292,32 @@ ok('«Registrar y declarar» abre la declaración con la quincena puesta',
   /__registrarDeclaracion\(\{ impuesto: 'IGTF', periodo: '20' \+ p\.aa \+ '-' \+ p\.mm, quincena: iq\.q/.test(_appjs), true);
 ok('una declaración sin id se registra, no se edita', /const editando = !!\(d && d\.id\);[\s\S]{0,3000}const \{ error \} = editando/.test(_appjs), true);
 
+/* GATMA, 2da quincena de octubre 2026: el ítem 66 sumaba la retención
+   sufrida de la 1ra quincena (factura 166, 51.556,18), que ya venía
+   arrastrada en el 54. Se prueba con el código de verdad. */
+bloque('Forma 30: el ítem 66 es de la quincena de IVA');
+eval(tramo('    function _quincenaIvaDe(r) {', '    function aplicarAForma30(arr) {'));
+eval(tramo('    function aplicarAForma30(arr) {', '      if (window.__recalcAutoliq) window.__recalcAutoliq();') + '}');
+var _retOct = [
+  { direccion: 'sufrida', tipo: 'iva', quincena: 1, fecha: '13/10/26', monto: 51556.18 },
+  { direccion: 'sufrida', tipo: 'iva', quincena: null, fecha: '20/10/26', monto: 1000 },
+  { direccion: 'practicada', tipo: 'iva', quincena: 2, fecha: '20/10/26', monto: 777 },
+];
+var _ivaQ = true;
+window.__ivaPorQuincena = function () { return _ivaQ; };
+window.__recalcAutoliq = null;
+window.__fiscalPer = { mm: '10', aa: '26', q: 2 };
+aplicarAForma30(_retOct);
+ok('IVA por quincena, 2da: no vuelve a sumar la de la 1ra', window.__RET_IVA_SUFRIDA, 1000);
+window.__fiscalPer = { mm: '10', aa: '26', q: 1 };
+aplicarAForma30(_retOct);
+ok('IVA por quincena, 1ra: solo la suya', window.__RET_IVA_SUFRIDA, 51556.18);
+_ivaQ = false;
+window.__fiscalPer = { mm: '10', aa: '26' };
+aplicarAForma30(_retOct);
+ok('IVA mensual (firma personal): el mes entero', window.__RET_IVA_SUFRIDA, 52556.18);
+ok('el 66 y el 54 deducen la quincena igual (guardada o, si falta, el día)',
+  /if \(q === 1 \|\| q === 2\) return m \+ '-' \+ q;[\s\S]{0,300}d > 15 \? 2 : 1/.test(_appjs) && /return d && d > 15 \? 2 : 1;/.test(_ret), true);
+
 console.log('\n' + (fallas ? 'HAY ' + fallas + ' FALLA(S) de ' + total : 'TODO OK · ' + total + ' comprobaciones'));
 process.exit(fallas ? 1 : 0);
