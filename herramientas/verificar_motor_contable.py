@@ -87,6 +87,8 @@ def main():
     ret_ids = []
     decl_ids = []
     af_ids = []
+    banco_ids = []
+    sub_codigos = []
     try:
         creadas = api('libro_fiscal', token, 'POST', filas, prefer='return=representation')
         ids = [f['id'] for f in creadas]
@@ -168,11 +170,51 @@ def main():
         if cods != ['1.2.1.09', '6.3.1.05', '1.2.1.04'] or not cuadra(a[0]):
             falla('la desincorporación debía dar 1.2.1.09 / 6.3.1.05 / 1.2.1.04 y dio %s' % cods)
         print('  OK  la desincorporación sale con su pérdida y cuadra')
+
+        # Conciliación (sql/contabilidad_08 y _09): dos bancos de prueba con su subcuenta,
+        # un estado de cuenta de febrero de 2020 y tres líneas conciliadas.
+        bancos = api('cuentas_tesoreria', token, 'POST', [
+            {'cuenta_id': emp['cuenta_id'], 'empresa_id': emp['id'], 'nombre': MARCA + ' A', 'banco': 'Prueba', 'tipo': 'Corriente', 'moneda': 'Bs', 'saldo_inicial': 0},
+            {'cuenta_id': emp['cuenta_id'], 'empresa_id': emp['id'], 'nombre': MARCA + ' B', 'banco': 'Prueba', 'tipo': 'Corriente', 'moneda': 'Bs', 'saldo_inicial': 0}],
+            prefer='return=representation')
+        banco_ids.extend(b['id'] for b in bancos)
+        sub_codigos.extend(b['cuenta_contable'] for b in bancos if b.get('cuenta_contable'))
+        if len(sub_codigos) != 2 or not all(c.startswith('1.1.1.03.') for c in sub_codigos):
+            falla('cada banco debía recibir su subcuenta 1.1.1.03.NN y recibió %s (¿se corrió contabilidad_08_conciliacion.sql?)' % sub_codigos)
+        print('  OK  cada banco recibe su subcuenta: %s' % ', '.join(sub_codigos))
+        subA, subB = sub_codigos
+        api('estados_cuenta', token, 'POST', [{'cuenta_id': emp['cuenta_id'], 'empresa_id': emp['id'], 'cuenta_teso_id': banco_ids[0],
+            'periodo': '2020-02', 'banco': 'Prueba', 'saldo_inicial': 0, 'saldo_final': 65}])
+        comunesL = {'cuenta_id': emp['cuenta_id'], 'empresa_id': emp['id'], 'cuenta_teso_id': banco_ids[0], 'periodo': '2020-02', 'referencia': MARCA}
+        lineas = api('extracto_bancario', token, 'POST', [
+            dict(comunesL, fecha='03/02/2020', descripcion='COBRO ' + MARCA, monto=100, huella=MARCA + '-1', clase='cobro', estado='conciliada', cuenta_contra=None),
+            dict(comunesL, fecha='04/02/2020', descripcion='COMISION ' + MARCA, monto=-5, huella=MARCA + '-2', clase='comision', estado='conciliada', cuenta_contra=None),
+            dict(comunesL, fecha='05/02/2020', descripcion='TRF ' + MARCA, monto=-30, huella=MARCA + '-3', clase='transferencia', estado='conciliada', cuenta_contra=subB)],
+            prefer='return=representation')
+        lin_ids = [l['id'] for l in lineas]
+        a = asientos_de(token, lin_ids, 'extracto_bancario')
+        if len(a) != 3 or not all(cuadra(x) for x in a):
+            falla('las 3 líneas conciliadas debían dar 3 asientos cuadrados y dieron %d' % len(a))
+        print('  OK  cobro, comisión y transferencia conciliados: 3 asientos cuadrados')
+        res = api('rpc/contab_conciliacion_resumen', token, 'POST', {'p_cuenta_teso': banco_ids[0], 'p_periodo': '2020-02'})
+        if abs(float(res.get('saldo_libros') or 0) - 65) > 0.005 or res.get('diferencia') is None or abs(float(res.get('diferencia'))) > 0.005:
+            falla('el resumen debía dar 65 en libros y diferencia 0, y dio %s' % res)
+        print('  OK  el resumen de la conciliación cuadra: libros 65, diferencia 0')
+        api('extracto_bancario?id=eq.' + lin_ids[0], token, 'PATCH', {'estado': 'pendiente'})
+        if len(asientos_de(token, lin_ids, 'extracto_bancario')) != 2:
+            falla('desconciliar el cobro debía quitar su asiento')
+        print('  OK  desconciliar una línea quita su asiento')
     finally:
         # PRIMERO se borra todo y DESPUÉS se comprueba: si una comprobación
         # fallara en medio, el resto de las filas de prueba quedaría en producción.
         if decl_ids:
             api('declaraciones?id=in.(%s)' % ','.join(decl_ids), token, 'DELETE')
+        if banco_ids:
+            ids_b = ','.join(banco_ids)
+            api('extracto_bancario?cuenta_teso_id=in.(%s)' % ids_b, token, 'DELETE')
+            api('cuentas_tesoreria?id=in.(%s)' % ids_b, token, 'DELETE')
+            for c in sub_codigos:
+                api('cuentas_contables?empresa_id=eq.%s&codigo=eq.%s' % (emp['id'], c), token, 'DELETE')
         if af_ids:
             api('asientos?origen_tabla=eq.activos_fijos&origen_id=in.(%s)' % ','.join(af_ids), token, 'DELETE')
             api('activos_fijos?id=in.(%s)' % ','.join(af_ids), token, 'DELETE')
@@ -186,7 +228,9 @@ def main():
             falla('quedaron %d asientos huérfanos de las filas de prueba' % huerfanos)
         if af_ids and (asientos_de(token, af_ids, 'activos_fijos') or api('activos_depreciacion?activo_id=in.(%s)&select=id' % ','.join(af_ids), token)):
             falla('quedaron restos del activo de prueba')
-        if ids or ret_ids or decl_ids or af_ids:
+        if banco_ids and api('asientos?empresa_id=eq.%s&origen_tabla=eq.extracto_bancario&referencia=eq.%s&select=id' % (emp['id'], MARCA), token):
+            falla('quedaron asientos de las líneas de prueba')
+        if ids or ret_ids or decl_ids or af_ids or banco_ids:
             print('  OK  filas de prueba borradas, sin asientos huérfanos')
 
     if sin_periodo:
