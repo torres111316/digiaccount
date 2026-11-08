@@ -1319,5 +1319,45 @@ ok('IVA mensual (firma personal): el mes entero', window.__RET_IVA_SUFRIDA, 5255
 ok('el 66 y el 54 deducen la quincena igual (guardada o, si falta, el día)',
   /if \(q === 1 \|\| q === 2\) return m \+ '-' \+ q;[\s\S]{0,300}d > 15 \? 2 : 1/.test(_appjs) && /return d && d > 15 \? 2 : 1;/.test(_ret), true);
 
+/* GATMA y RADIAN dejan de ser especiales en noviembre 2026. La condición
+   tiene fecha (sql/condicion_fiscal_historial.sql): octubre se sigue viendo
+   como especial y noviembre como ordinario. Se prueba con el código de verdad. */
+bloque('Condición fiscal con fecha');
+eval(tramo('  window.__COND_HIST = window.__COND_HIST || {};', '  /* Cuando la condición fiscal de una empresa cambia'));
+window.__COND_HIST = { G: [{ desde: '2000-01', condicion: 'especial' }, { desde: '2026-11', condicion: 'ordinario' }] };
+ok('GATMA en octubre 2026: especial', window.__condicionEn('G', '2026-10', 'ordinario'), 'especial');
+ok('GATMA en noviembre 2026: ordinario', window.__condicionEn('G', '2026-11', 'ordinario'), 'ordinario');
+ok('GATMA en 2027: sigue ordinario', window.__condicionEn('G', '2027-03', 'ordinario'), 'ordinario');
+ok('sin historial manda la ficha, como siempre', window.__condicionEn('X', '2026-10', 'Contribuyente especial'), 'especial');
+ok('el rótulo de una C.A. ordinaria', window.__rotuloCondicion('ordinario', 'J502826114'), 'Contribuyente Ordinario');
+ok('el rótulo de una firma personal ordinaria', window.__rotuloCondicion('ordinario', 'V123'), 'Persona Natural');
+ok('el rótulo de una especial', window.__rotuloCondicion('especial', 'V123'), 'Contribuyente Especial');
+window.__EMPRESA_ACTIVA = { id: 'G', rif: 'J502826114', condBase: 'ordinario', cond: '' };
+window.__fiscalPer = { mm: '10', aa: '26', q: 2 };
+window.__aplicarCondicionDelPeriodo();
+ok('mirando octubre, la empresa activa es especial', window.__EMPRESA_ACTIVA.cond, 'Contribuyente Especial');
+window.__fiscalPer = { mm: '11', aa: '26' };
+window.__aplicarCondicionDelPeriodo();
+ok('mirando noviembre, la empresa activa es ordinaria', window.__EMPRESA_ACTIVA.cond, 'Contribuyente Ordinario');
+
+var emp = { id: 'G', condBase: 'ordinario' };
+eval(tramo("      const MES_MIN = ['enero'", '      const condDeEvento = (e) =>').replace(/^(\s*)const /gm, '$1var '));
+ok('calendario: la 2da quincena de octubre que vence en noviembre es de octubre',
+  periodoDeEvento({ fecha: '2026-11-09', descripcion: 'Enterar retenciones de IVA practicadas del 16 al último de octubre (+ declaración de IVA y anticipo de ISLR 2da' }), '2026-10');
+ok('calendario: la 1ra quincena de noviembre es de noviembre',
+  periodoDeEvento({ fecha: '2026-11-23', descripcion: 'Enterar retenciones de IVA practicadas del 01 al 15 de noviembre' }), '2026-11');
+ok('calendario: diciembre que se entera en enero es del año anterior',
+  periodoDeEvento({ fecha: '2027-01-12', descripcion: 'Enterar retenciones de ISLR practicadas en diciembre' }), '2026-12');
+ok('calendario: sin mes en el texto, el mes anterior al vencimiento',
+  periodoDeEvento({ fecha: '2026-11-09', descripcion: 'Impuesto a los Grandes Patrimonios — declaración y pago (2do lapso)' }), '2026-10');
+ok('calendario: lo «especial» se filtra con la condición de SU período', /\(e\.ambito !== 'especial' \|\| condDeEvento\(e\) === 'especial'\)/.test(_appjs), true);
+ok('calendario: el IVA mensual sale solo en los meses de ordinario', /if \(window\.__condicionEn\(emp\.id, perIva, emp\.condBase\) !== 'ordinario'\) continue;/.test(_appjs), true);
+ok('arrastres: cada mes con su periodicidad', /if \(!m \|\| !porQuincenaEn\(m\)\) return m;/.test(_appjs), true);
+ok('el selector de período ofrece quincenas solo en los meses especiales', /if \(_ivaPorQuincenaEn\(dOp\.getFullYear\(\)/.test(_appjs), true);
+ok('al cambiar de período se toma la condición de ese período', /window\.__fiscalPer = _fiscalPer;\s*\n[^\n]*\n\s*if \(window\.__aplicarCondicionDelPeriodo/.test(_appjs), true);
+ok('cambiar la condición pregunta desde cuándo (ficha y configuración)', (_appjs.match(/__registrarCambioCondicion\(emp\.id, /g) || []).length, 2);
+ok('retención practicada de IVA en un período no especial: se pregunta', /no es agente de retención de IVA\.\\n\\n¿Registrar esta retención practicada de IVA igual\?/.test(_ret), true);
+ok('la Forma 21 avisa cuando la empresa no es especial en ese período', /no es agente de percepción del IGTF y no presenta la Forma 21/.test(_appjs), true);
+
 console.log('\n' + (fallas ? 'HAY ' + fallas + ' FALLA(S) de ' + total : 'TODO OK · ' + total + ' comprobaciones'));
 process.exit(fallas ? 1 : 0);
