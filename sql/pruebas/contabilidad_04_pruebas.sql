@@ -133,7 +133,10 @@ select pg_temp.igual('se descartan los asientos del libro que manda la app vieja
 insert into asientos (cuenta_id, empresa_id, fecha, descripcion, referencia, origen, lineas, total) values
   ('a0000000-0000-0000-0000-000000000001', 'e0000000-0000-0000-0000-000000000001', '02/11/2026', 'Venta s/recibo REC-0001 · CLIENTE', 'REC-0001', 'auto', '[]', 0),
   ('a0000000-0000-0000-0000-000000000001', 'e0000000-0000-0000-0000-000000000001', '02/11/2026', 'Reverso cobro REC-0001 · CLIENTE', 'REC-0001', 'auto', '[]', 0);
-select pg_temp.igual('los recibos y la tesorería sí entran', (select count(*)::text from asientos where empresa_id = 'e0000000-0000-0000-0000-000000000001' and referencia = 'REC-0001'), '2');
+-- Desde el plan 4b (sql/contabilidad_10) el recibo también lo contabiliza la
+-- base: el «Venta s/recibo» de la app vieja se descarta; el reverso de un
+-- cobro anterior sigue entrando.
+select pg_temp.igual('el reverso de Tesorería entra; el recibo de la app vieja ya no', (select count(*)::text from asientos where empresa_id = 'e0000000-0000-0000-0000-000000000001' and referencia = 'REC-0001'), '1');
 
 -- C1. Anular o borrar una factura VIEJA quita su asiento suelto.
 insert into libro_fiscal (id, cuenta_id, empresa_id, tipo, fecha, periodo, tercero_nombre, numero_factura, tipo_doc, base, iva, total) values

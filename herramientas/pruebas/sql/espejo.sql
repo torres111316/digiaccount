@@ -174,6 +174,32 @@ create table public.extracto_bancario (
   unique (cuenta_teso_id, huella)
 );
 
+-- Recibos de venta de la app y tasas del BCV, con las columnas reales.
+create table public.facturas (
+  id uuid primary key default gen_random_uuid(),
+  cuenta_id uuid, empresa_id uuid,
+  numero text, control text, tipo text, fecha text,
+  cliente_nombre text, cliente_rif text, cliente_dom text,
+  alicuota numeric, igtf boolean, condicion text, items jsonb,
+  subtotal numeric, iva numeric, igtf_monto numeric, total numeric,
+  estado text, tipo_doc text, factura_afectada text, motivo text, emitida_en timestamptz,
+  moneda text, tasa numeric, total_usd numeric,
+  creado_en timestamptz default now()
+);
+create table public.tasas_cambio (
+  id uuid primary key default gen_random_uuid(),
+  fecha date, moneda text, tasa numeric, fuente text,
+  creado_en timestamptz default now()
+);
+create table public.movimientos_tesoreria (
+  id uuid primary key default gen_random_uuid(),
+  cuenta_id uuid, empresa_id uuid, cuenta_teso_id uuid,
+  fecha text, concepto text, tipo text, referencia text, monto numeric,
+  comprobante_path text, tercero_nombre text, tercero_rif text, factura_ref text,
+  conciliado boolean default false,
+  creado_en timestamptz default now()
+);
+
 create table public.asientos (
   id uuid primary key default gen_random_uuid(),
   cuenta_id uuid,
