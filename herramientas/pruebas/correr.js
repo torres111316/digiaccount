@@ -1418,5 +1418,27 @@ ok('transferencia a otro banco propio: no es segura, con su par', _s && (_s.clas
 ok('una línea sin nada que reconocer: nada', sugerirLinea(_l('OPERACION MASTER DEBIT', -8063), _ctxC), null);
 ok('un cobro no se sugiere contra una compra', sugerirLinea(_l('PAGO FACT 166 LIGNUM', -446820.19), _ctxC), null);
 
+bloque('Conciliación: la pantalla (Contabilidad y Tesorería)');
+var _concil = _leer('assets/conciliacion.js');
+var _teso = _leer('assets/tesoreria.js');
+ok('Contabilidad tiene la pestaña Conciliación', /<button data-tab="conciliacion">/.test(_html) && /class="conta-tab" data-tab="conciliacion"[\s\S]{0,80}data-concil-puerta="contabilidad"/.test(_html), true);
+ok('Tesorería usa la misma pantalla', /class="teso-tab" data-tab="concil"[\s\S]{0,80}data-concil-puerta="tesoreria"/.test(_html), true);
+ok('el módulo se carga en la página', /<script src="assets\/conciliacion\.js"><\/script>/.test(_html), true);
+ok('la cabecera del estado de cuenta: una por banco y mes', /from\('estados_cuenta'\)\.upsert\(filaCab, \{ onConflict: 'cuenta_teso_id,periodo' \}\)/.test(_concil), true);
+ok('las líneas con su huella: cargar dos veces no duplica', /onConflict: 'cuenta_teso_id,huella', ignoreDuplicates: true/.test(_concil), true);
+ok('«Aprobar las seguras» solo toma las seguras', /filter\(\(l\) => l\.estado !== 'conciliada' && l\._sug && l\._sug\.seguro\)/.test(_concil), true);
+ok('el resumen lo calcula la base', /rpc\('contab_conciliacion_resumen'/.test(_concil), true);
+ok('«Dar por cobrado y pagado» lo hace la base', /rpc\('contab_dar_por_cobrado'/.test(_concil), true);
+ok('el navegador no hace asientos en la conciliación', /__postAsiento|from\('asientos'\)/.test(_concil), false);
+ok('Tesorería ya no cruza solo por monto', /Pase 2: solo monto|lineasBanco/.test(_teso), false);
+ok('ni hace asientos al conciliar', /'Conciliación · '/.test(_teso), false);
+ok('sin los botones simulados de la conciliación', /Extracto bancario cargado · conciliando movimientos/.test(_appjs), false);
+ok('«Cerrar mes» ofrece la presunción si el mes no tiene estados de cuenta', /from\('estados_cuenta'\)\.select\('id'\)\.eq\('empresa_id', empId\)\.eq\('periodo', perDecl\)[\s\S]{0,700}__darPorCobrado\(perDecl\)/.test(_appjs), true);
+ok('al cambiar de empresa se recarga la conciliación', /\['conciliación', \(\) => window\.__recargarConciliacion/.test(_appjs), true);
+eval(tramo('  function numCsv(s) {', '  const instancias = [];'));
+var _csv = leerCSV('Fecha;Descripción;Referencia;Débito;Crédito\n05/11/2026;PAGO MOVIL;0001;;1.234,56\n06/11/2026;COMISION;0002;12,50;\n');
+ok('Excel/CSV: abonos y cargos con su signo', _csv.map(function (x) { return x.monto; }).join(' '), '1234.56 -12.5');
+ok('Excel/CSV: la descripción y la referencia', _csv[0].descripcion + '/' + _csv[0].referencia, 'PAGO MOVIL/0001');
+
 console.log('\n' + (fallas ? 'HAY ' + fallas + ' FALLA(S) de ' + total : 'TODO OK · ' + total + ' comprobaciones'));
 process.exit(fallas ? 1 : 0);

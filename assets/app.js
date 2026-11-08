@@ -274,6 +274,7 @@
           ['bóveda', () => window.cargarBoveda && window.cargarBoveda()],
           ['declaraciones y pagos', () => window.cargarDeclaraciones && window.cargarDeclaraciones()],
           ['tesorería', () => window.cargarTesoreria && window.cargarTesoreria()],
+          ['conciliación', () => window.__recargarConciliacion && window.__recargarConciliacion()],
           // Antes de recargar las retenciones: la empresa nueva puede no
           // enterar por quincena, y quedarse en "1ra" le escondería la mitad.
           ['quincena de retenciones', () => window.__syncRetQuincena && window.__syncRetQuincena()],
@@ -7595,6 +7596,15 @@
         toast(_perLabel() + ' tiene ' + sinAsi + ' factura(s) o retención(es) sin asiento contable: se cargaron antes del motor contable. Ese mes se reconstruye antes de cerrarlo.', 'error');
         return;
       }
+      /* Un cliente que no manda estado de cuenta: «Dar por cobrado y pagado»
+         pasa lo pendiente de CxC y CxP a Bancos o Caja (sql/contabilidad_09_presuncion.sql).
+         Solo se ofrece si ese mes no tiene estados de cuenta cargados. */
+      const { data: edoMes } = await window.sb.from('estados_cuenta').select('id').eq('empresa_id', empId).eq('periodo', perDecl).limit(1);
+      if (!(edoMes && edoMes.length) && window.__darPorCobrado
+        && window.confirm(_perLabel() + ' no tiene estados de cuenta cargados.\n\n¿Quieres «Dar por cobrado y pagado» lo pendiente de ese mes (presunción de contado)? Podrás elegir la cuenta. Si no, sigue el cierre sin eso.')) {
+        window.__darPorCobrado(perDecl);
+        return;
+      }
       // La depreciación del mes entra antes de la liquidación (sql/contabilidad_07_activos.sql).
       const { error: eDep } = await window.sb.rpc('contab_depreciar', { p_empresa: empId, p_periodo: perDecl });
       if (eDep) { toast('No se pudo contabilizar la depreciación del mes: ' + eDep.message, 'error'); return; }
@@ -7818,16 +7828,6 @@
     });
     const progPagos = find('.teso-tab[data-tab="cxp"] .btn', /programar pagos/i);
     if (progPagos) progPagos.addEventListener('click', () => toast('Lote de pagos programado según fecha de vencimiento'));
-
-    // Conciliación — Cargar extracto + selector de cuenta
-    const cargar = find('.teso-tab[data-tab="concil"] .btn', /cargar extracto/i);
-    if (cargar) cargar.addEventListener('click', () => toast('Extracto bancario cargado · conciliando movimientos…', 'info'));
-    const selCuenta = view.querySelector('.teso-tab[data-tab="concil"] .txt-select');
-    if (selCuenta) { selCuenta.style.cursor = 'pointer'; selCuenta.addEventListener('click', () => window.openFormModal && window.openFormModal({
-      title: 'Cuenta a conciliar', saveLabel: 'Seleccionar',
-      fields: [{ name: 'cta', label: 'Cuenta', col: 2, type: 'select', options: CUENTAS }],
-      onSave: (v) => { const val = selCuenta.querySelector('.val'); if (val) val.innerHTML = v.cta + ' <i data-lucide="chevron-down"></i>'; if (window.lucide) window.lucide.createIcons(); toast('Conciliando: ' + v.cta); },
-    })); }
 
     // Botones "ojo" de Compras → abrir la factura
     view.querySelectorAll('.teso-tab[data-tab="compras"] tbody .icon-btn').forEach((b) => {
