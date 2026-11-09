@@ -2,6 +2,8 @@
 -- DigiAccount · Contabilidad 08: subcuenta por banco y asiento de cada línea
 -- del estado de cuenta
 -- Ejecutar en: Supabase SQL Editor, después de contabilidad_01 a _07. Re-ejecutable.
+-- OJO: contabilidad_10 a _12 redefinen funciones de este archivo. Si vuelves a
+-- correr este, corre después de nuevo del 10 al 12.
 --
 -- POR QUÉ: la conciliación solo cruzaba el estado de cuenta contra Tesorería
 -- (y por monto, contra la regla de Luis), vivía solo en Tesorería y todo iba a

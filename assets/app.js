@@ -7593,7 +7593,7 @@
       const { data: sinAsi, error: eSin } = await window.sb.rpc('contab_filas_sin_asiento', { p_empresa: empId, p_periodo: perDecl });
       if (eSin) { toast('No se pudo comprobar la contabilidad del período: ' + eSin.message, 'error'); return; }
       if (sinAsi > 0) {
-        toast(_perLabel() + ' tiene ' + sinAsi + ' factura(s) o retención(es) sin asiento contable: se cargaron antes del motor contable. Ese mes se reconstruye antes de cerrarlo.', 'error');
+        toast(_perLabel() + ' tiene ' + sinAsi + ' documento(s) sin asiento contable: facturas o retenciones cargadas antes del motor contable (se reconstruyen antes de cerrar), o movimientos de Tesorería sin cuenta contable o sin tasa BCV (ponles su cuenta en Tesorería).', 'error');
         return;
       }
       /* Un cliente que no manda estado de cuenta: «Dar por cobrado y pagado»

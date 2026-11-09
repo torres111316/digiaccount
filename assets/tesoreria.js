@@ -439,7 +439,9 @@
       } else if (dm) {
         const mov = _movs.find((m) => m.id === dm.dataset.tesoDelmov);
         const vinculado = mov && mov.factura_ref && mov.tercero_nombre;
-        if (!window.confirm('¿Eliminar este movimiento?\n\nSu asiento contable se elimina con él.' + (vinculado ? ' El documento ' + mov.factura_ref + ' vuelve a quedar por cobrar/pagar.' : ''))) return;
+        if (!window.confirm('¿Eliminar este movimiento?\n\n' + (mov && mov.contab_motor === false
+          ? (vinculado ? 'Es de antes del motor contable: se generará su asiento de reverso.' : 'Es de antes del motor contable: su asiento, si lo tenía, no se toca.')
+          : 'Su asiento contable se elimina con él.') + (vinculado ? ' El documento ' + mov.factura_ref + ' vuelve a quedar por cobrar/pagar.' : ''))) return;
         const { error } = await window.sb.from('movimientos_tesoreria').delete().eq('id', dm.dataset.tesoDelmov);
         if (error) { toast('No se pudo eliminar: ' + error.message, 'error'); return; }
         /* Un movimiento de ANTES del motor (contab_motor = false) tenía su asiento hecho
@@ -522,18 +524,23 @@
           .eq('numero', ref).eq('tipo', 'venta').maybeSingle();
         if (!f) return;
         const { data: movs } = await window.sb.from('movimientos_tesoreria')
-          .select('monto, creado_en').eq('factura_ref', ref).eq('tipo', 'ingreso');
+          .select('monto, creado_en, fecha, cuenta_teso_id').eq('factura_ref', ref).eq('tipo', 'ingreso');
         const lista = movs || [];
-        const pagado = lista.reduce((s, m) => s + (Number(m.monto) || 0), 0);
+        /* Un cobro en una cuenta en DÓLARES trae su monto en dólares, y la tasa es la de
+           la fecha del cobro (no la del día en que se registró): como lo hace la base
+           (sql/contabilidad_11_tesoreria.sql). */
+        const enDolares = (m) => { const c = _cuentas.find((x) => x.id === m.cuenta_teso_id); return !!c && !/^\s*(bs|ves|bol)/i.test(c.moneda || 'Bs'); };
+        const fechaISO = (m) => { const p = String(m.fecha || '').split('/'); return p.length === 3 ? ((p[2].length === 2 ? '20' + p[2] : p[2]) + '-' + p[1] + '-' + p[0]) : m.creado_en; };
 
         if (window.__cargarTasasUSD) await window.__cargarTasasUSD();
         const tasaEn = (x) => ((window.__tasaUSDEn && window.__tasaUSDEn(x)) || 0);
+        const pagado = lista.reduce((s, m) => s + (enDolares(m) ? (Number(m.monto) || 0) * tasaEn(fechaISO(m)) : (Number(m.monto) || 0)), 0);
         const usdRecibo = (window.__usdDoc && window.__usdDoc({
           tipo: 'venta', total: f.total, total_usd: f.total_usd, tasa: f.tasa,
           emitida: f.emitida_en || f.creado_en, fecha: f.fecha,
         })) || 0;
-        const enUsd = usdRecibo > 0 && lista.every((m) => tasaEn(m.creado_en) > 0);
-        const pagadoUsd = enUsd ? lista.reduce((s, m) => s + (Number(m.monto) || 0) / tasaEn(m.creado_en), 0) : 0;
+        const enUsd = usdRecibo > 0 && lista.every((m) => enDolares(m) || tasaEn(fechaISO(m)) > 0);
+        const pagadoUsd = enUsd ? lista.reduce((s, m) => s + (enDolares(m) ? (Number(m.monto) || 0) : (Number(m.monto) || 0) / tasaEn(fechaISO(m))), 0) : 0;
 
         const estado = enUsd
           ? (pagadoUsd >= usdRecibo - 0.005 ? 'Cobrada' : (pagadoUsd > 0.005 ? 'Abonada' : 'Por cobrar'))
@@ -591,7 +598,7 @@
           { name: 'cuentaContra', label: 'Cuenta contable · solo si NO es el cobro o pago de una factura (luz, alquiler, aporte…)', col: 2, type: 'datalist',
             options: planCtas.map((c) => ({ value: c.codigo, label: c.codigo + ' · ' + c.nombre })), placeholder: 'Ej. 6.1.1.04 Servicios públicos' },
           { name: 'referencia', label: 'Referencia (N° transferencia, pago móvil…)', placeholder: 'Ej. 0123456789' },
-          { name: 'monto', label: 'Monto a cobrar/pagar (Bs) — edítalo si es un abono parcial', type: 'number', step: '0.01', value: pre.monto != null ? String(pre.monto) : '', placeholder: '0.00' },
+          { name: 'monto', label: 'Monto a cobrar/pagar, en la moneda de la cuenta (Bs o USD) — edítalo si es un abono parcial', type: 'number', step: '0.01', value: pre.monto != null ? String(pre.monto) : '', placeholder: '0.00' },
           { name: 'igtfDivisas', label: 'IGTF (solo si el PAGO es en divisas/cripto)', type: 'select', options: [{ value: 'no', label: 'No aplica' }, { value: 'si', label: 'Sí — sumar 3% IGTF' }] },
           { name: 'comprobante', label: 'Comprobante · foto/capture del pago (opcional)', col: 2, type: 'file' },
         ],
@@ -715,7 +722,8 @@
           if (!String(v.factura || '').trim() && !ctaC) return 'Sin factura asociada, elige la cuenta contable del movimiento: con ella se hace su asiento.';
           if (ctaC && planCtas.length && !planCtas.some((c) => c.codigo === ctaC)) return 'La cuenta ' + ctaC + ' no está en el plan de cuentas.';
           // Aviso ANTES de guardar si el monto excede el saldo pendiente (¿error de tipeo o anticipo real?)
-          if (v.factura) {
+          const _ctaMov = _cuentas.find((c) => c.id === v.cuenta);
+          if (v.factura && !(_ctaMov && !/^\s*(bs|ves|bol)/i.test(_ctaMov.moneda || 'Bs'))) {
             const refDoc = v.factura.trim();
             const doc = _facturas.find((x) => (x.ref || '') === refDoc && x.tipo === (v.tipo === 'ingreso' ? 'venta' : 'compra'));
             if (doc) {
@@ -801,6 +809,8 @@
           if (!window.sb || !window.__CUENTA_ID || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) return 'No hay empresa activa.';
           if (!v.origen || !v.destino) return 'Elige las cuentas de origen y destino.';
           if (v.origen === v.destino) return 'El origen y el destino deben ser distintos.';
+          const _mon = (id) => { const c = _cuentas.find((x) => x.id === id); return /^\s*(bs|ves|bol)/i.test((c && c.moneda) || 'Bs') ? 'Bs' : 'USD'; };
+          if (_mon(v.origen) !== _mon(v.destino)) return 'Entre cuentas de distinta moneda registra un egreso en una y un ingreso en la otra, cada uno en su moneda.';
           const monto = parseFloat(v.monto) || 0; if (monto <= 0) return 'Indica un monto mayor a cero.';
           const p = (v.fecha || '').split('-'); const fecha = p.length === 3 ? (p[2] + '/' + p[1] + '/' + p[0].slice(2)) : '';
           const cOri = _cuentas.find((c) => c.id === v.origen), cDes = _cuentas.find((c) => c.id === v.destino);

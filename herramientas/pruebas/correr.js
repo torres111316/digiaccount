@@ -1469,6 +1469,13 @@ ok('la conciliación enlaza el movimiento de Tesorería («ya registrado»)', /m
 ok('«Cerrar mes» revalúa los saldos en dólares', /rpc\('contab_revaluar', \{ p_empresa: empId, p_periodo: perDecl \}\)/.test(_appjs), true);
 var _sMov = sugerirLinea(_l('PAGO FACT 166 LIGNUM', 446820.19, '0050949046569'), _ctxT);
 ok('la sugerencia «ya registrado» trae su movimiento', _sMov && _sMov.movimiento_id, 'm1');
+/* Revisión final del plan 4b. */
+var _tesoR = _leer('assets/tesoreria.js');
+ok('I6: el estado del recibo convierte los cobros de una cuenta en dólares', /enDolares\(m\) \? \(Number\(m\.monto\) \|\| 0\) : \(Number\(m\.monto\) \|\| 0\) \/ tasaEn\(fechaISO\(m\)\)/.test(_tesoR), true);
+ok('I6: y usa la tasa de la fecha del cobro, no la del registro', /tasaEn\(m\.creado_en\)/.test(_tesoR), false);
+ok('I8: «Cerrar mes» dice que también pueden ser movimientos de Tesorería', /movimientos de Tesorería sin cuenta contable o sin tasa BCV/.test(_appjs), true);
+ok('una transferencia entre cuentas de distinta moneda se registra en dos movimientos', /Entre cuentas de distinta moneda registra un egreso en una y un ingreso en la otra/.test(_tesoR), true);
+ok('el monto de un cobro está en la moneda de la cuenta', /Monto a cobrar\/pagar \(Bs\)/.test(_tesoR), false);
 ok('C1: la otra punta de una transferencia ya conciliada sigue disponible como pareja', /o\.clase === 'transferencia' && !o\.extracto_par_id/.test(_concil), true);
 ok('I1: elegir a mano una factura ya dada por cobrada la guarda como «ya registrado»', _concil.indexOf("if (d && d.presumido) { fila.clase = 'registrado'; fila.cuenta_contra = d.presumido; }") >= 0, true);
 ok('C1: una transferencia elegida a mano busca sola su otra punta', _concil.indexOf('if (par) fila.extracto_par_id = par.id;') >= 0, true);

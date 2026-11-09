@@ -2,6 +2,8 @@
 -- DigiAccount · Contabilidad 09: resumen de la conciliación y «Dar por
 -- cobrado y pagado»
 -- Ejecutar en: Supabase SQL Editor, después de contabilidad_01 a _08. Re-ejecutable.
+-- OJO: contabilidad_10 a _12 redefinen funciones de este archivo. Si vuelves a
+-- correr este, corre después de nuevo del 10 al 12.
 --
 -- POR QUÉ:
 --   · El informe de conciliación (spec §6): por banco y mes, el saldo según el
