@@ -45,7 +45,7 @@ alter table public.extracto_bancario add column if not exists movimiento_id uuid
 -- ¿Es la cuenta en dólares?
 create or replace function public.contab_es_divisa(p_moneda text)
 returns boolean language sql immutable as $$
-  select coalesce(p_moneda, 'Bs') !~* '^\s*(bs|ves|bol)'
+  select coalesce(nullif(trim(p_moneda), ''), 'Bs') !~* '^\s*(bs|ves|bol)'
 $$;
 
 -- El documento de un movimiento (recibo, venta o compra del libro).
@@ -156,6 +156,7 @@ declare
   lin jsonb := '[]'::jsonb;
   linea_banco jsonb;
   divisa boolean;
+  divisa_par boolean;
   ing boolean := m.tipo = 'ingreso';
 begin
   if not m.contab_motor or coalesce(m.monto, 0) <= 0 then return null; end if;
@@ -170,9 +171,13 @@ begin
   par := contab_mov_par(m);
   if par.id is not null then
     if ing then return null; end if;   -- el asiento lo hace el egreso
-    select cuenta_contable into contra from cuentas_tesoreria where id = par.cuenta_teso_id and empresa_id = m.empresa_id;
+    select cuenta_contable, contab_es_divisa(moneda) into contra, divisa_par from cuentas_tesoreria where id = par.cuenta_teso_id and empresa_id = m.empresa_id;
     if coalesce(contra, '') = '' or contra = banco then return null; end if;
-    return jsonb_build_array(jsonb_build_object('cta', contab_cta(contra, m.empresa_id), 'debe', mm.bs, 'haber', 0), linea_banco);
+    -- El destino en dólares guarda SUS dólares (los del ingreso): sin ellos, la
+    -- revaluación no sabría cuántos dólares entraron.
+    return jsonb_build_array(jsonb_build_object('cta', contab_cta(contra, m.empresa_id), 'debe', mm.bs, 'haber', 0)
+                               || case when divisa_par then jsonb_build_object('usd', round(coalesce(par.monto, 0), 2)) else '{}'::jsonb end,
+                             linea_banco);
   end if;
   if coalesce(m.referencia, '') ~ '^TRF-' and coalesce(trim(m.cuenta_contra), '') = '' then return null; end if;   -- media transferencia
 
@@ -191,6 +196,7 @@ begin
     cross join lateral contab_montos_movimiento(p) x
    where p.empresa_id = m.empresa_id and p.id <> m.id and p.tipo = m.tipo
      and upper(trim(coalesce(p.factura_ref, ''))) = upper(trim(m.factura_ref))
+     and (contab_doc_de_movimiento(p)).id = doc.id   -- dos compras con el mismo número no se mezclan
      and (contab_fecha_factura(p.fecha), p.creado_en, p.id) < (contab_fecha_factura(m.fecha), m.creado_en, m.id);
   select * into a from contab_aplicar(doc.total_bs, doc.total_usd, doc.tasa, prev_bs, prev_usd, mm.bs, mm.usd);
 
@@ -211,8 +217,9 @@ begin
   return lin;
 end $$;
 
-create or replace function public.contab_sync_movimiento()
-returns trigger language plpgsql security definer set search_path = public, pg_temp as $$
+-- Hace (o rehace, o borra) el asiento de UN movimiento.
+create or replace function public.contab_asentar_movimiento(p_id uuid)
+returns void language plpgsql security definer set search_path = public, pg_temp as $$
 declare
   m movimientos_tesoreria;
   lin jsonb;
@@ -220,44 +227,72 @@ declare
   dueña uuid;
   nb text;
 begin
-  m := case when tg_op = 'DELETE' then old else new end;
-  perform pg_advisory_xact_lock(hashtext('tesoreria:' || m.empresa_id::text));
-  if tg_op = 'DELETE' then
-    delete from asientos where origen_tabla = 'movimientos_tesoreria' and origen_id = old.id;
-  else
-    lin := contab_lineas_movimiento(m);
-    if lin is null then
-      delete from asientos where origen_tabla = 'movimientos_tesoreria' and origen_id = m.id;
-    else
-      select cuenta_id into dueña from empresas where id = m.empresa_id;
-      select nombre into nb from cuentas_tesoreria where id = m.cuenta_teso_id;
-      select round(sum(coalesce((e->>'debe')::numeric, 0)), 2) into tot from jsonb_array_elements(lin) e;
-      update asientos set empresa_id = m.empresa_id, fecha = to_char(contab_fecha_factura(m.fecha), 'DD/MM/YYYY'),
-                          periodo = to_char(contab_fecha_factura(m.fecha), 'YYYY-MM'),
-                          descripcion = coalesce(nullif(trim(m.concepto), ''), case when m.tipo = 'ingreso' then 'Ingreso' else 'Egreso' end) || ' · ' || coalesce(nb, ''),
-                          referencia = coalesce(nullif(trim(m.factura_ref), ''), m.referencia, ''), lineas = lin, total = tot, origen = 'motor'
-       where origen_tabla = 'movimientos_tesoreria' and origen_id = m.id;
-      if not found then
-        insert into asientos (cuenta_id, empresa_id, fecha, periodo, descripcion, referencia, origen, origen_tabla, origen_id, lineas, total)
-        values (coalesce(dueña, m.cuenta_id), m.empresa_id, to_char(contab_fecha_factura(m.fecha), 'DD/MM/YYYY'),
-                to_char(contab_fecha_factura(m.fecha), 'YYYY-MM'),
-                coalesce(nullif(trim(m.concepto), ''), case when m.tipo = 'ingreso' then 'Ingreso' else 'Egreso' end) || ' · ' || coalesce(nb, ''),
-                coalesce(nullif(trim(m.factura_ref), ''), m.referencia, ''), 'motor', 'movimientos_tesoreria', m.id, lin, tot);
-      end if;
-    end if;
+  select * into m from movimientos_tesoreria where id = p_id;
+  if not found then
+    delete from asientos where origen_tabla = 'movimientos_tesoreria' and origen_id = p_id;
+    return;
   end if;
-  -- La otra punta de una transferencia, y los cobros o pagos POSTERIORES del
-  -- mismo documento (lo que les falta cambió), se recalculan.
-  if pg_trigger_depth() = 1 then
-    update movimientos_tesoreria p set monto = p.monto
-     where p.empresa_id = m.empresa_id and p.id <> m.id and p.contab_motor
-       and ((coalesce(m.referencia, '') ~ '^TRF-' and p.referencia = m.referencia)
-         or (coalesce(trim(m.factura_ref), '') <> '' and p.tipo = m.tipo
-             and upper(trim(coalesce(p.factura_ref, ''))) = upper(trim(m.factura_ref))
-             and (contab_fecha_factura(p.fecha), p.creado_en, p.id) > (contab_fecha_factura(m.fecha), m.creado_en, m.id)));
+  lin := contab_lineas_movimiento(m);
+  if lin is null then
+    delete from asientos where origen_tabla = 'movimientos_tesoreria' and origen_id = m.id;
+    return;
   end if;
-  return case when tg_op = 'DELETE' then old else new end;
+  select cuenta_id into dueña from empresas where id = m.empresa_id;
+  select nombre into nb from cuentas_tesoreria where id = m.cuenta_teso_id;
+  select round(sum(coalesce((e->>'debe')::numeric, 0)), 2) into tot from jsonb_array_elements(lin) e;
+  update asientos set empresa_id = m.empresa_id, fecha = to_char(contab_fecha_factura(m.fecha), 'DD/MM/YYYY'),
+                      periodo = to_char(contab_fecha_factura(m.fecha), 'YYYY-MM'),
+                      descripcion = coalesce(nullif(trim(m.concepto), ''), case when m.tipo = 'ingreso' then 'Ingreso' else 'Egreso' end) || ' · ' || coalesce(nb, ''),
+                      referencia = coalesce(nullif(trim(m.factura_ref), ''), m.referencia, ''), lineas = lin, total = tot, origen = 'motor'
+   where origen_tabla = 'movimientos_tesoreria' and origen_id = m.id;
+  if not found then
+    insert into asientos (cuenta_id, empresa_id, fecha, periodo, descripcion, referencia, origen, origen_tabla, origen_id, lineas, total)
+    values (coalesce(dueña, m.cuenta_id), m.empresa_id, to_char(contab_fecha_factura(m.fecha), 'DD/MM/YYYY'),
+            to_char(contab_fecha_factura(m.fecha), 'YYYY-MM'),
+            coalesce(nullif(trim(m.concepto), ''), case when m.tipo = 'ingreso' then 'Ingreso' else 'Egreso' end) || ' · ' || coalesce(nb, ''),
+            coalesce(nullif(trim(m.factura_ref), ''), m.referencia, ''), 'motor', 'movimientos_tesoreria', m.id, lin, tot);
+  end if;
 end $$;
+
+create or replace function public.contab_sync_movimiento()
+returns trigger language plpgsql security definer set search_path = public, pg_temp as $$
+declare
+  m movimientos_tesoreria := case when tg_op = 'DELETE' then old else new end;
+  v record;
+begin
+  perform pg_advisory_xact_lock(hashtext('tesoreria:' || m.empresa_id::text));
+  perform contab_asentar_movimiento(m.id);
+  -- Los vecinos: los demás cobros o pagos del mismo documento (lo que les falta
+  -- cambió) y la otra punta de una transferencia, con los datos de AHORA y los
+  -- de ANTES (corregir la fecha, el documento o la referencia mueve a otros).
+  for v in
+    select p.id from movimientos_tesoreria p
+     where p.empresa_id = m.empresa_id and p.id <> m.id and p.contab_motor
+       and ((tg_op <> 'DELETE' and coalesce(new.referencia, '') ~ '^TRF-' and p.referencia = new.referencia)
+         or (tg_op <> 'INSERT' and coalesce(old.referencia, '') ~ '^TRF-' and p.referencia = old.referencia)
+         or (tg_op <> 'DELETE' and coalesce(trim(new.factura_ref), '') <> '' and p.tipo = new.tipo
+             and upper(trim(coalesce(p.factura_ref, ''))) = upper(trim(new.factura_ref)))
+         or (tg_op <> 'INSERT' and coalesce(trim(old.factura_ref), '') <> '' and p.tipo = old.tipo
+             and upper(trim(coalesce(p.factura_ref, ''))) = upper(trim(old.factura_ref))))
+  loop
+    perform contab_asentar_movimiento(v.id);
+  end loop;
+  return m;
+end $$;
+
+-- Antes de borrar un movimiento: la línea del banco que estaba conciliada como
+-- «ya registrado» con él vuelve a pendiente (si no, quedaría reclasificando
+-- contra «Bancos» un dinero que ya no está en ningún asiento).
+create or replace function public.contab_mov_antes_borrar()
+returns trigger language plpgsql security definer set search_path = public, pg_temp as $$
+begin
+  update extracto_bancario set estado = 'pendiente'
+   where movimiento_id = old.id and empresa_id = old.empresa_id and estado = 'conciliada';
+  return old;
+end $$;
+drop trigger if exists trg_contab_movimiento_borrar on public.movimientos_tesoreria;
+create trigger trg_contab_movimiento_borrar before delete on public.movimientos_tesoreria
+  for each row execute function public.contab_mov_antes_borrar();
 
 drop trigger if exists trg_contab_movimiento on public.movimientos_tesoreria;
 create trigger trg_contab_movimiento after insert or delete on public.movimientos_tesoreria

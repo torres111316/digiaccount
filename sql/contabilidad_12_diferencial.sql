@@ -42,7 +42,72 @@ returns numeric language sql stable security invoker set search_path = public, p
      and split_part(e->>'cta', ' · ', 1) = p_codigo
 $$;
 
-create or replace function public.contab_revaluar(p_empresa uuid, p_periodo text)
+-- Los bolívares de las líneas de una cuenta que SÍ traen sus dólares. La
+-- revaluación compara solo esas: una línea sin dólares (un asiento a mano, una
+-- presunción contra la cuenta) no se borra como si fuera una pérdida.
+create or replace function public.contab_saldo_bs_usd(p_empresa uuid, p_codigo text, p_hasta date)
+returns numeric language sql stable security invoker set search_path = public, pg_temp as $$
+  select round(coalesce(sum(coalesce((e->>'debe')::numeric, 0) - coalesce((e->>'haber')::numeric, 0)), 0), 2)
+    from asientos a
+    cross join lateral jsonb_array_elements(a.lineas) e
+   where a.empresa_id = p_empresa
+     and split_part(e->>'cta', ' · ', 1) = p_codigo
+     and e ? 'usd'
+     and public.contab_fecha_factura(a.fecha) <= p_hasta
+$$;
+
+-- Lo pendiente en dólares de un documento al cierre: su total en USD menos lo
+-- cobrado o pagado en Tesorería (solo los movimientos de ESE documento), menos
+-- las retenciones, las líneas del banco conciliadas con él y sus notas de
+-- crédito (en dólares a la tasa del documento). Si una presunción de contado
+-- («Dar por cobrado y pagado») del mes del documento o posterior ya lo cerró,
+-- no queda nada pendiente.
+create or replace function public.contab_usd_pendiente(p_empresa uuid, p_tabla text, p_id uuid, p_hasta date)
+returns numeric language plpgsql stable security invoker set search_path = public, pg_temp as $$
+declare
+  tot_usd numeric; tasa_doc numeric; num text; rif text; per text; tipo_mov text; dir_ret text;
+  pagado numeric := 0;
+begin
+  if p_tabla = 'facturas' then
+    select f.total_usd, f.tasa, f.numero, f.cliente_rif, to_char(contab_fecha_factura(f.fecha), 'YYYY-MM'), 'ingreso', 'sufrida'
+      into tot_usd, tasa_doc, num, rif, per, tipo_mov, dir_ret from facturas f where f.id = p_id;
+  else
+    select l.total_usd, l.tasa, l.numero_factura, l.tercero_rif, coalesce(l.periodo, to_char(contab_fecha_factura(l.fecha), 'YYYY-MM')),
+           case when l.tipo = 'venta' then 'ingreso' else 'egreso' end, case when l.tipo = 'venta' then 'sufrida' else 'practicada' end
+      into tot_usd, tasa_doc, num, rif, per, tipo_mov, dir_ret from libro_fiscal l where l.id = p_id;
+  end if;
+  if coalesce(tot_usd, 0) <= 0 or coalesce(tasa_doc, 0) <= 0 then return 0; end if;
+  if exists (select 1 from asientos a where a.empresa_id = p_empresa and a.origen_tabla = 'presuncion'
+              and a.periodo >= per and contab_fecha_factura(a.fecha) <= p_hasta) then
+    return 0;
+  end if;
+  -- Tesorería: solo los movimientos que llevan a ESTE documento.
+  pagado := pagado + coalesce((select sum(x.usd) from movimientos_tesoreria m cross join lateral contab_montos_movimiento(m) x
+     where m.empresa_id = p_empresa and m.tipo = tipo_mov and upper(trim(coalesce(m.factura_ref, ''))) = upper(trim(coalesce(num, '')))
+       and contab_fecha_factura(m.fecha) <= p_hasta and (contab_doc_de_movimiento(m)).id = p_id), 0);
+  -- Retenciones (sufridas en una venta, practicadas en una compra).
+  pagado := pagado + coalesce((select sum(t.monto) / tasa_doc from retenciones t
+     where t.empresa_id = p_empresa and t.direccion = dir_ret and coalesce(t.estado, '') !~* 'anulad'
+       and upper(trim(coalesce(t.factura, ''))) = upper(trim(coalesce(num, '')))
+       and (coalesce(trim(rif), '') = '' or coalesce(trim(t.tercero_rif), '') = '' or upper(t.tercero_rif) = upper(rif))
+       and contab_fecha_factura(t.fecha) <= p_hasta), 0);
+  -- Líneas del estado de cuenta conciliadas con el documento (solo del libro).
+  if p_tabla = 'libro_fiscal' then
+    pagado := pagado + coalesce((select sum(abs(x.monto) / coalesce(nullif(contab_tasa_bcv(contab_fecha_factura(x.fecha)), 0), tasa_doc)) from extracto_bancario x
+       where x.empresa_id = p_empresa and x.libro_fiscal_id = p_id and x.estado = 'conciliada' and x.clase in ('cobro', 'pago')
+         and contab_fecha_factura(x.fecha) <= p_hasta), 0);
+  end if;
+  -- Notas de crédito de un recibo.
+  if p_tabla = 'facturas' then
+    pagado := pagado + coalesce((select sum(case when upper(coalesce(n.moneda, 'BS')) = 'USD' and coalesce(n.total_usd, 0) > 0 then n.total_usd else coalesce(n.total, 0) / tasa_doc end)
+       from facturas n where n.empresa_id = p_empresa and upper(coalesce(n.tipo_doc, '')) = 'NC' and coalesce(n.estado, '') !~* 'anulad'
+         and upper(trim(coalesce(n.factura_afectada, ''))) = upper(trim(coalesce(num, ''))) and contab_fecha_factura(n.fecha) <= p_hasta), 0);
+  end if;
+  return greatest(0, tot_usd - pagado);
+end $$;
+
+-- La revaluación de UN mes (sin rehacer los siguientes).
+create or replace function public.contab_revaluar_mes(p_empresa uuid, p_periodo text)
 returns jsonb language plpgsql security invoker set search_path = public, pg_temp as $$
 declare
   fin date;
@@ -51,32 +116,26 @@ declare
   dueña uuid;
   lin jsonb := '[]'::jsonb;
   b record;
-  objetivo numeric;
   ajuste numeric;
   gan numeric := 0;
   per numeric := 0;
   pend_cxc numeric := 0;
   pend_cxp numeric := 0;
 begin
-  if coalesce(p_periodo, '') !~ '^[0-9]{4}-(0[1-9]|1[0-2])$' then raise exception 'Período inválido: %', p_periodo; end if;
   select cuenta_id into dueña from empresas where id = p_empresa;
   if not found then raise exception 'La empresa no existe o no tienes acceso a ella'; end if;
-  perform pg_advisory_xact_lock(hashtext('revaluacion:' || p_empresa::text));
   fin := (to_date(p_periodo || '-01', 'YYYY-MM-DD') + interval '1 month - 1 day')::date;
   ref := 'REV-' || substr(p_periodo, 6, 2) || '/' || substr(p_periodo, 1, 4);
   tasa_cierre := contab_tasa_bcv(fin);
   if tasa_cierre is null then raise exception 'No hay tasa BCV al %: no se puede revaluar', to_char(fin, 'DD/MM/YYYY'); end if;
 
-  -- Cada cuenta en dólares.
+  -- Cada cuenta en dólares: sus dólares a la tasa del cierre, contra los
+  -- bolívares de esas mismas líneas y lo ya revaluado en meses anteriores.
   for b in select cuenta_contable from cuentas_tesoreria
             where empresa_id = p_empresa and contab_es_divisa(moneda) and coalesce(cuenta_contable, '') <> '' order by cuenta_contable loop
-    objetivo := round(contab_saldo_usd(p_empresa, b.cuenta_contable, fin) * tasa_cierre, 2)
-                - (contab_saldo_cuenta(p_empresa, b.cuenta_contable, fin) - contab_revaluado_antes(p_empresa, b.cuenta_contable, p_periodo)
-                   - coalesce((select round(sum(coalesce((e->>'debe')::numeric, 0) - coalesce((e->>'haber')::numeric, 0)), 2)
-                                 from asientos a cross join lateral jsonb_array_elements(a.lineas) e
-                                where a.empresa_id = p_empresa and a.origen_tabla = 'revaluacion' and a.periodo >= p_periodo
-                                  and contab_fecha_factura(a.fecha) <= fin and split_part(e->>'cta', ' · ', 1) = b.cuenta_contable), 0));
-    ajuste := round(objetivo - contab_revaluado_antes(p_empresa, b.cuenta_contable, p_periodo), 2);
+    ajuste := round(round(contab_saldo_usd(p_empresa, b.cuenta_contable, fin) * tasa_cierre, 2)
+                    - contab_saldo_bs_usd(p_empresa, b.cuenta_contable, fin)
+                    - contab_revaluado_antes(p_empresa, b.cuenta_contable, p_periodo), 2);
     if ajuste > 0.005 then
       lin := lin || jsonb_build_object('cta', contab_cta(b.cuenta_contable, p_empresa), 'debe', ajuste, 'haber', 0)
                  || jsonb_build_object('cta', contab_cta('4.2.2.01', p_empresa), 'debe', 0, 'haber', ajuste);
@@ -88,26 +147,19 @@ begin
     end if;
   end loop;
 
-  -- CxC y CxP de los documentos en dólares abiertos al cierre: lo pendiente en
-  -- USD × (tasa de cierre − tasa del documento).
-  select coalesce(sum(round(greatest(0, d.total_usd - d.aplicado_usd) * (tasa_cierre - d.tasa), 2)) filter (where d.lado = 'cxc'), 0),
-         coalesce(sum(round(greatest(0, d.total_usd - d.aplicado_usd) * (tasa_cierre - d.tasa), 2)) filter (where d.lado = 'cxp'), 0)
+  -- CxC y CxP de los documentos en dólares abiertos: lo pendiente en USD ×
+  -- (tasa de cierre − tasa del documento).
+  select coalesce(sum(round(d.pend * (tasa_cierre - d.tasa), 2)) filter (where d.lado = 'cxc'), 0),
+         coalesce(sum(round(d.pend * (tasa_cierre - d.tasa), 2)) filter (where d.lado = 'cxp'), 0)
     into pend_cxc, pend_cxp
     from (
-      select 'cxc'::text lado, f.numero, 'ingreso'::text tipo, f.total_usd, f.tasa,
-             coalesce((select sum(x.usd) from movimientos_tesoreria m cross join lateral contab_montos_movimiento(m) x
-                        where m.empresa_id = p_empresa and m.tipo = 'ingreso' and upper(trim(coalesce(m.factura_ref, ''))) = upper(trim(f.numero))
-                          and contab_fecha_factura(m.fecha) <= fin), 0) aplicado_usd
+      select 'cxc'::text lado, f.tasa, contab_usd_pendiente(p_empresa, 'facturas', f.id, fin) pend
         from facturas f join empresas e on e.id = f.empresa_id and e.fiscal_activo is false
        where f.empresa_id = p_empresa and upper(coalesce(f.moneda, 'BS')) = 'USD' and coalesce(f.total_usd, 0) > 0 and coalesce(f.tasa, 0) > 0
          and coalesce(f.tipo, 'venta') = 'venta' and upper(coalesce(f.tipo_doc, 'FV')) <> 'NC' and coalesce(f.estado, '') !~* 'anulad'
          and contab_fecha_factura(f.fecha) <= fin
       union all
-      select case when l.tipo = 'venta' then 'cxc' else 'cxp' end, l.numero_factura, case when l.tipo = 'venta' then 'ingreso' else 'egreso' end, l.total_usd, l.tasa,
-             coalesce((select sum(x.usd) from movimientos_tesoreria m cross join lateral contab_montos_movimiento(m) x
-                        where m.empresa_id = p_empresa and m.tipo = case when l.tipo = 'venta' then 'ingreso' else 'egreso' end
-                          and upper(trim(coalesce(m.factura_ref, ''))) = upper(trim(coalesce(l.numero_factura, '')))
-                          and contab_fecha_factura(m.fecha) <= fin), 0)
+      select case when l.tipo = 'venta' then 'cxc' else 'cxp' end, l.tasa, contab_usd_pendiente(p_empresa, 'libro_fiscal', l.id, fin)
         from libro_fiscal l
        where l.empresa_id = p_empresa and upper(coalesce(l.moneda, 'BS')) = 'USD' and coalesce(l.total_usd, 0) > 0 and coalesce(l.tasa, 0) > 0
          and coalesce(l.tercero_nombre, '') !~* 'anulad' and contab_lineas_libro(l) is not null
@@ -151,6 +203,25 @@ begin
   end if;
   return jsonb_build_object('ganancia', round(gan, 2), 'perdida', round(per, 2));
 end $$;
+
+-- Revalúa un mes y REHACE en orden los meses siguientes ya revaluados: la
+-- revaluación es acumulativa, y cambiar un mes cambia lo que les toca a los
+-- que vienen después (reabrir marzo y volver a cerrarlo con abril ya cerrado).
+create or replace function public.contab_revaluar(p_empresa uuid, p_periodo text)
+returns jsonb language plpgsql security invoker set search_path = public, pg_temp as $$
+declare
+  r jsonb;
+  q text;
+begin
+  if coalesce(p_periodo, '') !~ '^[0-9]{4}-(0[1-9]|1[0-2])$' then raise exception 'Período inválido: %', p_periodo; end if;
+  perform pg_advisory_xact_lock(hashtext('revaluacion:' || p_empresa::text));
+  r := contab_revaluar_mes(p_empresa, p_periodo);
+  for q in select distinct periodo from asientos
+            where empresa_id = p_empresa and origen_tabla = 'revaluacion' and periodo > p_periodo order by periodo loop
+    perform contab_revaluar_mes(p_empresa, q);
+  end loop;
+  return r;
+end $$;
 grant execute on function public.contab_revaluar(uuid, text) to authenticated;
 
 -- ---- Conciliación de cuentas en dólares (SQL 08 y 11) ----
@@ -185,6 +256,10 @@ begin
   if new.libro_fiscal_id is not null
      and not exists (select 1 from libro_fiscal where id = new.libro_fiscal_id and empresa_id = new.empresa_id) then
     raise exception 'Esa factura no es de esta empresa';
+  end if;
+  if new.movimiento_id is not null
+     and not exists (select 1 from movimientos_tesoreria where id = new.movimiento_id and empresa_id = new.empresa_id) then
+    raise exception 'Ese movimiento de Tesorería no es de esta empresa';
   end if;
   if new.extracto_par_id is not null
      and not exists (select 1 from extracto_bancario where id = new.extracto_par_id and empresa_id = new.empresa_id) then
@@ -265,6 +340,65 @@ begin
     jsonb_build_object('cta', contab_cta(contra, x.empresa_id), 'debe', m, 'haber', 0),
     (jsonb_build_object('cta', contab_cta(banco, x.empresa_id), 'debe', 0, 'haber', m) || case when divisa then jsonb_build_object('usd', usdv) else '{}'::jsonb end));
 end $$;
+
+-- contab_conciliacion_resumen: igual que en contabilidad_11; una cuenta en dólares se compara en dólares.
+create or replace function public.contab_conciliacion_resumen(p_cuenta_teso uuid, p_periodo text)
+returns jsonb language plpgsql stable security invoker set search_path = public, pg_temp as $$
+declare
+  b cuentas_tesoreria;
+  ini date;
+  fin date;
+  sb numeric;
+  sl numeric;
+  ap numeric;
+  divisa boolean;
+  pc int; ps numeric;
+  tc int; ts numeric;
+begin
+  if coalesce(p_periodo, '') !~ '^[0-9]{4}-(0[1-9]|1[0-2])$' then raise exception 'Período inválido: %', p_periodo; end if;
+  select * into b from cuentas_tesoreria where id = p_cuenta_teso;
+  if not found then raise exception 'El banco no existe o no tienes acceso a él'; end if;
+  -- Una cuenta en dólares: su estado de cuenta está en dólares, así que se compara en dólares.
+  divisa := contab_es_divisa(b.moneda);
+  ini := to_date(p_periodo || '-01', 'YYYY-MM-DD');
+  fin := (ini + interval '1 month - 1 day')::date;
+  select saldo_final into sb from estados_cuenta where cuenta_teso_id = b.id and periodo = p_periodo;
+  sl := case when divisa then contab_saldo_usd(b.empresa_id, b.cuenta_contable, fin) else contab_saldo_cuenta(b.empresa_id, b.cuenta_contable, fin) end;
+  -- El saldo con que arrancó el banco: el inicial de su PRIMER estado de cuenta.
+  -- Mientras no haya asiento de apertura (plan 5), se suma aparte a los libros.
+  select coalesce(saldo_inicial, 0) into ap from estados_cuenta where cuenta_teso_id = b.id order by periodo limit 1;
+  ap := coalesce(ap, 0);
+  -- Lo que trae el banco hasta el fin del mes y todavía no está conciliado
+  -- (también lo de meses anteriores: una conciliación arrastra lo abierto).
+  select count(*), round(coalesce(sum(monto), 0), 2) into pc, ps
+    from extracto_bancario x
+   where x.cuenta_teso_id = b.id and x.estado <> 'conciliada'
+     and contab_fecha_factura(x.fecha) <= fin;
+  -- Lo que hay en libros hasta el fin del mes y no vino de una línea del banco
+  -- (ni del pago de una declaración que una línea enlazó).
+  select count(*), round(coalesce(sum(case when divisa
+                                       then case when coalesce((e->>'debe')::numeric, 0) > 0 then 1 else -1 end * coalesce((e->>'usd')::numeric, 0)
+                                       else coalesce((e->>'debe')::numeric, 0) - coalesce((e->>'haber')::numeric, 0) end), 0), 2) into tc, ts
+    from asientos a
+    cross join lateral jsonb_array_elements(a.lineas) e
+   where a.empresa_id = b.empresa_id
+     and split_part(e->>'cta', ' · ', 1) = b.cuenta_contable
+     and contab_fecha_factura(a.fecha) <= fin
+     and a.origen_tabla is distinct from 'extracto_bancario'
+     and not (a.origen_tabla = 'movimientos_tesoreria' and a.origen_id in
+              (select x.movimiento_id from extracto_bancario x where x.cuenta_teso_id = b.id and x.estado = 'conciliada' and x.movimiento_id is not null))
+     and not (a.origen_tabla = 'declaraciones_pago' and a.origen_id in
+              (select x.declaracion_id from extracto_bancario x where x.cuenta_teso_id = b.id and x.pago_puesto));
+  return jsonb_build_object(
+    'moneda', case when divisa then 'USD' else 'Bs' end,
+    'saldo_banco', sb,
+    'saldo_libros', sl,
+    'saldo_apertura', round(ap, 2),
+    'pendientes', jsonb_build_object('cantidad', pc, 'suma', ps),
+    'transito', jsonb_build_object('cantidad', tc, 'suma', ts),
+    'diferencia', case when sb is null then null else round(sb - (sl + ap) - ps + ts, 2) end);
+end $$;
+grant execute on function public.contab_conciliacion_resumen(uuid, text) to authenticated;
 
 -- Comprobación
 select contab_tasa_bcv(current_date) as tasa_bcv_hoy,

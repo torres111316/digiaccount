@@ -66,9 +66,26 @@ insert into extracto_bancario (id, cuenta_id, empresa_id, cuenta_teso_id, fecha,
 select pg_temp.igual('línea de una cuenta USD conciliada en Bs a la tasa del día',
   (select pg_temp.lin(lineas) from asientos where origen_tabla = 'extracto_bancario' and origen_id = 'c0000000-0000-0000-0000-000000000121'), '1.1.1.03.02 D4487.69 H0.00 | 4.2.1.01 D0.00 H4487.69');
 
+-- REVISIÓN · C1: una transferencia de Bs a la cuenta USD (2 USD a 900, el 31/03) guarda sus dólares.
+insert into movimientos_tesoreria (id, cuenta_id, empresa_id, cuenta_teso_id, fecha, concepto, tipo, referencia, monto) values
+  ('70000000-0000-0000-0000-000000000126', 'a0000000-0000-0000-0000-000000000121', 'e0000000-0000-0000-0000-000000000121', 'b0000000-0000-0000-0000-000000000121', '31/03/26', 'A la cuenta USD', 'egreso', 'TRF-00000009', 1800),
+  ('70000000-0000-0000-0000-000000000127', 'a0000000-0000-0000-0000-000000000121', 'e0000000-0000-0000-0000-000000000121', 'b0000000-0000-0000-0000-000000000122', '31/03/26', 'Del banco Bs', 'ingreso', 'TRF-00000009', 2);
+
+-- REVISIÓN · I4: una compra en dólares con retención de IVA, pagada por el neto, está saldada:
+-- la revaluación no le inventa diferencial.
+insert into libro_fiscal (id, cuenta_id, empresa_id, tipo, fecha, periodo, tercero_nombre, tercero_rif, numero_factura, tipo_doc, exento, base, alicuota, iva, total, moneda, tasa, total_usd) values
+  ('10000000-0000-0000-0000-000000000121', 'a0000000-0000-0000-0000-000000000121', 'e0000000-0000-0000-0000-000000000121', 'compra', '15/03/26', '2026-03', 'PROV USD', 'J000000301', 'U-1', 'FC',
+   0, 7737.40, 0.16, 1237.98, 8975.38, 'USD', 897.5383, 10);
+insert into retenciones (cuenta_id, empresa_id, direccion, tipo, fecha, periodo, comprobante, tercero_nombre, tercero_rif, factura, base, pct, monto, estado) values
+  ('a0000000-0000-0000-0000-000000000121', 'e0000000-0000-0000-0000-000000000121', 'practicada', 'iva', '15/03/26', '2026-03', '20260300000001', 'PROV USD', 'J000000301', 'U-1', 1237.98, 75, 928.49, 'Registrado');
+insert into movimientos_tesoreria (id, cuenta_id, empresa_id, cuenta_teso_id, fecha, concepto, tipo, referencia, monto, factura_ref, tercero_nombre, tercero_rif) values
+  ('70000000-0000-0000-0000-000000000128', 'a0000000-0000-0000-0000-000000000121', 'e0000000-0000-0000-0000-000000000121', 'b0000000-0000-0000-0000-000000000121',
+   '15/03/26', 'Pago neto U-1', 'egreso', 'P9', 8046.89, 'U-1', 'PROV USD', 'J000000301');
+
 -- Revaluación de marzo (tasa de cierre 900):
---   cuenta USD: 15 USD × 900 = 13.500 − (8.975,38 + 4.487,69) = +36,93
+--   cuenta USD: 17 USD × 900 = 15.300 − (8.975,38 + 4.487,69 + 1.800) = +36,93
 --   REC-000016 abierto: 20 USD × (900 − 880) = +400
+--   la compra U-1 está saldada (pago neto + retención): nada
 select pg_temp.igual('revaluación de marzo: lo que ajusta',
   (select (r->>'ganancia') || ' / ' || (r->>'perdida') from (select contab_revaluar('e0000000-0000-0000-0000-000000000121', '2026-03') r) q), '436.93 / 0.00');
 select pg_temp.igual('el asiento de la revaluación, al cierre del mes', pg_temp.rev('2026-03'),
@@ -89,12 +106,42 @@ select pg_temp.igual('segundo abono (15 USD a 910): completa los 20 USD, el rest
   '1.1.1.03.01 D13650.00 H0.00 | 1.1.2.01 D0.00 H8800.00 | 2.1.6.01 D0.00 H4550.00 | 4.2.2.01 D0.00 H300.00');
 
 -- Revaluación de abril (tasa de cierre 910):
---   cuenta USD: 15 USD × 910 = 13.650 − 13.463,07 − 36,93 ya revaluado = +150
+--   cuenta USD: 17 USD × 910 = 15.470 − 15.263,07 − 36,93 ya revaluado = +170
 --   REC-000016 ya cobrado: se revierten los 400 de marzo
 select pg_temp.igual('revaluación de abril: la cuenta USD sube y lo de la CxC cobrada se revierte', pg_temp.rev('2026-04'), '(sin asiento)');
 select contab_revaluar('e0000000-0000-0000-0000-000000000121', '2026-04');
 select pg_temp.igual('revaluación de abril', pg_temp.rev('2026-04'),
-  '1.1.1.03.02 D150.00 H0.00 | 4.2.2.01 D0.00 H150.00 | 6.3.1.03 D400.00 H0.00 | 1.1.2.01 D0.00 H400.00 @30/04/2026');
+  '1.1.1.03.02 D170.00 H0.00 | 4.2.2.01 D0.00 H170.00 | 6.3.1.03 D400.00 H0.00 | 1.1.2.01 D0.00 H400.00 @30/04/2026');
+
+-- REVISIÓN · I3: revaluar marzo DESPUÉS de abril no cuenta dos veces: abril se rehace.
+delete from asientos where empresa_id = 'e0000000-0000-0000-0000-000000000121' and origen_tabla = 'revaluacion';
+select contab_revaluar('e0000000-0000-0000-0000-000000000121', '2026-04');
+select contab_revaluar('e0000000-0000-0000-0000-000000000121', '2026-03');
+select pg_temp.igual('I3: abril queda igual que si se hubiera revaluado en orden', pg_temp.rev('2026-04'),
+  '1.1.1.03.02 D170.00 H0.00 | 4.2.2.01 D0.00 H170.00 | 6.3.1.03 D400.00 H0.00 | 1.1.2.01 D0.00 H400.00 @30/04/2026');
+
+-- REVISIÓN · I7: el resumen de una cuenta en dólares se compara en dólares.
+insert into estados_cuenta (cuenta_id, empresa_id, cuenta_teso_id, periodo, banco, saldo_inicial, saldo_final) values
+  ('a0000000-0000-0000-0000-000000000121', 'e0000000-0000-0000-0000-000000000121', 'b0000000-0000-0000-0000-000000000122', '2026-03', 'USD', 0, 5);
+select pg_temp.igual('I7: resumen de la cuenta USD, en dólares (el banco trae solo la línea de 5; 12 USD en tránsito)',
+  (select (r->>'moneda') || ' | ' || (r->>'saldo_banco') || ' | ' || (r->>'saldo_libros') || ' | ' || (r->'transito'->>'suma') || ' | ' || (r->>'diferencia')
+     from (select contab_conciliacion_resumen('b0000000-0000-0000-0000-000000000122', '2026-03') r) q),
+  'USD | 5.00 | 17.00 | 12.00 | 0.00');
+
+-- REVISIÓN · menor: el movimiento enlazado a una línea tiene que ser de la misma empresa.
+insert into empresas (id, cuenta_id, nombre, fiscal_activo) values ('e0000000-0000-0000-0000-000000000122', 'a0000000-0000-0000-0000-000000000121', 'Otra empresa', false);
+insert into cuentas_tesoreria (id, cuenta_id, empresa_id, nombre, tipo, moneda) values
+  ('b0000000-0000-0000-0000-000000000123', 'a0000000-0000-0000-0000-000000000121', 'e0000000-0000-0000-0000-000000000122', 'Banco otra', 'Corriente', 'Bs');
+insert into movimientos_tesoreria (id, cuenta_id, empresa_id, cuenta_teso_id, fecha, tipo, referencia, monto, cuenta_contra) values
+  ('70000000-0000-0000-0000-000000000129', 'a0000000-0000-0000-0000-000000000121', 'e0000000-0000-0000-0000-000000000122', 'b0000000-0000-0000-0000-000000000123', '10/03/26', 'ingreso', 'Z', 5, '3.1.1.01');
+do $$
+begin
+  insert into extracto_bancario (cuenta_id, empresa_id, cuenta_teso_id, fecha, descripcion, monto, periodo, huella, clase, movimiento_id, estado)
+  values ('a0000000-0000-0000-0000-000000000121', 'e0000000-0000-0000-0000-000000000121', 'b0000000-0000-0000-0000-000000000121', '10/03/2026', 'X', 5, '2026-03', 'ajeno', 'registrado', '70000000-0000-0000-0000-000000000129', 'conciliada');
+  raise exception 'FALLA: se enlazó un movimiento de otra empresa';
+exception when others then
+  if sqlerrm like 'FALLA:%' then raise; end if;
+end $$;
 
 -- Sin tasa del BCV no se inventa: una cuenta USD antes de la primera tasa no hace asiento.
 insert into movimientos_tesoreria (id, cuenta_id, empresa_id, cuenta_teso_id, fecha, concepto, tipo, referencia, monto, cuenta_contra) values

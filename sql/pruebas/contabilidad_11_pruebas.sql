@@ -90,6 +90,48 @@ select pg_temp.igual('y el movimiento enlazado no cuenta como en tránsito',
       and a.origen_id <> '70000000-0000-0000-0000-000000000001'
       and exists (select 1 from jsonb_array_elements(a.lineas) e where split_part(e->>'cta', ' · ', 1) = '1.1.1.03.01')));
 
+-- ===== Revisión final del plan 4b =====
+-- C1: una transferencia hacia una cuenta en dólares guarda los dólares en la línea del destino.
+insert into cuentas_tesoreria (id, cuenta_id, empresa_id, nombre, tipo, moneda) values
+  ('b0000000-0000-0000-0000-000000000113', 'a0000000-0000-0000-0000-000000000111', 'e0000000-0000-0000-0000-000000000111', 'Caja USD', 'Corriente', 'USD');
+insert into movimientos_tesoreria (id, cuenta_id, empresa_id, cuenta_teso_id, fecha, concepto, tipo, referencia, monto) values
+  ('70000000-0000-0000-0000-000000000011', 'a0000000-0000-0000-0000-000000000111', 'e0000000-0000-0000-0000-000000000111', 'b0000000-0000-0000-0000-000000000111', '22/03/26', 'A caja USD', 'egreso', 'TRF-00000002', 9050),
+  ('70000000-0000-0000-0000-000000000012', 'a0000000-0000-0000-0000-000000000111', 'e0000000-0000-0000-0000-000000000111', 'b0000000-0000-0000-0000-000000000113', '22/03/26', 'De banco A', 'ingreso', 'TRF-00000002', 10);
+select pg_temp.igual('C1: la línea del destino en dólares guarda sus dólares',
+  (select (lineas -> 0 ->> 'usd') || ' · ' || split_part(lineas -> 0 ->> 'cta', ' · ', 1) from asientos where origen_tabla = 'movimientos_tesoreria' and origen_id = '70000000-0000-0000-0000-000000000011'), '10.00 · 1.1.1.01.01');
+
+-- I2: corregir la fecha o el documento de un cobro recalcula los demás cobros del documento.
+insert into facturas (id, cuenta_id, empresa_id, numero, tipo, tipo_doc, fecha, cliente_nombre, subtotal, iva, igtf_monto, total, estado) values
+  ('f0000000-0000-0000-0000-000000000113', 'a0000000-0000-0000-0000-000000000111', 'e0000000-0000-0000-0000-000000000111', 'REC-000003', 'venta', 'FV', '01/03/2026', 'CLIENTE', 1000, 0, 0, 1000, 'Por cobrar'),
+  ('f0000000-0000-0000-0000-000000000114', 'a0000000-0000-0000-0000-000000000111', 'e0000000-0000-0000-0000-000000000111', 'REC-000004', 'venta', 'FV', '01/03/2026', 'CLIENTE', 1000, 0, 0, 1000, 'Por cobrar');
+insert into movimientos_tesoreria (id, cuenta_id, empresa_id, cuenta_teso_id, fecha, concepto, tipo, referencia, monto, factura_ref) values
+  ('70000000-0000-0000-0000-000000000013', 'a0000000-0000-0000-0000-000000000111', 'e0000000-0000-0000-0000-000000000111', 'b0000000-0000-0000-0000-000000000111', '10/03/26', 'X1', 'ingreso', 'X1', 600, 'REC-000003'),
+  ('70000000-0000-0000-0000-000000000014', 'a0000000-0000-0000-0000-000000000111', 'e0000000-0000-0000-0000-000000000111', 'b0000000-0000-0000-0000-000000000111', '12/03/26', 'X2', 'ingreso', 'X2', 600, 'REC-000003');
+update movimientos_tesoreria set fecha = '05/03/26' where id = '70000000-0000-0000-0000-000000000014';
+select pg_temp.igual('I2: el cobro que pasó a ser el segundo se recalcula (lo que excede, a anticipos)', pg_temp.mov('70000000-0000-0000-0000-000000000013'),
+  '1.1.1.03.01 D600.00 H0.00 | 1.1.2.01 D0.00 H400.00 | 2.1.6.01 D0.00 H200.00');
+update movimientos_tesoreria set factura_ref = 'REC-000004' where id = '70000000-0000-0000-0000-000000000013';
+select pg_temp.igual('I2: al mudar un cobro a otro recibo, el que queda en el recibo viejo se recalcula', pg_temp.mov('70000000-0000-0000-0000-000000000014'),
+  '1.1.1.03.01 D600.00 H0.00 | 1.1.2.01 D0.00 H600.00');
+
+-- I5: dos compras con el mismo número de proveedores distintos no se mezclan.
+insert into libro_fiscal (id, cuenta_id, empresa_id, tipo, fecha, periodo, tercero_nombre, tercero_rif, numero_factura, tipo_doc, exento, base, alicuota, iva, total) values
+  ('10000000-0000-0000-0000-000000000112', 'a0000000-0000-0000-0000-000000000111', 'e0000000-0000-0000-0000-000000000111', 'compra', '11/03/26', '2026-03', 'PROV A', 'J000000201', '0001', 'FC', 0, 1000, 0.16, 160, 1160),
+  ('10000000-0000-0000-0000-000000000113', 'a0000000-0000-0000-0000-000000000111', 'e0000000-0000-0000-0000-000000000111', 'compra', '11/03/26', '2026-03', 'PROV B', 'J000000202', '0001', 'FC', 0, 1000, 0.16, 160, 1160);
+insert into movimientos_tesoreria (id, cuenta_id, empresa_id, cuenta_teso_id, fecha, concepto, tipo, referencia, monto, factura_ref, tercero_nombre, tercero_rif) values
+  ('70000000-0000-0000-0000-000000000015', 'a0000000-0000-0000-0000-000000000111', 'e0000000-0000-0000-0000-000000000111', 'b0000000-0000-0000-0000-000000000111', '20/03/26', 'Pago A', 'egreso', 'PA', 1160, '0001', 'PROV A', 'J000000201'),
+  ('70000000-0000-0000-0000-000000000016', 'a0000000-0000-0000-0000-000000000111', 'e0000000-0000-0000-0000-000000000111', 'b0000000-0000-0000-0000-000000000111', '21/03/26', 'Pago B', 'egreso', 'PB', 1160, '0001', 'PROV B', 'J000000202');
+select pg_temp.igual('I5: el pago al segundo proveedor no cuenta el pago al primero', pg_temp.mov('70000000-0000-0000-0000-000000000016'),
+  '2.1.1.01 D1160.00 H0.00 | 1.1.1.03.01 D0.00 H1160.00');
+
+-- Menor: una cuenta con la moneda vacía es en bolívares.
+select pg_temp.igual('moneda vacía = bolívares', contab_es_divisa('')::text, 'false');
+
+-- Menor: borrar un movimiento enlazado a una línea conciliada la devuelve a pendiente.
+delete from movimientos_tesoreria where id = '70000000-0000-0000-0000-000000000001';
+select pg_temp.igual('borrar el movimiento deja su línea del banco pendiente',
+  (select estado from extracto_bancario where id = 'c0000000-0000-0000-0000-000000000111'), 'pendiente');
+
 select pg_temp.igual('todos los asientos cuadran',
   (select count(*)::text from asientos a where a.empresa_id = 'e0000000-0000-0000-0000-000000000111'
       and (select round(sum(coalesce((e->>'debe')::numeric, 0) - coalesce((e->>'haber')::numeric, 0)), 2) from jsonb_array_elements(a.lineas) e) <> 0), '0');
