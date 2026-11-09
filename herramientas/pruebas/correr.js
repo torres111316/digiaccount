@@ -1471,8 +1471,17 @@ var _sMov = sugerirLinea(_l('PAGO FACT 166 LIGNUM', 446820.19, '0050949046569'),
 ok('la sugerencia «ya registrado» trae su movimiento', _sMov && _sMov.movimiento_id, 'm1');
 /* Revisión final del plan 4b. */
 var _tesoR = _leer('assets/tesoreria.js');
-ok('I6: el estado del recibo convierte los cobros de una cuenta en dólares', /enDolares\(m\) \? \(Number\(m\.monto\) \|\| 0\) : \(Number\(m\.monto\) \|\| 0\) \/ tasaEn\(fechaISO\(m\)\)/.test(_tesoR), true);
-ok('I6: y usa la tasa de la fecha del cobro, no la del registro', /tasaEn\(m\.creado_en\)/.test(_tesoR), false);
+ok('I6: los cobros se suman en su moneda (cuenta en dólares) con funciones comunes', /function _bsMov\(m\)/.test(_tesoR) && /function _usdMov\(m\)/.test(_tesoR), true);
+ok('I6: el estado del recibo, lo cobrado (CxC), el recibo de cobro y el aviso de exceso las usan',
+  (_tesoR.match(/_bsMov\(m\)|_usdMov\(m\)|_bsMov\(mov\)/g) || []).length >= 7, true);
+ok('I6: ninguna conversión usa la tasa del día del registro', /[tT]asaEn\((m|mov)\.creado_en\)/.test(_tesoR), false);
+eval(tramo('    function _movEnDolares(m) {', '    const _tieneTasa ='));
+var _cuentas = [{ id: 'U', moneda: 'USD' }, { id: 'B', moneda: 'Bs' }];
+window.__tasaUSDEn = function (f) { return f === '2026-03-15' ? 900 : 0; };
+var _tasaEn = function (x) { return window.__tasaUSDEn(x) || 0; };
+ok('I6: 20 USD cobrados en la cuenta en dólares son 20 USD', _usdMov({ cuenta_teso_id: 'U', monto: 20, fecha: '15/03/26' }), 20);
+ok('I6: y en bolívares, a la tasa de su fecha', _bsMov({ cuenta_teso_id: 'U', monto: 20, fecha: '15/03/26' }), 18000);
+ok('I6: 9.000 Bs en una cuenta en Bs son 10 USD a la tasa de su fecha', _usdMov({ cuenta_teso_id: 'B', monto: 9000, fecha: '15/03/26' }), 10);
 ok('I8: «Cerrar mes» dice que también pueden ser movimientos de Tesorería', /movimientos de Tesorería sin cuenta contable o sin tasa BCV/.test(_appjs), true);
 ok('una transferencia entre cuentas de distinta moneda se registra en dos movimientos', /Entre cuentas de distinta moneda registra un egreso en una y un ingreso en la otra/.test(_tesoR), true);
 ok('el monto de un cobro está en la moneda de la cuenta', /Monto a cobrar\/pagar \(Bs\)/.test(_tesoR), false);

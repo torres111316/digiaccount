@@ -88,7 +88,7 @@
     }
     window.cargarTesoreria = cargarTesoreria;
     // Cuánto se ha cobrado de un recibo (suma de ingresos vinculados por factura_ref). Lo usa el botón "Cobrar".
-    window.__cobradoDe = (ref) => _movs.filter((m) => m.tipo === 'ingreso' && (m.factura_ref || '').trim() === String(ref || '').trim()).reduce((s, m) => s + (Number(m.monto) || 0), 0);
+    window.__cobradoDe = (ref) => _movs.filter((m) => m.tipo === 'ingreso' && (m.factura_ref || '').trim() === String(ref || '').trim()).reduce((s, m) => s + _bsMov(m), 0);
 
     function render() {
       const cont = document.getElementById('tesoBankCards');
@@ -165,8 +165,8 @@
       const emp = window.__EMPRESA_ACTIVA || {};
       const tasaEn = (x) => (window.__tasaUSDEn && window.__tasaUSDEn(x)) || 0;
       /* La tasa del ABONO: con ella se muestra el dolar de lo que se pago hoy. */
-      const tasa = tasaEn(mov.creado_en);
-      const abono = Number(mov.monto) || 0;
+      const tasa = tasaEn(_fechaMov(mov));
+      const abono = _bsMov(mov);
       const total = fac ? (Number(fac.total) || 0) : 0;
       const acum = fac ? pagadoDe(fac) : abono;
       /* EL SALDO SE RESTA EN DOLARES, no se convierte.
@@ -178,9 +178,9 @@
          bolivares: no se inventa una conversion. */
       const movsFac = fac ? _movs.filter((m) => m.tipo === 'ingreso' && (m.factura_ref || '').trim() === ref) : [];
       const tVenta = fac ? tasaEn(fac.emitida) : 0;
-      const enUsd = !!fac && tasa > 0 && tVenta > 0 && movsFac.every((m) => tasaEn(m.creado_en) > 0);
+      const enUsd = !!fac && tasa > 0 && tVenta > 0 && movsFac.every(_tieneTasa);
       const totalUsd = enUsd ? ((window.__usdDoc && window.__usdDoc(fac)) || (total / tVenta)) : 0;
-      const acumUsd = enUsd ? movsFac.reduce((a, m) => a + (Number(m.monto) || 0) / tasaEn(m.creado_en), 0) : 0;
+      const acumUsd = enUsd ? movsFac.reduce((a, m) => a + _usdMov(m), 0) : 0;
       const saldo = enUsd
         ? Math.max(0, Math.round((totalUsd - acumUsd) * 100) / 100)
         : Math.max(0, total - acum);
@@ -281,7 +281,7 @@
     function pagadoDe(fac) {
       const ref = (fac.ref || '').trim(); if (!ref) return 0;
       const wantTipo = fac.tipo === 'venta' ? 'ingreso' : 'egreso';
-      return _movs.filter((m) => m.tipo === wantTipo && (m.factura_ref || '').trim() === ref).reduce((s, m) => s + (Number(m.monto) || 0), 0);
+      return _movs.filter((m) => m.tipo === wantTipo && (m.factura_ref || '').trim() === ref).reduce((s, m) => s + _bsMov(m), 0);
     }
     function badge(txt, color, bg) { return '<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;color:' + color + ';background:' + bg + ';">' + txt + '</span>'; }
     /* LA DEUDA SE PIENSA EN DOLARES.
@@ -294,6 +294,16 @@
        tasa de su fecha. Cada pago se lleva a dolares con la tasa del dia en
        que se pago, asi que el pendiente es una resta en dolares. */
     const _tasaEn = (x) => ((window.__tasaUSDEn && window.__tasaUSDEn(x)) || 0);
+    /* UN MOVIMIENTO EN SU MONEDA. En una cuenta en dólares el monto está en
+       dólares; la tasa es la de la FECHA del movimiento (no la del día en que se
+       registró), como lo hace la base (sql/contabilidad_11_tesoreria.sql). */
+    function _movEnDolares(m) { const c = _cuentas.find((x) => x.id === m.cuenta_teso_id); return !!c && !/^\s*(bs|ves|bol)/i.test(c.moneda || 'Bs'); }
+    function _fechaMov(m) { const q = String(m.fecha || '').split('/'); return q.length === 3 ? ((q[2].length === 2 ? '20' + q[2] : q[2]) + '-' + q[1].padStart(2, '0') + '-' + q[0].padStart(2, '0')) : m.creado_en; }
+    // Bolívares del movimiento (0 si es en dólares y falta la tasa).
+    function _bsMov(m) { const n = Number(m.monto) || 0; return _movEnDolares(m) ? n * _tasaEn(_fechaMov(m)) : n; }
+    // Dólares del movimiento (0 si es en bolívares y falta la tasa).
+    function _usdMov(m) { const n = Number(m.monto) || 0; if (_movEnDolares(m)) return n; const t = _tasaEn(_fechaMov(m)); return t > 0 ? n / t : 0; }
+    const _tieneTasa = (m) => _movEnDolares(m) || _tasaEn(_fechaMov(m)) > 0;
 
     /* dd/mm/aa(aa) → un numero comparable (aaaammdd). Si no hay fecha, se
        usa el momento en que se cargo, que al menos respeta el orden real. */
@@ -322,9 +332,9 @@
         const pend = Math.max(0, total - pag);
         const lista = _movsDe(f);
         const totalUsd = (window.__usdDoc && window.__usdDoc(f)) || 0;
-        const enUsd = totalUsd > 0 && lista.every((m) => _tasaEn(m.creado_en) > 0);
+        const enUsd = totalUsd > 0 && lista.every(_tieneTasa);
         const pagUsd = enUsd
-          ? (f.presuntoPagado && pagReal <= 0.01 ? totalUsd : lista.reduce((a, m) => a + (Number(m.monto) || 0) / _tasaEn(m.creado_en), 0))
+          ? (f.presuntoPagado && pagReal <= 0.01 ? totalUsd : lista.reduce((a, m) => a + _usdMov(m), 0))
           : 0;
         return { f: f, total: total, pag: pag, pend: pend, presunto: f.presuntoPagado && pagReal <= 0.01,
           enUsd: enUsd, totalUsd: totalUsd, pagUsd: pagUsd,
@@ -529,18 +539,16 @@
         /* Un cobro en una cuenta en DÓLARES trae su monto en dólares, y la tasa es la de
            la fecha del cobro (no la del día en que se registró): como lo hace la base
            (sql/contabilidad_11_tesoreria.sql). */
-        const enDolares = (m) => { const c = _cuentas.find((x) => x.id === m.cuenta_teso_id); return !!c && !/^\s*(bs|ves|bol)/i.test(c.moneda || 'Bs'); };
-        const fechaISO = (m) => { const p = String(m.fecha || '').split('/'); return p.length === 3 ? ((p[2].length === 2 ? '20' + p[2] : p[2]) + '-' + p[1] + '-' + p[0]) : m.creado_en; };
 
         if (window.__cargarTasasUSD) await window.__cargarTasasUSD();
         const tasaEn = (x) => ((window.__tasaUSDEn && window.__tasaUSDEn(x)) || 0);
-        const pagado = lista.reduce((s, m) => s + (enDolares(m) ? (Number(m.monto) || 0) * tasaEn(fechaISO(m)) : (Number(m.monto) || 0)), 0);
+        const pagado = lista.reduce((s, m) => s + _bsMov(m), 0);
         const usdRecibo = (window.__usdDoc && window.__usdDoc({
           tipo: 'venta', total: f.total, total_usd: f.total_usd, tasa: f.tasa,
           emitida: f.emitida_en || f.creado_en, fecha: f.fecha,
         })) || 0;
-        const enUsd = usdRecibo > 0 && lista.every((m) => enDolares(m) || tasaEn(fechaISO(m)) > 0);
-        const pagadoUsd = enUsd ? lista.reduce((s, m) => s + (enDolares(m) ? (Number(m.monto) || 0) : (Number(m.monto) || 0) / tasaEn(fechaISO(m))), 0) : 0;
+        const enUsd = usdRecibo > 0 && lista.every(_tieneTasa);
+        const pagadoUsd = enUsd ? lista.reduce((s, m) => s + _usdMov(m), 0) : 0;
 
         const estado = enUsd
           ? (pagadoUsd >= usdRecibo - 0.005 ? 'Cobrada' : (pagadoUsd > 0.005 ? 'Abonada' : 'Por cobrar'))
@@ -727,7 +735,7 @@
             const refDoc = v.factura.trim();
             const doc = _facturas.find((x) => (x.ref || '') === refDoc && x.tipo === (v.tipo === 'ingreso' ? 'venta' : 'compra'));
             if (doc) {
-              const previo = _movs.filter((m) => m.tipo === v.tipo && (m.factura_ref || '').trim() === refDoc).reduce((s, m) => s + (Number(m.monto) || 0), 0);
+              const previo = _movs.filter((m) => m.tipo === v.tipo && (m.factura_ref || '').trim() === refDoc).reduce((s, m) => s + _bsMov(m), 0);
               const pend = Math.max(0, (Number(doc.total) || 0) - previo);
               if (monto > pend + 0.01) {
                 const exc = Math.round((monto - pend) * 100) / 100;
