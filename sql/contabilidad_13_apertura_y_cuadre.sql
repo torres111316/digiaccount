@@ -17,6 +17,21 @@
 -- Pruebas: sql/pruebas/contabilidad_13_pruebas.sql.
 -- ============================================================
 
+-- ── 0 · Los ajustes del 26/08 de apertura_empresa.sql ─────────────────────
+-- En Supabase no se habían corrido (la prueba 13 falló el 11/11/2026 con
+-- «record "new" has no field "calculado"»). Se repiten aquí: son idempotentes.
+alter table public.apertura_partidas
+  add column if not exists calculado boolean not null default false;
+comment on column public.apertura_partidas.calculado is
+  'true = este renglon lo dedujo el sistema para cuadrar la apertura, no lo aporto el cliente. Es donde hay que mirar primero cuando el balance no cuadra con la realidad.';
+-- Orden de trabajo, no de balance: «Por lo general uno siempre comienza con Bancos, CxC, CxP e Inventarios» (Luis).
+update public.apertura_guia g set orden = v.orden
+  from (values ('banco', 10), ('cxc', 20), ('cxp', 30), ('inventario', 40), ('caja', 50), ('anticipo_c', 60),
+               ('anticipo_p', 65), ('activo_fijo', 70), ('iva_credito', 80), ('iva_debito', 82), ('ret_enterar', 84),
+               ('islr_antic', 86), ('prestaciones', 90), ('intereses_p', 92), ('vacaciones', 94), ('prestamo', 100),
+               ('capital', 110), ('resultados', 120)) v(id, orden)
+ where g.id = v.id;
+
 -- ── 1 · La cuenta de cada renglón ─────────────────────────────────────────
 alter table public.apertura_guia add column if not exists cuenta text;
 comment on column public.apertura_guia.cuenta is 'Cuenta contable sugerida para los renglones de esta guía; se puede cambiar en cada renglón.';

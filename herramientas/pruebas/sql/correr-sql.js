@@ -17,7 +17,10 @@ const path = require('path');
 const { PGlite } = require('@electric-sql/pglite');
 
 const RAIZ = path.join(__dirname, '..', '..', '..');
-const PREVIOS = ['apertura_empresa.sql'];   // el 13 redefine cerrar_apertura y reabrir_apertura
+/* SQL previos a la contabilidad, TAL COMO ESTÁN EN SUPABASE. De apertura_empresa.sql
+   solo se corrió allá hasta antes de los «AJUSTES · 26/08/2026» (la prueba 13 falló el
+   11/11/2026 por la columna `calculado`, que viene en esa parte): se corta ahí. */
+const PREVIOS = [['apertura_empresa.sql', '--  AJUSTES · 26/08/2026']];
 const hasta = process.argv[2] || '99';
 const sqls = fs.readdirSync(path.join(RAIZ, 'sql'))
   .filter((f) => /^contabilidad_\d\d_.+\.sql$/.test(f) && f.slice(13, 15) <= hasta).sort();
@@ -30,8 +33,10 @@ const pruebas = fs.existsSync(path.join(RAIZ, 'sql', 'pruebas'))
   const db = new PGlite();
   await db.exec(fs.readFileSync(path.join(__dirname, 'espejo.sql'), 'utf8'));
   // SQL previos a la contabilidad que esta redefine o usa tal cual (no se copian al espejo).
-  for (const f of PREVIOS) {
-    try { await db.exec(fs.readFileSync(path.join(RAIZ, 'sql', f), 'utf8')); console.log('  previo    ' + f); }
+  for (const [f, corte] of PREVIOS) {
+    let txt = fs.readFileSync(path.join(RAIZ, 'sql', f), 'utf8');
+    if (corte && txt.indexOf(corte) >= 0) txt = txt.slice(0, txt.lastIndexOf('-- =====', txt.indexOf(corte)));
+    try { await db.exec(txt); console.log('  previo    ' + f + (corte ? ' (hasta los ajustes)' : '')); }
     catch (e) { console.log('  ERROR en  ' + f + ': ' + e.message); process.exitCode = 1; return; }
   }
   for (const f of sqls) {
