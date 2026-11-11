@@ -61,9 +61,11 @@ select pg_temp.igual('el asiento de la app vieja se descarta',
   (select count(*)::text from asientos where empresa_id = 'e0000000-0000-0000-0000-000000000101' and descripcion like 'Venta s/recibo%'), '0');
 
 -- La tasa del BCV vigente a una fecha.
-insert into tasas_cambio (fecha, moneda, tasa, fuente) values ('2026-03-09', 'USD', 400, 'BCV'), ('2026-03-11', 'USD', 410, 'BCV'), ('2026-03-10', 'USDT', 999, 'PARALELO');
-select pg_temp.igual('tasa vigente: la última del BCV hasta esa fecha', contab_tasa_bcv('2026-03-10')::text, '400');
-select pg_temp.igual('tasa del día si la hay', contab_tasa_bcv('2026-03-11')::text, '410');
+-- En 1990: no hay tasas reales antes de 2025, así la prueba solo ve las suyas
+-- (en Supabase ya existen las de 2026 y no se admiten dos del mismo día).
+insert into tasas_cambio (fecha, moneda, tasa, fuente) values ('1990-03-09', 'USD', 400, 'BCV'), ('1990-03-11', 'USD', 410, 'BCV'), ('1990-03-10', 'USDT', 999, 'PARALELO');
+select pg_temp.igual('tasa vigente: la última del BCV hasta esa fecha', contab_tasa_bcv('1990-03-10')::text, '400');
+select pg_temp.igual('tasa del día si la hay', contab_tasa_bcv('1990-03-11')::text, '410');
 
 select 'TODO OK · contabilidad 10';
 rollback;

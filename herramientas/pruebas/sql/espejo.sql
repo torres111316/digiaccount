@@ -197,7 +197,8 @@ alter table public.facturas add constraint facturas_nota_motivo_chk check (tipo_
 create table public.tasas_cambio (
   id uuid primary key default gen_random_uuid(),
   fecha date, moneda text, tasa numeric, fuente text,
-  creado_en timestamptz default now()
+  creado_en timestamptz default now(),
+  unique (fecha, moneda)   -- como en Supabase (tasas_cambio_fecha_moneda_key)
 );
 create table public.movimientos_tesoreria (
   id uuid primary key default gen_random_uuid(),
@@ -221,6 +222,13 @@ create table public.asientos (
   total numeric,
   creado_en timestamptz default now()
 );
+
+-- RUIDO: en la base real ya hay tasas del BCV desde enero de 2025 (una por día).
+-- Una prueba que inserte tasas en esas fechas debe fallar AQUÍ (pasó el 11/11/2026:
+-- «duplicate key … tasas_cambio_fecha_moneda_key»).
+insert into public.tasas_cambio (fecha, moneda, tasa, fuente)
+select d::date, 'USD', 400 + (d::date - date '2026-01-01') * 2, 'BCV'
+  from generate_series(date '2026-01-01', date '2026-12-31', interval '1 day') d;
 
 -- RUIDO: en la base real hay otras empresas con asientos que repiten las
 -- referencias que usan las pruebas (LV-03/2026 de Agüero, 000144 de GATMA,
