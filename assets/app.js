@@ -13465,6 +13465,12 @@
 
       const cer = $('apCerrar');
       if (cer) cer.addEventListener('click', async () => {
+        /* La apertura es la foto AL corte: un asiento con fecha hasta el corte
+           (un libro de ese mes ya cargado, por ejemplo) quedaría contado dos veces. */
+        const { data: prev } = await window.sb.rpc('apertura_asientos_previos', { p_empresa: emp().id });
+        if (prev && prev.cantidad > 0 && !confirm('Hay ' + prev.cantidad + ' asiento(s) con fecha hasta el ' + dmy(AP.fecha_corte)
+            + ' (el último del ' + prev.ultimo + ').\n\nLa apertura es la foto de los saldos AL corte: lo que ya está en esos asientos '
+            + 'se sumaría dos veces en el Balance. Lo normal es que la fecha de corte sea el día anterior al primer mes cargado.\n\n¿Cerrar la apertura igual?')) return;
         const { data, error } = await window.sb.rpc('cerrar_apertura', { p_empresa: emp().id });
         if (error) { toast('No se pudo cerrar: ' + error.message, 'error'); return; }
         if (data && data.ok === false) { toast(data.motivo, 'error'); return; }

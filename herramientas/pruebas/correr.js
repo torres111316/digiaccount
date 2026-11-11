@@ -1559,6 +1559,31 @@ ok('un préstamo a largo plazo es financiamiento', _fl.fin, 2000);
 ok('concilia', _fl.cuadra, true);
 _fl = flujoDirecto(_asis.concat([{ numero: 9, fecha: '20/10/26', lineas: [_L('1.1.1.01', 10, 0), _L('4.1.1.01', 0, 9)] }]), '2026-10-01', '2026-10-31');
 ok('un asiento descuadrado se nota: no concilia', _fl.cuadra, false);
+/* Revisión final del plan 5. */
+_fl = flujoDirecto([{ numero: 1, fecha: '31/10/26', origen_tabla: 'apertura', lineas: [_L('1.1.1.03.01', 500, 0), _L('1.1.2.01', 300, 0), _L('2.1.1.01', 0, 200), _L('3.1.1.01', 0, 600)] },
+  { numero: 2, fecha: '05/11/26', lineas: [_L('1.1.1.03.01', 50, 0), _L('1.1.2.01', 0, 50)] }], '2026-10-01', '2026-11-30');
+ok('I2: la apertura es el efectivo inicial, no cobros, pagos ni aportes', _fl.inicial + '/' + _fl.op + '/' + _fl.fin + '/' + _fl.final + '/' + _fl.cuadra, '500/50/0/550/true');
+
+bloque('Plan 5: el Balance General cuadra');
+// Año anterior: aporte 100 y gasto 20. Este año: venta 100 cobrada y gasto 30 pagado.
+var _asBG = [
+  { numero: 1, fecha: '01/03/25', lineas: [_L('1.1.1.03.01', 100, 0), _L('3.1.1.01', 0, 100)] },
+  { numero: 2, fecha: '10/03/25', lineas: [_L('6.1.1.16', 20, 0), _L('1.1.1.03.01', 0, 20)] },
+  { numero: 3, fecha: '05/10/26', lineas: [_L('1.1.1.03.01', 100, 0), _L('4.1.1.01', 0, 100)] },
+  { numero: 4, fecha: '06/10/26', lineas: [_L('6.1.1.16', 30, 0), _L('1.1.1.03.01', 0, 30)] },
+];
+var _cBG = Array.from(saldosEnRango(_asBG, '2026-01-01', '2026-10-31').values());
+var _ut = utilidadesAlCorte(_cBG);
+ok('C1: utilidad del ejercicio = ingresos − gastos', _ut.ejercicio, 70);
+ok('C1: y la de ejercicios anteriores (una pérdida)', _ut.anteriores, -20);
+var _act = _cBG.filter(function (c) { return c.code.charAt(0) === '1'; }).reduce(function (s, c) { return s + c.ant + c.debe - c.haber; }, 0);
+var _pat = _cBG.filter(function (c) { return c.code.charAt(0) === '3'; }).reduce(function (s, c) { return s - (c.ant + c.debe - c.haber); }, 0);
+ok('C1: Activo = Pasivo + Patrimonio (capital + resultados)', _act + ' = ' + (_pat + _ut.ejercicio + _ut.anteriores), '150 = 150');
+var _contaR = _leer('assets/contabilidad.js');
+ok('C1: el Balance General usa esa función', /const ut = utilidadesAlCorte\(todas\), utilEj = ut\.ejercicio, utilAnt = ut\.anteriores;/.test(_contaR), true);
+ok('I4: exportar toma la tabla del estado (no el cuadre de la F30)', /const cont = pane\.querySelector\(meta\.sel\);/.test(_contaR) && !/const table = pane\.querySelector\('table'\);/.test(_contaR), true);
+ok('los archivos llevan el período, no el ejercicio', /_Ejercicio_' \+ ejercicioInfo\(\)\.anio \+ '\.csv'\);/.test(_contaR.replace("'Activos_Fijos_Ejercicio_' + ejercicioInfo().anio + '.csv');", '')), false);
+ok('I5: antes de cerrar la apertura se avisa lo ya asentado hasta el corte', /rpc\('apertura_asientos_previos', \{ p_empresa: emp\(\)\.id \}\)/.test(_leer('assets/app.js')), true);
 
 bloque('Plan 5: la pantalla de los reportes');
 var _conta5 = _leer('assets/contabilidad.js');

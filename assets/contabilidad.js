@@ -530,7 +530,9 @@
         if (f > hasta) return;
         const lin = (Array.isArray(a.lineas) ? a.lineas : []).map((l) => ({ code: parseCta(l.cta).c, d: Number(l.debe) || 0, h: Number(l.haber) || 0 }));
         const caja = lin.filter((l) => esEfectivo(l.code)).reduce((s, l) => s + l.d - l.h, 0);
-        if (!f || f < desde) { r.inicial += caja; return; }
+        /* El asiento de apertura es la foto al corte: su caja y bancos son el
+           efectivo con que se arranca, no cobros ni pagos del período. */
+        if (!f || f < desde || a.origen_tabla === 'apertura') { r.inicial += caja; return; }
         r.cajaRango += caja;
         if (!lin.some((l) => esEfectivo(l.code))) return;
         lin.forEach((l) => {
@@ -548,7 +550,17 @@
       r.cuadra = Math.abs(r.final - r.cajaFin) < 0.01;
       return r;
     }
-    window.__reportesPuros = { fechaAsientoISO, rangoPeriodo, moverAncla, segDeNivel, nombreNivel, saldosEnRango, rollUp, flujoDirecto, rubroFlujo };
+    /* El resultado de las cuentas 4, 5 y 6 al corte, partido en lo del
+       ejercicio (dentro del rango) y lo de ejercicios anteriores (`ant`).
+       haber − debe ya da el signo: el ingreso suma, el costo y el gasto restan. */
+    function utilidadesAlCorte(cuentas) {
+      const res = (cuentas || []).filter((c) => '456'.indexOf(c.code.charAt(0)) >= 0);
+      return {
+        ejercicio: res.reduce((s, c) => s + c.haber - c.debe, 0),
+        anteriores: res.reduce((s, c) => s - (c.ant || 0), 0),
+      };
+    }
+    window.__reportesPuros = { fechaAsientoISO, rangoPeriodo, moverAncla, segDeNivel, nombreNivel, saldosEnRango, rollUp, flujoDirecto, rubroFlujo, utilidadesAlCorte };
     // ── fin de las funciones puras de reportes ──
 
     // Estado común de la barra: período y nivel.
@@ -587,6 +599,7 @@
       if (r.desde === '') return ejercicioInfo().periodo;
       return r.etiqueta + ' · del ' + _dmy(r.desde) + ' al ' + _dmy(r.hasta);
     }
+    const archivoPeriodo = () => _rango().etiqueta.replace(/[^0-9A-Za-zÁÉÍÓÚáéíóúñÑ]+/g, '_');
     window.__periodoReportes = () => ({ desde: _rango().desde, hasta: _rango().hasta, etiqueta: _rango().etiqueta, texto: periodoTexto(), corte: _dmy(corteISO()) });
 
     // Saldo según naturaleza: Activo/Costo/Gasto (1,5,6) = debe−haber; Pasivo/Patrimonio/Ingreso (2,3,4) = haber−debe
@@ -736,9 +749,7 @@
       const corte = corteISO(), iniEj = corte.slice(0, 4) + '-01-01';
       const todas = Array.from(saldosEnRango(asientosData, iniEj, corte).values());
       const res = (c) => '456'.indexOf(c.code.charAt(0)) >= 0;
-      const nat456 = (c, v) => (c.code.charAt(0) === '4' ? v : -v);   // ingreso positivo, costo y gasto restan
-      const utilEj = todas.filter(res).reduce((s, c) => s + nat456(c, c.haber - c.debe), 0);
-      const utilAnt = todas.filter(res).reduce((s, c) => s + nat456(c, -(c.ant || 0)), 0);
+      const ut = utilidadesAlCorte(todas), utilEj = ut.ejercicio, utilAnt = ut.anteriores;
       // El Balance necesita separar corriente / no corriente → nunca menos de Grupo.
       const seg = segDeNivel(_rep.nivel), segBG = seg === 1 ? 2 : seg;
       const cuentas = rollUp(todas.filter((c) => !res(c)), segBG, nombres)
@@ -826,7 +837,7 @@
       tabs.insertAdjacentElement('afterend', bar);
       const pintarBarra = () => {
         const r = _rango();
-        const etq = document.getElementById('crbEtq'); if (etq) etq.textContent = r.etiqueta;
+        const etq = document.getElementById('crbEtq'); if (etq) etq.textContent = (_rep.tipo !== 'todo' && !_rep.ancla) ? '—' : r.etiqueta;
         bar.querySelectorAll('[data-crb-dir]').forEach((b) => { b.disabled = _rep.tipo === 'todo'; });
         bar.querySelectorAll('[data-crb-nivel]').forEach((b) => {
           if (parseInt(b.dataset.crbNivel, 10) === _rep.nivel) b.dataset.active = 'true'; else b.removeAttribute('data-active');
@@ -876,8 +887,7 @@
          vuelve a pedir con otro período, otra empresa o asientos recargados. */
       const clave = emp.id + '|' + r.desde + '|' + r.hasta + '|' + _cargaAsientos;
       if (clave === _cuadreClave) return;
-      _cuadreClave = clave;
-      if (r.desde === '') { box.innerHTML = '<div style="color:var(--fg-muted);">Cuadre con la Forma 30: elige un mes o un año para verlo.</div>'; return; }
+      if (r.desde === '') { _cuadreClave = clave; box.innerHTML = '<div style="color:var(--fg-muted);">Cuadre con la Forma 30: elige un mes o un año para verlo.</div>'; return; }
       // Los meses del rango (un día o una semana caen en uno o dos meses).
       const meses = [];
       for (let m = r.desde.slice(0, 7); m <= r.hasta.slice(0, 7) && meses.length < 12;) {
@@ -894,6 +904,7 @@
       const res = await Promise.all(pedidos.map((p) => window.sb.rpc('contab_cuadre_iva', { p_empresa: emp.id, p_periodo: p.m, p_quincena: p.q })));
       if (turno !== _cuadreTurno) return;   // llegó tarde: ya se pidió otro período
       const err = res.find((x) => x.error);
+      if (!err) _cuadreClave = clave;
       if (err) {
         box.innerHTML = '<div style="color:var(--fg-muted);">Cuadre con la Forma 30: ' + (/contab_cuadre_iva|PGRST202/.test((err.error.message || '') + (err.error.code || ''))
           ? 'falta correr sql/contabilidad_13_apertura_y_cuadre.sql en Supabase.' : 'no se pudo calcular (' + err.error.message + ').') + '</div>';
@@ -1164,7 +1175,7 @@
             Number(l.debe) || 0 ? String(l.debe) : '', Number(l.haber) || 0 ? String(l.haber) : '']);
         });
       });
-      csvDownload(rows, 'Libro_Diario_' + _rango().etiqueta.replace(/[^0-9A-Za-zÁÉÍÓÚáéíóúñÑ]+/g, '_') + '.csv');
+      csvDownload(rows, 'Libro_Diario_' + archivoPeriodo() + '.csv');
       toast('Libro Diario exportado a CSV');
     });
 
@@ -1218,7 +1229,7 @@
       view.querySelectorAll('#mayorBody tr').forEach((tr) => {
         rows.push([...tr.querySelectorAll('td')].map((td) => td.textContent.replace(/\s+/g, ' ').trim()));
       });
-      csvDownload(rows, 'Mayor_' + code + '_Ejercicio_' + ejercicioInfo().anio + '.csv');
+      csvDownload(rows, 'Mayor_' + code + '_' + archivoPeriodo() + '.csv');
       toast('Mayor de ' + code + ' exportado a CSV');
     });
 
@@ -1238,14 +1249,15 @@
         const meta = finMeta[pane.dataset.tab] || { nombre: pane.dataset.tab, orient: 'portrait', sel: 'table', head: true };
         const metaSub = meta.subFn ? meta.subFn() : meta.sub;
         if (btn.dataset.finAction === 'export') {
-          const table = pane.querySelector('table');
-          if (!table) { toast('No hay tabla para exportar', 'error'); return; }
+          const cont = pane.querySelector(meta.sel);
+          const tablas = !cont ? [] : (cont.matches('table') ? [cont] : [...cont.querySelectorAll('table')]);
+          if (!tablas.length) { toast('No hay tabla para exportar', 'error'); return; }
           const rows = [];
-          table.querySelectorAll('tr').forEach((tr) => {
+          tablas.forEach((table) => table.querySelectorAll('tr').forEach((tr) => {
             const cells = tr.querySelectorAll('th,td');
             if (cells.length) rows.push([...cells].map((c) => c.textContent.replace(/\s+/g, ' ').trim()));
-          });
-          csvDownload(rows, meta.nombre.replace(/ /g, '_') + '_Ejercicio_' + ejercicioInfo().anio + '.csv');
+          }));
+          csvDownload(rows, meta.nombre.replace(/ /g, '_') + '_' + archivoPeriodo() + '.csv');
           toast(meta.nombre + ' exportado a CSV');
         } else {
           const src = pane.querySelector(meta.sel) || pane;

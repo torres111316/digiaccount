@@ -25,6 +25,11 @@ insert into public.apertura_guia (id, grupo, titulo, ayuda, lado, detallado, ord
   ('depr_acum', 'activo_fijo', 'Depreciación acumulada de los activos',
    'Lo que cada activo ya traía depreciado al corte. Sin esto el balance sobrevalúa el activo.', 'haber', true, 72)
 on conflict (id) do nothing;
+update public.apertura_guia
+   set ayuda = 'Lo que cada activo ya traía depreciado al corte, en la cuenta de su categoría: edificios 1.2.1.07, '
+            || 'maquinaria 1.2.1.08, mobiliario y equipos 1.2.1.09, vehículos 1.2.1.10. Si los activos están en '
+            || 'Activos fijos, «Traer de Activos fijos» lo hace solo.'
+ where id = 'depr_acum';
 
 update public.apertura_guia g set cuenta = v.cuenta
   from (values
@@ -99,7 +104,9 @@ begin
   if v_cuenta is null then
     return jsonb_build_object('ok', false, 'motivo', 'Esta empresa no tiene apertura iniciada.');
   end if;
-  if not (public.soy_superadmin() or v_cuenta = public.mi_cuenta_id()) then
+  -- Cualquiera que tenga la empresa (el dueño o su contador invitado), no solo
+  -- quien creó la apertura: ahora esto escribe asientos en sus libros.
+  if not (public.soy_superadmin() or p_empresa in (select public.mis_empresas())) then
     return jsonb_build_object('ok', false, 'motivo', 'Esa empresa no es de tu cuenta.');
   end if;
 
@@ -123,12 +130,23 @@ begin
     return jsonb_build_object('ok', false, 'motivo', 'Estos renglones no tienen cuenta contable: ' || v_sin || '.');
   end if;
 
+  -- Un grupo del plan (1.1.1, 2.1...) no recibe movimientos: va a una de sus cuentas.
+  select string_agg(distinct p.cuenta_contable, ', ') into v_sin
+    from public.apertura_partidas p join public.plan_cuentas_base b on b.codigo = p.cuenta_contable
+   where p.empresa_id = p_empresa and b.tipo ilike 'grupo';
+  if v_sin is not null then
+    return jsonb_build_object('ok', false, 'motivo', 'Estas cuentas son grupos del plan, no reciben movimientos: ' || v_sin || '. Elige una de sus cuentas.');
+  end if;
+
   begin
     v_lin := public.contab_lineas_apertura(p_empresa);
   exception when others then
     return jsonb_build_object('ok', false, 'motivo', sqlerrm || '. Corrige la cuenta de ese renglón.');
   end;
   select round(sum(coalesce((e->>'debe')::numeric, 0)), 2) into v_tot from jsonb_array_elements(v_lin) e;
+  if coalesce(v_tot, 0) < 0.005 then
+    return jsonb_build_object('ok', false, 'motivo', 'La apertura no tiene montos: todos los renglones están en cero.');
+  end if;
 
   delete from public.asientos where origen_tabla = 'apertura' and origen_id = p_empresa;
   insert into public.asientos (cuenta_id, empresa_id, fecha, periodo, descripcion, referencia, origen, origen_tabla, origen_id, lineas, total)
@@ -156,7 +174,7 @@ begin
   if v_cuenta is null then
     return jsonb_build_object('ok', false, 'motivo', 'Esta empresa no tiene apertura.');
   end if;
-  if not (public.soy_superadmin() or v_cuenta = public.mi_cuenta_id()) then
+  if not (public.soy_superadmin() or p_empresa in (select public.mis_empresas())) then
     return jsonb_build_object('ok', false, 'motivo', 'Esa empresa no es de tu cuenta.');
   end if;
 
@@ -173,6 +191,18 @@ begin
 end;
 $$;
 
+-- Los asientos (no de apertura) con fecha hasta el corte. La apertura es la
+-- foto AL corte: lo que ya esté asentado antes se sumaría dos veces. La
+-- pantalla lo avisa antes de cerrar; quien cierra decide.
+create or replace function public.apertura_asientos_previos(p_empresa uuid)
+returns jsonb language sql stable security invoker set search_path = public, pg_temp as $$
+  select jsonb_build_object('cantidad', count(*), 'ultimo', to_char(max(contab_fecha_factura(a.fecha)), 'DD/MM/YYYY'))
+    from asientos a join apertura ap on ap.empresa_id = a.empresa_id
+   where a.empresa_id = p_empresa and coalesce(a.origen_tabla, '') <> 'apertura'
+     and contab_fecha_factura(a.fecha) <= ap.fecha_corte
+$$;
+grant execute on function public.apertura_asientos_previos(uuid) to authenticated;
+
 -- Si se borra la apertura, se va su asiento.
 create or replace function public.apertura_borrar_asiento()
 returns trigger language plpgsql security definer set search_path = public, pg_temp as $$
@@ -185,7 +215,8 @@ create trigger trg_apertura_borrar_asiento after delete on public.apertura
   for each row execute function public.apertura_borrar_asiento();
 
 -- ── 3 · Traer los activos migrados ────────────────────────────────────────
--- Los activos en uso adquiridos hasta el corte y registrados a mano (los que
+-- Los activos que estaban en uso AL corte (adquiridos hasta esa fecha y no dados
+-- de baja antes; uno vendido después sí entra: su baja saca su costo) y registrados a mano (los que
 -- nacen de una factura ya tienen el asiento de su compra). Por cada uno, su
 -- costo al Debe y lo que traía depreciado al Haber. No repite: se enlaza por
 -- ref_tabla / ref_id. security invoker: la RLS decide qué ve quién.
@@ -202,7 +233,7 @@ begin
   for a in
     select * from activos_fijos f
      where f.empresa_id = p_empresa and f.libro_fiscal_id is null
-       and coalesce(f.estado, 'en uso') = 'en uso'
+       and (f.fecha_baja is null or f.fecha_baja > v_ap.fecha_corte)
        and contab_fecha_factura(f.fecha_adq) <= v_ap.fecha_corte and coalesce(f.costo, 0) > 0
        and not exists (select 1 from apertura_partidas p
                         where p.empresa_id = p_empresa and p.ref_tabla = 'activos_fijos' and p.ref_id = f.id)

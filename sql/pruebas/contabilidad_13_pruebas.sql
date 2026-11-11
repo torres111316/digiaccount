@@ -74,7 +74,36 @@ select pg_temp.igual('A4 cuenta inexistente no cierra', (cerrar_apertura('e00000
 select pg_temp.igual('A4 el motivo nombra la cuenta', ((cerrar_apertura('e0000000-0000-0000-0000-000000000131')->>'motivo') like '%9.9.9%')::text, 'true');
 select pg_temp.igual('A4 sigue en borrador', (select estado from apertura where empresa_id = 'e0000000-0000-0000-0000-000000000131'), 'borrador');
 select pg_temp.igual('A4 sin asiento', pg_temp.ap('e0000000-0000-0000-0000-000000000131'), '(sin asiento)');
+-- Un grupo del plan no recibe movimientos.
+update apertura_partidas set cuenta_contable = '1.1.1' where id = 'b0000000-0000-0000-0000-000000000135';
+select pg_temp.igual('A4 un grupo del plan no cierra', ((cerrar_apertura('e0000000-0000-0000-0000-000000000131')->>'motivo') like '%grupos del plan%1.1.1%')::text, 'true');
 update apertura_partidas set cuenta_contable = '1.1.1.03' where id = 'b0000000-0000-0000-0000-000000000135';
+
+-- Quien no tiene la empresa no la cierra (aunque conozca su id).
+create or replace function public.soy_superadmin() returns boolean language sql as 'select false';
+create or replace function public.mis_empresas() returns setof uuid language sql as $q$ select 'e0000000-0000-0000-0000-000000000132'::uuid $q$;
+select pg_temp.igual('A10 empresa ajena no cierra', (cerrar_apertura('e0000000-0000-0000-0000-000000000131')->>'motivo'), 'Esa empresa no es de tu cuenta.');
+select pg_temp.igual('A10 empresa ajena no reabre', (reabrir_apertura('e0000000-0000-0000-0000-000000000131', 'x')->>'ok'), 'false');
+select pg_temp.igual('A10 sin asiento', pg_temp.ap('e0000000-0000-0000-0000-000000000131'), '(sin asiento)');
+-- El contador invitado (la ve por mis_empresas, no es su cuenta) sí la cierra.
+create or replace function public.mis_empresas() returns setof uuid language sql as $q$ select 'e0000000-0000-0000-0000-000000000131'::uuid $q$;
+select pg_temp.igual('A10 quien tiene la empresa cierra', (cerrar_apertura('e0000000-0000-0000-0000-000000000131')->>'ok'), 'true');
+select reabrir_apertura('e0000000-0000-0000-0000-000000000131', 'sigue la prueba');
+create or replace function public.soy_superadmin() returns boolean language sql as 'select true';
+
+-- Lo ya asentado hasta el corte se contaría dos veces: la base lo cuenta para avisar.
+insert into asientos (cuenta_id, empresa_id, fecha, periodo, descripcion, referencia, origen, lineas, total) values
+  ('a0000000-0000-0000-0000-000000000131', 'e0000000-0000-0000-0000-000000000131', '20/10/2026', '2026-10', 'Anterior al corte', 'MAN', 'manual', '[]', 0),
+  ('a0000000-0000-0000-0000-000000000131', 'e0000000-0000-0000-0000-000000000131', '05/11/2026', '2026-11', 'Posterior al corte', 'MAN', 'manual', '[]', 0);
+select pg_temp.igual('A11 asientos hasta el corte', apertura_asientos_previos('e0000000-0000-0000-0000-000000000131')::text, '{"ultimo": "20/10/2026", "cantidad": 1}');
+delete from asientos where empresa_id = 'e0000000-0000-0000-0000-000000000131' and referencia = 'MAN';
+
+-- Una apertura con todos los renglones en cero no se cierra.
+insert into apertura (empresa_id, cuenta_id, fecha_corte) values ('e0000000-0000-0000-0000-000000000133', 'a0000000-0000-0000-0000-000000000131', '2026-09-30');
+insert into apertura_partidas (empresa_id, cuenta_id, grupo, descripcion, debe, haber, cuenta_contable) values
+  ('e0000000-0000-0000-0000-000000000133', 'a0000000-0000-0000-0000-000000000131', 'caja', 'Caja', 0, 0, '1.1.1.01');
+select pg_temp.igual('A12 en cero no cierra', ((cerrar_apertura('e0000000-0000-0000-0000-000000000133')->>'motivo') like '%en cero%')::text, 'true');
+delete from apertura where empresa_id = 'e0000000-0000-0000-0000-000000000133';
 
 -- ── Cierra y asienta: una línea por cuenta, primero el Debe ──────────────
 select pg_temp.igual('A5 cierra', (cerrar_apertura('e0000000-0000-0000-0000-000000000131')->>'ok'), 'true');
@@ -100,11 +129,15 @@ insert into activos_fijos (id, cuenta_id, empresa_id, codigo, nombre, categoria,
   ('c0000000-0000-0000-0000-000000000132', 'a0000000-0000-0000-0000-000000000131', 'e0000000-0000-0000-0000-000000000131', 'AF-002', 'Lote', 'Terrenos', '01/06/2020', 5000, 0, 0, null),
   ('c0000000-0000-0000-0000-000000000133', 'a0000000-0000-0000-0000-000000000131', 'e0000000-0000-0000-0000-000000000131', 'AF-003', 'Camión', 'Vehículos', '10/11/2026', 9000, 5, 0, null),
   ('c0000000-0000-0000-0000-000000000134', 'a0000000-0000-0000-0000-000000000131', 'e0000000-0000-0000-0000-000000000131', 'AF-004', 'Impresora', 'Equipos', '10/03/2026', 200, 5, 0, 'd0000000-0000-0000-0000-000000000135');
-select pg_temp.igual('A8 trae dos activos', apertura_traer_activos('e0000000-0000-0000-0000-000000000131')::text, '2');
+-- Vendido DESPUÉS del corte: al corte estaba en uso (su baja saca su costo). Vendido ANTES: no.
+insert into activos_fijos (id, cuenta_id, empresa_id, codigo, nombre, categoria, fecha_adq, costo, vida_util, depreciacion_inicial, estado, fecha_baja) values
+  ('c0000000-0000-0000-0000-000000000135', 'a0000000-0000-0000-0000-000000000131', 'e0000000-0000-0000-0000-000000000131', 'AF-005', 'Escritorio', 'Mobiliario', '01/02/2025', 700, 5, 0, 'vendido', '2026-11-20'),
+  ('c0000000-0000-0000-0000-000000000136', 'a0000000-0000-0000-0000-000000000131', 'e0000000-0000-0000-0000-000000000131', 'AF-006', 'Moto', 'Vehículos', '01/02/2025', 800, 5, 0, 'vendido', '2026-05-01');
+select pg_temp.igual('A8 trae tres activos', apertura_traer_activos('e0000000-0000-0000-0000-000000000131')::text, '3');
 select pg_temp.igual('A8 renglones del activo',
-  (select string_agg(cuenta_contable || ' D' || debe || ' H' || haber, ' | ' order by cuenta_contable)
+  (select string_agg(cuenta_contable || ' D' || debe || ' H' || haber, ' | ' order by cuenta_contable, debe desc)
      from apertura_partidas where empresa_id = 'e0000000-0000-0000-0000-000000000131' and ref_tabla = 'activos_fijos'),
-  '1.2.1.01 D5000.00 H0.00 | 1.2.1.04 D1000.00 H0.00 | 1.2.1.09 D0.00 H300.00');
+  '1.2.1.01 D5000.00 H0.00 | 1.2.1.04 D1000.00 H0.00 | 1.2.1.04 D700.00 H0.00 | 1.2.1.09 D0.00 H300.00');
 select pg_temp.igual('A8 no repite', apertura_traer_activos('e0000000-0000-0000-0000-000000000131')::text, '0');
 
 -- ── Borrar la apertura borra su asiento ──────────────────────────────────
