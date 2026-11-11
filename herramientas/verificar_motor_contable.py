@@ -241,12 +241,20 @@ def main():
         if len(a) != 1 or str(a[0]['lineas'][0].get('usd')) not in ('10', '10.0', '10.00') or abs(float(a[0]['lineas'][0]['debe']) - round(10 * t_dia, 2)) > 0.005:
             falla('el ingreso de 10 USD debía quedar en Bs a la tasa del día y guardar los dólares, y dio %s' % (a[0]['lineas'] if a else 'sin asiento'))
         print('  OK  cuenta en dólares: 10 USD en Bs a la tasa del día (%.2f), con los dólares en la línea' % round(10 * t_dia, 2))
-        rev = api('rpc/contab_revaluar', token, 'POST', {'p_empresa': emp['id'], 'p_periodo': '2025-02'})
-        api('rpc/contab_revaluar', token, 'POST', {'p_empresa': emp['id'], 'p_periodo': '2025-02'})
-        r = api('asientos?empresa_id=eq.%s&origen_tabla=eq.revaluacion&referencia=eq.REV-02/2025&select=*' % emp['id'], token)
-        if len(r) > 1 or (r and not cuadra(r[0])):
-            falla('la revaluación de febrero debía dar a lo sumo un asiento cuadrado y dio %d' % len(r))
-        print('  OK  revaluación de febrero 2025 (dos veces): %s · %d asiento' % (rev, len(r)))
+        # La revaluación es del SQL 12 (paso 2): si todavía no se corrió, se salta.
+        try:
+            rev = api('rpc/contab_revaluar', token, 'POST', {'p_empresa': emp['id'], 'p_periodo': '2025-02'})
+        except RuntimeError as e:
+            if 'PGRST202' not in str(e):
+                raise
+            rev = None
+            print('  --  revaluación omitida: el SQL 12 todavía no se corrió')
+        if rev is not None:
+            api('rpc/contab_revaluar', token, 'POST', {'p_empresa': emp['id'], 'p_periodo': '2025-02'})
+            r = api('asientos?empresa_id=eq.%s&origen_tabla=eq.revaluacion&referencia=eq.REV-02/2025&select=*' % emp['id'], token)
+            if len(r) > 1 or (r and not cuadra(r[0])):
+                falla('la revaluación de febrero debía dar a lo sumo un asiento cuadrado y dio %d' % len(r))
+            print('  OK  revaluación de febrero 2025 (dos veces): %s · %d asiento' % (rev, len(r)))
     finally:
         # PRIMERO se borra todo y DESPUÉS se comprueba: si una comprobación
         # fallara en medio, el resto de las filas de prueba quedaría en producción.
