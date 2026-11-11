@@ -281,7 +281,7 @@ def main():
             api('apertura', token, 'POST', [{'empresa_id': emp['id'], 'cuenta_id': emp['cuenta_id'], 'fecha_corte': '2019-12-31', 'nota': MARCA}])
             ap_creada = True
             pr = api('apertura_partidas', token, 'POST', [
-                {'empresa_id': emp['id'], 'cuenta_id': emp['cuenta_id'], 'grupo': 'cxc', 'descripcion': 'Cliente ' + MARCA, 'debe': 100, 'haber': 0},
+                {'empresa_id': emp['id'], 'cuenta_id': emp['cuenta_id'], 'grupo': 'cxc', 'descripcion': 'Cliente ' + MARCA, 'debe': 100, 'haber': 0, 'cuenta_contable': None},
                 {'empresa_id': emp['id'], 'cuenta_id': emp['cuenta_id'], 'grupo': 'patrimonio', 'descripcion': 'Capital ' + MARCA, 'debe': 0, 'haber': 100, 'cuenta_contable': '3.1.1.01'}],
                 prefer='return=representation')
             if [x['cuenta_contable'] for x in pr] != ['1.1.2.01', '3.1.1.01']:
