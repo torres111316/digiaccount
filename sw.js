@@ -20,7 +20,7 @@
    queda atascado en una versión vieja (en el teléfono no hay Ctrl+Shift+R). */
 /* Sube de número en cada cambio de estos archivos: es lo que hace que el
    navegador se traiga la versión nueva en vez de servir la del caché. */
-const CACHE = 'digiaccount-v199';
+const CACHE = 'digiaccount-v200';
 const ASSETS = [
   './',
   './index.html',
@@ -40,6 +40,7 @@ const ASSETS = [
   './assets/nomina.js',
   './assets/importador.js',
   './assets/conciliacion.js',
+  './assets/resumenes.js',
   './assets/lucide.min.js',
   './assets/vendor/supabase.js',
   './assets/isotipo.png',

@@ -3454,6 +3454,7 @@
       <!-- Sub-tabs -->
       <div class="subtabs" id="contaTabs">
         <button data-tab="apertura"><i data-lucide="flag"></i> Apertura</button>
+        <button data-tab="porcontab"><i data-lucide="list-checks"></i> Por contabilizar</button>
         <button data-active="true" data-tab="diario"><i data-lucide="book-text"></i> Libro Diario <span class="count" id="contaDiarioCount">0</span></button>
         <button data-tab="mayor"><i data-lucide="library"></i> Libro Mayor</button>
         <button data-tab="balance"><i data-lucide="scale"></i> Balance de Comprobación</button>
@@ -3472,6 +3473,11 @@
            corte, y tiene que cuadrar para poder cerrarse. -->
       <div class="conta-tab" data-tab="apertura">
         <div id="aperturaVista"><!-- por JS --></div>
+      </div>
+
+      <!-- TAB: Por contabilizar · los asientos resumen por período (assets/resumenes.js, sql/contabilidad_15) -->
+      <div class="conta-tab" data-tab="porcontab">
+        <div id="porContabVista"><!-- por JS --></div>
       </div>
 
       <!-- TAB: Libro Diario -->
@@ -5253,6 +5259,7 @@
 <script src="assets/nomina.js"></script>
 <script src="assets/importador.js"></script>
 <script src="assets/conciliacion.js"></script>
+<script src="assets/resumenes.js"></script>
 <!-- El registro del Service Worker se hace al final de assets/app.js
      (se movió allí para poder aplicar una CSP estricta sin scripts inline) -->
 </body>

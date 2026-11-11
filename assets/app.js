@@ -263,6 +263,7 @@
             .then(() => { if (window.cargarLibroFiscal) { window.cargarLibroFiscal('compra'); window.cargarLibroFiscal('venta'); } })
             .catch((err) => console.error('[cambio de empresa] sucursales y libros:', err))],
           ['apertura', () => window.cargarApertura && window.cargarApertura()],
+          ['por contabilizar', () => window.cargarPorContabilizar && window.cargarPorContabilizar()],
           ['firma y sello', () => Promise.resolve(window.__cargarFirma && window.__cargarFirma())
             .then(() => { if (window.__renderFirmaConfig) return window.__renderFirmaConfig(); })
             .catch((err) => console.error('[cambio de empresa] firma:', err))],
@@ -487,8 +488,16 @@
   }
 
   // Editar los datos básicos de una empresa (nombre, RIF, condición fiscal)
-  function editarEmpresa(emp) {
+  async function editarEmpresa(emp) {
     if (!window.openFormModal) return;
+    /* Cómo se contabilizan compras, ventas y retenciones (sql/contabilidad_15).
+       Se lee aparte: si el SQL 15 no se corrió, la columna no existe y la
+       opción no se muestra (así el resto del formulario sigue guardando). */
+    let modoRes = null;
+    try {
+      const r = await window.sb.from('empresas').select('contab_resumen').eq('id', emp.id).maybeSingle();
+      if (!r.error) modoRes = !!(r.data && r.data.contab_resumen);
+    } catch (e) { modoRes = null; }
     window.openFormModal({
       title: 'Editar empresa', saveLabel: 'Guardar cambios',
       fields: [
@@ -496,6 +505,10 @@
         { name: 'rif', label: 'RIF', value: emp.rif || '', placeholder: 'J-12345678-9' },
         { name: 'cond', label: 'Condición fiscal · si la cambias, te pregunto desde qué período', type: 'select', options: ['ordinario', 'formal', 'especial'], value: _normCond(emp.condicion_fiscal) },
         { name: 'condHist', label: ' ', col: 2, type: 'static', html: _historialCondicionHtml(emp.id) },
+        ...(modoRes === null ? [] : [{ name: 'contabModo', label: 'Contabilidad de compras, ventas y retenciones', col: 2, type: 'select',
+          options: [{ value: 'resumen', label: 'Un asiento resumen por período (los totales que se declaran)' },
+                    { value: 'documento', label: 'Un asiento por cada factura y retención' }],
+          value: modoRes ? 'resumen' : 'documento' }]),
         { name: 'direccion', label: 'Dirección (aparece en los recibos)', col: 2, placeholder: 'Ej. Cambural - Edo. Yaracuy', value: emp.direccion || '' },
         { name: 'telefono', label: 'Teléfono', placeholder: '0414-1234567', value: emp.telefono || '' },
         { name: 'ciudad', label: 'Ciudad / Estado (para contratos)', placeholder: 'Ej. San Felipe, Edo. Yaracuy', value: emp.ciudad || '' },
@@ -509,12 +522,17 @@
         if (!v.rif) return 'Indica el RIF.';
         // La condición NO se escribe aquí si cambió: la cambia la ventana de «desde cuándo».
         const condCambia = _normCond(v.cond) !== _normCond(emp.condicion_fiscal);
-        window.sb.from('empresas').update({ nombre: v.nombre.trim(), rif: v.rif.trim(), condicion_fiscal: condCambia ? emp.condicion_fiscal : v.cond, direccion: (v.direccion || '').trim() || null, telefono: (v.telefono || '').trim() || null,
+        const modoCambia = modoRes !== null && (v.contabModo === 'resumen') !== modoRes;
+        if (modoCambia && !confirm(v.contabModo === 'resumen'
+          ? 'Desde ahora las facturas y retenciones de esta empresa NO llevan asiento propio: se contabilizan en un resumen por período, en Contabilidad › Por contabilizar.\n\nLas que ya tienen asiento lo conservan (no se suman dos veces). ¿Continuar?'
+          : 'Desde ahora cada factura y retención que se cargue o se edite lleva su propio asiento.\n\nOjo: si un período ya tiene su resumen aprobado, deshazlo primero en «Por contabilizar», o ese período quedaría contado dos veces. ¿Continuar?')) return 'Sin cambios en la forma de contabilizar.';
+        window.sb.from('empresas').update({ ...(modoCambia ? { contab_resumen: v.contabModo === 'resumen' } : {}), nombre: v.nombre.trim(), rif: v.rif.trim(), condicion_fiscal: condCambia ? emp.condicion_fiscal : v.cond, direccion: (v.direccion || '').trim() || null, telefono: (v.telefono || '').trim() || null,
             ciudad: (v.ciudad || '').trim() || null, registro_mercantil: (v.registroMercantil || '').trim() || null, representante: (v.representante || '').trim() || null, representante_ci: (v.representanteCi || '').trim() || null, representante_cargo: (v.representanteCargo || '').trim() || null })
           .eq('id', emp.id).then(({ error }) => {
             if (error) { if (window.toast) window.toast('No se pudo guardar: ' + error.message, 'error'); return; }
             if (window.toast) window.toast(condCambia ? 'Datos guardados · ahora elige desde cuándo cambia la condición' : 'Empresa actualizada ✓', 'success');
             cargarEmpresas();
+            if (modoCambia && window.cargarPorContabilizar) window.cargarPorContabilizar();
             if (condCambia) setTimeout(() => window.__registrarCambioCondicion(emp.id, emp.condicion_fiscal, v.cond, () => cargarEmpresas()), 200);
           });
       },
@@ -1277,6 +1295,7 @@
           // La apertura se carga al abrir su pestaña, en su propio try:
           // si fallara, no puede impedir el cambio de pestaña.
           if (tab === 'apertura' && window.cargarApertura) { try { window.cargarApertura(); } catch (e) { console.warn('[Apertura]', e); } }
+          if (tab === 'porcontab' && window.cargarPorContabilizar) { try { window.cargarPorContabilizar(); } catch (e) { console.warn('[Por contabilizar]', e); } }
           drawIcons();
         });
       });
@@ -7593,7 +7612,7 @@
       const { data: sinAsi, error: eSin } = await window.sb.rpc('contab_filas_sin_asiento', { p_empresa: empId, p_periodo: perDecl });
       if (eSin) { toast('No se pudo comprobar la contabilidad del período: ' + eSin.message, 'error'); return; }
       if (sinAsi > 0) {
-        toast(_perLabel() + ' tiene ' + sinAsi + ' documento(s) sin asiento contable: facturas o retenciones cargadas antes del motor contable (se reconstruyen antes de cerrar), o movimientos de Tesorería sin cuenta contable o sin tasa BCV (ponles su cuenta en Tesorería).', 'error');
+        toast(_perLabel() + ' tiene ' + sinAsi + ' documento(s) sin asiento contable: si la empresa va en resumen por período, apruébalos en Contabilidad › Por contabilizar; si no, son facturas o retenciones cargadas antes del motor contable, o movimientos de Tesorería sin cuenta contable o sin tasa BCV (ponles su cuenta en Tesorería).', 'error');
         return;
       }
       /* Un cliente que no manda estado de cuenta: «Dar por cobrado y pagado»
