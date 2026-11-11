@@ -263,7 +263,8 @@
             .then(() => { if (window.cargarLibroFiscal) { window.cargarLibroFiscal('compra'); window.cargarLibroFiscal('venta'); } })
             .catch((err) => console.error('[cambio de empresa] sucursales y libros:', err))],
           ['apertura', () => window.cargarApertura && window.cargarApertura()],
-          ['por contabilizar', () => window.cargarPorContabilizar && window.cargarPorContabilizar()],
+          ['por contabilizar', () => { const pane = document.querySelector('.conta-tab[data-tab="porcontab"]');
+            if (pane && pane.dataset.active === 'true' && window.cargarPorContabilizar) window.cargarPorContabilizar(); }],
           ['firma y sello', () => Promise.resolve(window.__cargarFirma && window.__cargarFirma())
             .then(() => { if (window.__renderFirmaConfig) return window.__renderFirmaConfig(); })
             .catch((err) => console.error('[cambio de empresa] firma:', err))],
@@ -493,10 +494,11 @@
     /* Cómo se contabilizan compras, ventas y retenciones (sql/contabilidad_15).
        Se lee aparte: si el SQL 15 no se corrió, la columna no existe y la
        opción no se muestra (así el resto del formulario sigue guardando). */
-    let modoRes = null;
+    let modoRes = null, nResumenes = 0;
     try {
       const r = await window.sb.from('empresas').select('contab_resumen').eq('id', emp.id).maybeSingle();
       if (!r.error) modoRes = !!(r.data && r.data.contab_resumen);
+      if (modoRes) { const c = await window.sb.rpc('contab_resumenes_aprobados', { p_empresa: emp.id }); nResumenes = (c && c.data) || 0; }
     } catch (e) { modoRes = null; }
     window.openFormModal({
       title: 'Editar empresa', saveLabel: 'Guardar cambios',
@@ -523,9 +525,12 @@
         // La condición NO se escribe aquí si cambió: la cambia la ventana de «desde cuándo».
         const condCambia = _normCond(v.cond) !== _normCond(emp.condicion_fiscal);
         const modoCambia = modoRes !== null && (v.contabModo === 'resumen') !== modoRes;
+        if (modoCambia && v.contabModo !== 'resumen' && nResumenes > 0) {
+          return 'Esta empresa tiene ' + nResumenes + ' resumen(es) aprobado(s). Deshazlos primero en Contabilidad › Por contabilizar: si no, esos períodos quedarían contados dos veces.';
+        }
         if (modoCambia && !confirm(v.contabModo === 'resumen'
           ? 'Desde ahora las facturas y retenciones de esta empresa NO llevan asiento propio: se contabilizan en un resumen por período, en Contabilidad › Por contabilizar.\n\nLas que ya tienen asiento lo conservan (no se suman dos veces). ¿Continuar?'
-          : 'Desde ahora cada factura y retención que se cargue o se edite lleva su propio asiento.\n\nOjo: si un período ya tiene su resumen aprobado, deshazlo primero en «Por contabilizar», o ese período quedaría contado dos veces. ¿Continuar?')) return 'Sin cambios en la forma de contabilizar.';
+          : 'Desde ahora cada factura y retención que se cargue o se edite lleva su propio asiento. ¿Continuar?')) return 'Sin cambios en la forma de contabilizar.';
         window.sb.from('empresas').update({ ...(modoCambia ? { contab_resumen: v.contabModo === 'resumen' } : {}), nombre: v.nombre.trim(), rif: v.rif.trim(), condicion_fiscal: condCambia ? emp.condicion_fiscal : v.cond, direccion: (v.direccion || '').trim() || null, telefono: (v.telefono || '').trim() || null,
             ciudad: (v.ciudad || '').trim() || null, registro_mercantil: (v.registroMercantil || '').trim() || null, representante: (v.representante || '').trim() || null, representante_ci: (v.representanteCi || '').trim() || null, representante_cargo: (v.representanteCargo || '').trim() || null })
           .eq('id', emp.id).then(({ error }) => {

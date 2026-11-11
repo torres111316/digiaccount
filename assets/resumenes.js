@@ -80,8 +80,11 @@
     }
     if (_ctasDe !== e.id) {
       const pl = await window.sb.rpc('plan_de_empresa', { p_empresa: e.id });
-      CTAS = ((pl && pl.data) || []).filter((c) => !/grupo/i.test(c.tipo || '')).map((c) => ({ codigo: c.codigo, nombre: c.nombre }));
-      _ctasDe = e.id;
+      if (turno !== _turno || emp().id !== e.id) return;
+      if (!pl.error) {
+        CTAS = (pl.data || []).filter((c) => !/grupo/i.test(c.tipo || '')).map((c) => ({ codigo: c.codigo, nombre: c.nombre }));
+        _ctasDe = e.id;
+      }
     }
     FILAS = lista.data || [];
     pintar(!!(modo.data && modo.data.contab_resumen));
@@ -91,7 +94,7 @@
   function pintar(enResumen) {
     const cont = vista();
     if (!cont) return;
-    const pend = FILAS.filter((f) => f.estado !== 'aprobado' && f.documentos > 0);
+    const pend = FILAS.filter((f) => f.estado !== 'aprobado' && f.documentos > 0);   // sin documentos solo se puede deshacer
     const tag = (f) => f.estado === 'aprobado'
       ? '<span class="tag green">Aprobado' + (f.corregido ? ' · corregido' : '') + '</span>'
       : f.estado === 'desactualizado' ? '<span class="tag amber">Cambió un documento</span>' : '<span class="tag slate">Pendiente</span>';
@@ -131,10 +134,13 @@
     });
     const todo = document.getElementById('pcAprobarTodo');
     if (todo) todo.addEventListener('click', async () => {
+      const empId = emp().id;
       if (!confirm('Se aprueban ' + pend.length + ' resúmenes tal como los propone el sistema.\n\nLos que hayas corregido antes y luego cambió un documento también se rehacen con la propuesta nueva. ¿Continuar?')) return;
+      todo.disabled = true;
       let ok = 0; const fallas = [];
       for (const f of pend) {
-        const { data, error } = await window.sb.rpc('contab_aprobar_resumen', { p_empresa: emp().id, p_tipo: f.tipo, p_periodo: f.periodo, p_quincena: f.quincena, p_lineas: null });
+        if (emp().id !== empId) { fallas.push('Se cambió de empresa: se detuvo la aprobación.'); break; }
+        const { data, error } = await window.sb.rpc('contab_aprobar_resumen', { p_empresa: empId, p_tipo: f.tipo, p_periodo: f.periodo, p_quincena: f.quincena, p_lineas: null, p_huella: f.huella });
         if (error || (data && data.ok === false)) fallas.push(etiquetaPeriodo(f.periodo, f.quincena) + ' · ' + (TIPOS[f.tipo] || f.tipo) + ': ' + (error ? error.message : data.motivo));
         else ok++;
       }
@@ -152,7 +158,8 @@
     const cod = String(sel || '').split(' · ')[0];
     const lista = CTAS.slice();
     if (cod && !lista.some((c) => c.codigo === cod)) lista.unshift({ codigo: cod, nombre: String(sel).split(' · ')[1] || '' });
-    return lista.map((c) => '<option value="' + esc(c.codigo) + '"' + (c.codigo === cod ? ' selected' : '') + '>' + esc(c.codigo + ' · ' + c.nombre) + '</option>').join('');
+    return '<option value=""' + (cod ? '' : ' selected') + '>Elige la cuenta…</option>'
+      + lista.map((c) => '<option value="' + esc(c.codigo) + '"' + (c.codigo === cod ? ' selected' : '') + '>' + esc(c.codigo + ' · ' + c.nombre) + '</option>').join('');
   }
 
   function abrir(f) {
@@ -166,6 +173,7 @@
       + '<button class="icon-btn" data-pc-cerrar title="Cerrar"><i data-lucide="x"></i></button></div>'
       + '<div class="am-body"><p style="font-size:12px;color:var(--fg-muted);margin:0 0 10px;">' + f.documentos + ' documento(s) del libro. '
       + (f.estado === 'aprobado' ? 'Este es el asiento aprobado' + (f.corregido ? ' (corregido: el sistema había propuesto otra cosa)' : '') + '.'
+        : f.estado === 'desactualizado' && !f.documentos ? 'Ya tenía un asiento aprobado, pero sus documentos se borraron o se anularon: deshazlo.'
         : f.estado === 'desactualizado' ? 'Ya tenía un asiento aprobado, pero cambió un documento: esta es la propuesta con los datos de hoy.'
         : 'Esta es la propuesta del sistema: corrígela si hace falta y apruébala.') + '</p>'
       + '<div class="am-lines-head"><span>Cuenta contable</span><span class="num">Debe (Bs)</span><span class="num">Haber (Bs)</span><span class="del-col"></span></div>'
@@ -192,7 +200,7 @@
       $('pcCuadre').innerHTML = c.cuadra ? '<i data-lucide="check-circle-2"></i> Cuadra' : '<i data-lucide="alert-circle"></i> No cuadra · diferencia ' + bs(Math.abs(c.debe - c.haber));
       const cambio = !igualQuePropuesta(filas, f.propuesta);
       $('pcMsg').textContent = cambio ? 'Corregido: distinto de lo que propone el sistema.' : '';
-      $('pcAprobar').disabled = !c.cuadra;
+      $('pcAprobar').disabled = !c.cuadra || !f.documentos;
       if (window.lucide) window.lucide.createIcons();
     };
     const pintarLineas = () => {
@@ -211,10 +219,11 @@
     $('pcAprobar').addEventListener('click', async () => {
       leer();
       if (!cuadre(filas).cuadra) return;
+      if (filas.some((l) => !String(l.cta || '').trim() && (Number(l.debe) || Number(l.haber)))) { $('pcMsg').textContent = 'Hay una línea con monto y sin cuenta.'; return; }
       const corregido = !igualQuePropuesta(filas, f.propuesta);
       $('pcAprobar').disabled = true;
       const { data, error } = await window.sb.rpc('contab_aprobar_resumen', { p_empresa: emp().id, p_tipo: f.tipo, p_periodo: f.periodo,
-        p_quincena: f.quincena, p_lineas: corregido ? lineasParaGuardar(filas) : null });
+        p_quincena: f.quincena, p_lineas: corregido ? lineasParaGuardar(filas) : null, p_huella: f.huella });
       if (error || (data && data.ok === false)) { $('pcMsg').textContent = error ? error.message : data.motivo; $('pcAprobar').disabled = false; return; }
       toast('Asiento resumen N° ' + data.asiento + (data.corregido ? ' aprobado con tus correcciones' : ' aprobado'), 'success');
       ov.remove(); despues();

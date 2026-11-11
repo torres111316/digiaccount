@@ -138,6 +138,45 @@ select pg_temp.igual('R8 vuelve a pendiente y sin asiento', pg_temp.estado('e000
 delete from asientos where empresa_id = 'e0000000-0000-0000-0000-000000000151' and referencia = 'RES-COM-10/2026';
 select pg_temp.igual('R8 borrar el asiento a mano lo deja pendiente', pg_temp.estado('e0000000-0000-0000-0000-000000000151', 'compras', '2026-10', null), 'pendiente');
 
+-- ── Revisión final ───────────────────────────────────────────────────────
+-- C1: un asiento suelto de antes del motor no se borra al cargar su factura en modo resumen.
+-- (Hoy el disparador que numera descarta los de la app vieja al llegar: se apaga para crearlo como nacieron.)
+alter table asientos disable trigger trg_asiento_numero;
+insert into asientos (cuenta_id, empresa_id, fecha, periodo, descripcion, referencia, origen, lineas, total) values
+  ('a0000000-0000-0000-0000-000000000151', 'e0000000-0000-0000-0000-000000000151', '10/09/2026', '2026-09', 'Compra s/factura C-9 · PROV', 'C-9', 'auto',
+   '[{"cta":"5.1.1.02 · Compra","debe":100,"haber":0},{"cta":"2.1.1.01 · CxP","debe":0,"haber":100}]', 100);
+alter table asientos enable trigger trg_asiento_numero;
+insert into libro_fiscal (id, cuenta_id, empresa_id, tipo, fecha, periodo, tercero_nombre, tercero_rif, numero_factura, tipo_doc, exento, base, iva, total) values
+  ('d0000000-0000-0000-0000-000000000159', 'a0000000-0000-0000-0000-000000000151', 'e0000000-0000-0000-0000-000000000151', 'compra', '10/09/26', '2026-09', 'PROV', 'J000000159', 'C-9', 'FC', 0, 100, 0, 100);
+select pg_temp.igual('C1 el asiento suelto sigue', (select count(*)::text from asientos where empresa_id = 'e0000000-0000-0000-0000-000000000151' and referencia = 'C-9'), '1');
+select pg_temp.igual('C1 y no se suma al resumen', (select (j->>'documentos') || '/' || (j->>'con_asiento_propio') from (select contab_propuesta_resumen('e0000000-0000-0000-0000-000000000151', 'compras', '2026-09') j) x), '0/1');
+-- C2: un mes con resumen histórico LV- no se vuelve a contabilizar.
+insert into asientos (cuenta_id, empresa_id, fecha, periodo, descripcion, referencia, origen, lineas, total) values
+  ('a0000000-0000-0000-0000-000000000151', 'e0000000-0000-0000-0000-000000000151', '31/08/2026', '2026-08', 'Ventas de agosto', 'LV-08/2026', 'motor', '[]', 0);
+insert into libro_fiscal (id, cuenta_id, empresa_id, tipo, fecha, periodo, tercero_nombre, tercero_rif, numero_factura, tipo_doc, exento, base, iva, total) values
+  ('d0000000-0000-0000-0000-000000000160', 'a0000000-0000-0000-0000-000000000151', 'e0000000-0000-0000-0000-000000000151', 'venta', '10/08/26', '2026-08', 'CLIENTE', 'J000000999', '000160', 'FV', 0, 100, 16, 116);
+select pg_temp.igual('C2 el mes del LV- ya está contabilizado', (contab_propuesta_resumen('e0000000-0000-0000-0000-000000000151', 'ventas', '2026-08')->>'documentos')
+  || ' ' || contab_filas_sin_asiento('e0000000-0000-0000-0000-000000000151', '2026-08')::text, '0 0');
+-- I2: no se aprueba sobre una propuesta vieja.
+select pg_temp.igual('I2 huella vieja', ((contab_aprobar_resumen('e0000000-0000-0000-0000-000000000151', 'ventas', '2026-10', null, null, 'vieja')->>'motivo') like 'Cambió un documento%')::text, 'true');
+select pg_temp.igual('I2 huella al día', (contab_aprobar_resumen('e0000000-0000-0000-0000-000000000151', 'ventas', '2026-10', null, null,
+  contab_propuesta_resumen('e0000000-0000-0000-0000-000000000151', 'ventas', '2026-10')->>'huella')->>'ok'), 'true');
+-- I3: si se anulan todos los documentos de un período aprobado, «Cerrar mes» lo avisa.
+select contab_aprobar_resumen('e0000000-0000-0000-0000-000000000151', 'ventas', '2026-09');
+insert into libro_fiscal (id, cuenta_id, empresa_id, tipo, fecha, periodo, tercero_nombre, tercero_rif, numero_factura, tipo_doc, exento, base, iva, total) values
+  ('d0000000-0000-0000-0000-000000000161', 'a0000000-0000-0000-0000-000000000151', 'e0000000-0000-0000-0000-000000000151', 'venta', '15/09/26', '2026-09', 'CLIENTE', 'J000000999', '000161', 'FV', 0, 100, 16, 116);
+select pg_temp.igual('I3 aprobado', (contab_aprobar_resumen('e0000000-0000-0000-0000-000000000151', 'ventas', '2026-09')->>'ok'), 'true');
+update libro_fiscal set tercero_nombre = 'ANULADA' where id = 'd0000000-0000-0000-0000-000000000161';
+select pg_temp.igual('I3 sin documentos el resumen queda por deshacer', pg_temp.estado('e0000000-0000-0000-0000-000000000151', 'ventas', '2026-09', null)
+  || ' ' || (contab_filas_sin_asiento('e0000000-0000-0000-0000-000000000151', '2026-09') > 0)::text, 'desactualizado true');
+-- I6: un mes cerrado no se aprueba ni se deshace.
+insert into cierres_mensuales (cuenta_id, empresa_id, periodo) values ('a0000000-0000-0000-0000-000000000151', 'e0000000-0000-0000-0000-000000000151', '2026-09');
+select pg_temp.igual('I6 mes cerrado', (contab_deshacer_resumen((select id from contab_resumenes where empresa_id = 'e0000000-0000-0000-0000-000000000151' and tipo = 'ventas' and periodo = '2026-09'))->>'motivo'), 'El mes está cerrado: reábrelo para cambiar su contabilidad.');
+-- I4: una empresa por documento no lleva resúmenes.
+update empresas set contab_resumen = false where id = 'e0000000-0000-0000-0000-000000000153';
+select pg_temp.igual('I4 por documento no aprueba resúmenes', (contab_aprobar_resumen('e0000000-0000-0000-0000-000000000153', 'ventas', '2026-10')->>'motivo'), 'Esta empresa contabiliza por documento: no lleva resúmenes.');
+select pg_temp.igual('I4 cuántos resúmenes tiene (la ficha no deja cambiar si hay)', contab_resumenes_aprobados('e0000000-0000-0000-0000-000000000151')::text, '3');
+
 -- Quien no tiene la empresa no aprueba.
 create or replace function public.soy_superadmin() returns boolean language sql as 'select false';
 create or replace function public.mis_empresas() returns setof uuid language sql as $q$ select 'e0000000-0000-0000-0000-000000000152'::uuid $q$;
