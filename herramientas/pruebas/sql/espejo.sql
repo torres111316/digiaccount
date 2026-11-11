@@ -189,6 +189,11 @@ create table public.facturas (
   moneda text, tasa numeric, total_usd numeric,
   creado_en timestamptz default now()
 );
+-- Las reglas de las notas de crédito y débito (sql/notas_credito_debito.sql): en
+-- Supabase existen, y la prueba 10 falló allá el 11/11/2026 por no tenerlas aquí.
+alter table public.facturas add constraint facturas_tipo_doc_chk check (tipo_doc in ('FV', 'NC', 'ND'));
+alter table public.facturas add constraint facturas_nota_afecta_chk check (tipo_doc = 'FV' or factura_afectada is not null);
+alter table public.facturas add constraint facturas_nota_motivo_chk check (tipo_doc = 'FV' or (motivo is not null and btrim(motivo) <> ''));
 create table public.tasas_cambio (
   id uuid primary key default gen_random_uuid(),
   fecha date, moneda text, tasa numeric, fuente text,
