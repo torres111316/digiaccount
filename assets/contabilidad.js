@@ -500,6 +500,10 @@
        cada línea que no es efectivo aporta su haber − debe: como el asiento
        cuadra, la suma es exactamente lo que entró o salió de caja y bancos. */
     const RUBROS_FLUJO = [
+      // Préstamos entre empresas del mismo dueño y con los socios (sql/contabilidad_14):
+      // el que se da es inversión; el que se recibe, financiamiento.
+      [/^1\.1\.2\.0[67]/, 'inv', 'Préstamos a empresas relacionadas y socios'],
+      [/^2\.1\.5\.0[24]/, 'fin', 'Préstamos de empresas relacionadas y socios'],
       [/^1\.1\.2\.04/, 'op', 'Anticipos a proveedores'],
       [/^1\.1\.2/, 'op', 'Cobros a clientes y otras cuentas por cobrar'],
       [/^4/, 'op', 'Cobros por ventas y otros ingresos'],

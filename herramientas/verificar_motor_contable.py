@@ -331,8 +331,8 @@ def main():
 
     if sin_periodo:
         falla('hay asientos sin período (¿se corrió contabilidad_04_motor.sql completo?)')
-    if len(plan) != 132:
-        falla('plan_cuentas_base debía tener 132 cuentas y tiene %d (¿se corrió contabilidad_07_activos.sql?)' % len(plan))
+    if len(plan) != 136:
+        falla('plan_cuentas_base debía tener 136 cuentas y tiene %d (¿se corrieron contabilidad_07_activos.sql y contabilidad_14_relacionadas.sql?)' % len(plan))
     print('TODO OK')
 
 
