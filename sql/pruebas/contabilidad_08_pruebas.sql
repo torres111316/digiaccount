@@ -183,11 +183,13 @@ exception when others then
   if sqlerrm like 'FALLA:%' then raise; end if;
 end $$;
 
--- I6: un banco en dólares no se concilia todavía (plan 4b).
+-- I6: un banco en dólares no se concilia como si fueran bolívares. Sin el SQL 12
+-- no se concilia nunca; con el 12, solo si hay tasa BCV de su fecha. La línea es
+-- de 1990, donde no hay tasas: en los dos casos tiene que negarse.
 insert into cuentas_tesoreria (id, cuenta_id, empresa_id, nombre, tipo, moneda) values
   ('b0000000-0000-0000-0000-000000000005', 'a0000000-0000-0000-0000-000000000081', 'e0000000-0000-0000-0000-000000000081', 'Cuenta USD', 'Corriente', 'USD');
 insert into extracto_bancario (id, cuenta_id, empresa_id, cuenta_teso_id, fecha, descripcion, monto, periodo, huella) values
-  ('c0000000-0000-0000-0000-000000000014', 'a0000000-0000-0000-0000-000000000081', 'e0000000-0000-0000-0000-000000000081', 'b0000000-0000-0000-0000-000000000005', '10/03/2026', 'USD', 100, '2026-03', 'h14');
+  ('c0000000-0000-0000-0000-000000000014', 'a0000000-0000-0000-0000-000000000081', 'e0000000-0000-0000-0000-000000000081', 'b0000000-0000-0000-0000-000000000005', '10/03/1990', 'USD', 100, '1990-03', 'h14');
 do $$
 begin
   update extracto_bancario set clase = 'cobro', estado = 'conciliada' where id = 'c0000000-0000-0000-0000-000000000014';

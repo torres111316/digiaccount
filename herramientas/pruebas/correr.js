@@ -1450,7 +1450,41 @@ ok('C2: el saldo de cada factura descuenta lo cobrado o pagado en Tesorería', /
 ok('C2: las sugerencias ven los movimientos de Tesorería del banco', /movimientos: \(movs\.data \|\| \[\]\)\.filter\(\(m\) => m\.cuenta_teso_id === st\.banco\)/.test(_concil), true);
 ok('I1: cada factura sabe si ya se dio por cobrada', /presumido: presumidoEn\(d\.periodo\)/.test(_concil), true);
 ok('I4: las fechas pasan por __normFecha y las ilegibles no entran', /window\.__normFecha && window\.__normFecha\(t\)/.test(_concil) && /\.filter\(\(m\) => m\.fecha\)/.test(_concil), true);
-ok('I6: una cuenta en divisas no se concilia desde la pantalla', /accion = st\.divisas \? ''/.test(_concil), true);
+// Desde el plan 4b (sql/contabilidad_12) una cuenta en dólares sí se concilia, en Bs a la tasa del día.
+ok('4b: una cuenta en divisas se concilia (ya no se bloquea)', /accion = st\.divisas \? ''/.test(_concil), false);
+
+/* -- CONTABILIDAD · PLAN 4b ----------------------------------------------------
+   Tesorería y los recibos los contabiliza la base (sql/contabilidad_10 y 11);
+   el diferencial cambiario y la revaluación, también (sql/contabilidad_12). */
+bloque('Plan 4b: Tesorería y Ventas sin asientos del navegador');
+var _tesoSC = _teso.replace(/\/\*[\s\S]*?\*\//g, ' ');
+var _factSC = _leer('assets/facturas.js').replace(/\/\*[\s\S]*?\*\//g, ' ');
+ok('Ventas: el recibo y la nota ya no hacen asiento en el navegador', /__postAsiento/.test(_factSC), false);
+ok('Tesorería: solo queda el reverso de los movimientos de antes del motor', (_tesoSC.match(/__postAsiento\(/g) || []).length, 1);
+ok('y ese reverso es solo para contab_motor = false', /if \(vinculado && mov\.contab_motor === false && window\.__postAsiento\)/.test(_teso), true);
+ok('un movimiento sin factura pide su cuenta contable', /Sin factura asociada, elige la cuenta contable del movimiento/.test(_teso)
+  && /cuenta_contra: String\(v\.factura \|\| ''\)\.trim\(\) \? null : \(ctaC \|\| null\)/.test(_teso), true);
+ok('el IGTF de un pago en divisas va con su cuenta 6.3.1.04', /monto: igtf, cuenta_contra: '6\.3\.1\.04'/.test(_teso), true);
+ok('la conciliación enlaza el movimiento de Tesorería («ya registrado»)', /movimiento_id: conRef\.id/.test(_concil) && /movimiento_id: l\._sug\.movimiento_id \|\| null/.test(_concil), true);
+ok('«Cerrar mes» revalúa los saldos en dólares', /rpc\('contab_revaluar', \{ p_empresa: empId, p_periodo: perDecl \}\)/.test(_appjs), true);
+var _sMov = sugerirLinea(_l('PAGO FACT 166 LIGNUM', 446820.19, '0050949046569'), _ctxT);
+ok('la sugerencia «ya registrado» trae su movimiento', _sMov && _sMov.movimiento_id, 'm1');
+/* Revisión final del plan 4b. */
+var _tesoR = _leer('assets/tesoreria.js');
+ok('I6: los cobros se suman en su moneda (cuenta en dólares) con funciones comunes', /function _bsMov\(m\)/.test(_tesoR) && /function _usdMov\(m\)/.test(_tesoR), true);
+ok('I6: el estado del recibo, lo cobrado (CxC), el recibo de cobro y el aviso de exceso las usan',
+  (_tesoR.match(/_bsMov\(m\)|_usdMov\(m\)|_bsMov\(mov\)/g) || []).length >= 7, true);
+ok('I6: ninguna conversión usa la tasa del día del registro', /[tT]asaEn\((m|mov)\.creado_en\)/.test(_tesoR), false);
+eval(tramo('    function _movEnDolares(m) {', '    const _tieneTasa ='));
+var _cuentas = [{ id: 'U', moneda: 'USD' }, { id: 'B', moneda: 'Bs' }];
+window.__tasaUSDEn = function (f) { return f === '2026-03-15' ? 900 : 0; };
+var _tasaEn = function (x) { return window.__tasaUSDEn(x) || 0; };
+ok('I6: 20 USD cobrados en la cuenta en dólares son 20 USD', _usdMov({ cuenta_teso_id: 'U', monto: 20, fecha: '15/03/26' }), 20);
+ok('I6: y en bolívares, a la tasa de su fecha', _bsMov({ cuenta_teso_id: 'U', monto: 20, fecha: '15/03/26' }), 18000);
+ok('I6: 9.000 Bs en una cuenta en Bs son 10 USD a la tasa de su fecha', _usdMov({ cuenta_teso_id: 'B', monto: 9000, fecha: '15/03/26' }), 10);
+ok('I8: «Cerrar mes» dice que también pueden ser movimientos de Tesorería', /movimientos de Tesorería sin cuenta contable o sin tasa BCV/.test(_appjs), true);
+ok('una transferencia entre cuentas de distinta moneda se registra en dos movimientos', /Entre cuentas de distinta moneda registra un egreso en una y un ingreso en la otra/.test(_tesoR), true);
+ok('el monto de un cobro está en la moneda de la cuenta', /Monto a cobrar\/pagar \(Bs\)/.test(_tesoR), false);
 ok('C1: la otra punta de una transferencia ya conciliada sigue disponible como pareja', /o\.clase === 'transferencia' && !o\.extracto_par_id/.test(_concil), true);
 ok('I1: elegir a mano una factura ya dada por cobrada la guarda como «ya registrado»', _concil.indexOf("if (d && d.presumido) { fila.clase = 'registrado'; fila.cuenta_contra = d.presumido; }") >= 0, true);
 ok('C1: una transferencia elegida a mano busca sola su otra punta', _concil.indexOf('if (par) fila.extracto_par_id = par.id;') >= 0, true);

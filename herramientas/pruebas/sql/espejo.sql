@@ -86,6 +86,9 @@ create table public.libro_fiscal (
   quincena integer,
   maquina_fiscal text,
   numero_zeta text,
+  moneda text,
+  tasa numeric,
+  total_usd numeric,
   creado_en timestamptz default now()
 );
 
@@ -174,6 +177,38 @@ create table public.extracto_bancario (
   unique (cuenta_teso_id, huella)
 );
 
+-- Recibos de venta de la app y tasas del BCV, con las columnas reales.
+create table public.facturas (
+  id uuid primary key default gen_random_uuid(),
+  cuenta_id uuid, empresa_id uuid,
+  numero text, control text, tipo text, fecha text,
+  cliente_nombre text, cliente_rif text, cliente_dom text,
+  alicuota numeric, igtf boolean, condicion text, items jsonb,
+  subtotal numeric, iva numeric, igtf_monto numeric, total numeric,
+  estado text, tipo_doc text, factura_afectada uuid references public.facturas(id), motivo text, emitida_en timestamptz,   -- como en Supabase: el id de la factura
+  moneda text, tasa numeric, total_usd numeric,
+  creado_en timestamptz default now()
+);
+-- Las reglas de las notas de crédito y débito (sql/notas_credito_debito.sql): en
+-- Supabase existen, y la prueba 10 falló allá el 11/11/2026 por no tenerlas aquí.
+alter table public.facturas add constraint facturas_tipo_doc_chk check (tipo_doc in ('FV', 'NC', 'ND'));
+alter table public.facturas add constraint facturas_nota_afecta_chk check (tipo_doc = 'FV' or factura_afectada is not null);
+alter table public.facturas add constraint facturas_nota_motivo_chk check (tipo_doc = 'FV' or (motivo is not null and btrim(motivo) <> ''));
+create table public.tasas_cambio (
+  id uuid primary key default gen_random_uuid(),
+  fecha date, moneda text, tasa numeric, fuente text,
+  creado_en timestamptz default now(),
+  unique (fecha, moneda)   -- como en Supabase (tasas_cambio_fecha_moneda_key)
+);
+create table public.movimientos_tesoreria (
+  id uuid primary key default gen_random_uuid(),
+  cuenta_id uuid, empresa_id uuid, cuenta_teso_id uuid,
+  fecha text, concepto text, tipo text, referencia text, monto numeric,
+  comprobante_path text, tercero_nombre text, tercero_rif text, factura_ref text,
+  conciliado boolean default false,
+  creado_en timestamptz default now()
+);
+
 create table public.asientos (
   id uuid primary key default gen_random_uuid(),
   cuenta_id uuid,
@@ -187,6 +222,13 @@ create table public.asientos (
   total numeric,
   creado_en timestamptz default now()
 );
+
+-- RUIDO: en la base real ya hay tasas del BCV desde enero de 2025 (una por día).
+-- Una prueba que inserte tasas en esas fechas debe fallar AQUÍ (pasó el 11/11/2026:
+-- «duplicate key … tasas_cambio_fecha_moneda_key»).
+insert into public.tasas_cambio (fecha, moneda, tasa, fuente)
+select d::date, 'USD', 400 + (d::date - date '2026-01-01') * 2, 'BCV'
+  from generate_series(date '2026-01-01', date '2026-12-31', interval '1 day') d;
 
 -- RUIDO: en la base real hay otras empresas con asientos que repiten las
 -- referencias que usan las pruebas (LV-03/2026 de Agüero, 000144 de GATMA,

@@ -1,6 +1,8 @@
 -- ============================================================
 -- DigiAccount · Contabilidad 04: el libro fiscal contabiliza solo, desde la base
 -- Ejecutar en: Supabase SQL Editor, después de contabilidad_01, _02 y _03. Re-ejecutable.
+-- OJO: contabilidad_10 a _12 redefinen funciones de este archivo. Si vuelves a
+-- correr este, corre después de nuevo del 10 al 12.
 -- Correrlo JUSTO ANTES de desplegar la versión de la app que deja de
 -- contabilizar el libro en el navegador (v186 o posterior).
 --

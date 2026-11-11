@@ -542,26 +542,8 @@
       });
       if (ins && ins.error) { if (window.toast) window.toast('No se pudo emitir la nota: ' + ins.error.message, 'error'); return; }
 
-      /* Asiento del ajuste. La NC reversa proporcionalmente lo que la venta
-         registro; la ND lo aumenta. Solo en modo recibos: en modo libro la
-         contabilizacion la hace el Libro de Ventas. */
-      const _modo = (window.__EMPRESA_ACTIVA && window.__EMPRESA_ACTIVA.modo) || 'recibos';
-      if (window.__postAsiento && _modo !== 'libro') {
-        const sub = tf.subtotal * proporcion, iva = tf.iva * proporcion;
-        const ln = [];
-        if (tipo === 'NC') {
-          ln.push({ cta: '4.1.1.01 · Venta de mercancía', debe: sub, haber: 0 });
-          if (iva > 0.005) ln.push({ cta: '2.1.3.01 · IVA débito fiscal', debe: iva, haber: 0 });
-          ln.push({ cta: '1.1.2.01 · Cuentas por cobrar comerciales', debe: 0, haber: monto });
-        } else {
-          ln.push({ cta: '1.1.2.01 · Cuentas por cobrar comerciales', debe: monto, haber: 0 });
-          ln.push({ cta: '4.1.1.01 · Venta de mercancía', debe: 0, haber: sub });
-          if (iva > 0.005) ln.push({ cta: '2.1.3.01 · IVA débito fiscal', debe: 0, haber: iva });
-        }
-        window.__postAsiento(numeroNota + ' sobre factura ' + num + ' · ' + motivo, numeroNota, ln, 'auto')
-          .then((r) => { if (r && r.error) console.warn('[DigiAccount] Asiento de la nota:', r.error.message); });
-      }
-
+      /* El asiento de la nota lo hace la base (sql/contabilidad_10_recibos.sql): la NC
+         reversa lo que la venta registró y la ND lo aumenta. Solo en modo recibos. */
       close();
       if (window.toast) window.toast(numeroNota + ' emitida sobre la factura ' + num + ' · Bs ' + fmtF(monto), 'success');
       if (window.cargarFacturas) window.cargarFacturas();
@@ -1156,16 +1138,8 @@
             total_usd: _usdCap ? Math.round((t.total / _tasaCap) * 100) / 100 : null,
           }).then(({ error }) => {
             if (error) { console.warn('[DigiAccount] No se pudo guardar la factura:', error.message); if (window.toast) window.toast('No se pudo guardar en la base: ' + error.message, 'error'); return; }
-            // Asiento contable de la venta: Debe CxC / Haber Ingresos (+ IVA débito / IGTF por pagar).
-            // Solo en modo "recibos" (empresa). En modo "libro" (contador) la venta la contabiliza el Libro de Ventas.
-            const _modo = (window.__EMPRESA_ACTIVA && window.__EMPRESA_ACTIVA.modo) || 'recibos';
-            if (window.__postAsiento && _modo !== 'libro') {
-              const ln = [{ cta: '1.1.2.01 · Cuentas por cobrar comerciales', debe: t.total, haber: 0 },
-                { cta: '4.1.1.01 · Venta de mercancía', debe: 0, haber: t.subtotal }];
-              if (t.iva > 0.005) ln.push({ cta: '2.1.3.01 · IVA débito fiscal', debe: 0, haber: t.iva });
-              if (t.igtf > 0.005) ln.push({ cta: '2.1.4.03 · IGTF por pagar', debe: 0, haber: t.igtf });
-              window.__postAsiento('Venta s/' + (esRec ? 'recibo ' : 'factura ') + num + ' · ' + cli.n, num, ln, 'auto').then((r) => { if (r && r.error) console.warn('[DigiAccount] No se pudo contabilizar la venta:', r.error.message); });
-            }
+            // El asiento de la venta lo hace la base (sql/contabilidad_10_recibos.sql), solo en
+            // modo recibos; en modo libro la venta la contabiliza el Libro de Ventas.
             if (window.cargarTesoreria) window.cargarTesoreria(); // refresca CxC con el nuevo recibo
             if (window.cargarFacturas) window.cargarFacturas();   // refresca la lista y los KPIs de Ventas
             if (window.cargarDashboard) window.cargarDashboard(); // refresca los KPIs del Dashboard
