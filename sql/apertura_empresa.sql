@@ -1,4 +1,8 @@
 -- ============================================================================
+--  OJO: sql/contabilidad_13_apertura_y_cuadre.sql redefine cerrar_apertura y
+--  reabrir_apertura (cerrar genera el asiento de apertura). Si se vuelve a
+--  correr este archivo, correr después el 13.
+-- ============================================================================
 --  EL ARRANQUE DE UNA EMPRESA · saldos de apertura
 --  26/08/2026
 --

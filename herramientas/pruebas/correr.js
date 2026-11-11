@@ -1498,5 +1498,115 @@ var _csv = leerCSV('Fecha;Descripción;Referencia;Débito;Crédito\n05/11/2026;P
 ok('Excel/CSV: abonos y cargos con su signo', _csv.map(function (x) { return x.monto; }).join(' '), '1234.56 -12.5');
 ok('Excel/CSV: la descripción y la referencia', _csv[0].descripcion + '/' + _csv[0].referencia, 'PAGO MOVIL/0001');
 
+/* -- CONTABILIDAD · PLAN 5 -----------------------------------------------------
+   Reportes por período y nivel, Flujo de Efectivo directo, cuadre con la
+   Forma 30 y asiento de apertura (sql/contabilidad_13). */
+bloque('Plan 5: período y nivel de los reportes');
+eval(tramo('  window.__normFecha = function (txt) {', '  /* ════').replace(/^(\s*)const /gm, '$1var '));
+eval(tramo('    const parseCta = (s) =>', '    // ── fin de las funciones puras de reportes ──').replace(/^(\s*)const /gm, '$1var '));
+ok('la fecha de un asiento dd/mm/aa', fechaAsientoISO('05/10/26'), '2026-10-05');
+ok('y dd/mm/aaaa sin ceros', fechaAsientoISO('5/10/2026'), '2026-10-05');
+ok('una fecha ilegible no inventa nada', fechaAsientoISO('octubre'), '');
+var _r = rangoPeriodo('mes', '2026-02-14');
+ok('mes: del 1 al último día', _r.desde + ' ' + _r.hasta + ' ' + _r.etiqueta, '2026-02-01 2026-02-28 Febrero 2026');
+_r = rangoPeriodo('semana', '2026-11-11');
+ok('semana: de lunes a domingo', _r.desde + ' ' + _r.hasta, '2026-11-09 2026-11-15');
+ok('el domingo es de su misma semana', rangoPeriodo('semana', '2026-11-15').desde, '2026-11-09');
+ok('año', rangoPeriodo('anio', '2026-07-01').desde + ' ' + rangoPeriodo('anio', '2026-07-01').hasta, '2026-01-01 2026-12-31');
+ok('día', rangoPeriodo('dia', '2026-07-01').hasta, '2026-07-01');
+ok('todo no tiene límite inferior', rangoPeriodo('todo', '2026-07-01').desde, '');
+ok('flecha: el mes anterior a enero es diciembre', moverAncla('mes', '2026-01-31', -1), '2025-12-01');
+ok('flecha: la semana siguiente', moverAncla('semana', '2026-11-11', 1), '2026-11-18');
+ok('flecha: el día siguiente cruza de mes', moverAncla('dia', '2026-10-31', 1), '2026-11-01');
+ok('niveles: 1 Detalle, 2 Cuenta, 3 Grupo, 4 Clase', [1, 2, 3, 4].map(segDeNivel).join(','), '0,3,2,1');
+var _nom = { '3': 'Patrimonio', '3.1': 'Capital', '3.1.1.01': 'Capital social', '3.2': 'Superávit', '3.2.1.01': 'Reserva legal', '3.2.2.01': 'Utilidades retenidas' };
+ok('un código cortado con una sola hija toma su nombre', nombreNivel('3.1.1', _nom), 'Capital social');
+ok('con varias hijas, el del ancestro', nombreNivel('3.2.9', Object.assign({}, _nom, { '3.2.9.01': 'a', '3.2.9.02': 'b' })), 'Superávit');
+ok('el del plan si existe', nombreNivel('3.1', _nom), 'Capital');
+
+bloque('Plan 5: saldos por período (Mayor, Comprobación y Balance)');
+var _L = function (c, d, h) { return { cta: c + ' · X', debe: d, haber: h }; };
+var _asis = [
+  { numero: 1, fecha: '01/09/26', descripcion: 'Aporte', lineas: [_L('1.1.1.03.01', 100, 0), _L('3.1.1.01', 0, 100)] },
+  { numero: 3, fecha: '05/10/26', descripcion: 'Venta', lineas: [_L('1.1.1.03.01', 50, 0), _L('4.1.1.01', 0, 50)] },
+  { numero: 2, fecha: '03/10/26', descripcion: 'Caja', lineas: [_L('1.1.1.01', 20, 0), _L('4.1.1.01', 0, 20)] },
+  { numero: 4, fecha: '10/11/26', descripcion: 'Noviembre', lineas: [_L('1.1.1.03.01', 10, 0), _L('4.1.1.01', 0, 10)] },
+];
+var _sr = saldosEnRango(_asis, '2026-10-01', '2026-10-31');
+var _bk = _sr.get('1.1.1.03.01');
+ok('saldo anterior, debe y haber del mes', _bk.ant + '/' + _bk.debe + '/' + _bk.haber, '100/50/0');
+ok('lo posterior al período no entra', _sr.get('4.1.1.01').haber, 70);
+var _c111 = rollUp(Array.from(_sr.values()), 3, {}).filter(function (c) { return c.code === '1.1.1'; })[0];
+ok('nivel Cuenta: los bancos y la caja se suman en 1.1.1', _c111.ant + '/' + _c111.debe, '100/70');
+ok('y sus movimientos van en orden de fecha', _c111.movs.map(function (m) { return m.num; }).join(','), '2,3');
+
+bloque('Plan 5: Flujo de Efectivo por el método directo');
+var _fl = flujoDirecto(_asis, '2026-10-01', '2026-10-31');
+ok('efectivo inicial = caja y bancos antes del período', _fl.inicial, 100);
+ok('cobros por ventas del mes', _fl.act.op.get('Cobros por ventas y otros ingresos').monto, 70);
+ok('final = inicial + variación y concilia con 1.1.1', _fl.final + '/' + _fl.cuadra, '170/true');
+var _asis2 = _asis.concat([
+  { numero: 5, fecha: '12/10/26', lineas: [_L('1.1.1.03.01', 1100, 0), _L('1.1.2.01', 0, 1000), _L('4.2.2.01', 0, 100)] },
+  { numero: 6, fecha: '13/10/26', lineas: [_L('1.1.1.03.02', 300, 0), _L('1.1.1.03.01', 0, 300)] },
+  { numero: 7, fecha: '14/10/26', lineas: [_L('1.2.1.04', 500, 0), _L('1.1.3.01', 80, 0), _L('1.1.1.03.01', 0, 580)] },
+  { numero: 8, fecha: '15/10/26', lineas: [_L('1.1.1.03.01', 2000, 0), _L('2.2.1', 0, 2000)] },
+]);
+_fl = flujoDirecto(_asis2, '2026-10-01', '2026-10-31');
+ok('un cobro con diferencial reparte el efectivo sin prorratear', _fl.act.op.get('Cobros a clientes y otras cuentas por cobrar').monto + '/' + _fl.act.op.get('Cobros por ventas y otros ingresos').monto, '1000/170');
+ok('una transferencia entre bancos propios no es flujo', _fl.cajaRango, 70 + 1100 - 580 + 2000);
+ok('la compra de un activo es inversión (y su IVA, impuesto)', _fl.inv + '/' + _fl.act.op.get('Pagos de impuestos (IVA, ISLR, IGTF y otros)').monto, '-500/-80');
+ok('un préstamo a largo plazo es financiamiento', _fl.fin, 2000);
+ok('concilia', _fl.cuadra, true);
+_fl = flujoDirecto(_asis.concat([{ numero: 9, fecha: '20/10/26', lineas: [_L('1.1.1.01', 10, 0), _L('4.1.1.01', 0, 9)] }]), '2026-10-01', '2026-10-31');
+ok('un asiento descuadrado se nota: no concilia', _fl.cuadra, false);
+/* Revisión final del plan 5. */
+_fl = flujoDirecto([{ numero: 1, fecha: '31/10/26', origen_tabla: 'apertura', lineas: [_L('1.1.1.03.01', 500, 0), _L('1.1.2.01', 300, 0), _L('2.1.1.01', 0, 200), _L('3.1.1.01', 0, 600)] },
+  { numero: 2, fecha: '05/11/26', lineas: [_L('1.1.1.03.01', 50, 0), _L('1.1.2.01', 0, 50)] }], '2026-10-01', '2026-11-30');
+ok('I2: la apertura es el efectivo inicial, no cobros, pagos ni aportes', _fl.inicial + '/' + _fl.op + '/' + _fl.fin + '/' + _fl.final + '/' + _fl.cuadra, '500/50/0/550/true');
+
+bloque('Plan 5: el Balance General cuadra');
+// Año anterior: aporte 100 y gasto 20. Este año: venta 100 cobrada y gasto 30 pagado.
+var _asBG = [
+  { numero: 1, fecha: '01/03/25', lineas: [_L('1.1.1.03.01', 100, 0), _L('3.1.1.01', 0, 100)] },
+  { numero: 2, fecha: '10/03/25', lineas: [_L('6.1.1.16', 20, 0), _L('1.1.1.03.01', 0, 20)] },
+  { numero: 3, fecha: '05/10/26', lineas: [_L('1.1.1.03.01', 100, 0), _L('4.1.1.01', 0, 100)] },
+  { numero: 4, fecha: '06/10/26', lineas: [_L('6.1.1.16', 30, 0), _L('1.1.1.03.01', 0, 30)] },
+];
+var _cBG = Array.from(saldosEnRango(_asBG, '2026-01-01', '2026-10-31').values());
+var _ut = utilidadesAlCorte(_cBG);
+ok('C1: utilidad del ejercicio = ingresos − gastos', _ut.ejercicio, 70);
+ok('C1: y la de ejercicios anteriores (una pérdida)', _ut.anteriores, -20);
+var _act = _cBG.filter(function (c) { return c.code.charAt(0) === '1'; }).reduce(function (s, c) { return s + c.ant + c.debe - c.haber; }, 0);
+var _pat = _cBG.filter(function (c) { return c.code.charAt(0) === '3'; }).reduce(function (s, c) { return s - (c.ant + c.debe - c.haber); }, 0);
+ok('C1: Activo = Pasivo + Patrimonio (capital + resultados)', _act + ' = ' + (_pat + _ut.ejercicio + _ut.anteriores), '150 = 150');
+var _contaR = _leer('assets/contabilidad.js');
+ok('C1: el Balance General usa esa función', /const ut = utilidadesAlCorte\(todas\), utilEj = ut\.ejercicio, utilAnt = ut\.anteriores;/.test(_contaR), true);
+ok('I4: exportar toma la tabla del estado (no el cuadre de la F30)', /const cont = pane\.querySelector\(meta\.sel\);/.test(_contaR) && !/const table = pane\.querySelector\('table'\);/.test(_contaR), true);
+ok('los archivos llevan el período, no el ejercicio', /_Ejercicio_' \+ ejercicioInfo\(\)\.anio \+ '\.csv'\);/.test(_contaR.replace("'Activos_Fijos_Ejercicio_' + ejercicioInfo().anio + '.csv');", '')), false);
+ok('I5: antes de cerrar la apertura se avisa lo ya asentado hasta el corte', /rpc\('apertura_asientos_previos', \{ p_empresa: emp\(\)\.id \}\)/.test(_leer('assets/app.js')), true);
+
+bloque('Plan 5: la pantalla de los reportes');
+var _conta5 = _leer('assets/contabilidad.js');
+var _html5 = _leer('index.html');
+ok('la barra tiene los cuatro niveles en el orden de la spec', /\[\[1, 'Detalle'\], \[2, 'Cuenta'\], \[3, 'Grupo'\], \[4, 'Clase'\]\]/.test(_conta5), true);
+ok('y los cinco períodos', /<option value="todo">Todo<\/option><option value="dia">Día<\/option><option value="semana">Semana<\/option><option value="mes" selected>Mes<\/option><option value="anio">Año<\/option>/.test(_conta5), true);
+ok('sin el selector de mes viejo del Diario', /diarioMesSel/.test(_html5 + _conta5), false);
+ok('sin el botón «Nivel: Cuenta» que no hacía nada', /Nivel: Cuenta<\/button>/.test(_html5), false);
+ok('sin el Mayor de mentira (saldos fijos y apertura al 01/05/26)', /SALDOS_FINALES|01\/05\/26/.test(_conta5), false);
+ok('el cuadre con la Forma 30 lo calcula la base', /rpc\('contab_cuadre_iva', \{ p_empresa: emp\.id, p_periodo: p\.m, p_quincena: p\.q \}\)/.test(_conta5), true);
+ok('por quincena cuando el IVA es quincenal en ese mes', /__ivaPorQuincenaEn\(m\)/.test(_conta5), true);
+ok('el ISLR y el IGP siguen mirando todo lo registrado', /const todo = Array\.from\(saldosEnRango\(asientosData, '', '9999-12-31'\)\.values\(\)\);/.test(_conta5), true);
+ok('cambiar el período no vuelve a pedir los asientos a la base', /window\.__repintarPeriodo\(1\)/.test(_conta5), true);
+
+bloque('Plan 5: la apertura genera su asiento');
+var _app5 = _leer('assets/app.js');
+ok('cada renglón elige su cuenta contable', /name: 'cuenta', label: 'Cuenta contable', type: 'select'/.test(_app5)
+  && /cuenta_contable: String\(v\.cuenta \|\| g\.cuenta \|\| ''\)\.trim\(\) \|\| null/.test(_app5), true);
+ok('en Bancos se ofrecen primero los bancos de Tesorería (con su subcuenta)', /BANCOS\.filter\(\(b\) => b\.cuenta_contable\.indexOf\(g\.grupo === 'banco' \? '1\.1\.1\.03' : '1\.1\.1\.01'\) === 0\)/.test(_app5), true);
+ok('la diferencia calculada va a resultados acumulados', /calculado: true, cuenta_contable: '3\.2\.2\.01'/.test(_app5), true);
+ok('«Traer de Activos fijos» lo hace la base', /rpc\('apertura_traer_activos', \{ p_empresa: emp\(\)\.id \}\)/.test(_app5), true);
+ok('al cerrar y al reabrir se recargan los asientos', (_app5.match(/cargar\(\);\r?\n\s*if \(window\.cargarAsientos\) window\.cargarAsientos\(\);/g) || []).length, 2);
+ok('cada fila muestra su cuenta', /'<em>Cuenta ' \+ esc\(p\.cuenta_contable\)/.test(_app5), true);
+
 console.log('\n' + (fallas ? 'HAY ' + fallas + ' FALLA(S) de ' + total : 'TODO OK · ' + total + ' comprobaciones'));
 process.exit(fallas ? 1 : 0);

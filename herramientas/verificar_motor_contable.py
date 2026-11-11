@@ -91,6 +91,17 @@ def main():
     sub_codigos = []
     mov_ids = []
     usd_ids = []
+    ap_creada = False
+
+    # El cuadre con la Forma 30 es del SQL 13: si todavía no se corrió, se salta.
+    def cuadre_nov():
+        try:
+            return api('rpc/contab_cuadre_iva', token, 'POST', {'p_empresa': emp['id'], 'p_periodo': '2026-11', 'p_quincena': None})
+        except RuntimeError as e:
+            if 'PGRST202' not in str(e):
+                raise
+            return None
+    cuadre_antes = cuadre_nov()
     try:
         creadas = api('libro_fiscal', token, 'POST', filas, prefer='return=representation')
         ids = [f['id'] for f in creadas]
@@ -110,6 +121,15 @@ def main():
         if len(a) != 1 or abs(float(a[0]['total']) - 812) > 0.005:
             falla('editar la compra debía dejar 1 asiento de 812 y dejó %s' % [x['total'] for x in a])
         print('  OK  editar la compra cambia su asiento sin duplicarlo')
+
+        if cuadre_antes is None:
+            print('  --  cuadre con la Forma 30 omitido: el SQL 13 todavía no se corrió')
+        else:
+            c = cuadre_nov()
+            sube = lambda k: round(float(c[k]) - float(cuadre_antes[k]), 2)
+            if (sube('debito_fiscal'), sube('debito_contable'), sube('credito_fiscal'), sube('credito_contable')) != (208, 208, 112, 112):
+                falla('la venta y el reporte Z (IVA 160 + 48) y la compra (IVA 112) debían sumar lo mismo en el libro y en la contabilidad: antes %s, después %s' % (cuadre_antes, c))
+            print('  OK  cuadre con la Forma 30: las ventas y la compra de prueba suben igual el libro y la contabilidad (diferencia del mes %s / %s)' % (c['dif_debito'], c['dif_credito']))
 
         api('libro_fiscal?id=eq.' + venta, token, 'PATCH', {'tercero_nombre': 'ANULADA', 'base': 0, 'iva': 0, 'total': 0})
         if asientos_de(token, [venta]):
@@ -255,9 +275,29 @@ def main():
             if len(r) > 1 or (r and not cuadra(r[0])):
                 falla('la revaluación de febrero debía dar a lo sumo un asiento cuadrado y dio %d' % len(r))
             print('  OK  revaluación de febrero 2025 (dos veces): %s · %d asiento' % (rev, len(r)))
+
+        # El asiento de apertura (SQL 13), solo si la empresa no tiene apertura propia.
+        if cuadre_antes is not None and not api('apertura?empresa_id=eq.%s&select=empresa_id' % emp['id'], token):
+            api('apertura', token, 'POST', [{'empresa_id': emp['id'], 'cuenta_id': emp['cuenta_id'], 'fecha_corte': '2019-12-31', 'nota': MARCA}])
+            ap_creada = True
+            pr = api('apertura_partidas', token, 'POST', [
+                {'empresa_id': emp['id'], 'cuenta_id': emp['cuenta_id'], 'grupo': 'cxc', 'descripcion': 'Cliente ' + MARCA, 'debe': 100, 'haber': 0},
+                {'empresa_id': emp['id'], 'cuenta_id': emp['cuenta_id'], 'grupo': 'patrimonio', 'descripcion': 'Capital ' + MARCA, 'debe': 0, 'haber': 100, 'cuenta_contable': '3.1.1.01'}],
+                prefer='return=representation')
+            if [x['cuenta_contable'] for x in pr] != ['1.1.2.01', '3.1.1.01']:
+                falla('el renglón sin cuenta debía tomar la de su guía (1.1.2.01) y dio %s' % [x['cuenta_contable'] for x in pr])
+            lin = api('rpc/contab_lineas_apertura', token, 'POST', {'p_empresa': emp['id']})
+            if [(l['cta'].split(' · ')[0], float(l['debe']), float(l['haber'])) for l in lin] != [('1.1.2.01', 100, 0), ('3.1.1.01', 0, 100)]:
+                falla('las líneas del asiento de apertura no son las esperadas: %s' % lin)
+            print('  OK  apertura: cada renglón con su cuenta y el asiento cuadra (1.1.2.01 / 3.1.1.01)')
+
     finally:
         # PRIMERO se borra todo y DESPUÉS se comprueba: si una comprobación
         # fallara en medio, el resto de las filas de prueba quedaría en producción.
+        if ap_creada:
+            api('apertura?empresa_id=eq.%s' % emp['id'], token, 'DELETE')
+            if api('asientos?origen_tabla=eq.apertura&origen_id=eq.%s&select=id' % emp['id'], token):
+                falla('quedó el asiento de la apertura de prueba')
         if decl_ids:
             api('declaraciones?id=in.(%s)' % ','.join(decl_ids), token, 'DELETE')
         if mov_ids:
