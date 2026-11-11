@@ -185,7 +185,7 @@ create table public.facturas (
   cliente_nombre text, cliente_rif text, cliente_dom text,
   alicuota numeric, igtf boolean, condicion text, items jsonb,
   subtotal numeric, iva numeric, igtf_monto numeric, total numeric,
-  estado text, tipo_doc text, factura_afectada text, motivo text, emitida_en timestamptz,
+  estado text, tipo_doc text, factura_afectada uuid references public.facturas(id), motivo text, emitida_en timestamptz,   -- como en Supabase: el id de la factura
   moneda text, tasa numeric, total_usd numeric,
   creado_en timestamptz default now()
 );

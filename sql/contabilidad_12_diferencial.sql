@@ -101,7 +101,7 @@ begin
   if p_tabla = 'facturas' then
     pagado := pagado + coalesce((select sum(case when upper(coalesce(n.moneda, 'BS')) = 'USD' and coalesce(n.total_usd, 0) > 0 then n.total_usd else coalesce(n.total, 0) / tasa_doc end)
        from facturas n where n.empresa_id = p_empresa and upper(coalesce(n.tipo_doc, '')) = 'NC' and coalesce(n.estado, '') !~* 'anulad'
-         and upper(trim(coalesce(n.factura_afectada, ''))) = upper(trim(coalesce(num, ''))) and contab_fecha_factura(n.fecha) <= p_hasta), 0);
+         and n.factura_afectada = p_id and contab_fecha_factura(n.fecha) <= p_hasta), 0);   -- factura_afectada es el id de la factura (uuid)
   end if;
   return greatest(0, tot_usd - pagado);
 end $$;
