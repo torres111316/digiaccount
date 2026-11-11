@@ -20,7 +20,7 @@ const RAIZ = path.join(__dirname, '..', '..', '..');
 /* SQL previos a la contabilidad, TAL COMO ESTÁN EN SUPABASE. De apertura_empresa.sql
    solo se corrió allá hasta antes de los «AJUSTES · 26/08/2026» (la prueba 13 falló el
    11/11/2026 por la columna `calculado`, que viene en esa parte): se corta ahí. */
-const PREVIOS = [['apertura_empresa.sql', '--  AJUSTES · 26/08/2026']];
+const PREVIOS = [['apertura_empresa.sql', '--  AJUSTES · 26/08/2026'], ['condicion_fiscal_historial.sql', null], ['dpp_y_cierres.sql', null]];
 const hasta = process.argv[2] || '99';
 const sqls = fs.readdirSync(path.join(RAIZ, 'sql'))
   .filter((f) => /^contabilidad_\d\d_.+\.sql$/.test(f) && f.slice(13, 15) <= hasta).sort();
