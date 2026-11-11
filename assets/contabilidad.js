@@ -86,6 +86,7 @@
     // ---- Nuevo asiento (partida doble) ----
     let asientoNum = 313;
     let asientosData = [];   // asientos cargados desde Supabase (para Mayor y Balance)
+    let _cargaAsientos = 0;  // cuántas veces se cargaron (el cuadre con la F30 se vuelve a pedir al recargar)
     let activosData = [];    // activos fijos cargados desde Supabase
     // ===== Modal de asiento (partida doble multi-línea) =====
     (function asientoModal() {
@@ -207,33 +208,40 @@
           + '</tbody><tfoot><tr class="asiento-foot"><td colspan="2" class="total-label">Sumas iguales</td><td class="deb">' + fmt2(tot) + '</td><td class="haber">' + fmt2(tot) + '</td></tr></tfoot></table>'
           + '<div class="asiento-glosa"><strong>Concepto:</strong> ' + (a.descripcion || '') + '</div></div>';
       }
-      // Carga los asientos reales de la empresa activa desde Supabase (Diario paginado: 10 por página)
-      let _diarioPage = 1, _diarioMes = '';
-      const _asiMes = (a) => { const p = String(a.fecha || '').split('/'); return p.length === 3 ? ('20' + (p[2].length === 2 ? p[2] : p[2].slice(2)) + '-' + String(p[1]).padStart(2, '0')) : ''; };
-      const _MESES_D = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+      // Carga los asientos reales de la empresa activa desde Supabase. El Diario
+      // muestra los del período de la barra común de reportes, 10 por página.
+      let _diarioPage = 1;
       async function cargarAsientos(page) {
         if (!window.sb || !window.__EMPRESA_ACTIVA || !window.__EMPRESA_ACTIVA.id) return;
         const journal = view.querySelector('.conta-tab[data-tab="diario"] .journal');
         if (!journal) return;
-        const { data, error } = await window.__sbAll((q) => q.eq('empresa_id', window.__EMPRESA_ACTIVA.id).order('numero', { ascending: false }), 'asientos', '*');
+        const empId = window.__EMPRESA_ACTIVA.id;
+        const { data, error } = await window.__sbAll((q) => q.eq('empresa_id', empId).order('numero', { ascending: false }), 'asientos', '*');
         if (error) { console.warn('[DigiAccount] No se pudieron cargar asientos:', error.message); return; }
-        journal.innerHTML = '';
+        if (!window.__EMPRESA_ACTIVA || window.__EMPRESA_ACTIVA.id !== empId) return;   // se cambió de empresa mientras cargaba
         let maxNum = 0;
         (data || []).forEach((a) => { if (a.numero > maxNum) maxNum = a.numero; });
         asientoNum = maxNum;
         asientosData = data || [];
-        // Poblar el selector de meses (una vez por carga) con los meses que tienen asientos
-        const sel = document.getElementById('diarioMesSel');
-        if (sel) {
-          const meses = Array.from(new Set(asientosData.map(_asiMes).filter(Boolean))).sort().reverse();
-          const cur = sel.value;
-          sel.innerHTML = '<option value="">Todos los meses</option>' + meses.map((m) => '<option value="' + m + '">' + _MESES_D[parseInt(m.slice(5, 7), 10) - 1] + ' ' + m.slice(0, 4) + '</option>').join('');
-          if (meses.indexOf(cur) >= 0) sel.value = cur; else _diarioMes = '';
-          _diarioMes = sel.value;
+        _cargaAsientos++;
+        // Otra empresa: el período arranca en el mes de su último asiento.
+        if (_rep.empresa !== empId) {
+          _rep.empresa = empId;
+          _rep.ancla = ultimaFechaAsientos() || (window.__hoyISO ? window.__hoyISO() : '');
+          if (window.__pintarBarraReportes) window.__pintarBarraReportes();
         }
-        // Asientos del mes seleccionado (o todos), en orden cronológico para el Diario
-        const delMes = (_diarioMes ? asientosData.filter((a) => _asiMes(a) === _diarioMes) : asientosData.slice())
-          .sort((a, b) => (a.numero || 0) - (b.numero || 0));
+        pintarPeriodo(page);
+        console.log('[DigiAccount] Asientos cargados:', asientosData.length);
+      }
+      window.cargarAsientos = cargarAsientos;
+      // Repinta el Diario y los reportes con el período de la barra (sin volver a la base).
+      function pintarPeriodo(page) {
+        const journal = view.querySelector('.conta-tab[data-tab="diario"] .journal');
+        if (!journal) return;
+        journal.innerHTML = '';
+        const r = _rango();
+        const delMes = (asientosData || []).filter((a) => { const f = fechaAsientoISO(a.fecha); return r.desde === '' || (f && f >= r.desde && f <= r.hasta); })
+          .sort((a, b) => { const fa = fechaAsientoISO(a.fecha), fb = fechaAsientoISO(b.fecha); return fa < fb ? -1 : fa > fb ? 1 : (a.numero || 0) - (b.numero || 0); });
         const DIARIO_PAG = 10;
         const totalPagD = Math.max(1, Math.ceil(delMes.length / DIARIO_PAG));
         _diarioPage = Math.min(Math.max(1, page || _diarioPage || 1), totalPagD);
@@ -246,41 +254,30 @@
             + '<span>Página ' + _diarioPage + ' de ' + totalPagD + ' · ' + delMes.length + ' asientos</span>'
             + '<button class="btn btn-ghost" data-dp-dir="1"' + (_diarioPage >= totalPagD ? ' disabled' : '') + ' style="height:26px;font-size:11px;">Siguiente »</button></div>');
         }
-        window.__diarioDelMes = delMes; // para imprimir el período visible
-        if (typeof renderReportes === 'function') renderReportes();   // recalcula Mayor y Balance
+        window.__diarioDelMes = delMes; // para imprimir y exportar el período visible
+        if (typeof renderReportes === 'function') renderReportes();   // recalcula Mayor, Balance y estados
         // KPIs de la cabecera de Contabilidad (datos reales)
         const totDebe = delMes.reduce((s, a) => s + (Number(a.total) || 0), 0);
         const ctas = new Set();
         asientosData.forEach((a) => { (Array.isArray(a.lineas) ? a.lineas : []).forEach((l) => { const c = (l.cta || '').split(' · ')[0]; if (c) ctas.add(c); }); });
         const setC = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
-        const fmt2 = (n) => Number(n || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         setC('contaKpiAsientos', String(asientosData.length));
         setC('contaKpiDebe', fmt2(totDebe));
         setC('contaKpiHaber', fmt2(totDebe));
         setC('contaKpiCuentas', String(ctas.size));
         setC('contaDiarioCount', String(delMes.length));
         setC('contaMovMes', 'Bs ' + fmt2(totDebe));
-        console.log('[DigiAccount] Asientos cargados:', (data || []).length);
         drawIcons();
       }
-      window.cargarAsientos = cargarAsientos;
-      // Datos para imprimir el Libro Diario del mes seleccionado (todos los asientos, sin paginar)
+      window.__repintarPeriodo = pintarPeriodo;
+      // Datos para imprimir el Libro Diario del período (todos los asientos, sin paginar)
       window.__diarioPrintData = () => {
-        const sel = document.getElementById('diarioMesSel');
-        const lbl = sel && sel.selectedOptions[0] ? sel.selectedOptions[0].textContent : 'Todos los meses';
         const arr = window.__diarioDelMes || [];
-        // Ejercicio derivado de los asientos impresos (no fijo): un año, o rango si abarca varios
-        const anios = Array.from(new Set(arr.map((a) => { const m = _asiMes(a); return m ? m.slice(0, 4) : ''; }).filter(Boolean))).sort();
-        const ej = anios.length ? (anios.length === 1 ? anios[0] : anios[0] + '–' + anios[anios.length - 1]) : String(new Date().getFullYear());
-        return { html: arr.map(asientoHTML).join(''), titulo: 'Libro Diario · ' + lbl, sub: 'Ejercicio ' + ej + ' · Expresado en bolívares (Bs)' };
+        return { html: arr.map(asientoHTML).join(''), titulo: 'Libro Diario · ' + _rango().etiqueta, sub: periodoTexto() + ' · Expresado en bolívares (Bs)' };
       };
       view.addEventListener('click', (e) => {
         const b = e.target.closest('button[data-dp-dir]');
-        if (b && !b.disabled) cargarAsientos(_diarioPage + parseInt(b.dataset.dpDir, 10));
-      });
-      // Cambio de mes en el Libro Diario
-      view.addEventListener('change', (e) => {
-        if (e.target && e.target.id === 'diarioMesSel') { _diarioMes = e.target.value; _diarioPage = 1; cargarAsientos(1); }
+        if (b && !b.disabled) pintarPeriodo(_diarioPage + parseInt(b.dataset.dpDir, 10));
       });
     })();
 
@@ -411,64 +408,218 @@
     window.__cuentasEfectivo = () => _efectivo.slice();
     window.cargarCuentasContables = cargarCuentasContables;
 
-    // ======= ETAPA 3: Libro Mayor + Balance de Comprobación (de los asientos reales) =======
+    // ======= REPORTES: Diario, Mayor, Comprobación, Resultados, Balance General y Flujo =======
+    /* Todos salen SOLO de los asientos guardados (spec §7), con una barra común:
+       período (Todo, Día, Semana, Mes, Año, con flechas) y nivel (1 Detalle,
+       2 Cuenta, 3 Grupo, 4 Clase). Las funciones de cálculo son puras (sin DOM)
+       y se prueban en herramientas/pruebas/correr.js. */
     const parseCta = (s) => { const i = (s || '').indexOf(' · '); return i < 0 ? { c: '—', n: s || '' } : { c: s.slice(0, i), n: s.slice(i + 3) }; };
-
-    // Agrupa los movimientos por cuenta (debe, haber y lista de movimientos)
-    function agregarPorCuenta() {
+    const _pad2 = (n) => String(n).padStart(2, '0');
+    // Fecha de un asiento (dd/mm/aa o dd/mm/aaaa) → 'aaaa-mm-dd'; '' si no se entiende.
+    function fechaAsientoISO(f) {
+      const n = window.__normFecha ? window.__normFecha(f) : null;
+      if (!n) return '';
+      const p = n.split('/');
+      return '20' + p[2] + '-' + p[1] + '-' + p[0];
+    }
+    const _MESES_R = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+    const _isoDe = (dt) => dt.getFullYear() + '-' + _pad2(dt.getMonth() + 1) + '-' + _pad2(dt.getDate());
+    const _dmy = (iso) => iso.slice(8, 10) + '/' + iso.slice(5, 7) + '/' + iso.slice(0, 4);
+    const _partes = (iso) => iso.split('-').map((x) => parseInt(x, 10));
+    /* El rango [desde, hasta] (ISO, inclusive) de un período. 'todo' no tiene
+       límite inferior. La semana va de lunes a domingo. */
+    function rangoPeriodo(tipo, ancla) {
+      if (tipo === 'todo' || !ancla) return { desde: '', hasta: '9999-12-31', etiqueta: 'Todo el registro' };
+      const [y, m, d] = _partes(ancla);
+      if (tipo === 'dia') return { desde: ancla, hasta: ancla, etiqueta: _dmy(ancla) };
+      if (tipo === 'semana') {
+        const dow = (new Date(y, m - 1, d).getDay() + 6) % 7;
+        const ini = _isoDe(new Date(y, m - 1, d - dow)), fin = _isoDe(new Date(y, m - 1, d - dow + 6));
+        return { desde: ini, hasta: fin, etiqueta: 'Semana del ' + _dmy(ini) + ' al ' + _dmy(fin) };
+      }
+      if (tipo === 'anio') return { desde: y + '-01-01', hasta: y + '-12-31', etiqueta: 'Año ' + y };
+      return { desde: y + '-' + _pad2(m) + '-01', hasta: _isoDe(new Date(y, m, 0)), etiqueta: _MESES_R[m - 1] + ' ' + y };
+    }
+    // La flecha: el mismo período, uno antes (-1) o uno después (+1).
+    function moverAncla(tipo, ancla, dir) {
+      const [y, m, d] = _partes(ancla);
+      if (tipo === 'dia') return _isoDe(new Date(y, m - 1, d + dir));
+      if (tipo === 'semana') return _isoDe(new Date(y, m - 1, d + 7 * dir));
+      if (tipo === 'anio') return _isoDe(new Date(y + dir, 0, 1));
+      return _isoDe(new Date(y, m - 1 + dir, 1));
+    }
+    // Nivel → segmentos del código a los que se enrolla (0 = sin enrollar).
+    const segDeNivel = (n) => ({ 1: 0, 2: 3, 3: 2, 4: 1 })[n] || 0;
+    /* El nombre de un código. Uno cortado que no está en el plan (3.1.1) toma
+       el de su única cuenta hija; si tiene varias, el del ancestro más cercano. */
+    function nombreNivel(code, nombres) {
+      if (nombres[code]) return nombres[code];
+      const hijas = Object.keys(nombres).filter((k) => k.indexOf(code + '.') === 0);
+      if (hijas.length === 1) return nombres[hijas[0]];
+      const p = code.split('.');
+      for (let i = p.length - 1; i > 0; i--) { const a = p.slice(0, i).join('.'); if (nombres[a]) return nombres[a]; }
+      return code;
+    }
+    /* Por cuenta: `ant` = debe − haber antes de `desde`; `debe`, `haber` y
+       `movs` = lo de dentro del rango. Lo posterior a `hasta` no entra. Un
+       asiento con fecha ilegible va al saldo anterior (no se pierde). */
+    function saldosEnRango(asientos, desde, hasta) {
       const map = new Map();
-      (asientosData || []).forEach((a) => {
-        (Array.isArray(a.lineas) ? a.lineas : []).forEach((l) => {
+      const orden = (asientos || []).map((a) => ({ a: a, f: fechaAsientoISO(a.fecha) }))
+        .sort((x, y) => (x.f < y.f ? -1 : x.f > y.f ? 1 : (x.a.numero || 0) - (y.a.numero || 0)));
+      orden.forEach((o) => {
+        if (o.f > hasta) return;
+        const dentro = !!o.f && o.f >= desde;
+        (Array.isArray(o.a.lineas) ? o.a.lineas : []).forEach((l) => {
           const p = parseCta(l.cta);
-          if (!map.has(p.c)) map.set(p.c, { code: p.c, nombre: p.n, debe: 0, haber: 0, movs: [] });
+          if (!map.has(p.c)) map.set(p.c, { code: p.c, nombre: p.n, ant: 0, debe: 0, haber: 0, movs: [] });
           const e = map.get(p.c);
           const d = Number(l.debe) || 0, h = Number(l.haber) || 0;
+          if (!dentro) { e.ant += d - h; return; }
           e.debe += d; e.haber += h;
-          e.movs.push({ fecha: a.fecha, num: a.numero, desc: a.descripcion, ref: a.referencia, d: d, h: h });
+          e.movs.push({ fecha: o.a.fecha, iso: o.f, num: o.a.numero, desc: o.a.descripcion, ref: o.a.referencia, d: d, h: h });
         });
       });
       return map;
     }
+    // Enrolla las cuentas a `seg` segmentos (0 = detalle), sumando saldos y movimientos.
+    function rollUp(cuentas, seg, nombres) {
+      if (!seg) return cuentas;
+      const m = new Map();
+      cuentas.forEach((c) => {
+        const code = c.code.split('.').slice(0, seg).join('.');
+        if (!m.has(code)) m.set(code, { code: code, nombre: nombreNivel(code, nombres || {}), ant: 0, debe: 0, haber: 0, movs: [] });
+        const e = m.get(code);
+        e.ant += c.ant || 0; e.debe += c.debe; e.haber += c.haber;
+        e.movs = e.movs.concat(c.movs || []);
+      });
+      m.forEach((e) => e.movs.sort((x, y) => (x.iso < y.iso ? -1 : x.iso > y.iso ? 1 : (x.num || 0) - (y.num || 0))));
+      return Array.from(m.values());
+    }
+    /* Flujo de Efectivo, método directo. En cada asiento con efectivo (1.1.1),
+       cada línea que no es efectivo aporta su haber − debe: como el asiento
+       cuadra, la suma es exactamente lo que entró o salió de caja y bancos. */
+    const RUBROS_FLUJO = [
+      [/^1\.1\.2\.04/, 'op', 'Anticipos a proveedores'],
+      [/^1\.1\.2/, 'op', 'Cobros a clientes y otras cuentas por cobrar'],
+      [/^4/, 'op', 'Cobros por ventas y otros ingresos'],
+      [/^2\.1\.6/, 'op', 'Anticipos recibidos de clientes'],
+      [/^2\.1\.1/, 'op', 'Pagos a proveedores'],
+      [/^(5|1\.1\.4)/, 'op', 'Pagos de compras y costos'],
+      [/^(2\.1\.2|2\.1\.3\.(0[4-9]|1[01]))/, 'op', 'Pagos al personal, aportes y retenciones de nómina'],
+      [/^(1\.1\.3|2\.1\.3|2\.1\.4)/, 'op', 'Pagos de impuestos (IVA, ISLR, IGTF y otros)'],
+      [/^6\.3/, 'op', 'Gastos financieros e IGTF'],
+      [/^6/, 'op', 'Pagos de gastos'],
+      [/^1\.1\.5/, 'op', 'Gastos pagados por anticipado'],
+      [/^1\.1\.6/, 'inv', 'Criptoactivos'],
+      [/^1\.2\.1/, 'inv', 'Propiedad, planta y equipo'],
+      [/^1\.2\.2/, 'inv', 'Activos intangibles'],
+      [/^1\.2/, 'inv', 'Inversiones permanentes'],
+      [/^2\.2/, 'fin', 'Préstamos y financiamientos a largo plazo'],
+      [/^3/, 'fin', 'Aportes y retiros de los socios'],
+    ];
+    const esEfectivo = (code) => code === '1.1.1' || code.indexOf('1.1.1.') === 0;
+    function rubroFlujo(code) {
+      for (let i = 0; i < RUBROS_FLUJO.length; i++) if (RUBROS_FLUJO[i][0].test(code)) return { act: RUBROS_FLUJO[i][1], rubro: RUBROS_FLUJO[i][2], orden: i };
+      return { act: 'op', rubro: 'Otros cobros y pagos', orden: 99 };
+    }
+    function flujoDirecto(asientos, desde, hasta) {
+      const r = { inicial: 0, cajaRango: 0, act: { op: new Map(), inv: new Map(), fin: new Map() } };
+      (asientos || []).forEach((a) => {
+        const f = fechaAsientoISO(a.fecha);
+        if (f > hasta) return;
+        const lin = (Array.isArray(a.lineas) ? a.lineas : []).map((l) => ({ code: parseCta(l.cta).c, d: Number(l.debe) || 0, h: Number(l.haber) || 0 }));
+        const caja = lin.filter((l) => esEfectivo(l.code)).reduce((s, l) => s + l.d - l.h, 0);
+        if (!f || f < desde) { r.inicial += caja; return; }
+        r.cajaRango += caja;
+        if (!lin.some((l) => esEfectivo(l.code))) return;
+        lin.forEach((l) => {
+          if (esEfectivo(l.code) || Math.abs(l.h - l.d) < 0.005) return;
+          const rb = rubroFlujo(l.code), m = r.act[rb.act];
+          if (!m.has(rb.rubro)) m.set(rb.rubro, { rubro: rb.rubro, orden: rb.orden, monto: 0 });
+          m.get(rb.rubro).monto += l.h - l.d;
+        });
+      });
+      const tot = (m) => Array.from(m.values()).reduce((s, x) => s + x.monto, 0);
+      r.op = tot(r.act.op); r.inv = tot(r.act.inv); r.fin = tot(r.act.fin);
+      r.variacion = r.op + r.inv + r.fin;
+      r.final = r.inicial + r.variacion;
+      r.cajaFin = r.inicial + r.cajaRango;
+      r.cuadra = Math.abs(r.final - r.cajaFin) < 0.01;
+      return r;
+    }
+    window.__reportesPuros = { fechaAsientoISO, rangoPeriodo, moverAncla, segDeNivel, nombreNivel, saldosEnRango, rollUp, flujoDirecto, rubroFlujo };
+    // ── fin de las funciones puras de reportes ──
 
-    // Ejercicio fiscal derivado de los asientos: año calendario (1 ene → 31 dic),
-    // salvo el PRIMER ejercicio, que va desde el inicio de actividades (primer
-    // asiento) hasta el 31 dic de ese año. El "corte" es la fecha del último asiento.
+    // Estado común de la barra: período y nivel.
+    const _rep = { tipo: 'mes', ancla: '', nivel: 1, empresa: null };
+    const _rango = () => rangoPeriodo(_rep.tipo, _rep.ancla);
+    // El último día con asientos (para que el período arranque donde hay datos).
+    function ultimaFechaAsientos() {
+      return (asientosData || []).map((a) => fechaAsientoISO(a.fecha)).filter(Boolean).sort().pop() || '';
+    }
+    // El corte visible: el fin del rango, o el último asiento si el rango es «todo».
+    function corteISO() {
+      const r = _rango();
+      return r.hasta === '9999-12-31' ? (ultimaFechaAsientos() || (window.__hoyISO ? window.__hoyISO() : _isoDe(new Date()))) : r.hasta;
+    }
+    function nombresPlan() {
+      const n = { '1': 'Activo', '2': 'Pasivo', '3': 'Patrimonio', '4': 'Ingresos', '5': 'Costos', '6': 'Gastos' };
+      try { getCuentasPlan().forEach((c) => { if (c.code && c.name) n[c.code] = c.name; }); } catch (e) { /* plan aún no pintado */ }
+      (asientosData || []).forEach((a) => (Array.isArray(a.lineas) ? a.lineas : []).forEach((l) => { const p = parseCta(l.cta); if (p.c && !n[p.c]) n[p.c] = p.n; }));
+      return n;
+    }
+    const conMovimiento = (c) => Math.abs(c.ant || 0) > 0.004 || c.debe !== 0 || c.haber !== 0;
+
+    // Ejercicio fiscal derivado de los asientos (lo usan el ISLR anual, la impresión y los exports).
     const _MESES_EJ = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
     function ejercicioInfo() {
-      const parse = (f) => { const p = String(f || '').split('/'); if (p.length < 3) return null; let y = p[2]; y = y.length === 2 ? '20' + y : y; const o = { y: +y, m: +p[1], d: +p[0] }; o.key = o.y * 10000 + o.m * 100 + o.d; return o; };
-      const ps = (asientosData || []).map((a) => parse(a.fecha)).filter(Boolean).sort((a, b) => a.key - b.key);
-      const fstr = (p) => p.d + ' de ' + _MESES_EJ[p.m - 1] + ' de ' + p.y;
-      if (!ps.length) { const y = new Date().getFullYear(); return { anio: y, corteStr: '', inicioStr: '', label: 'Ejercicio ' + y, periodo: 'Ejercicio ' + y }; }
-      const corte = ps[ps.length - 1], anio = corte.y;
-      // Los estados son acumulados: el período va desde el inicio de actividades
-      // (primer asiento) hasta el corte. Si algún día se filtra por ejercicio, aquí
-      // se aplicaría 1-ene→31-dic salvo el primer ejercicio (desde el inicio).
-      const ini = ps[0];
-      return { anio: anio, corteStr: fstr(corte), inicioStr: fstr(ini), label: 'Ejercicio ' + anio, periodo: 'Del ' + fstr(ini) + ' al ' + fstr(corte) };
+      const fs = (asientosData || []).map((a) => fechaAsientoISO(a.fecha)).filter(Boolean).sort();
+      const fstr = (iso) => parseInt(iso.slice(8, 10), 10) + ' de ' + _MESES_EJ[parseInt(iso.slice(5, 7), 10) - 1] + ' de ' + iso.slice(0, 4);
+      if (!fs.length) { const y = new Date().getFullYear(); return { anio: y, corteStr: '', inicioStr: '', label: 'Ejercicio ' + y, periodo: 'Ejercicio ' + y }; }
+      const ini = fs[0], corte = fs[fs.length - 1];
+      return { anio: parseInt(corte.slice(0, 4), 10), corteStr: fstr(corte), inicioStr: fstr(ini), label: 'Ejercicio ' + corte.slice(0, 4), periodo: 'Del ' + fstr(ini) + ' al ' + fstr(corte) };
     }
     window.__ejercicioInfo = ejercicioInfo;
+    // Lo que dice la cabecera de cada reporte.
+    function periodoTexto() {
+      const r = _rango();
+      if (r.desde === '') return ejercicioInfo().periodo;
+      return r.etiqueta + ' · del ' + _dmy(r.desde) + ' al ' + _dmy(r.hasta);
+    }
+    window.__periodoReportes = () => ({ desde: _rango().desde, hasta: _rango().hasta, etiqueta: _rango().etiqueta, texto: periodoTexto(), corte: _dmy(corteISO()) });
 
-    function renderBalance(map) {
+    // Saldo según naturaleza: Activo/Costo/Gasto (1,5,6) = debe−haber; Pasivo/Patrimonio/Ingreso (2,3,4) = haber−debe
+    function saldoNatural(c) {
+      const g = c.code.charAt(0);
+      const s = (c.ant || 0) + c.debe - c.haber;
+      return (g === '1' || g === '5' || g === '6') ? s : -s;
+    }
+    // Lo del rango solamente (Resultados): sin el saldo anterior.
+    const movNatural = (c) => saldoNatural({ code: c.code, ant: 0, debe: c.debe, haber: c.haber });
+
+    function renderBalance(cuentasNivel) {
       const tbody = view.querySelector('.conta-tab[data-tab="balance"] table.balance-table tbody');
       const tfoot = view.querySelector('.conta-tab[data-tab="balance"] table.balance-table tfoot');
       if (!tbody) return;
-      const cuentas = Array.from(map.values()).filter((c) => c.debe !== 0 || c.haber !== 0).sort((a, b) => a.code.localeCompare(b.code));
-      let tDebe = 0, tHaber = 0, tSD = 0, tSA = 0;
+      const cuentas = cuentasNivel.filter(conMovimiento).sort((a, b) => a.code.localeCompare(b.code));
+      let tAnt = 0, tDebe = 0, tHaber = 0, tSD = 0, tSA = 0;
+      const sAnt = (v) => (Math.abs(v) < 0.005 ? '—' : fmt2(Math.abs(v)) + (v > 0 ? ' D' : ' A'));
       tbody.innerHTML = cuentas.map((c) => {
-        const saldo = c.debe - c.haber, sd = saldo > 0 ? saldo : 0, sa = saldo < 0 ? -saldo : 0;
-        tDebe += c.debe; tHaber += c.haber; tSD += sd; tSA += sa;
-        return '<tr><td class="mono">' + c.code + '</td><td class="primary">' + c.nombre + '</td><td class="num">—</td>'
+        const saldo = (c.ant || 0) + c.debe - c.haber, sd = saldo > 0 ? saldo : 0, sa = saldo < 0 ? -saldo : 0;
+        tAnt += c.ant || 0; tDebe += c.debe; tHaber += c.haber; tSD += sd; tSA += sa;
+        return '<tr><td class="mono">' + c.code + '</td><td class="primary">' + c.nombre + '</td><td class="num">' + sAnt(c.ant || 0) + '</td>'
           + '<td class="num">' + (c.debe ? fmt2(c.debe) : '—') + '</td><td class="num">' + (c.haber ? fmt2(c.haber) : '—') + '</td>'
           + '<td class="num">' + (sd ? fmt2(sd) : '—') + '</td><td class="num">' + (sa ? fmt2(sa) : '—') + '</td></tr>';
-      }).join('') || '<tr><td colspan="7" style="text-align:center;color:var(--fg-muted);padding:14px;">Aún no hay movimientos. Registra asientos en el Libro Diario.</td></tr>';
-      if (tfoot) tfoot.innerHTML = '<tr><td colspan="3" class="lbl-cell">Totales</td>'
+      }).join('') || '<tr><td colspan="7" style="text-align:center;color:var(--fg-muted);padding:14px;">Sin movimientos en el período.</td></tr>';
+      if (tfoot) tfoot.innerHTML = '<tr><td colspan="2" class="lbl-cell">Totales</td><td class="num" style="text-align:right;">' + sAnt(tAnt) + '</td>'
         + '<td class="num" style="text-align:right;">' + fmt2(tDebe) + '</td><td class="num" style="text-align:right;">' + fmt2(tHaber) + '</td>'
         + '<td class="num" style="text-align:right;">' + fmt2(tSD) + '</td><td class="num" style="text-align:right;">' + fmt2(tSA) + '</td></tr>';
       const ok = Math.abs(tDebe - tHaber) < 0.009 && Math.abs(tSD - tSA) < 0.009;
       const okEl = view.querySelector('.conta-tab[data-tab="balance"] .balance-ok');
       if (okEl) okEl.innerHTML = ok ? '<i data-lucide="check-circle-2"></i> Sumas iguales · cuadrado' : '<i data-lucide="alert-circle"></i> Descuadrado';
       const cnt = view.querySelector('.conta-tab[data-tab="balance"] .table-footer .count');
-      if (cnt) cnt.innerHTML = cuentas.length + ' cuentas con movimiento · <strong>Débitos = Créditos</strong> y <strong>Saldos deudores = acreedores</strong>';
+      if (cnt) cnt.innerHTML = cuentas.length + ' cuentas · ' + periodoTexto() + ' · <strong>Débitos = Créditos</strong> y <strong>Saldos deudores = acreedores</strong>';
     }
 
     let _mayorPage = 1, _mayorCode = null, _mayorMap = null; // paginación del Mayor (20 movimientos por página)
@@ -476,106 +627,95 @@
       const c = map.get(code); if (!c) return;
       _mayorCode = code; _mayorMap = map;
       const setTxt = (id, t) => { const e = document.getElementById(id); if (e) e.textContent = t; };
-      const saldo = c.debe - c.haber;
+      const final = (c.ant || 0) + c.debe - c.haber;
       setTxt('mayorBadge', c.code); setTxt('mayorTitle', c.nombre);
-      setTxt('mayorSub', 'Naturaleza ' + (saldo >= 0 ? 'deudora' : 'acreedora'));
-      setTxt('mayorSaldoLbl', saldo >= 0 ? 'Saldo final deudor' : 'Saldo final acreedor');
-      setTxt('mayorSaldoVal', 'Bs ' + fmt2(Math.abs(saldo)));
+      setTxt('mayorSub', 'Naturaleza ' + (final >= 0 ? 'deudora' : 'acreedora') + ' · ' + periodoTexto());
+      setTxt('mayorSaldoLbl', final >= 0 ? 'Saldo final deudor' : 'Saldo final acreedor');
+      setTxt('mayorSaldoVal', 'Bs ' + fmt2(Math.abs(final)));
       const tbody = document.getElementById('mayorBody');
-      // Saldo corrido calculado sobre TODOS los movimientos (correcto en cualquier página)
-      let run = 0;
+      // Saldo corrido desde el saldo anterior (correcto en cualquier página)
+      let run = c.ant || 0;
       const movs = (c.movs || []).map((m) => { run += (m.d || 0) - (m.h || 0); return { m: m, run: run }; });
       const MP = 20;
       const totalPagM = Math.max(1, Math.ceil(movs.length / MP));
       _mayorPage = Math.min(Math.max(1, page || 1), totalPagM);
       const iniM = (_mayorPage - 1) * MP;
-      let rows = movs.slice(iniM, iniM + MP).map((x) => {
+      const r = _rango();
+      let rows = '<tr class="opening"><td>' + (r.desde ? _dmy(r.desde) : '—') + '</td><td class="mono">—</td><td>Saldo anterior</td><td class="mono">—</td><td class="num">—</td><td class="num">—</td>'
+        + '<td class="saldo">' + fmt2(Math.abs(c.ant || 0)) + '</td></tr>';
+      rows += movs.slice(iniM, iniM + MP).map((x) => {
         const m = x.m;
         return '<tr><td>' + (m.fecha || '') + '</td><td class="mono">#0' + m.num + '</td><td class="primary">' + (m.desc || '') + '</td>'
           + '<td class="mono">' + (m.ref || '—') + '</td><td class="num">' + (m.d ? fmt2(m.d) : '—') + '</td><td class="num">' + (m.h ? fmt2(m.h) : '—') + '</td>'
           + '<td class="saldo">' + fmt2(Math.abs(x.run)) + '</td></tr>';
       }).join('');
+      if (!movs.length) rows += '<tr><td colspan="7" style="text-align:center;color:var(--fg-muted);padding:14px;">Sin movimientos en el período · el saldo es el anterior.</td></tr>';
       if (totalPagM > 1) {
         rows += '<tr><td colspan="7" style="padding:6px 10px;"><div style="display:flex;justify-content:center;align-items:center;gap:14px;font-size:12px;color:var(--fg-muted);">'
           + '<button class="btn btn-ghost" data-mp-dir="-1"' + (_mayorPage <= 1 ? ' disabled' : '') + ' style="height:26px;font-size:11px;">« Anterior</button>'
           + '<span>Página ' + _mayorPage + ' de ' + totalPagM + ' · ' + movs.length + ' movimientos</span>'
           + '<button class="btn btn-ghost" data-mp-dir="1"' + (_mayorPage >= totalPagM ? ' disabled' : '') + ' style="height:26px;font-size:11px;">Siguiente »</button></div></td></tr>';
       }
-      if (tbody) tbody.innerHTML = rows || '<tr><td colspan="7" style="text-align:center;color:var(--fg-muted);padding:14px;">Sin movimientos</td></tr>';
-      setTxt('mayorTotDeb', fmt2(c.debe)); setTxt('mayorTotHaber', fmt2(c.haber)); setTxt('mayorTotSaldo', fmt2(Math.abs(saldo)));
+      if (tbody) tbody.innerHTML = rows;
+      setTxt('mayorTotDeb', fmt2(c.debe)); setTxt('mayorTotHaber', fmt2(c.haber)); setTxt('mayorTotSaldo', fmt2(Math.abs(final)));
     }
     view.addEventListener('click', (e) => {
       const b = e.target.closest('button[data-mp-dir]');
       if (b && !b.disabled && _mayorCode && _mayorMap) renderMayorLedger(_mayorCode, _mayorMap, _mayorPage + parseInt(b.dataset.mpDir, 10));
     });
 
-    function renderMayorTree(map) {
+    function renderMayorTree(cuentasNivel) {
       const body = view.querySelector('.conta-tab[data-tab="mayor"] .account-tree-body');
       if (!body) return;
-      const cuentas = Array.from(map.values()).filter((c) => c.debe !== 0 || c.haber !== 0).sort((a, b) => a.code.localeCompare(b.code));
+      const cuentas = cuentasNivel.filter(conMovimiento).sort((a, b) => a.code.localeCompare(b.code));
+      const map = new Map(cuentas.map((c) => [c.code, c]));
       const grupos = { '1': '1 · Activo', '2': '2 · Pasivo', '3': '3 · Patrimonio', '4': '4 · Ingresos', '5': '5 · Costos', '6': '6 · Gastos' };
       let html = '', lastG = '';
       cuentas.forEach((c) => {
         const g = c.code.charAt(0);
         if (g !== lastG) { html += '<div class="acc-group-label">' + (grupos[g] || g) + '</div>'; lastG = g; }
-        html += '<div class="acc-item" data-code="' + c.code + '"><span class="code">' + c.code + '</span><span class="nm">' + c.nombre + '</span><span class="bal">' + fmt2(Math.abs(c.debe - c.haber)) + '</span></div>';
+        html += '<div class="acc-item" data-code="' + c.code + '"><span class="code">' + c.code + '</span><span class="nm">' + c.nombre + '</span><span class="bal">' + fmt2(Math.abs((c.ant || 0) + c.debe - c.haber)) + '</span></div>';
       });
-      body.innerHTML = html || '<div class="acc-group-label">Sin movimientos aún</div>';
+      body.innerHTML = html || '<div class="acc-group-label">Sin movimientos en el período</div>';
       body.querySelectorAll('.acc-item').forEach((it) => it.addEventListener('click', () => {
         body.querySelectorAll('.acc-item').forEach((x) => x.removeAttribute('data-active'));
         it.dataset.active = 'true'; renderMayorLedger(it.dataset.code, map);
       }));
-      const first = body.querySelector('.acc-item');
-      if (first) { first.dataset.active = 'true'; renderMayorLedger(first.dataset.code, map); }
+      // Se queda en la cuenta que se estaba mirando, si sigue en la lista.
+      const sigue = _mayorCode && body.querySelector('.acc-item[data-code="' + _mayorCode + '"]');
+      const first = sigue || body.querySelector('.acc-item');
+      if (first) { first.dataset.active = 'true'; renderMayorLedger(first.dataset.code, map, sigue ? _mayorPage : 1); }
+      else {
+        _mayorCode = null;
+        const tb = document.getElementById('mayorBody');
+        if (tb) tb.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--fg-muted);padding:14px;">Sin movimientos en el período.</td></tr>';
+      }
       if (window.lucide) window.lucide.createIcons();
     }
 
-    // Saldo según naturaleza: Activo/Costo/Gasto (1,5,6) = debe−haber; Pasivo/Patrimonio/Ingreso (2,3,4) = haber−debe
-    function saldoNatural(c) {
-      const g = c.code.charAt(0);
-      return (g === '1' || g === '5' || g === '6') ? (c.debe - c.haber) : (c.haber - c.debe);
+    function cabecera(tab, texto) {
+      const co = tab.querySelector('.fin-statement-head .co');
+      if (co && window.__EMPRESA_ACTIVA) co.textContent = window.__EMPRESA_ACTIVA.n + ' · ' + (window.__EMPRESA_ACTIVA.rif || '');
+      tab.querySelectorAll('.fin-statement-head .period').forEach((p) => { p.textContent = texto; });
     }
 
-    // ===== Estados financieros por NIVELES (práctica del contador): =====
-    // nivel 1 = solo cuentas mayores, cada nivel baja un escalón del plan; 0 = detalle completo.
-    let _finNivel = 0;
-    let _planNombres = null;
-    function nombreCta(code) {
-      if (!_planNombres) {
-        _planNombres = { '1': 'Activo', '2': 'Pasivo', '3': 'Patrimonio', '4': 'Ingresos', '5': 'Costos', '6': 'Gastos' };
-        try { getCuentasPlan().forEach((c) => { if (!_planNombres[c.code]) _planNombres[c.code] = c.name; }); } catch (e) { /* plan aún no pintado */ }
-      }
-      return _planNombres[code] || code;
-    }
-    // Enrolla los saldos de las cuentas hijas hacia su cuenta padre a la profundidad pedida
-    function rollUp(cuentas, nivel) {
-      if (!nivel) return cuentas;
-      const m = new Map();
-      cuentas.forEach((c) => {
-        const code = c.code.split('.').slice(0, nivel).join('.');
-        if (!m.has(code)) m.set(code, { code: code, nombre: nombreCta(code), debe: 0, haber: 0 });
-        const e = m.get(code);
-        e.debe += c.debe; e.haber += c.haber;
-      });
-      return Array.from(m.values());
-    }
-
-    function renderEstadoResultados(map) {
+    function renderEstadoResultados(cuentasNivel) {
       const tab = view.querySelector('.conta-tab[data-tab="resultados"]');
       if (!tab) return 0;
-      const cuentas = rollUp(Array.from(map.values()).filter((c) => c.debe !== 0 || c.haber !== 0), _finNivel);
+      const cuentas = cuentasNivel.filter((c) => c.debe !== 0 || c.haber !== 0);
       const porGrupo = (g) => cuentas.filter((c) => c.code.charAt(0) === g).sort((a, b) => a.code.localeCompare(b.code));
-      const sum = (arr) => arr.reduce((s, c) => s + saldoNatural(c), 0);
+      const sum = (arr) => arr.reduce((s, c) => s + movNatural(c), 0);
       const ing = porGrupo('4'), cos = porGrupo('5'), gas = porGrupo('6');
       const totIng = sum(ing), totCos = sum(cos), totGas = sum(gas);
       const utilBruta = totIng - totCos, utilOper = utilBruta - totGas, utilNeta = utilOper;
-      const linea = (c) => '<tr class="line-detail"><td class="label"><span class="sub-acc">' + c.code + '</span>' + c.nombre + '</td><td class="amount">' + fmt2(Math.abs(saldoNatural(c))) + '</td><td class="amount pct"></td></tr>';
+      const pct = (v) => (Math.abs(totIng) > 0.005 ? (v / totIng * 100).toFixed(1) + '%' : '');
+      const linea = (c) => '<tr class="line-detail"><td class="label"><span class="sub-acc">' + c.code + '</span>' + c.nombre + '</td><td class="amount">' + fmt2(Math.abs(movNatural(c))) + '</td><td class="amount pct">' + pct(movNatural(c)) + '</td></tr>';
       const sh = (t) => '<tr class="section-head"><td class="label">' + t + '</td><td class="amount"></td><td class="amount pct"></td></tr>';
-      const st = (t, v) => '<tr class="subtotal"><td class="label">' + t + '</td><td class="amount">' + fmt2(v) + '</td><td class="amount pct"></td></tr>';
+      const st = (t, v) => '<tr class="subtotal"><td class="label">' + t + '</td><td class="amount">' + fmt2(v) + '</td><td class="amount pct">' + pct(v) + '</td></tr>';
       let html = sh('Ingresos') + (ing.map(linea).join('') || '<tr class="line-detail"><td class="label">Sin ingresos</td><td class="amount">—</td><td class="amount pct"></td></tr>') + st('Total ingresos', totIng);
       html += sh('Costo de ventas') + (cos.map(linea).join('') || '<tr class="line-detail"><td class="label">Sin costos</td><td class="amount">—</td><td class="amount pct"></td></tr>') + st('Utilidad bruta', utilBruta);
       html += sh('Gastos') + (gas.map(linea).join('') || '<tr class="line-detail"><td class="label">Sin gastos</td><td class="amount">—</td><td class="amount pct"></td></tr>') + st('Total gastos', totGas);
-      html += '<tr class="grand-total"><td class="label">' + (utilNeta >= 0 ? 'Utilidad' : 'Pérdida') + ' neta del ejercicio</td><td class="amount">' + fmt2(Math.abs(utilNeta)) + '</td><td class="amount pct"></td></tr>';
+      html += '<tr class="grand-total"><td class="label">' + (utilNeta >= 0 ? 'Utilidad' : 'Pérdida') + ' neta del período</td><td class="amount">' + fmt2(Math.abs(utilNeta)) + '</td><td class="amount pct">' + pct(utilNeta) + '</td></tr>';
       const tbody = tab.querySelector('.fin-table tbody'); if (tbody) tbody.innerHTML = html;
       const hv = tab.querySelectorAll('.fin-hi .v'), hd = tab.querySelectorAll('.fin-hi .d');
       if (hv[0]) hv[0].textContent = 'Bs ' + fmt2(totIng);
@@ -583,29 +723,39 @@
       if (hv[2]) hv[2].textContent = 'Bs ' + fmt2(utilOper);
       if (hv[3]) hv[3].textContent = 'Bs ' + fmt2(utilNeta);
       hd.forEach((d) => (d.innerHTML = ''));
-      const co = tab.querySelector('.fin-statement-head .co');
-      if (co && window.__EMPRESA_ACTIVA) co.textContent = window.__EMPRESA_ACTIVA.n + ' · ' + (window.__EMPRESA_ACTIVA.rif || '');
-      const perER = tab.querySelector('.fin-statement-head .period'); if (perER) perER.textContent = ejercicioInfo().periodo;
+      cabecera(tab, periodoTexto());
       return utilNeta;
     }
 
-    function renderBalanceGeneral(map, utilNeta) {
+    /* Balance General AL corte. Sin asientos de cierre, el resultado de las
+       cuentas 4, 5 y 6 se parte: lo del ejercicio (desde el 1 de enero del año
+       del corte) y lo de ejercicios anteriores. Así la ecuación cuadra. */
+    function renderBalanceGeneral(nombres) {
       const tab = view.querySelector('.conta-tab[data-tab="general"]');
       if (!tab) return;
-      // El Balance necesita separar corriente/no corriente → profundidad mínima 2
-      const nivelBG = _finNivel === 1 ? 2 : _finNivel;
-      const cuentas = rollUp(Array.from(map.values()).filter((c) => c.debe !== 0 || c.haber !== 0), nivelBG);
-      const byPfx = (p) => cuentas.filter((c) => c.code.indexOf(p) === 0).sort((a, b) => a.code.localeCompare(b.code));
+      const corte = corteISO(), iniEj = corte.slice(0, 4) + '-01-01';
+      const todas = Array.from(saldosEnRango(asientosData, iniEj, corte).values());
+      const res = (c) => '456'.indexOf(c.code.charAt(0)) >= 0;
+      const nat456 = (c, v) => (c.code.charAt(0) === '4' ? v : -v);   // ingreso positivo, costo y gasto restan
+      const utilEj = todas.filter(res).reduce((s, c) => s + nat456(c, c.haber - c.debe), 0);
+      const utilAnt = todas.filter(res).reduce((s, c) => s + nat456(c, -(c.ant || 0)), 0);
+      // El Balance necesita separar corriente / no corriente → nunca menos de Grupo.
+      const seg = segDeNivel(_rep.nivel), segBG = seg === 1 ? 2 : seg;
+      const cuentas = rollUp(todas.filter((c) => !res(c)), segBG, nombres)
+        .map((c) => ({ code: c.code, nombre: c.nombre, ant: (c.ant || 0) + c.debe - c.haber, debe: 0, haber: 0 }))
+        .filter((c) => Math.abs(c.ant) > 0.004);
+      const byPfx = (p) => cuentas.filter((c) => c.code === p || c.code.indexOf(p + '.') === 0).sort((a, b) => a.code.localeCompare(b.code));
       const sum = (arr) => arr.reduce((s, c) => s + saldoNatural(c), 0);
-      const aC = byPfx('1.1'), aNC = byPfx('1.2'), pC = byPfx('2.1'), pNC = byPfx('2.2'), pat = cuentas.filter((c) => c.code.charAt(0) === '3').sort((a, b) => a.code.localeCompare(b.code));
-      const tAC = sum(aC), tANC = sum(aNC), tAct = tAC + tANC, tPC = sum(pC), tPNC = sum(pNC), tPas = tPC + tPNC, tPat = sum(pat) + utilNeta;
-      const linea = (c) => '<tr class="line-detail"><td class="label"><span class="sub-acc">' + c.code + '</span>' + c.nombre + '</td><td class="amount">' + fmt2(Math.abs(saldoNatural(c))) + '</td></tr>';
+      const aC = byPfx('1.1'), aNC = byPfx('1.2'), pC = byPfx('2.1'), pNC = byPfx('2.2'), pat = byPfx('3');
+      const tAC = sum(aC), tANC = sum(aNC), tAct = tAC + tANC, tPC = sum(pC), tPNC = sum(pNC), tPas = tPC + tPNC, tPat = sum(pat) + utilAnt + utilEj;
+      const linea = (c) => '<tr class="line-detail"><td class="label"><span class="sub-acc">' + c.code + '</span>' + c.nombre + '</td><td class="amount">' + (saldoNatural(c) < 0 ? '(' + fmt2(-saldoNatural(c)) + ')' : fmt2(saldoNatural(c))) + '</td></tr>';
       const sh = (t) => '<tr class="section-head"><td class="label">' + t + '</td><td class="amount"></td></tr>';
       const st = (t, v) => '<tr class="subtotal"><td class="label">' + t + '</td><td class="amount">' + fmt2(v) + '</td></tr>';
       const gt = (t, v) => '<tr class="grand-total"><td class="label">' + t + '</td><td class="amount">' + fmt2(v) + '</td></tr>';
+      const lRes = (t, v) => '<tr class="line-detail"><td class="label"><span class="sub-acc">3.2</span>' + (v >= 0 ? 'Utilidad' : 'Pérdida') + ' ' + t + '</td><td class="amount">' + (v < 0 ? '(' + fmt2(-v) + ')' : fmt2(v)) + '</td></tr>';
       let hA = sh('Activo Corriente') + aC.map(linea).join('') + st('Total activo corriente', tAC) + sh('Activo No Corriente') + aNC.map(linea).join('') + st('Total activo no corriente', tANC) + gt('Total activo', tAct);
       let hP = sh('Pasivo Corriente') + pC.map(linea).join('') + st('Total pasivo corriente', tPC) + sh('Pasivo No Corriente') + pNC.map(linea).join('') + st('Total pasivo', tPas);
-      hP += sh('Patrimonio') + pat.map(linea).join('') + '<tr class="line-detail"><td class="label"><span class="sub-acc">3.2.3</span>' + (utilNeta >= 0 ? 'Utilidad' : 'Pérdida') + ' del ejercicio</td><td class="amount">' + fmt2(Math.abs(utilNeta)) + '</td></tr>' + st('Total patrimonio', tPat) + gt('Pasivo + Patrimonio', tPas + tPat);
+      hP += sh('Patrimonio') + pat.map(linea).join('') + (Math.abs(utilAnt) > 0.004 ? lRes('de ejercicios anteriores', utilAnt) : '') + lRes('del ejercicio ' + corte.slice(0, 4), utilEj) + st('Total patrimonio', tPat) + gt('Pasivo + Patrimonio', tPas + tPat);
       const tbs = tab.querySelectorAll('.fin-two-col .fin-statement .fin-table tbody');
       if (tbs[0]) tbs[0].innerHTML = hA;
       if (tbs[1]) tbs[1].innerHTML = hP;
@@ -618,106 +768,176 @@
       if (hv[2]) hv[2].textContent = 'Bs ' + fmt2(tPat);
       if (hv[3]) hv[3].textContent = (tPC ? (tAC / tPC).toFixed(2) : '—') + '×';
       hd.forEach((d) => (d.innerHTML = ''));
-      const coBG = tab.querySelector('.fin-statement-head .co');
-      if (coBG && window.__EMPRESA_ACTIVA) coBG.textContent = window.__EMPRESA_ACTIVA.n + ' · ' + (window.__EMPRESA_ACTIVA.rif || '');
-      tab.querySelectorAll('.fin-statement-head .period').forEach((p) => { p.textContent = 'Al ' + ejercicioInfo().corteStr + ' · Bs'; });
-      // Expone los totales para el módulo de Grandes Patrimonios (IGP)
-      window.__BALANCE = { activo: tAct, pasivo: tPas, patrimonio: tPat };
-      if (window.__renderIGP) window.__renderIGP();
+      cabecera(tab, 'Al ' + _dmy(corte) + ' · Bs');
     }
 
-    // Flujo de Efectivo (método directo): clasifica los movimientos de caja/bancos por su contrapartida
     function renderFlujo() {
       const tab = view.querySelector('.conta-tab[data-tab="flujo"]');
       if (!tab) return;
-      const esCaja = (code) => code.indexOf('1.1.1') === 0;
-      const cats = { op: new Map(), inv: new Map(), fin: new Map() };
-      let efectivoFinal = 0;
-      (asientosData || []).forEach((a) => {
-        const lineas = (Array.isArray(a.lineas) ? a.lineas : []).map((l) => { const p = parseCta(l.cta); return { code: p.c, nombre: p.n, d: Number(l.debe) || 0, h: Number(l.haber) || 0 }; });
-        lineas.forEach((l) => { if (esCaja(l.code)) efectivoFinal += l.d - l.h; });
-        const cajaLines = lineas.filter((l) => esCaja(l.code));
-        const counters = lineas.filter((l) => !esCaja(l.code));
-        if (!cajaLines.length || !counters.length) return;
-        const netCash = cajaLines.reduce((s, l) => s + (l.d - l.h), 0);
-        const codes = counters.map((c) => c.code);
-        let cat = 'op';
-        if (codes.some((c) => c.indexOf('1.2') === 0)) cat = 'inv';
-        else if (codes.some((c) => c.charAt(0) === '3' || c.indexOf('2.2') === 0)) cat = 'fin';
-        const primary = counters.reduce((x, y) => ((y.d + y.h) > (x.d + x.h) ? y : x), counters[0]);
-        const m = cats[cat];
-        if (!m.has(primary.code)) m.set(primary.code, { nombre: primary.nombre, monto: 0 });
-        m.get(primary.code).monto += netCash;
-      });
+      const r = _rango();
+      const f = flujoDirecto(asientosData, r.desde, r.hasta);
       const fmtM = (v) => v < 0 ? '(' + fmt2(Math.abs(v)) + ')' : fmt2(v);
       const clsM = (v) => v < 0 ? 'amount fin-neg' : 'amount fin-pos';
-      function seccion(titulo, m, nombreFlujo) {
+      function seccion(titulo, m, nombreFlujo, tot) {
         let h = '<tr class="section-head"><td class="label">' + titulo + '</td><td class="amount"></td></tr>';
-        let tot = 0;
-        const ent = Array.from(m.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+        const ent = Array.from(m.values()).sort((a, b) => a.orden - b.orden);
         if (!ent.length) h += '<tr class="line-detail"><td class="label">Sin movimientos</td><td class="amount">—</td></tr>';
-        ent.forEach((kv) => { tot += kv[1].monto; h += '<tr class="line-detail"><td class="label">' + kv[1].nombre + '</td><td class="' + clsM(kv[1].monto) + '">' + fmtM(kv[1].monto) + '</td></tr>'; });
-        h += '<tr class="subtotal"><td class="label">Flujo neto de ' + nombreFlujo + '</td><td class="' + clsM(tot) + '">' + fmtM(tot) + '</td></tr>';
-        return { h: h, tot: tot };
+        ent.forEach((x) => { h += '<tr class="line-detail"><td class="label">' + x.rubro + '</td><td class="' + clsM(x.monto) + '">' + fmtM(x.monto) + '</td></tr>'; });
+        return h + '<tr class="subtotal"><td class="label">Flujo neto de ' + nombreFlujo + '</td><td class="' + clsM(tot) + '">' + fmtM(tot) + '</td></tr>';
       }
-      const sOp = seccion('Actividades de operación', cats.op, 'operación');
-      const sInv = seccion('Actividades de inversión', cats.inv, 'inversión');
-      const sFin = seccion('Actividades de financiamiento', cats.fin, 'financiamiento');
-      const variacion = sOp.tot + sInv.tot + sFin.tot, inicial = 0, final = inicial + variacion;
-      let html = sOp.h + sInv.h + sFin.h;
-      html += '<tr class="subtotal"><td class="label">Aumento neto de efectivo</td><td class="' + clsM(variacion) + '">' + fmtM(variacion) + '</td></tr>';
-      html += '<tr class="line-detail"><td class="label">Efectivo al inicio del período</td><td class="amount">' + fmt2(inicial) + '</td></tr>';
-      html += '<tr class="grand-total"><td class="label">Efectivo al final del período</td><td class="amount">' + fmt2(final) + '</td></tr>';
+      let html = seccion('Actividades de operación', f.act.op, 'operación', f.op)
+        + seccion('Actividades de inversión', f.act.inv, 'inversión', f.inv)
+        + seccion('Actividades de financiamiento', f.act.fin, 'financiamiento', f.fin);
+      html += '<tr class="subtotal"><td class="label">' + (f.variacion >= 0 ? 'Aumento' : 'Disminución') + ' neto de efectivo</td><td class="' + clsM(f.variacion) + '">' + fmtM(f.variacion) + '</td></tr>';
+      html += '<tr class="line-detail"><td class="label">Efectivo al inicio del período</td><td class="amount">' + fmtM(f.inicial) + '</td></tr>';
+      html += '<tr class="grand-total"><td class="label">Efectivo al final del período</td><td class="amount">' + fmtM(f.final) + '</td></tr>';
       const tbody = tab.querySelector('.fin-table tbody'); if (tbody) tbody.innerHTML = html;
       const hv = tab.querySelectorAll('.fin-hi .v'), hd = tab.querySelectorAll('.fin-hi .d');
-      if (hv[0]) hv[0].textContent = 'Bs ' + fmt2(inicial);
-      if (hv[1]) hv[1].textContent = 'Bs ' + fmt2(sOp.tot);
-      if (hv[2]) hv[2].textContent = 'Bs ' + fmt2(variacion);
-      if (hv[3]) hv[3].textContent = 'Bs ' + fmt2(final);
+      if (hv[0]) hv[0].textContent = 'Bs ' + fmt2(f.inicial);
+      if (hv[1]) hv[1].textContent = 'Bs ' + fmt2(f.op);
+      if (hv[2]) hv[2].textContent = 'Bs ' + fmt2(f.variacion);
+      if (hv[3]) hv[3].textContent = 'Bs ' + fmt2(f.final);
       hd.forEach((d) => (d.innerHTML = ''));
-      const co = tab.querySelector('.fin-statement-head .co');
-      if (co && window.__EMPRESA_ACTIVA) co.textContent = window.__EMPRESA_ACTIVA.n + ' · ' + (window.__EMPRESA_ACTIVA.rif || '');
-      const per = tab.querySelector('.fin-statement-head .period'); if (per) per.textContent = ejercicioInfo().periodo + ' · Método directo';
+      cabecera(tab, periodoTexto() + ' · Método directo');
       const banner = tab.querySelector('.balance-check-banner');
-      if (banner) banner.innerHTML = '<i data-lucide="check-circle-2"></i> Conciliado · Efectivo final Bs ' + fmt2(final) + ' coincide con el saldo de Caja y Bancos.';
+      if (banner) banner.innerHTML = f.cuadra
+        ? '<i data-lucide="check-circle-2"></i> Conciliado · el efectivo final Bs ' + fmt2(f.final) + ' es el saldo de Caja y Bancos (1.1.1) al cierre del período.'
+        : '<i data-lucide="alert-circle"></i> No concilia · el flujo da Bs ' + fmt2(f.final) + ' y Caja y Bancos tienen Bs ' + fmt2(f.cajaFin) + ': hay un asiento descuadrado en el período.';
     }
 
-    // Selector de nivel (1 / 2 / 3 / Detalle) en Resultados y Balance General
-    (function wireNiveles() {
-      ['resultados', 'general'].forEach((t) => {
-        const head = view.querySelector('.conta-tab[data-tab="' + t + '"] .fin-statement-head');
-        if (!head || head.querySelector('.fin-nivel')) return;
-        const d = document.createElement('div');
-        d.className = 'fin-nivel';
-        d.style.cssText = 'display:flex;gap:6px;align-items:center;margin-top:6px;';
-        d.innerHTML = '<span style="font-size:11px;color:var(--fg-muted);font-weight:600;">Nivel de detalle:</span>'
-          + [1, 2, 3, 0].map((n) => '<button class="btn btn-ghost" data-fin-nivel="' + n + '" style="height:24px;font-size:11px;padding:0 8px;"' + (n === _finNivel ? ' data-active="true"' : '') + '>' + (n === 0 ? 'Detalle' : 'Nivel ' + n) + '</button>').join('');
-        head.appendChild(d);
-      });
-      view.addEventListener('click', (e) => {
-        const b = e.target.closest('button[data-fin-nivel]');
-        if (!b) return;
-        _finNivel = parseInt(b.dataset.finNivel, 10);
-        view.querySelectorAll('button[data-fin-nivel]').forEach((x) => {
-          if (parseInt(x.dataset.finNivel, 10) === _finNivel) { x.dataset.active = 'true'; } else { x.removeAttribute('data-active'); }
+    // ── La barra común de período y nivel ──────────────────────────────────
+    const TABS_REPORTE = ['diario', 'mayor', 'balance', 'resultados', 'general', 'flujo'];
+    (function barraReportes() {
+      const tabs = document.getElementById('contaTabs');
+      if (!tabs || document.getElementById('contaRepBar')) return;
+      const bar = document.createElement('div');
+      bar.id = 'contaRepBar';
+      bar.style.cssText = 'display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;margin:0 0 14px;font-size:12px;color:var(--fg-muted);';
+      const btn = 'height:28px;font-size:12px;padding:0 10px;';
+      bar.innerHTML = '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;"><span style="font-weight:600;">Período:</span>'
+        + '<select id="crbTipo" style="height:28px;border:1px solid var(--border-strong);border-radius:8px;padding:0 6px;font:inherit;background:var(--bg-surface);color:var(--fg-primary);">'
+        + '<option value="todo">Todo</option><option value="dia">Día</option><option value="semana">Semana</option><option value="mes" selected>Mes</option><option value="anio">Año</option></select>'
+        + '<button class="btn btn-ghost" data-crb-dir="-1" style="' + btn + '" title="Período anterior">‹</button>'
+        + '<strong id="crbEtq" style="color:var(--fg-primary);min-width:120px;text-align:center;">—</strong>'
+        + '<button class="btn btn-ghost" data-crb-dir="1" style="' + btn + '" title="Período siguiente">›</button></div>'
+        + '<div id="crbNivel" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;"><span style="font-weight:600;">Nivel:</span>'
+        + [[1, 'Detalle'], [2, 'Cuenta'], [3, 'Grupo'], [4, 'Clase']].map((n) => '<button class="btn btn-ghost" data-crb-nivel="' + n[0] + '" style="' + btn + '">' + n[0] + ' · ' + n[1] + '</button>').join('')
+        + '</div>';
+      tabs.insertAdjacentElement('afterend', bar);
+      const pintarBarra = () => {
+        const r = _rango();
+        const etq = document.getElementById('crbEtq'); if (etq) etq.textContent = r.etiqueta;
+        bar.querySelectorAll('[data-crb-dir]').forEach((b) => { b.disabled = _rep.tipo === 'todo'; });
+        bar.querySelectorAll('[data-crb-nivel]').forEach((b) => {
+          if (parseInt(b.dataset.crbNivel, 10) === _rep.nivel) b.dataset.active = 'true'; else b.removeAttribute('data-active');
         });
-        renderReportes();
+      };
+      const visible = () => {
+        const act = tabs.querySelector('button[data-active="true"]');
+        const t = act ? act.dataset.tab : 'diario';
+        bar.style.display = TABS_REPORTE.indexOf(t) >= 0 ? 'flex' : 'none';
+        const niv = document.getElementById('crbNivel');
+        if (niv) niv.style.display = t === 'diario' ? 'none' : 'flex';   // el Diario no se enrolla
+      };
+      tabs.addEventListener('click', () => setTimeout(visible, 0));
+      const cambio = () => { pintarBarra(); if (window.__repintarPeriodo) window.__repintarPeriodo(1); else renderReportes(); };
+      bar.addEventListener('change', (e) => {
+        if (e.target.id !== 'crbTipo') return;
+        _rep.tipo = e.target.value;
+        if (!_rep.ancla) _rep.ancla = ultimaFechaAsientos() || (window.__hoyISO ? window.__hoyISO() : _isoDe(new Date()));
+        cambio();
       });
+      bar.addEventListener('click', (e) => {
+        const d = e.target.closest('[data-crb-dir]');
+        if (d && !d.disabled) { _rep.ancla = moverAncla(_rep.tipo, _rep.ancla || ultimaFechaAsientos() || _isoDe(new Date()), parseInt(d.dataset.crbDir, 10)); cambio(); return; }
+        const n = e.target.closest('[data-crb-nivel]');
+        if (n) { _rep.nivel = parseInt(n.dataset.crbNivel, 10); pintarBarra(); renderReportes(); }
+      });
+      window.__pintarBarraReportes = pintarBarra;
+      pintarBarra(); visible();
     })();
 
+    // ── Cuadre con la Forma 30 (sql/contabilidad_13): en el Balance de Comprobación ──
+    let _cuadreTurno = 0, _cuadreClave = '';
+    async function renderCuadreF30() {
+      const tab = view.querySelector('.conta-tab[data-tab="balance"]');
+      const emp = window.__EMPRESA_ACTIVA;
+      if (!tab || !window.sb || !emp || !emp.id) return;
+      let box = document.getElementById('cuadreF30');
+      if (!box) {
+        box = document.createElement('div');
+        box.id = 'cuadreF30';
+        box.style.cssText = 'margin:0 0 14px;font-size:12px;';
+        const wrap = tab.querySelector('.data-table-wrap');
+        if (wrap) wrap.insertAdjacentElement('beforebegin', box); else tab.prepend(box);
+      }
+      const r = _rango();
+      /* Cambiar de nivel repinta los reportes pero no cambia el cuadre: solo se
+         vuelve a pedir con otro período, otra empresa o asientos recargados. */
+      const clave = emp.id + '|' + r.desde + '|' + r.hasta + '|' + _cargaAsientos;
+      if (clave === _cuadreClave) return;
+      _cuadreClave = clave;
+      if (r.desde === '') { box.innerHTML = '<div style="color:var(--fg-muted);">Cuadre con la Forma 30: elige un mes o un año para verlo.</div>'; return; }
+      // Los meses del rango (un día o una semana caen en uno o dos meses).
+      const meses = [];
+      for (let m = r.desde.slice(0, 7); m <= r.hasta.slice(0, 7) && meses.length < 12;) {
+        meses.push(m);
+        const [y, mm] = m.split('-').map((x) => parseInt(x, 10));
+        m = mm === 12 ? (y + 1) + '-01' : y + '-' + _pad2(mm + 1);
+      }
+      const turno = ++_cuadreTurno;
+      const pedidos = [];
+      meses.forEach((m) => {
+        const quin = window.__ivaPorQuincenaEn ? window.__ivaPorQuincenaEn(m) : false;
+        (quin ? [1, 2] : [null]).forEach((q) => pedidos.push({ m: m, q: q }));
+      });
+      const res = await Promise.all(pedidos.map((p) => window.sb.rpc('contab_cuadre_iva', { p_empresa: emp.id, p_periodo: p.m, p_quincena: p.q })));
+      if (turno !== _cuadreTurno) return;   // llegó tarde: ya se pidió otro período
+      const err = res.find((x) => x.error);
+      if (err) {
+        box.innerHTML = '<div style="color:var(--fg-muted);">Cuadre con la Forma 30: ' + (/contab_cuadre_iva|PGRST202/.test((err.error.message || '') + (err.error.code || ''))
+          ? 'falta correr sql/contabilidad_13_apertura_y_cuadre.sql en Supabase.' : 'no se pudo calcular (' + err.error.message + ').') + '</div>';
+        return;
+      }
+      const filas = res.map((x, i) => ({ p: pedidos[i], d: x.data || {} }))
+        .filter((x) => Math.abs(Number(x.d.debito_contable) || 0) + Math.abs(Number(x.d.debito_fiscal) || 0) + Math.abs(Number(x.d.credito_contable) || 0) + Math.abs(Number(x.d.credito_fiscal) || 0) > 0.004);
+      if (!filas.length) { box.innerHTML = '<div style="color:var(--fg-muted);">Cuadre con la Forma 30: sin IVA en el período.</div>'; return; }
+      const n = (v) => fmt2(Number(v) || 0);
+      const mesTxt = (p) => _MESES_R[parseInt(p.m.slice(5, 7), 10) - 1] + ' ' + p.m.slice(0, 4) + (p.q ? ' · ' + p.q + 'ª quincena' : '');
+      const dif = (v) => (Math.abs(Number(v) || 0) < 0.01 ? '—' : '<strong style="color:var(--danger-600,#c0392b);">' + n(v) + '</strong>');
+      box.innerHTML = '<div class="data-table-wrap"><div class="table-toolbar"><strong style="color:var(--fg-primary);">Cuadre con la Forma 30</strong>'
+        + '<span style="margin-left:8px;color:var(--fg-muted);">IVA de la contabilidad contra el del libro que declara el módulo Fiscal</span></div>'
+        + '<div class="table-scroll"><table class="data-table" style="min-width:760px;"><thead><tr><th>Período de IVA</th>'
+        + '<th class="num">Débito contable</th><th class="num">Débito del libro</th><th class="num">Diferencia</th>'
+        + '<th class="num">Crédito contable</th><th class="num">Crédito del libro</th><th class="num">Diferencia</th><th></th></tr></thead><tbody>'
+        + filas.map((x) => '<tr><td>' + mesTxt(x.p) + '</td>'
+          + '<td class="num">' + n(x.d.debito_contable) + '</td><td class="num">' + n(x.d.debito_fiscal) + '</td><td class="num">' + dif(x.d.dif_debito) + '</td>'
+          + '<td class="num">' + n(x.d.credito_contable) + '</td><td class="num">' + n(x.d.credito_fiscal) + '</td><td class="num">' + dif(x.d.dif_credito) + '</td>'
+          + '<td>' + (x.d.cuadra ? '<span class="tag green">Cuadra</span>' : '<span class="tag red">No cuadra</span>') + '</td></tr>').join('')
+        + '</tbody></table></div></div>';
+    }
+
     function renderReportes() {
-      const map = agregarPorCuenta();
-      renderBalance(map);
-      renderMayorTree(map);
-      const utilNeta = renderEstadoResultados(map);
-      renderBalanceGeneral(map, utilNeta || 0);
+      const r = _rango(), nombres = nombresPlan(), seg = segDeNivel(_rep.nivel);
+      const cuentas = rollUp(Array.from(saldosEnRango(asientosData, r.desde, r.hasta).values()), seg, nombres);
+      renderBalance(cuentas);
+      renderMayorTree(cuentas);
+      renderEstadoResultados(cuentas);
+      renderBalanceGeneral(nombres);
       renderFlujo();
-      // Expone el enriquecimiento neto acumulado para el medidor de ISLR del ejercicio
-      window.__UTILIDAD_NETA = utilNeta || 0;
-      // Cabecera de Contabilidad: overline y chip de período reflejan el ejercicio real
+      renderCuadreF30();
+      /* El medidor de ISLR y el IGP miran el ACUMULADO de todo lo registrado,
+         como antes: no cambian con el período que se esté mirando. */
+      const todo = Array.from(saldosEnRango(asientosData, '', '9999-12-31').values());
+      const sNat = (pfx) => todo.filter((c) => c.code.charAt(0) === pfx).reduce((s, c) => s + saldoNatural(c), 0);
+      const utilTodo = sNat('4') - sNat('5') - sNat('6');
+      window.__UTILIDAD_NETA = utilTodo;
+      window.__BALANCE = { activo: sNat('1'), pasivo: sNat('2'), patrimonio: sNat('3') + utilTodo };
+      if (window.__renderIGP) window.__renderIGP();
+      // Cabecera de Contabilidad: overline y chip de período reflejan lo que se mira
       const ej = ejercicioInfo();
       const ov = view.querySelector('.dash-header .overline'); if (ov) ov.textContent = 'Libros legales · ' + ej.label;
-      const dr = view.querySelector('.dash-header .date-range'); if (dr) dr.innerHTML = '<button data-active="true">' + ej.label + '</button>';
+      const dr = view.querySelector('.dash-header .date-range'); if (dr) dr.innerHTML = '<button data-active="true">' + r.etiqueta + '</button>';
       if (window.__renderISLRanual) window.__renderISLRanual();
       if (window.lucide) window.lucide.createIcons();
     }
@@ -944,7 +1164,7 @@
             Number(l.debe) || 0 ? String(l.debe) : '', Number(l.haber) || 0 ? String(l.haber) : '']);
         });
       });
-      csvDownload(rows, 'Libro_Diario_Ejercicio_' + ejercicioInfo().anio + '.csv');
+      csvDownload(rows, 'Libro_Diario_' + _rango().etiqueta.replace(/[^0-9A-Za-zÁÉÍÓÚáéíóúñÑ]+/g, '_') + '.csv');
       toast('Libro Diario exportado a CSV');
     });
 
@@ -987,101 +1207,7 @@
       });
     });
 
-    /* =========================================================
-       LIBRO MAYOR — movimientos de la cuenta derivados del Diario
-       ========================================================= */
-    const mayorBody = document.getElementById('mayorBody');
-    const DEUDORAS = ['1', '5', '6']; // activo, costos, gastos
-    // Saldo final conocido de cada cuenta (Bs) → la apertura se calcula para que
-    // el acumulado del Mayor cierre exactamente en este saldo.
-    const SALDOS_FINALES = {
-      '1.1.1.02': 0, '1.1.2.01': 0, '1.1.4.02': 0,
-      '2.1.1.01': 0, '2.1.4.01': 0, '2.1.4.05': 0,
-      '3.1.1.01': 0, '4.1.1.01': 0, '5.1.1.01': 0,
-      '6.1.1.01': 0, '6.2.1.01': 0,
-    };
-    const num2 = (s) => {
-      const t = (s || '').replace(/\./g, '').replace(',', '.').replace(/[^\d.-]/g, '');
-      return parseFloat(t) || 0;
-    };
-
-    function renderMayor(code, name) {
-      if (!mayorBody) return;
-      const deudora = DEUDORAS.includes(code.charAt(0));
-
-      /* Los movimientos salen de los DATOS del período, no de los asientos
-         pintados en el Diario.
-
-         El Diario se pagina de 10 en 10. Leyéndolo del DOM, el Mayor de una
-         cuenta solo recogía los movimientos de los 10 asientos de la página
-         que estuviera abierta — y con eso el saldo de la cuenta salía mal, sin
-         que nada avisara. Es el mismo error que tenía el resumen de
-         retenciones: calcular sobre lo que se ve en vez de sobre lo que hay.
-
-         Se usa __diarioDelMes, que es el mes seleccionado SIN paginar, para
-         que el Mayor siga al filtro de mes del Diario como siempre. */
-      const delPeriodo = (window.__diarioDelMes || asientosData || [])
-        .slice()
-        .sort((a, b) => (a.numero || 0) - (b.numero || 0));
-      const movs = [];
-      delPeriodo.forEach((a) => {
-        const fecha = a.fecha || '';
-        const anum = a.numero != null ? String(a.numero).padStart(4, '0') : '';
-        const desc = a.descripcion || '';
-        const ref = a.referencia || '';
-        (Array.isArray(a.lineas) ? a.lineas : []).forEach((l) => {
-          // La cuenta viene como '1.1.1.01 · Nombre'; se compara solo el código.
-          const cod = String(l.cta || '').split(' · ')[0].trim();
-          if (cod !== code) return;
-          movs.push({ fecha, anum, desc, ref, deb: Number(l.debe) || 0, haber: Number(l.haber) || 0 });
-        });
-      });
-
-      // Movimiento neto del período según la naturaleza + sumas de columnas
-      let netMov = 0, sumDeb = 0, sumHaber = 0;
-      movs.forEach((m) => { netMov += deudora ? (m.deb - m.haber) : (m.haber - m.deb); sumDeb += m.deb; sumHaber += m.haber; });
-      // Apertura: tal que apertura + movimientos = saldo final conocido
-      const target = SALDOS_FINALES[code] != null ? SALDOS_FINALES[code] : netMov;
-      let saldo = target - netMov;
-      let html = '<tr class="opening"><td>01/05/26</td><td class="mono">—</td><td>Saldo de apertura</td><td class="mono">—</td><td class="num">—</td><td class="num">—</td><td class="saldo">' + fmt2(saldo) + '</td></tr>';
-      if (movs.length === 0) {
-        html += '<tr><td colspan="7" style="text-align:center;color:var(--fg-muted);padding:18px;">Sin movimientos en el período · el saldo se mantiene en la apertura.</td></tr>';
-      } else {
-        movs.forEach((m) => {
-          saldo += deudora ? (m.deb - m.haber) : (m.haber - m.deb);
-          html += '<tr><td>' + m.fecha + '</td><td class="mono">' + m.anum + '</td>'
-            + '<td class="primary">' + m.desc + '</td><td class="mono">' + (m.ref || '—') + '</td>'
-            + '<td class="num">' + (m.deb ? fmt2(m.deb) : '—') + '</td>'
-            + '<td class="num">' + (m.haber ? fmt2(m.haber) : '—') + '</td>'
-            + '<td class="saldo">' + fmt2(saldo) + '</td></tr>';
-        });
-      }
-      mayorBody.innerHTML = html;
-
-      // Encabezado y saldo final
-      const setT = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-      setT('mayorBadge', code);
-      setT('mayorTitle', name);
-      const tipoNat = deudora ? 'deudora' : 'acreedora';
-      const grupo = { '1': 'Activo', '2': 'Pasivo', '3': 'Patrimonio', '4': 'Ingreso', '5': 'Costo', '6': 'Gasto' }[code.charAt(0)] || '';
-      setT('mayorSub', grupo + ' · Naturaleza ' + tipoNat + ' · ' + ejercicioInfo().label);
-      setT('mayorSaldoLbl', 'Saldo final ' + tipoNat);
-      setT('mayorSaldoVal', 'Bs ' + fmt2(saldo));
-      // Totales del pie
-      setT('mayorTotDeb', fmt2(sumDeb));
-      setT('mayorTotHaber', fmt2(sumHaber));
-      setT('mayorTotSaldo', fmt2(saldo));
-      drawIcons();
-    }
-
-    // Click en una cuenta del árbol → renderiza su mayor
-    view.querySelectorAll('.account-tree .acc-item').forEach((item) => {
-      item.addEventListener('click', () => {
-        const code = ((item.querySelector('.code') || {}).textContent || '').trim();
-        const name = ((item.querySelector('.nm') || {}).textContent || '').trim();
-        if (code) renderMayor(code, name);
-      });
-    });
+    /* El Mayor lo pinta renderMayorTree / renderMayorLedger con el período de la barra. */
 
     // ---- Exportar Mayor (CSV de la cuenta activa) ----
     const mayorExport = document.getElementById('mayorExportBtn');
@@ -1100,9 +1226,9 @@
     // Cada estado clona solo su contenido esencial. Resultados/Flujo ya traen su propia
     // cabecera (noHead); Balance/General usan la cabecera generada.
     const finMeta = {
-      balance: { nombre: 'Balance de Comprobación', orient: 'landscape', subFn: () => 'Al ' + ejercicioInfo().corteStr + ' · Bs', sel: 'table.balance-table', head: true },
+      balance: { nombre: 'Balance de Comprobación', orient: 'landscape', subFn: () => periodoTexto() + ' · Bs', sel: 'table.balance-table', head: true },
       resultados: { nombre: 'Estado de Resultados', orient: 'portrait', sel: '.fin-statement', head: false },
-      general: { nombre: 'Balance General', orient: 'portrait', subFn: () => 'Al ' + ejercicioInfo().corteStr + ' · Bs', sel: '.fin-two-col', head: true },
+      general: { nombre: 'Balance General', orient: 'portrait', subFn: () => 'Al ' + _dmy(corteISO()) + ' · Bs', sel: '.fin-two-col', head: true },
       flujo: { nombre: 'Flujo de Efectivo', orient: 'portrait', sel: '.fin-statement', head: false },
     };
     view.querySelectorAll('[data-fin-action]').forEach((btn) => {
@@ -1134,7 +1260,7 @@
       const panel = view.querySelector('.conta-tab[data-tab="mayor"] .panel');
       const code = (document.getElementById('mayorBadge') || {}).textContent || '';
       const name = (document.getElementById('mayorTitle') || {}).textContent || '';
-      printContaDoc(panel, { titulo: 'Libro Mayor · ' + code, sub: name + ' · ' + ejercicioInfo().label, orient: 'portrait' });
+      printContaDoc(panel, { titulo: 'Libro Mayor · ' + code, sub: name + ' · ' + periodoTexto(), orient: 'portrait' });
     });
 
     // ---- Imprimir Plan de Cuentas (vertical, solo la tabla) ----

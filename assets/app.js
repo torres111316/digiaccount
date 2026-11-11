@@ -13253,6 +13253,9 @@
     const dmy = (iso) => (iso ? String(iso).slice(8, 10) + '/' + String(iso).slice(5, 7) + '/' + String(iso).slice(0, 4) : '—');
 
     let GUIA = [], AP = null, PART = [];
+    /* La cuenta de cada renglón (sql/contabilidad_13): el plan de la empresa y
+       sus bancos de Tesorería, que ya tienen su subcuenta 1.1.1.03.NN. */
+    let CTAS = [], BANCOS = [], _ctasDe = null;
 
     const emp = () => window.__EMPRESA_ACTIVA || {};
 
@@ -13264,6 +13267,15 @@
       if (!GUIA.length) {
         const { data } = await window.sb.from('apertura_guia').select('*').order('orden');
         GUIA = data || [];
+      }
+      if (_ctasDe !== emp().id) {
+        const [pl, bc] = await Promise.all([
+          window.sb.rpc('plan_de_empresa', { p_empresa: emp().id }),
+          window.sb.from('cuentas_tesoreria').select('nombre,banco,moneda,cuenta_contable').eq('empresa_id', emp().id),
+        ]);
+        CTAS = ((pl && pl.data) || []).filter((c) => !/grupo/i.test(c.tipo || '')).map((c) => ({ codigo: c.codigo, nombre: c.nombre }));
+        BANCOS = ((bc && bc.data) || []).filter((b) => b.cuenta_contable);
+        _ctasDe = emp().id;
       }
       const { data: ap } = await window.sb.from('apertura').select('*').eq('empresa_id', emp().id).maybeSingle();
       AP = ap || null;
@@ -13278,6 +13290,30 @@
     window.cargarApertura = cargar;
 
     const vacio = (txt) => '<div class="ap-vacio">' + esc(txt) + '</div>';
+    const nombreCuenta = (cod) => {
+      const b = BANCOS.find((x) => x.cuenta_contable === cod);
+      if (b) return b.nombre;
+      const c = CTAS.find((x) => x.codigo === cod);
+      return c ? c.nombre : 'no está en el plan';
+    };
+    /* Las opciones de cuenta de un renglón: primero las que le corresponden
+       (los bancos de Tesorería en Bancos y Caja; las de su rama del plan),
+       después el resto del plan, por si el contador la lleva en otra. */
+    function opcionesCuenta(g) {
+      const rama = (g.cuenta || '').split('.').slice(0, 3).join('.');
+      const ops = [];
+      if (g.grupo === 'banco' || g.grupo === 'caja') {
+        BANCOS.filter((b) => b.cuenta_contable.indexOf(g.grupo === 'banco' ? '1.1.1.03' : '1.1.1.01') === 0)
+          .forEach((b) => ops.push({ value: b.cuenta_contable, label: b.cuenta_contable + ' · ' + b.nombre + (b.moneda && b.moneda !== 'Bs' ? ' (' + b.moneda + ')' : '') }));
+      }
+      const visto = new Set(ops.map((o) => o.value));
+      const ctas = CTAS.slice();
+      if (g.cuenta && !ctas.some((c) => c.codigo === g.cuenta)) ctas.push({ codigo: g.cuenta, nombre: g.titulo });
+      const deRama = ctas.filter((c) => rama && (c.codigo === rama || c.codigo.indexOf(rama + '.') === 0));
+      const resto = ctas.filter((c) => deRama.indexOf(c) < 0);
+      deRama.concat(resto).forEach((c) => { if (!visto.has(c.codigo)) { visto.add(c.codigo); ops.push({ value: c.codigo, label: c.codigo + ' · ' + c.nombre }); } });
+      return ops;
+    }
 
     function cuadre() {
       const debe = PART.reduce((a, p) => a + (Number(p.debe) || 0), 0);
@@ -13320,7 +13356,8 @@
           +   '<div class="ar-der">'
           +     (filas.length ? '<span class="ar-suma">' + bs(suma) + '</span>' : '')
           +     (AP.estado === 'cerrada' ? ''
-                : '<button class="btn btn-ghost ar-add" data-guia="' + esc(g.id) + '"><i data-lucide="plus"></i> Agregar</button>')
+                : (g.id === 'activo_fijo' ? '<button class="btn btn-ghost" id="apTraerActivos" title="El costo y la depreciación que traía cada activo registrado en Activos fijos"><i data-lucide="download"></i> Traer de Activos fijos</button>' : '')
+                + '<button class="btn btn-ghost ar-add" data-guia="' + esc(g.id) + '"><i data-lucide="plus"></i> Agregar</button>')
           +   '</div>'
           + '</div>'
           + '<p class="ar-ayuda">' + esc(g.ayuda) + (g.detallado ? ' <em>Va documento por documento.</em>' : '') + '</p>'
@@ -13328,6 +13365,7 @@
               '<div class="ar-fila">'
               + '<span class="af-desc">' + esc(p.descripcion)
               +   (p.tercero_nombre ? '<em>' + esc(p.tercero_nombre) + (p.documento ? ' · ' + esc(p.documento) : '') + '</em>' : '')
+              +   (p.cuenta_contable ? '<em>Cuenta ' + esc(p.cuenta_contable) + ' · ' + esc(nombreCuenta(p.cuenta_contable)) + '</em>' : '<em>Sin cuenta contable</em>')
               +   (p.calculado ? '<span class="af-calc">calculado por el sistema</span>' : '')
               + '</span>'
               + '<span class="af-monto">' + bs((Number(p.debe) || 0) + (Number(p.haber) || 0))
@@ -13412,6 +13450,16 @@
           cargar();
         }));
 
+      const tra = $('apTraerActivos');
+      if (tra) tra.addEventListener('click', async () => {
+        const { data, error } = await window.sb.rpc('apertura_traer_activos', { p_empresa: emp().id });
+        if (error) { toast('No se pudieron traer: ' + error.message, 'error'); return; }
+        toast(data ? data + ' activo(s) traído(s) de Activos fijos'
+          : 'No hay activos nuevos registrados a mano hasta el ' + dmy(AP.fecha_corte) + ' (los comprados con factura ya tienen el asiento de su compra)',
+          data ? 'success' : 'info');
+        cargar();
+      });
+
       const cua = $('apCuadrar');
       if (cua) cua.addEventListener('click', cuadrarConResultados);
 
@@ -13420,8 +13468,9 @@
         const { data, error } = await window.sb.rpc('cerrar_apertura', { p_empresa: emp().id });
         if (error) { toast('No se pudo cerrar: ' + error.message, 'error'); return; }
         if (data && data.ok === false) { toast(data.motivo, 'error'); return; }
-        toast('Apertura cerrada ✓ · el sistema arranca desde ' + dmy(AP.fecha_corte), 'success');
+        toast('Apertura cerrada ✓ · asiento de apertura' + (data && data.asiento ? ' N° ' + data.asiento : '') + ' al ' + dmy(AP.fecha_corte), 'success');
         cargar();
+        if (window.cargarAsientos) window.cargarAsientos();
       });
 
       const rea = $('apReabrir');
@@ -13433,8 +13482,9 @@
         if (error || (data && data.ok === false)) {
           toast('No se pudo reabrir: ' + (error ? error.message : data.motivo), 'error'); return;
         }
-        toast('Apertura reabierta · puedes corregirla', 'info');
+        toast('Apertura reabierta · su asiento se quitó hasta que la vuelvas a cerrar', 'info');
         cargar();
+        if (window.cargarAsientos) window.cargarAsientos();
       });
     }
 
@@ -13442,6 +13492,10 @@
     function agregar(g) {
       if (!g) return;
       const detallado = g.detallado;
+      const opsCta = opcionesCuenta(g);
+      // En Bancos y Caja, el primer banco de Tesorería (ya trae su subcuenta); si no hay, la de la guía.
+      const ctaPorDefecto = ((g.grupo === 'banco' || g.grupo === 'caja') && opsCta[0] && opsCta[0].value.split('.').length > 4)
+        ? opsCta[0].value : (g.cuenta || (opsCta[0] && opsCta[0].value) || '');
       window.openFormModal && window.openFormModal({
         title: g.titulo,
         saveLabel: 'Agregar al asiento',
@@ -13460,6 +13514,7 @@
           { name: 'montoDivisa', label: 'Monto en divisa (si aplica)', type: 'number', placeholder: '0,00' },
           { name: 'tasa', label: 'Tasa usada (si aplica)', type: 'number', placeholder: 'Bs por 1 divisa' },
           { name: 'monto', label: 'Monto en bolívares', type: 'number', col: 2, placeholder: '0,00' },
+          { name: 'cuenta', label: 'Cuenta contable', type: 'select', col: 2, options: opsCta, value: ctaPorDefecto },
         ]),
         onSave: async (v) => {
           const monto = Math.abs(parseFloat(String(v.monto).replace(',', '.')) || 0);
@@ -13469,6 +13524,7 @@
           const fila = {
             empresa_id: emp().id, cuenta_id: window.__CUENTA_ID,
             grupo: g.grupo, descripcion: v.descripcion.trim(),
+            cuenta_contable: String(v.cuenta || g.cuenta || '').trim() || null,
             debe:  g.lado === 'debe'  ? monto : 0,
             haber: g.lado === 'haber' ? monto : 0,
             moneda: mon,
@@ -13518,7 +13574,7 @@
         empresa_id: emp().id, cuenta_id: window.__CUENTA_ID,
         grupo: 'patrimonio', descripcion: txt,
         debe: alHaber ? 0 : monto, haber: alHaber ? monto : 0,
-        calculado: true,
+        calculado: true, cuenta_contable: '3.2.2.01',
         nota: 'Diferencia de la apertura al ' + dmy(AP.fecha_corte) + ', calculada por el sistema.',
       });
       if (error) { toast('No se pudo registrar: ' + error.message, 'error'); return; }
