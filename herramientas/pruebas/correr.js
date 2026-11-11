@@ -1564,6 +1564,11 @@ _fl = flujoDirecto([{ numero: 1, fecha: '31/10/26', origen_tabla: 'apertura', li
   { numero: 2, fecha: '05/11/26', lineas: [_L('1.1.1.03.01', 50, 0), _L('1.1.2.01', 0, 50)] }], '2026-10-01', '2026-11-30');
 ok('I2: la apertura es el efectivo inicial, no cobros, pagos ni aportes', _fl.inicial + '/' + _fl.op + '/' + _fl.fin + '/' + _fl.final + '/' + _fl.cuadra, '500/50/0/550/true');
 
+_fl = flujoDirecto([
+  { numero: 1, fecha: '03/11/26', lineas: [_L('1.1.2.06', 1000, 0), _L('1.1.1.03.01', 0, 1000)] },
+  { numero: 2, fecha: '04/11/26', lineas: [_L('1.1.1.03.01', 400, 0), _L('2.1.5.02', 0, 400)] }], '2026-11-01', '2026-11-30');
+ok('préstamo a una empresa relacionada: inversión; recibido de ella: financiamiento', _fl.inv + '/' + _fl.fin + '/' + _fl.op, '-1000/400/0');
+
 bloque('Plan 5: el Balance General cuadra');
 // Año anterior: aporte 100 y gasto 20. Este año: venta 100 cobrada y gasto 30 pagado.
 var _asBG = [
