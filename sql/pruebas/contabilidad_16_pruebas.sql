@@ -83,27 +83,38 @@ select pg_temp.igual('B4 sin asiento', pg_temp.asi('e0000000-0000-0000-0000-0000
 insert into asientos (cuenta_id, empresa_id, fecha, descripcion, referencia, origen, lineas, total) values
   ('a0000000-0000-0000-0000-000000000161', 'e0000000-0000-0000-0000-000000000161', '31/10/2026', 'Nómina', 'NOM-q-2026-10-16', 'auto',
    '[{"cta":"6.1.1.01 · Sueldos","debe":1000,"haber":0},{"cta":"1.1.1.03 · Bancos","debe":0,"haber":1000}]', 1000);
-select pg_temp.igual('B5 la nómina queda propuesta', pg_temp.bor('e0000000-0000-0000-0000-000000000161', 'modulo:ref:NOM-q-2026-10-16'),
+select pg_temp.igual('B5 la nómina queda propuesta', pg_temp.bor('e0000000-0000-0000-0000-000000000161', 'modulo:ref:NOM-q-2026-10-16@2026-10'),
   'pendiente 6.1.1.01 D1000.00 H0.00 | 1.1.1.03 D0.00 H1000.00');
-select contab_aprobar_borrador((select id from contab_borradores where empresa_id = 'e0000000-0000-0000-0000-000000000161' and clave = 'modulo:ref:NOM-q-2026-10-16'));
+select contab_aprobar_borrador((select id from contab_borradores where empresa_id = 'e0000000-0000-0000-0000-000000000161' and clave = 'modulo:ref:NOM-q-2026-10-16@2026-10'));
 -- Recontabilizar: el navegador inserta la nueva y después borra la vieja.
 insert into asientos (cuenta_id, empresa_id, fecha, descripcion, referencia, origen, lineas, total) values
   ('a0000000-0000-0000-0000-000000000161', 'e0000000-0000-0000-0000-000000000161', '31/10/2026', 'Nómina', 'NOM-q-2026-10-16', 'auto',
    '[{"cta":"6.1.1.01 · Sueldos","debe":1200,"haber":0},{"cta":"1.1.1.03 · Bancos","debe":0,"haber":1200}]', 1200);
 delete from asientos where empresa_id = 'e0000000-0000-0000-0000-000000000161' and referencia = 'NOM-q-2026-10-16';
 select pg_temp.igual('B5 el aprobado sigue', pg_temp.asi('e0000000-0000-0000-0000-000000000161', null, null, 'NOM-q-2026-10-16'), '6.1.1.01 D1000.00 H0.00 | 1.1.1.03 D0.00 H1000.00');
-select pg_temp.igual('B5 y la nueva espera', pg_temp.bor('e0000000-0000-0000-0000-000000000161', 'modulo:ref:NOM-q-2026-10-16'),
+select pg_temp.igual('B5 y la nueva espera', pg_temp.bor('e0000000-0000-0000-0000-000000000161', 'modulo:ref:NOM-q-2026-10-16@2026-10'),
   'pendiente 6.1.1.01 D1200.00 H0.00 | 1.1.1.03 D0.00 H1200.00');
-select contab_aprobar_borrador((select id from contab_borradores where empresa_id = 'e0000000-0000-0000-0000-000000000161' and clave = 'modulo:ref:NOM-q-2026-10-16'));
+select contab_aprobar_borrador((select id from contab_borradores where empresa_id = 'e0000000-0000-0000-0000-000000000161' and clave = 'modulo:ref:NOM-q-2026-10-16@2026-10'));
 select pg_temp.igual('B5 aprobada: una sola, la nueva', pg_temp.asi('e0000000-0000-0000-0000-000000000161', null, null, 'NOM-q-2026-10-16'), '6.1.1.01 D1200.00 H0.00 | 1.1.1.03 D0.00 H1200.00');
 -- Recontabilizar con los mismos montos no deja nada pendiente ni borra nada.
 insert into asientos (cuenta_id, empresa_id, fecha, descripcion, referencia, origen, lineas, total) values
   ('a0000000-0000-0000-0000-000000000161', 'e0000000-0000-0000-0000-000000000161', '31/10/2026', 'Nómina', 'NOM-q-2026-10-16', 'auto',
    (select lineas from asientos where empresa_id = 'e0000000-0000-0000-0000-000000000161' and referencia = 'NOM-q-2026-10-16'), 1200);
 delete from asientos where empresa_id = 'e0000000-0000-0000-0000-000000000161' and referencia = 'NOM-q-2026-10-16';
-select pg_temp.igual('B5 igual que lo aprobado: nada que aprobar', pg_temp.bor('e0000000-0000-0000-0000-000000000161', 'modulo:ref:NOM-q-2026-10-16')
+select pg_temp.igual('B5 igual que lo aprobado: nada que aprobar', pg_temp.bor('e0000000-0000-0000-0000-000000000161', 'modulo:ref:NOM-q-2026-10-16@2026-10')
   || ' / ' || pg_temp.asi('e0000000-0000-0000-0000-000000000161', null, null, 'NOM-q-2026-10-16'),
   'aprobado 6.1.1.01 D1200.00 H0.00 | 1.1.1.03 D0.00 H1200.00 / 6.1.1.01 D1200.00 H0.00 | 1.1.1.03 D0.00 H1200.00');
+
+-- Una referencia que se repite cada mes (CRIPTO): aprobar la de noviembre no borra la de octubre.
+insert into asientos (cuenta_id, empresa_id, fecha, descripcion, referencia, origen, lineas, total) values
+  ('a0000000-0000-0000-0000-000000000161', 'e0000000-0000-0000-0000-000000000161', '31/10/2026', 'Cripto', 'CRIPTO', 'auto',
+   '[{"cta":"1.1.6 · Cripto","debe":10,"haber":0},{"cta":"4.2.2.01 · Ganancia","debe":0,"haber":10}]', 10);
+select contab_aprobar_borrador((select id from contab_borradores where empresa_id = 'e0000000-0000-0000-0000-000000000161' and clave = 'modulo:ref:CRIPTO@2026-10'));
+insert into asientos (cuenta_id, empresa_id, fecha, descripcion, referencia, origen, lineas, total) values
+  ('a0000000-0000-0000-0000-000000000161', 'e0000000-0000-0000-0000-000000000161', '30/11/2026', 'Cripto', 'CRIPTO', 'auto',
+   '[{"cta":"1.1.6 · Cripto","debe":20,"haber":0},{"cta":"4.2.2.01 · Ganancia","debe":0,"haber":20}]', 20);
+select contab_aprobar_borrador((select id from contab_borradores where empresa_id = 'e0000000-0000-0000-0000-000000000161' and clave = 'modulo:ref:CRIPTO@2026-11'));
+select pg_temp.igual('B5 cada mes su asiento', (select count(*)::text from asientos where empresa_id = 'e0000000-0000-0000-0000-000000000161' and referencia = 'CRIPTO'), '2');
 
 -- ── Lo que no pasa por el guardián ───────────────────────────────────────
 insert into asientos (cuenta_id, empresa_id, fecha, descripcion, referencia, origen, lineas, total) values
@@ -118,21 +129,21 @@ select pg_temp.igual('B6 la empresa por documento sigue como siempre', pg_temp.a
 insert into activos_fijos (id, cuenta_id, empresa_id, codigo, nombre, categoria, fecha_adq, costo, vida_util) values
   ('c0000000-0000-0000-0000-000000000161', 'a0000000-0000-0000-0000-000000000161', 'e0000000-0000-0000-0000-000000000161', 'AF-1', 'Computador', 'Equipos', '15/01/2026', 1200, 1);
 select contab_depreciar('e0000000-0000-0000-0000-000000000161', '2026-02');
-select pg_temp.igual('B7 la depreciación queda propuesta', pg_temp.bor('e0000000-0000-0000-0000-000000000161', 'depreciacion:ref:DEPR-02/2026'),
+select pg_temp.igual('B7 la depreciación queda propuesta', pg_temp.bor('e0000000-0000-0000-0000-000000000161', 'depreciacion:ref:DEPR-02/2026@2026-02'),
   'pendiente 6.1.1.19 D100.00 H0.00 | 1.2.1.09 D0.00 H100.00');
 select pg_temp.igual('B7 sin asiento', pg_temp.asi('e0000000-0000-0000-0000-000000000161', 'depreciacion', null, 'DEPR-02/2026'), '(sin asiento)');
 
 -- ── Mes cerrado, descartar, empresa ajena ────────────────────────────────
 insert into cierres_mensuales (cuenta_id, empresa_id, periodo) values ('a0000000-0000-0000-0000-000000000161', 'e0000000-0000-0000-0000-000000000161', '2026-02');
 select pg_temp.igual('B8 mes cerrado', (contab_aprobar_borrador((select id from contab_borradores where empresa_id = 'e0000000-0000-0000-0000-000000000161'
-  and clave = 'depreciacion:ref:DEPR-02/2026'))->>'motivo'), 'El mes está cerrado: reábrelo para cambiar su contabilidad.');
+  and clave = 'depreciacion:ref:DEPR-02/2026@2026-02'))->>'motivo'), 'El mes está cerrado: reábrelo para cambiar su contabilidad.');
 select pg_temp.igual('B9 descartar lo que nunca se aprobó', (contab_descartar_borrador((select id from contab_borradores where empresa_id = 'e0000000-0000-0000-0000-000000000161'
-  and clave = 'depreciacion:ref:DEPR-02/2026'))->>'ok'), 'true');
-select pg_temp.igual('B9 ya no está', pg_temp.bor('e0000000-0000-0000-0000-000000000161', 'depreciacion:ref:DEPR-02/2026'), '(sin borrador)');
+  and clave = 'depreciacion:ref:DEPR-02/2026@2026-02'))->>'ok'), 'true');
+select pg_temp.igual('B9 ya no está', pg_temp.bor('e0000000-0000-0000-0000-000000000161', 'depreciacion:ref:DEPR-02/2026@2026-02'), '(sin borrador)');
 create or replace function public.soy_superadmin() returns boolean language sql as 'select false';
 create or replace function public.mis_empresas() returns setof uuid language sql as $q$ select 'e0000000-0000-0000-0000-000000000162'::uuid $q$;
 select pg_temp.igual('B10 empresa ajena', (contab_aprobar_borrador((select id from contab_borradores where empresa_id = 'e0000000-0000-0000-0000-000000000161'
-  and clave = 'modulo:ref:NOM-q-2026-10-16'))->>'motivo'), 'Esa empresa no es de tu cuenta.');
+  and clave = 'modulo:ref:NOM-q-2026-10-16@2026-10'))->>'motivo'), 'Esa empresa no es de tu cuenta.');
 
 select 'TODO OK · contabilidad 16' as resultado;
 rollback;

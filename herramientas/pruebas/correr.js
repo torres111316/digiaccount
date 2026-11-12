@@ -1634,17 +1634,40 @@ bloque('Por contabilizar: la pantalla y la ficha de la empresa');
 var _res = _leer('assets/resumenes.js'), _appR = _leer('assets/app.js'), _htmlR = _leer('index.html'), _swR = _leer('sw.js');
 ok('la pestaña existe y carga su módulo', /<button data-tab="porcontab">/.test(_htmlR) && /<script src="assets\/resumenes\.js"><\/script>/.test(_htmlR) && /'\.\/assets\/resumenes\.js'/.test(_swR), true);
 ok('la lista la calcula la base', /rpc\('contab_por_contabilizar', \{ p_empresa: e\.id, p_desde: _desde, p_hasta: _hasta \}\)/.test(_res), true);
-ok('aprobar lo hace la base (y solo manda líneas si se corrigió)', /p_lineas: corregido \? lineasParaGuardar\(filas\) : null/.test(_res), true);
+ok('aprobar lo hace la base (y solo manda líneas si se corrigió)', /f\.aprobar\(corregido \? lineasParaGuardar\(filas\) : null\)/.test(_res)
+  && /rpc\('contab_aprobar_resumen'/.test(_res) && /rpc\('contab_aprobar_borrador', \{ p_borrador: b\.id, p_lineas: lin, p_version: b\.version \}\)/.test(_res), true);
 ok('el navegador no escribe asientos', /from\('asientos'\)\.(insert|update|delete|upsert)|__postAsiento/.test(_res), false);
 ok('se recarga al abrir la pestaña, y al cambiar de empresa solo si está a la vista', /tab === 'porcontab' && window\.cargarPorContabilizar/.test(_appR)
   && /\['por contabilizar', \(\) => \{ const pane = document\.querySelector\('\.conta-tab\[data-tab="porcontab"\]'\);\s*if \(pane && pane\.dataset\.active === 'true'/.test(_appR), true);
-ok('I2: aprobar manda la huella de lo que se vio (no aprueba sobre datos viejos)', (_res.match(/p_huella: f\.huella/g) || []).length, 2);
-ok('M5: «Aprobar todo» fija la empresa antes del bucle y se apaga mientras corre', /const empId = emp\(\)\.id;/.test(_res) && /todo\.disabled = true;/.test(_res) && /p_empresa: empId/.test(_res), true);
+ok('I2: aprobar manda la huella (resumen) o la versión (propuesta) de lo que se vio', /p_huella: f\.huella/.test(_res) && /p_version: b\.version/.test(_res), true);
+ok('M5: «Aprobar todo» fija la empresa antes del bucle y se apaga mientras corre', /const empId = emp\(\)\.id;/.test(_res) && /todo\.disabled = true;/.test(_res) && /if \(emp\(\)\.id !== empId\)/.test(_res), true);
 ok('M5: una línea nueva arranca sin cuenta', /Elige la cuenta…<\/option>/.test(_res), true);
 ok('I4: no se vuelve a «por documento» con resúmenes aprobados', /rpc\('contab_resumenes_aprobados', \{ p_empresa: emp\.id \}\)/.test(_appR) && /Deshazlos primero en Contabilidad › Por contabilizar/.test(_appR), true);
-ok('la ficha de la empresa elige resumen o por documento', /name: 'contabModo', label: 'Contabilidad de compras, ventas y retenciones'/.test(_appR) && /contab_resumen: v\.contabModo === 'resumen'/.test(_appR), true);
+ok('la ficha de la empresa elige revisar y aprobar o automática', /name: 'contabModo', label: 'Contabilidad'/.test(_appR) && /contab_resumen: v\.contabModo === 'resumen'/.test(_appR), true);
 ok('sin el SQL 15 la ficha sigue guardando (la opción no aparece)', /\.\.\.\(modoRes === null \? \[\] :/.test(_appR) && /\.\.\.\(modoCambia \? \{ contab_resumen/.test(_appR), true);
 ok('«Cerrar mes» dice dónde aprobar los resúmenes', /apruébalos en Contabilidad › Por contabilizar/.test(_appR), true);
+
+/* -- PROPUESTAS DE LOS MÓDULOS (sql/contabilidad_16) -------------------------- */
+bloque('Por contabilizar: lo que proponen los módulos');
+eval(tramo('  function origenBorrador(b) {', '  window.__resumenesPuros.origenBorrador').replace(/^(\s*)const /gm, '$1var '));
+ok('una declaración', origenBorrador({ origen_tabla: 'declaraciones' }), 'Declaración');
+ok('su pago', origenBorrador({ origen_tabla: 'declaraciones_pago' }), 'Pago de declaración');
+ok('la depreciación', origenBorrador({ origen_tabla: 'depreciacion', referencia: 'DEPR-10/2026' }), 'Depreciación de activos');
+ok('la nómina (la hace el navegador)', origenBorrador({ origen_tabla: null, referencia: 'NOM-quincenal-2026-10-01' }), 'Nómina');
+ok('la liquidación de la Forma 30', origenBorrador({ origen_tabla: null, referencia: 'F30-10/2026' }), 'Liquidación de la Forma 30');
+ok('criptoactivos e impuesto diferido', origenBorrador({ referencia: 'CRIPTO' }) + ' / ' + origenBorrador({ referencia: 'IMP-DIF' }), 'Criptoactivos (VEN-NIF 12) / Impuesto diferido (VEN-NIF 11)');
+var _res16 = _leer('assets/resumenes.js'), _app16 = _leer('assets/app.js'), _conta16 = _leer('assets/contabilidad.js'), _nom16 = _leer('assets/nomina.js');
+ok('la lista trae las propuestas pendientes de cualquier mes y las aprobadas del rango', /from\('contab_borradores'\)\.select\('\*'\)\.eq\('empresa_id', e\.id\)\s*\.or\('pendiente\.eq\.true,and\(periodo\.gte\.' \+ _desde/.test(_res16), true);
+ok('sin el SQL 16 la lista sigue con los resúmenes', /bors && !bors\.error \? \(bors\.data \|\| \[\]\) : \[\]/.test(_res16), true);
+ok('una propuesta se puede descartar', /rpc\('contab_descartar_borrador', \{ p_borrador: b\.id \}\)/.test(_res16), true);
+ok('cada módulo tiene su botón (libros, retenciones, declaraciones, IGTF, nómina, activos, cripto, diferido)',
+  ['compras', 'ventas', 'retenciones', 'declaraciones', 'igtf'].every(function (t) { return _res16.indexOf(".fiscal-tab[data-tab=\"" + t + "\"]") >= 0; })
+  && ['#view-nomina', 'data-tab=\"activos\"', 'data-tab=\"cripto\"', 'data-tab=\"diferido\"'].every(function (t) { return _res16.indexOf(t) >= 0; }), true);
+ok('los botones solo aparecen en las empresas en revisión', /d\.style\.display = si \? 'flex' : 'none'/.test(_res16) && /\['botones contabilizar'/.test(_app16), true);
+ok('«Cerrar mes» no cierra con propuestas sin aprobar y lleva a aprobarlas', /const \{ data: pendCierre \} = await window\.sb\.rpc\('contab_filas_sin_asiento'/.test(_app16) && /window\.__irAPorContabilizar\(perDecl/.test(_app16), true);
+ok('nómina, cripto y diferido dicen «enviado a Por contabilizar» cuando queda como propuesta',
+  /r && r\.propuesta/.test(_nom16) && (_app16.match(/res && res\.propuesta \?/g) || []).length === 2 && /res\.propuesta = await window\.__enRevision\(\)/.test(_conta16), true);
+ok('el navegador sigue sin escribir asientos desde la pantalla de aprobación', /from\('asientos'\)\.(insert|update|delete|upsert)|__postAsiento/.test(_res16), false);
 
 console.log('\n' + (fallas ? 'HAY ' + fallas + ' FALLA(S) de ' + total : 'TODO OK · ' + total + ' comprobaciones'));
 process.exit(fallas ? 1 : 0);

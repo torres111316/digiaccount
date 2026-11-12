@@ -263,6 +263,8 @@
             .then(() => { if (window.cargarLibroFiscal) { window.cargarLibroFiscal('compra'); window.cargarLibroFiscal('venta'); } })
             .catch((err) => console.error('[cambio de empresa] sucursales y libros:', err))],
           ['apertura', () => window.cargarApertura && window.cargarApertura()],
+          ['botones contabilizar', () => { if (window.__olvidarRevision) window.__olvidarRevision();
+            if (window.__mostrarBotonesContabilizar) return window.__mostrarBotonesContabilizar(); }],
           ['por contabilizar', () => { const pane = document.querySelector('.conta-tab[data-tab="porcontab"]');
             if (pane && pane.dataset.active === 'true' && window.cargarPorContabilizar) window.cargarPorContabilizar(); }],
           ['firma y sello', () => Promise.resolve(window.__cargarFirma && window.__cargarFirma())
@@ -507,9 +509,9 @@
         { name: 'rif', label: 'RIF', value: emp.rif || '', placeholder: 'J-12345678-9' },
         { name: 'cond', label: 'Condición fiscal · si la cambias, te pregunto desde qué período', type: 'select', options: ['ordinario', 'formal', 'especial'], value: _normCond(emp.condicion_fiscal) },
         { name: 'condHist', label: ' ', col: 2, type: 'static', html: _historialCondicionHtml(emp.id) },
-        ...(modoRes === null ? [] : [{ name: 'contabModo', label: 'Contabilidad de compras, ventas y retenciones', col: 2, type: 'select',
-          options: [{ value: 'resumen', label: 'Un asiento resumen por período (los totales que se declaran)' },
-                    { value: 'documento', label: 'Un asiento por cada factura y retención' }],
+        ...(modoRes === null ? [] : [{ name: 'contabModo', label: 'Contabilidad', col: 2, type: 'select',
+          options: [{ value: 'resumen', label: 'Reviso y apruebo: resumen por período, y los módulos (Fiscal, nómina, activos…) me proponen el asiento' },
+                    { value: 'documento', label: 'Automática: un asiento por cada factura, retención y movimiento de los módulos' }],
           value: modoRes ? 'resumen' : 'documento' }]),
         { name: 'direccion', label: 'Dirección (aparece en los recibos)', col: 2, placeholder: 'Ej. Cambural - Edo. Yaracuy', value: emp.direccion || '' },
         { name: 'telefono', label: 'Teléfono', placeholder: '0414-1234567', value: emp.telefono || '' },
@@ -538,6 +540,7 @@
             if (window.toast) window.toast(condCambia ? 'Datos guardados · ahora elige desde cuándo cambia la condición' : 'Empresa actualizada ✓', 'success');
             cargarEmpresas();
             if (modoCambia && window.cargarPorContabilizar) window.cargarPorContabilizar();
+            if (modoCambia && window.__olvidarRevision) { window.__olvidarRevision(); if (window.__mostrarBotonesContabilizar) window.__mostrarBotonesContabilizar(); }
             if (condCambia) setTimeout(() => window.__registrarCambioCondicion(emp.id, emp.condicion_fiscal, v.cond, () => cargarEmpresas()), 200);
           });
       },
@@ -7710,6 +7713,16 @@
         const { error: e2 } = await window.sb.from('asientos').insert(nuevos);
         if (e2) { toast('No se pudieron generar los asientos: ' + e2.message, 'error'); return; }
       }
+      /* En una empresa en revisión (sql/contabilidad_16) la depreciación, la
+         revaluación y la liquidación de la F30 quedan como PROPUESTAS: el mes
+         no se cierra hasta aprobarlas. Se vuelve a «Cerrar mes» después. */
+      const { data: pendCierre } = await window.sb.rpc('contab_filas_sin_asiento', { p_empresa: empId, p_periodo: perDecl });
+      if (pendCierre > 0) {
+        if (window.cargarAsientos) window.cargarAsientos();
+        toast(_perLabel() + ': quedaron ' + pendCierre + ' asiento(s) propuesto(s) (liquidación de la Forma 30, depreciación o revaluación). Apruébalos en Contabilidad › Por contabilizar y vuelve a «Cerrar mes».', 'info');
+        if (window.__irAPorContabilizar) window.__irAPorContabilizar(perDecl, (x) => /Forma 30|Depreciación|Revaluación/.test(x.titulo));
+        return;
+      }
       const { error: e3 } = await window.sb.from('cierres_mensuales').insert({ cuenta_id: window.__CUENTA_ID, empresa_id: empId, periodo: key, cerrado_por: (window.__PERFIL && window.__PERFIL.email) || '' });
       if (e3) { toast('Asientos listos, pero no se pudo bloquear el mes: ' + e3.message + ' (¿corriste el SQL dpp_y_cierres.sql?)', 'error'); return; }
       _cierres.add(key); pintarCierreBtn();
@@ -8292,7 +8305,8 @@
         if (res && res.error) { toast('No se pudo contabilizar: ' + res.error.message, 'error'); return; }
         document.getElementById('cxAsiento').hidden = true;
         pendienteAsiento = null;
-        toast('Asiento de medición contabilizado · fluye a la contabilidad', 'success');
+        toast(res && res.propuesta ? 'Asiento de medición enviado a Contabilidad › Por contabilizar para que lo apruebes'
+          : 'Asiento de medición contabilizado · fluye a la contabilidad', 'success');
       });
       const nuevo = document.getElementById('criptoNuevo');
       if (nuevo) nuevo.addEventListener('click', () => {
@@ -8372,7 +8386,8 @@
         ];
         const res = await window.__postAsiento('Reconocimiento de impuesto diferido pasivo (VEN-NIF 11)', 'IMP-DIF', lineas, 'auto');
         if (res && res.error) { toast('No se pudo contabilizar: ' + res.error.message, 'error'); return; }
-        toast('Impuesto diferido reconocido · Bs ' + fmt(imp) + ' · fluye a la contabilidad', 'success');
+        toast(res && res.propuesta ? 'Impuesto diferido (Bs ' + fmt(imp) + ') enviado a Contabilidad › Por contabilizar para que lo apruebes'
+          : 'Impuesto diferido reconocido · Bs ' + fmt(imp) + ' · fluye a la contabilidad', 'success');
       });
     }
   })();

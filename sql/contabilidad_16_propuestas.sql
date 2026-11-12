@@ -67,9 +67,13 @@ returns boolean language sql immutable as $$
       or (coalesce(p_origen, '') = 'auto' and p_origen_tabla is null)
 $$;
 
-create or replace function public.contab_clave_borrador(p_origen_tabla text, p_origen_id uuid, p_referencia text)
+-- Sin documento de origen, la clave es la referencia DEL PERÍODO: CRIPTO o
+-- IMP-DIF se repiten mes a mes y cada mes es un asiento distinto.
+drop function if exists public.contab_clave_borrador(text, uuid, text);
+create or replace function public.contab_clave_borrador(p_origen_tabla text, p_origen_id uuid, p_referencia text, p_periodo text)
 returns text language sql immutable as $$
-  select coalesce(p_origen_tabla, 'modulo') || ':' || coalesce(p_origen_id::text, 'ref:' || coalesce(p_referencia, ''))
+  select coalesce(p_origen_tabla, 'modulo') || ':'
+         || coalesce(p_origen_id::text, 'ref:' || coalesce(p_referencia, '') || '@' || coalesce(p_periodo, ''))
 $$;
 
 -- ── El guardián ───────────────────────────────────────────────────────────
@@ -92,7 +96,7 @@ begin
      and new.periodo is not distinct from old.periodo and new.empresa_id = old.empresa_id then
     return new;
   end if;
-  k := contab_clave_borrador(r.origen_tabla, r.origen_id, r.referencia);
+  k := contab_clave_borrador(r.origen_tabla, r.origen_id, r.referencia, r.periodo);   -- el período ya lo puso trg_asiento_numero
   select * into b from contab_borradores where empresa_id = r.empresa_id and clave = k;
 
   if tg_op = 'DELETE' then
