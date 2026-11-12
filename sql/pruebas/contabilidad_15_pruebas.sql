@@ -142,10 +142,15 @@ select pg_temp.igual('R8 borrar el asiento a mano lo deja pendiente', pg_temp.es
 -- C1: un asiento suelto de antes del motor no se borra al cargar su factura en modo resumen.
 -- (Hoy el disparador que numera descarta los de la app vieja al llegar: se apaga para crearlo como nacieron.)
 alter table asientos disable trigger trg_asiento_numero;
+-- (y el guardián del SQL 16, si ya está: también lo convertiría en propuesta)
+do $$ begin if exists (select 1 from pg_trigger where tgname = 'trg_asiento_revision') then
+  execute 'alter table asientos disable trigger trg_asiento_revision'; end if; end $$;
 insert into asientos (cuenta_id, empresa_id, fecha, periodo, descripcion, referencia, origen, lineas, total) values
   ('a0000000-0000-0000-0000-000000000151', 'e0000000-0000-0000-0000-000000000151', '10/09/2026', '2026-09', 'Compra s/factura C-9 · PROV', 'C-9', 'auto',
    '[{"cta":"5.1.1.02 · Compra","debe":100,"haber":0},{"cta":"2.1.1.01 · CxP","debe":0,"haber":100}]', 100);
 alter table asientos enable trigger trg_asiento_numero;
+do $$ begin if exists (select 1 from pg_trigger where tgname = 'trg_asiento_revision') then
+  execute 'alter table asientos enable trigger trg_asiento_revision'; end if; end $$;
 insert into libro_fiscal (id, cuenta_id, empresa_id, tipo, fecha, periodo, tercero_nombre, tercero_rif, numero_factura, tipo_doc, exento, base, iva, total) values
   ('d0000000-0000-0000-0000-000000000159', 'a0000000-0000-0000-0000-000000000151', 'e0000000-0000-0000-0000-000000000151', 'compra', '10/09/26', '2026-09', 'PROV', 'J000000159', 'C-9', 'FC', 0, 100, 0, 100);
 select pg_temp.igual('C1 el asiento suelto sigue', (select count(*)::text from asientos where empresa_id = 'e0000000-0000-0000-0000-000000000151' and referencia = 'C-9'), '1');
