@@ -297,6 +297,9 @@
         lineas: lineas, total: total,
       });
       if (!res.error && window.cargarAsientos) await window.cargarAsientos();
+      /* En una empresa en revisión los asientos de los módulos quedan como
+         propuesta (sql/contabilidad_16): quien llama lo dice así. */
+      if (!res.error && origen !== 'manual' && window.__enRevision) res.propuesta = await window.__enRevision();
       return res;
     };
 

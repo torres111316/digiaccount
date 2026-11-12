@@ -481,7 +481,7 @@
             if (aplicado > 0.005) lineas.push({ cta: '2.1.1.01 · Cuentas por pagar comerciales', debe: 0, haber: aplicado });
             if (exceso > 0.005) lineas.push({ cta: '1.1.2.04 · Anticipos a proveedores', debe: 0, haber: exceso });
           }
-          window.__postAsiento('Reverso ' + (mov.tipo === 'ingreso' ? 'cobro' : 'pago') + ' ' + refDoc + ' · ' + (mov.tercero_nombre || ''), refDoc, lineas, 'auto')
+          window.__postAsiento('Reverso ' + (mov.tipo === 'ingreso' ? 'cobro' : 'pago') + ' ' + refDoc + ' · ' + (mov.tercero_nombre || ''), refDoc, lineas, 'tesoreria')
             .then((r) => { if (r && r.error) console.warn('[DigiAccount] Reverso:', r.error.message); });
           if (mov.tipo === 'ingreso') actualizarEstadoRecibo(refDoc);
         }

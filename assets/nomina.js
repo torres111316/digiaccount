@@ -166,7 +166,9 @@
         if (eB) { if (window.toast) window.toast('Quedó el asiento nuevo, pero no se pudo borrar el anterior (' + eB.message + '): bórralo en el Libro Diario.', 'error'); return false; }
         if (window.cargarAsientos) await window.cargarAsientos();
       }
-      if (window.toast) window.toast('Nómina ' + freq + ' contabilizada · revisa el asiento en el Libro Diario', 'success');
+      if (window.toast) window.toast(r && r.propuesta
+        ? 'Nómina ' + freq + ' enviada a Contabilidad › Por contabilizar: revísala y apruébala'
+        : 'Nómina ' + freq + ' contabilizada · revisa el asiento en el Libro Diario', 'success');
       return true;
     }
     window.__contabilizarNomina = contabilizarNomina;

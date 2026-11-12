@@ -380,7 +380,7 @@ create trigger trg_contab_retencion_borrar after delete on public.retenciones
 -- ya no tiene documentos (se borraron o anularon) también hay que deshacerlo.
 create or replace function public.contab_filas_sin_asiento(p_empresa uuid, p_periodo text)
 returns integer language plpgsql stable security invoker set search_path = public, pg_temp as $$
-declare n int := 0;
+declare n int := 0; q int;
 begin
   if not contab_es_resumen(p_empresa) then
     select (
@@ -412,6 +412,12 @@ begin
         on r.tipo = g.tipo and coalesce(r.quincena, 0) = coalesce(g.quincena, 0)
      where (coalesce(g.documentos, 0) > 0 and (r.id is null or r.huella <> g.huella))
         or (r.id is not null and coalesce(g.documentos, 0) = 0);
+  end if;
+  -- Las propuestas de los módulos sin aprobar (sql/contabilidad_16), si ya existe esa tabla.
+  if to_regclass('public.contab_borradores') is not null then
+    execute 'select count(*)::int from public.contab_borradores where empresa_id = $1 and periodo = $2 and pendiente'
+      into q using p_empresa, p_periodo;
+    n := n + coalesce(q, 0);
   end if;
   return n + (
     select count(*)::int
