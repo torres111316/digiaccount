@@ -107,9 +107,9 @@
       clase: 'borrador', periodo: b.periodo || '', quincena: null, titulo: origenBorrador(b),
       nota: b.descripcion || '', documentos: null, propuesta: b.propuesta || [], actual: b.aprobado, corregido: b.corregido,
       estado: b.pendiente ? (borrar ? 'borrar' : (b.asiento_id ? 'desactualizado' : 'pendiente')) : 'aprobado',
-      aprobable: b.pendiente, origen: b.origen_tabla || '', ref: b.referencia || '',
+      aprobable: true, origen: b.origen_tabla || '', ref: b.referencia || '',
       aprobar: (lin) => window.sb.rpc('contab_aprobar_borrador', { p_borrador: b.id, p_lineas: lin, p_version: b.version }),
-      descartar: b.pendiente ? () => window.sb.rpc('contab_descartar_borrador', { p_borrador: b.id }) : null,
+      descartar: b.pendiente && !/^(depreciacion|revaluacion)$/.test(b.origen_tabla || '') ? () => window.sb.rpc('contab_descartar_borrador', { p_borrador: b.id }) : null,
     };
   }
 
@@ -121,6 +121,9 @@
     if (!_hasta) { _hasta = hoyPer(); _desde = mesMenos(_hasta, 11); }
     const turno = ++_turno;
     cont.innerHTML = '<div class="ap-vacio">Calculando lo que hay por contabilizar…</div>';
+    // Lo que un módulo propuso y después retiró (se borró la declaración, el pago perdió su fecha…).
+    await window.sb.rpc('contab_limpiar_borradores', { p_empresa: e.id }).then(() => null, () => null);
+    if (turno !== _turno || emp().id !== e.id) return;
     const [modo, lista, bors] = await Promise.all([
       window.sb.from('empresas').select('contab_resumen').eq('id', e.id).maybeSingle(),
       window.sb.rpc('contab_por_contabilizar', { p_empresa: e.id, p_desde: _desde, p_hasta: _hasta }),
@@ -144,6 +147,14 @@
     }
     // Sin el SQL 16 la tabla de borradores no existe: la lista sigue con los resúmenes.
     const borradores = bors && !bors.error ? (bors.data || []) : [];
+    // Las líneas del asiento vigente de cada propuesta (para ver qué se quita o qué se reemplaza).
+    const ids = borradores.filter((b) => b.asiento_id).map((b) => b.asiento_id);
+    if (ids.length) {
+      const va = await window.sb.from('asientos').select('id,lineas').in('id', ids);
+      if (turno !== _turno || emp().id !== e.id) return;
+      const porId = {}; ((va && va.data) || []).forEach((a) => { porId[a.id] = a.lineas; });
+      borradores.forEach((b) => { if (b.asiento_id && porId[b.asiento_id]) b.aprobado = porId[b.asiento_id]; });
+    }
     ITEMS = (lista.data || []).map(deResumen).concat(borradores.map(deBorrador))
       .sort((a, b) => (a.periodo < b.periodo ? -1 : a.periodo > b.periodo ? 1 : (a.quincena || 0) - (b.quincena || 0)));
     _rev = !!(modo.data && modo.data.contab_resumen); _revDe = e.id;
@@ -151,7 +162,8 @@
     // Si se llegó desde un módulo, se abre su propuesta.
     if (_abrirAlCargar) {
       const q = _abrirAlCargar; _abrirAlCargar = null;
-      const it = ITEMS.find((x) => x.estado !== 'aprobado' && x.periodo === q.periodo && (!q.que || q.que(x)));
+      const it = ITEMS.find((x) => x.estado !== 'aprobado' && x.periodo === q.periodo && (!q.que || q.que(x)))
+        || ITEMS.find((x) => x.estado !== 'aprobado' && q.que && q.que(x));
       if (it) abrir(it);
     }
   }
@@ -266,7 +278,7 @@
       + (f.descartar ? '<button class="btn btn-ghost" id="pcDescartar" title="Ignorar lo que pide el módulo">Descartar</button>' : '')
       + (borrar ? '' : '<button class="btn btn-ghost" id="pcPropuesta" title="Volver a lo propuesto">Ver la propuesta</button>')
       + '<button class="btn btn-ghost" data-pc-cerrar>Cancelar</button>'
-      + (f.aprobable ? '<button class="btn btn-primary" id="pcAprobar"><i data-lucide="check"></i> ' + (borrar ? 'Quitar el asiento' : 'Aprobar') + '</button>' : '')
+      + (f.aprobable ? '<button class="btn btn-primary" id="pcAprobar"><i data-lucide="check"></i> ' + (borrar ? 'Quitar el asiento' : (f.estado === 'aprobado' ? 'Guardar cambios' : 'Aprobar')) + '</button>' : '')
       + '</div></div></div>';
     document.body.appendChild(ov);
     const $ = (id) => document.getElementById(id);

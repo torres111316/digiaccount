@@ -7617,10 +7617,12 @@
          (GATMA y Radian, oct-25 a jul-26). Cerrarlo así dejaría una
          liquidación de IVA sin las ventas y compras que la sostienen: esos
          meses primero se reconstruyen (plan 6 de contabilidad). */
+      await window.sb.rpc('contab_limpiar_borradores', { p_empresa: empId }).then(() => null, () => null);
       const { data: sinAsi, error: eSin } = await window.sb.rpc('contab_filas_sin_asiento', { p_empresa: empId, p_periodo: perDecl });
       if (eSin) { toast('No se pudo comprobar la contabilidad del período: ' + eSin.message, 'error'); return; }
       if (sinAsi > 0) {
         toast(_perLabel() + ' tiene ' + sinAsi + ' documento(s) sin asiento contable: si la empresa va en resumen por período, apruébalos en Contabilidad › Por contabilizar; si no, son facturas o retenciones cargadas antes del motor contable, o movimientos de Tesorería sin cuenta contable o sin tasa BCV (ponles su cuenta en Tesorería).', 'error');
+        if (window.__enRevision && await window.__enRevision() && window.__irAPorContabilizar) window.__irAPorContabilizar(perDecl);
         return;
       }
       /* Un cliente que no manda estado de cuenta: «Dar por cobrado y pagado»

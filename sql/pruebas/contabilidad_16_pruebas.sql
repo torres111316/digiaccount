@@ -105,16 +105,44 @@ select pg_temp.igual('B5 igual que lo aprobado: nada que aprobar', pg_temp.bor('
   || ' / ' || pg_temp.asi('e0000000-0000-0000-0000-000000000161', null, null, 'NOM-q-2026-10-16'),
   'aprobado 6.1.1.01 D1200.00 H0.00 | 1.1.1.03 D0.00 H1200.00 / 6.1.1.01 D1200.00 H0.00 | 1.1.1.03 D0.00 H1200.00');
 
--- Una referencia que se repite cada mes (CRIPTO): aprobar la de noviembre no borra la de octubre.
+-- C5: lo que no se reemplaza (CRIPTO): cada asiento es uno; dos mediciones del mismo mes son dos.
 insert into asientos (cuenta_id, empresa_id, fecha, descripcion, referencia, origen, lineas, total) values
   ('a0000000-0000-0000-0000-000000000161', 'e0000000-0000-0000-0000-000000000161', '31/10/2026', 'Cripto', 'CRIPTO', 'auto',
-   '[{"cta":"1.1.6 · Cripto","debe":10,"haber":0},{"cta":"4.2.2.01 · Ganancia","debe":0,"haber":10}]', 10);
-select contab_aprobar_borrador((select id from contab_borradores where empresa_id = 'e0000000-0000-0000-0000-000000000161' and clave = 'modulo:ref:CRIPTO@2026-10'));
+   '[{"cta":"1.1.6 · Cripto","debe":10,"haber":0},{"cta":"4.2.2.01 · Ganancia","debe":0,"haber":10}]', 10),
+  ('a0000000-0000-0000-0000-000000000161', 'e0000000-0000-0000-0000-000000000161', '31/10/2026', 'Cripto', 'CRIPTO', 'auto',
+   '[{"cta":"1.1.6 · Cripto","debe":7,"haber":0},{"cta":"4.2.2.01 · Ganancia","debe":0,"haber":7}]', 7);
+select pg_temp.igual('C5 dos propuestas', (select count(*)::text from contab_borradores where empresa_id = 'e0000000-0000-0000-0000-000000000161' and referencia = 'CRIPTO'), '2');
+select count(contab_aprobar_borrador(id)) from contab_borradores where empresa_id = 'e0000000-0000-0000-0000-000000000161' and referencia = 'CRIPTO';
+select pg_temp.igual('C5 dos asientos', (select count(*)::text || ' ' || sum(total)::text from asientos where empresa_id = 'e0000000-0000-0000-0000-000000000161' and referencia = 'CRIPTO'), '2 17.00');
+
+-- C2: una nómina asentada antes del SQL 16: al recontabilizar se reemplaza (no queda doble).
+alter table asientos disable trigger trg_asiento_revision;
 insert into asientos (cuenta_id, empresa_id, fecha, descripcion, referencia, origen, lineas, total) values
-  ('a0000000-0000-0000-0000-000000000161', 'e0000000-0000-0000-0000-000000000161', '30/11/2026', 'Cripto', 'CRIPTO', 'auto',
-   '[{"cta":"1.1.6 · Cripto","debe":20,"haber":0},{"cta":"4.2.2.01 · Ganancia","debe":0,"haber":20}]', 20);
-select contab_aprobar_borrador((select id from contab_borradores where empresa_id = 'e0000000-0000-0000-0000-000000000161' and clave = 'modulo:ref:CRIPTO@2026-11'));
-select pg_temp.igual('B5 cada mes su asiento', (select count(*)::text from asientos where empresa_id = 'e0000000-0000-0000-0000-000000000161' and referencia = 'CRIPTO'), '2');
+  ('a0000000-0000-0000-0000-000000000161', 'e0000000-0000-0000-0000-000000000161', '15/09/2026', 'Nómina', 'NOM-q-2026-09-01', 'auto',
+   '[{"cta":"6.1.1.01 · Sueldos","debe":800,"haber":0},{"cta":"1.1.1.03 · Bancos","debe":0,"haber":800}]', 800);
+alter table asientos enable trigger trg_asiento_revision;
+insert into asientos (cuenta_id, empresa_id, fecha, descripcion, referencia, origen, lineas, total) values
+  ('a0000000-0000-0000-0000-000000000161', 'e0000000-0000-0000-0000-000000000161', '15/09/2026', 'Nómina', 'NOM-q-2026-09-01', 'auto',
+   '[{"cta":"6.1.1.01 · Sueldos","debe":900,"haber":0},{"cta":"1.1.1.03 · Bancos","debe":0,"haber":900}]', 900);
+delete from asientos where empresa_id = 'e0000000-0000-0000-0000-000000000161' and referencia = 'NOM-q-2026-09-01';
+select contab_aprobar_borrador((select id from contab_borradores where empresa_id = 'e0000000-0000-0000-0000-000000000161' and clave = 'modulo:ref:NOM-q-2026-09-01@2026-09'));
+select pg_temp.igual('C2 una sola nómina, la nueva', pg_temp.asi('e0000000-0000-0000-0000-000000000161', null, null, 'NOM-q-2026-09-01'), '6.1.1.01 D900.00 H0.00 | 1.1.1.03 D0.00 H900.00');
+
+-- C4: una declaración aprobada, corregida (pendiente) y después borrada: se pide borrar, no se pierde.
+insert into declaraciones (id, cuenta_id, empresa_id, impuesto, periodo, numero, fecha, tipo, monto, a_pagar) values
+  ('50000000-0000-0000-0000-000000000162', 'a0000000-0000-0000-0000-000000000161', 'e0000000-0000-0000-0000-000000000161', 'DPP', '2026-09', 'D-162', '2026-10-03', 'ORIGINARIA', 100, 100);
+select contab_aprobar_borrador((select id from contab_borradores where empresa_id = 'e0000000-0000-0000-0000-000000000161' and clave = 'declaraciones:50000000-0000-0000-0000-000000000162'));
+update declaraciones set monto = 150, a_pagar = 150 where id = '50000000-0000-0000-0000-000000000162';
+delete from declaraciones where id = '50000000-0000-0000-0000-000000000162';
+select pg_temp.igual('C4 pedido de borrar', pg_temp.bor('e0000000-0000-0000-0000-000000000161', 'declaraciones:50000000-0000-0000-0000-000000000162'), 'pendiente (vacío)');
+
+-- I1: una propuesta que el módulo retira antes de aprobarse (se borró la declaración) se limpia.
+insert into declaraciones (id, cuenta_id, empresa_id, impuesto, periodo, numero, fecha, tipo, monto, a_pagar) values
+  ('50000000-0000-0000-0000-000000000163', 'a0000000-0000-0000-0000-000000000161', 'e0000000-0000-0000-0000-000000000161', 'DPP', '2026-08', 'D-163', '2026-09-03', 'ORIGINARIA', 100, 100);
+delete from declaraciones where id = '50000000-0000-0000-0000-000000000163';
+select pg_temp.igual('I1 queda hasta limpiar', pg_temp.bor('e0000000-0000-0000-0000-000000000161', 'declaraciones:50000000-0000-0000-0000-000000000163'), 'pendiente 6.1.1.07 D100.00 H0.00 | 2.1.5.03 D0.00 H100.00');
+select pg_temp.igual('I1 limpiar', contab_limpiar_borradores('e0000000-0000-0000-0000-000000000161')::text, '1');
+select pg_temp.igual('I1 ya no está', pg_temp.bor('e0000000-0000-0000-0000-000000000161', 'declaraciones:50000000-0000-0000-0000-000000000163'), '(sin borrador)');
 
 -- ── Lo que no pasa por el guardián ───────────────────────────────────────
 insert into asientos (cuenta_id, empresa_id, fecha, descripcion, referencia, origen, lineas, total) values
@@ -132,18 +160,43 @@ select contab_depreciar('e0000000-0000-0000-0000-000000000161', '2026-02');
 select pg_temp.igual('B7 la depreciación queda propuesta', pg_temp.bor('e0000000-0000-0000-0000-000000000161', 'depreciacion:ref:DEPR-02/2026@2026-02'),
   'pendiente 6.1.1.19 D100.00 H0.00 | 1.2.1.09 D0.00 H100.00');
 select pg_temp.igual('B7 sin asiento', pg_temp.asi('e0000000-0000-0000-0000-000000000161', 'depreciacion', null, 'DEPR-02/2026'), '(sin asiento)');
+select pg_temp.igual('B9 la depreciación no se descarta', ((contab_descartar_borrador((select id from contab_borradores where empresa_id = 'e0000000-0000-0000-0000-000000000161'
+  and clave = 'depreciacion:ref:DEPR-02/2026@2026-02'))->>'motivo') like 'La depreciación y la revaluación no se descartan%')::text, 'true');
+-- C3: aprobada corregida; «Cerrar mes» la recalcula igual: no vuelve a quedar pendiente.
+select contab_aprobar_borrador((select id from contab_borradores where empresa_id = 'e0000000-0000-0000-0000-000000000161' and clave = 'depreciacion:ref:DEPR-02/2026@2026-02'),
+  '[{"cta":"6.1.1.06","debe":100,"haber":0},{"cta":"1.2.1.09","debe":0,"haber":100}]');
+select contab_depreciar('e0000000-0000-0000-0000-000000000161', '2026-02');
+select pg_temp.igual('C3 lo corregido no se reabre', pg_temp.bor('e0000000-0000-0000-0000-000000000161', 'depreciacion:ref:DEPR-02/2026@2026-02')
+  || ' / ' || pg_temp.asi('e0000000-0000-0000-0000-000000000161', 'depreciacion', null, 'DEPR-02/2026'),
+  'aprobado 6.1.1.19 D100.00 H0.00 | 1.2.1.09 D0.00 H100.00 / 6.1.1.06 D100.00 H0.00 | 1.2.1.09 D0.00 H100.00');
 
 -- ── Mes cerrado, descartar, empresa ajena ────────────────────────────────
-insert into cierres_mensuales (cuenta_id, empresa_id, periodo) values ('a0000000-0000-0000-0000-000000000161', 'e0000000-0000-0000-0000-000000000161', '2026-02');
+select contab_depreciar('e0000000-0000-0000-0000-000000000161', '2026-03');
+insert into cierres_mensuales (cuenta_id, empresa_id, periodo) values ('a0000000-0000-0000-0000-000000000161', 'e0000000-0000-0000-0000-000000000161', '2026-03');
 select pg_temp.igual('B8 mes cerrado', (contab_aprobar_borrador((select id from contab_borradores where empresa_id = 'e0000000-0000-0000-0000-000000000161'
-  and clave = 'depreciacion:ref:DEPR-02/2026@2026-02'))->>'motivo'), 'El mes está cerrado: reábrelo para cambiar su contabilidad.');
+  and clave = 'depreciacion:ref:DEPR-03/2026@2026-03'))->>'motivo'), 'El mes está cerrado: reábrelo para cambiar su contabilidad.');
+insert into asientos (cuenta_id, empresa_id, fecha, descripcion, referencia, origen, lineas, total) values
+  ('a0000000-0000-0000-0000-000000000161', 'e0000000-0000-0000-0000-000000000161', '20/11/2026', 'Diferido', 'IMP-DIF', 'auto',
+   '[{"cta":"6.3.1.05 · Gasto","debe":3,"haber":0},{"cta":"2.2.2 · Diferido","debe":0,"haber":3}]', 3);
 select pg_temp.igual('B9 descartar lo que nunca se aprobó', (contab_descartar_borrador((select id from contab_borradores where empresa_id = 'e0000000-0000-0000-0000-000000000161'
-  and clave = 'depreciacion:ref:DEPR-02/2026@2026-02'))->>'ok'), 'true');
-select pg_temp.igual('B9 ya no está', pg_temp.bor('e0000000-0000-0000-0000-000000000161', 'depreciacion:ref:DEPR-02/2026@2026-02'), '(sin borrador)');
+  and referencia = 'IMP-DIF'))->>'ok'), 'true');
+select pg_temp.igual('B9 ya no está', (select count(*)::text from contab_borradores where empresa_id = 'e0000000-0000-0000-0000-000000000161' and referencia = 'IMP-DIF'), '0');
 create or replace function public.soy_superadmin() returns boolean language sql as 'select false';
 create or replace function public.mis_empresas() returns setof uuid language sql as $q$ select 'e0000000-0000-0000-0000-000000000162'::uuid $q$;
-select pg_temp.igual('B10 empresa ajena', (contab_aprobar_borrador((select id from contab_borradores where empresa_id = 'e0000000-0000-0000-0000-000000000161'
+select pg_temp.igual('B10 empresa ajena no aprueba', (contab_aprobar_borrador((select id from contab_borradores where empresa_id = 'e0000000-0000-0000-0000-000000000161'
   and clave = 'modulo:ref:NOM-q-2026-10-16@2026-10'))->>'motivo'), 'Esa empresa no es de tu cuenta.');
+-- C1: tampoco deja propuestas en una empresa ajena (el guardián hace la revisión de la RLS).
+select set_config('request.jwt.claims', '{"role":"authenticated"}', true);
+create function pg_temp.intento_ajeno() returns text language plpgsql as $f$
+begin
+  insert into asientos (cuenta_id, empresa_id, fecha, descripcion, referencia, origen, lineas, total) values
+    ('a0000000-0000-0000-0000-000000000161', 'e0000000-0000-0000-0000-000000000161', '20/11/2026', 'Intruso', 'NOM-intruso', 'auto', '[]', 0);
+  return 'entró';
+exception when others then
+  return sqlerrm;
+end $f$;
+select pg_temp.igual('C1 empresa ajena', pg_temp.intento_ajeno(), 'Esa empresa no es de tu cuenta.');
+select set_config('request.jwt.claims', '', true);
 
 select 'TODO OK · contabilidad 16' as resultado;
 rollback;

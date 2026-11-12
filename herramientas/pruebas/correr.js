@@ -1668,6 +1668,11 @@ ok('«Cerrar mes» no cierra con propuestas sin aprobar y lleva a aprobarlas', /
 ok('nómina, cripto y diferido dicen «enviado a Por contabilizar» cuando queda como propuesta',
   /r && r\.propuesta/.test(_nom16) && (_app16.match(/res && res\.propuesta \?/g) || []).length === 2 && /res\.propuesta = await window\.__enRevision\(\)/.test(_conta16), true);
 ok('el navegador sigue sin escribir asientos desde la pantalla de aprobación', /from\('asientos'\)\.(insert|update|delete|upsert)|__postAsiento/.test(_res16), false);
+/* Revisión final de las propuestas. */
+ok('I4: el reverso de Tesorería no pasa por la revisión (origen tesoreria)', /refDoc, lineas, 'tesoreria'\)/.test(_leer('assets/tesoreria.js')), true);
+ok('I1: la pantalla y «Cerrar mes» limpian lo que el módulo retiró', /rpc\('contab_limpiar_borradores', \{ p_empresa: e\.id \}\)/.test(_res16) && /rpc\('contab_limpiar_borradores', \{ p_empresa: empId \}\)/.test(_app16), true);
+ok('M2: el pedido de quitar muestra el asiento que se va a quitar', /from\('asientos'\)\.select\('id,lineas'\)\.in\('id', ids\)/.test(_res16), true);
+ok('M3: la depreciación y la revaluación no se descartan', /!\/\^\(depreciacion\|revaluacion\)\$\/\.test\(b\.origen_tabla/.test(_res16), true);
 
 console.log('\n' + (fallas ? 'HAY ' + fallas + ' FALLA(S) de ' + total : 'TODO OK · ' + total + ' comprobaciones'));
 process.exit(fallas ? 1 : 0);
