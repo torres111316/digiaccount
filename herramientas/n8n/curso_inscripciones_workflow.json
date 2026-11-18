@@ -709,6 +709,11 @@
    "main": [
     [
      {
+      "node": "Avisar a Luis (con comprobante)",
+      "type": "main",
+      "index": 0
+     },
+     {
       "node": "Guardar comprobante (Storage)",
       "type": "main",
       "index": 0
@@ -728,17 +733,6 @@
     [
      {
       "node": "Anotar comprobante",
-      "type": "main",
-      "index": 0
-     }
-    ]
-   ]
-  },
-  "Anotar comprobante": {
-   "main": [
-    [
-     {
-      "node": "Avisar a Luis (con comprobante)",
       "type": "main",
       "index": 0
      }

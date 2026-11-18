@@ -186,10 +186,12 @@ unir('¿Válido?', 'Responder rechazo', 1)
 unir('Registrar (Supabase)', 'Preparar aviso', 0)
 unir('Registrar (Supabase)', 'Responder error', 1)
 unir('Preparar aviso', '¿Trae comprobante?')
+# El aviso y el guardado salen en paralelo del IF: los dos necesitan el archivo,
+# y la salida de un HTTP ya no lo trae.
+unir('¿Trae comprobante?', 'Avisar a Luis (con comprobante)', 0)
 unir('¿Trae comprobante?', 'Guardar comprobante (Storage)', 0)
 unir('¿Trae comprobante?', 'Avisar a Luis (sin comprobante)', 1)
 unir('Guardar comprobante (Storage)', 'Anotar comprobante')
-unir('Anotar comprobante', 'Avisar a Luis (con comprobante)')
 unir('Avisar a Luis (con comprobante)', 'Correo a la persona (recibida)')
 unir('Avisar a Luis (sin comprobante)', 'Correo a la persona (recibida)')
 unir('Correo a la persona (recibida)', 'Responder OK')
