@@ -1,0 +1,870 @@
+{
+ "name": "Curso · Inscripciones (landing digiaccount.io/curso)",
+ "nodes": [
+  {
+   "parameters": {
+    "httpMethod": "GET",
+    "path": "curso-config",
+    "responseMode": "responseNode",
+    "options": {
+     "allowedOrigins": "*"
+    }
+   },
+   "name": "Config (GET)",
+   "type": "n8n-nodes-base.webhook",
+   "typeVersion": 2,
+   "position": [
+    0,
+    0
+   ],
+   "webhookId": "curso-config"
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "https://esnicjnuymqgktqoueyq.supabase.co/rest/v1/rpc/curso_config",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "supabaseApi",
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={}",
+    "options": {}
+   },
+   "name": "Leer configuración",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.4,
+   "position": [
+    220,
+    0
+   ],
+   "credentials": {
+    "supabaseApi": {
+     "id": "6HTJ7SkRWU2wYkmo",
+     "name": "Supabase account"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "respondWith": "text",
+    "responseBody": "={{ JSON.stringify($json.ok ? $json : { ok: false }) }}",
+    "options": {
+     "responseHeaders": {
+      "entries": [
+       {
+        "name": "Access-Control-Allow-Origin",
+        "value": "*"
+       }
+      ]
+     }
+    }
+   },
+   "name": "Responder config",
+   "type": "n8n-nodes-base.respondToWebhook",
+   "typeVersion": 1.1,
+   "position": [
+    440,
+    0
+   ]
+  },
+  {
+   "parameters": {
+    "httpMethod": "POST",
+    "path": "curso-inscripcion",
+    "responseMode": "responseNode",
+    "options": {
+     "allowedOrigins": "*"
+    }
+   },
+   "name": "Inscripción (POST)",
+   "type": "n8n-nodes-base.webhook",
+   "typeVersion": 2,
+   "position": [
+    0,
+    300
+   ],
+   "webhookId": "curso-inscripcion"
+  },
+  {
+   "parameters": {
+    "jsCode": "// Valida el formulario y convierte el comprobante (base64) en archivo.\nconst b = $json.body || {};\nconst h = $json.headers || {};\nconst t = (s, n) => String(s == null ? '' : s).trim().slice(0, n || 200);\nconst p = {\n  nombre: t(b.nombre, 120), cedula: t(b.cedula, 20), whatsapp: t(b.whatsapp, 30), correo: t(b.correo, 120).toLowerCase(),\n  empresa: t(b.empresa, 120), cliente_firma: b.cliente_firma === true || b.cliente_firma === 'true',\n  metodo: b.metodo === 'binance' ? 'binance' : 'pago_movil', referencia: t(b.referencia, 60),\n  telefono_origen: t(b.telefono_origen, 30), monto_pagado: t(b.monto_pagado, 40),\n  fecha_pago: /^\\d{4}-\\d{2}-\\d{2}$/.test(t(b.fecha_pago)) ? t(b.fecha_pago) : '',\n  origen: t(b.origen, 40), consentimiento: b.consentimiento === true || b.consentimiento === 'true',\n  ip: t(h['cf-connecting-ip'] || String(h['x-forwarded-for'] || '').split(',')[0], 60), user_agent: t(h['user-agent'], 300),\n};\nlet status = 'ok';\nif (t(b.website)) status = 'spam';\nelse if (!p.nombre || !p.whatsapp || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(p.correo) || !p.referencia) status = 'invalid';\n\nconst out = { json: { status, p, tieneArchivo: false } };\nconst a = b.comprobante;\nif (status === 'ok' && a && a.base64) {\n  const tipos = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'application/pdf': 'pdf' };\n  const ext = tipos[a.tipo];\n  const datos = String(a.base64).replace(/^data:[^,]+,/, '');\n  if (ext && datos.length < 7000000) {             // ~5 MB\n    out.json.tieneArchivo = true; out.json.ext = ext; out.json.mime = a.tipo;\n    out.binary = { comprobante: { data: datos, mimeType: a.tipo, fileName: 'comprobante.' + ext } };\n  }\n}\nreturn [out];"
+   },
+   "name": "Validar",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    220,
+    300
+   ]
+  },
+  {
+   "parameters": {
+    "conditions": {
+     "options": {
+      "version": 2,
+      "caseSensitive": true,
+      "typeValidation": "loose"
+     },
+     "conditions": [
+      {
+       "id": "v",
+       "leftValue": "={{ $json.status }}",
+       "rightValue": "ok",
+       "operator": {
+        "type": "string",
+        "operation": "equals"
+       }
+      }
+     ],
+     "combinator": "and"
+    },
+    "options": {}
+   },
+   "name": "¿Válido?",
+   "type": "n8n-nodes-base.if",
+   "typeVersion": 2.2,
+   "position": [
+    440,
+    300
+   ]
+  },
+  {
+   "parameters": {
+    "respondWith": "text",
+    "responseBody": "={{ JSON.stringify({ ok: false, error: 'Revisa tus datos: nombre, WhatsApp, correo y referencia del pago son obligatorios.' }) }}",
+    "options": {
+     "responseHeaders": {
+      "entries": [
+       {
+        "name": "Access-Control-Allow-Origin",
+        "value": "*"
+       }
+      ]
+     }
+    }
+   },
+   "name": "Responder rechazo",
+   "type": "n8n-nodes-base.respondToWebhook",
+   "typeVersion": 1.1,
+   "position": [
+    660,
+    460
+   ]
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "https://esnicjnuymqgktqoueyq.supabase.co/rest/v1/rpc/curso_inscribir",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "supabaseApi",
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ p: $json.p }) }}",
+    "options": {}
+   },
+   "name": "Registrar (Supabase)",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.4,
+   "position": [
+    660,
+    300
+   ],
+   "credentials": {
+    "supabaseApi": {
+     "id": "6HTJ7SkRWU2wYkmo",
+     "name": "Supabase account"
+    }
+   },
+   "onError": "continueErrorOutput"
+  },
+  {
+   "parameters": {
+    "respondWith": "text",
+    "responseBody": "={{ JSON.stringify({ ok: false, error: 'No pudimos registrar tu inscripción. Escríbenos por WhatsApp al 0412-5070103.' }) }}",
+    "options": {
+     "responseHeaders": {
+      "entries": [
+       {
+        "name": "Access-Control-Allow-Origin",
+        "value": "*"
+       }
+      ]
+     }
+    }
+   },
+   "name": "Responder error",
+   "type": "n8n-nodes-base.respondToWebhook",
+   "typeVersion": 1.1,
+   "position": [
+    880,
+    460
+   ]
+  },
+  {
+   "parameters": {
+    "jsCode": "// Arma el aviso para Luis y el correo para la persona.\nconst r = $json;                                   // respuesta de curso_inscribir\nconst v = $('Validar').first().json;\nconst p = v.p;\nconst e = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\nconst bs = (n) => n == null ? '' : Number(n).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });\nconst base = 'https://n8n.digiaccount.io/webhook/curso-resolver?id=' + r.id + '&t=' + r.token;\nconst tarifa = { preventa: 'Preventa', cliente: 'Cliente de la firma', regular: 'Precio regular' }[r.tarifa];\nconst metodo = p.metodo === 'binance' ? 'Binance' : 'Pago móvil';\nconst tel = p.whatsapp.replace(/\\D/g, '').replace(/^0/, '58');\nconst aviso = '<b>🎓 Nueva inscripción · ' + e(r.edicion_nombre) + '</b>\\n\\n'\n  + '<b>' + e(p.nombre) + '</b>' + (p.cedula ? ' · C.I. ' + e(p.cedula) : '') + (p.empresa ? '\\n🏪 ' + e(p.empresa) : '') + '\\n'\n  + '📱 <a href=\"https://wa.me/' + tel + '\">' + e(p.whatsapp) + '</a> · ✉️ ' + e(p.correo) + '\\n\\n'\n  + '💵 <b>$' + r.monto_usd + '</b> (' + tarifa + ')' + (r.monto_bs ? ' = Bs ' + bs(r.monto_bs) + ' a ' + bs(r.tasa_bcv) : '') + '\\n'\n  + '🏦 ' + metodo + ' · Ref. <b>' + e(p.referencia) + '</b>'\n  + (p.telefono_origen ? ' · desde ' + e(p.telefono_origen) : '') + (p.monto_pagado ? '\\nDice que pagó: ' + e(p.monto_pagado) : '')\n  + (p.fecha_pago ? ' · el ' + e(p.fecha_pago) : '') + '\\n'\n  + (p.cliente_firma ? '⚠️ Dice ser <b>cliente de la firma</b>: confírmalo.\\n' : '')\n  + (r.repetida ? '⚠️ Ya hay otra inscripción con este correo.\\n' : '')\n  + (v.tieneArchivo ? '' : '📎 Sin comprobante adjunto.\\n')\n  + (p.origen ? 'Vino de: ' + e(p.origen) + '\\n' : '')\n  + '\\nVerifica el pago en tu banco o en Binance y luego:\\n'\n  + '<a href=\"' + base + '&a=ok\">✅ APROBAR</a>        <a href=\"' + base + '&a=no\">❌ RECHAZAR</a>';\nconst nombre1 = e(p.nombre.split(' ')[0]);\nconst correo = '<div style=\"font-family:Arial,sans-serif;max-width:560px;margin:auto;color:#1f2933\">'\n  + '<div style=\"background:#001b34;color:#fff;padding:22px 26px;border-radius:10px 10px 0 0\"><b style=\"font-size:20px\">Digi<span style=\"color:#00bfff\">Account</span></b> · Formación Empresarial</div>'\n  + '<div style=\"border:1px solid #d8dee6;border-top:0;padding:24px 26px;border-radius:0 0 10px 10px\">'\n  + '<h2 style=\"color:#003057;margin:0 0 12px\">¡Recibimos tu inscripción, ' + nombre1 + '!</h2>'\n  + '<p>Estamos verificando tu pago (' + metodo + ', referencia <b>' + e(p.referencia) + '</b>). Apenas se confirme, te llega otro correo con el <b>enlace al grupo de WhatsApp</b> del curso y todos los detalles.</p>'\n  + '<p style=\"background:#ecf9ff;padding:12px 14px;border-radius:8px\"><b>' + e(r.edicion_nombre) + '</b><br>Monto: <b>$' + r.monto_usd + '</b> (' + tarifa + ')</p>'\n  + '<p>¿Alguna duda? Escríbenos por WhatsApp al <a href=\"https://wa.me/584125070103\">0412-5070103</a>.</p>'\n  + '<p style=\"color:#6b7b8d;font-size:13px\">Luis Torres · Contador Público · DigiAccount</p></div></div>';\nreturn [{ json: { id: r.id, token: r.token, ruta: r.edicion + '/' + r.id + '.' + (v.ext || 'jpg'), mime: v.mime, aviso,\n  correo: p.correo, asunto: 'Recibimos tu inscripción · Formación Empresarial', html: correo,\n  respuesta: { ok: true, id: r.id, monto_usd: r.monto_usd, monto_bs: r.monto_bs, tarifa: r.tarifa } },\n  binary: $('Validar').first().binary }];"
+   },
+   "name": "Preparar aviso",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    880,
+    300
+   ]
+  },
+  {
+   "parameters": {
+    "conditions": {
+     "options": {
+      "version": 2,
+      "caseSensitive": true,
+      "typeValidation": "loose"
+     },
+     "conditions": [
+      {
+       "id": "a",
+       "leftValue": "={{ $('Validar').first().json.tieneArchivo }}",
+       "rightValue": true,
+       "operator": {
+        "type": "boolean",
+        "operation": "true",
+        "singleValue": true
+       }
+      }
+     ],
+     "combinator": "and"
+    },
+    "options": {}
+   },
+   "name": "¿Trae comprobante?",
+   "type": "n8n-nodes-base.if",
+   "typeVersion": 2.2,
+   "position": [
+    1100,
+    300
+   ]
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "=https://esnicjnuymqgktqoueyq.supabase.co/storage/v1/object/comprobantes-curso/{{ $json.ruta }}",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "supabaseApi",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "Content-Type",
+       "value": "={{ $json.mime }}"
+      },
+      {
+       "name": "x-upsert",
+       "value": "true"
+      }
+     ]
+    },
+    "sendBody": true,
+    "contentType": "binaryData",
+    "inputDataFieldName": "comprobante",
+    "options": {}
+   },
+   "name": "Guardar comprobante (Storage)",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.4,
+   "position": [
+    1320,
+    200
+   ],
+   "credentials": {
+    "supabaseApi": {
+     "id": "6HTJ7SkRWU2wYkmo",
+     "name": "Supabase account"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "https://esnicjnuymqgktqoueyq.supabase.co/rest/v1/rpc/curso_comprobante",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "supabaseApi",
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ p_id: $('Preparar aviso').first().json.id, p_token: $('Preparar aviso').first().json.token, p_ruta: $('Preparar aviso').first().json.ruta }) }}",
+    "options": {}
+   },
+   "name": "Anotar comprobante",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.4,
+   "position": [
+    1540,
+    200
+   ],
+   "credentials": {
+    "supabaseApi": {
+     "id": "6HTJ7SkRWU2wYkmo",
+     "name": "Supabase account"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "operation": "sendDocument",
+    "chatId": "924385022",
+    "binaryData": true,
+    "binaryPropertyName": "comprobante",
+    "additionalFields": {
+     "caption": "={{ $('Preparar aviso').first().json.aviso }}",
+     "parse_mode": "HTML"
+    }
+   },
+   "name": "Avisar a Luis (con comprobante)",
+   "type": "n8n-nodes-base.telegram",
+   "typeVersion": 1.2,
+   "position": [
+    1760,
+    200
+   ],
+   "credentials": {
+    "telegramApi": {
+     "id": "bHEGSP3YFkRPQHsE",
+     "name": "Telegram Bot Asesor"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "chatId": "924385022",
+    "text": "={{ $('Preparar aviso').first().json.aviso }}",
+    "additionalFields": {
+     "appendAttribution": false,
+     "parse_mode": "HTML",
+     "disable_web_page_preview": true
+    }
+   },
+   "name": "Avisar a Luis (sin comprobante)",
+   "type": "n8n-nodes-base.telegram",
+   "typeVersion": 1.2,
+   "position": [
+    1320,
+    420
+   ],
+   "credentials": {
+    "telegramApi": {
+     "id": "bHEGSP3YFkRPQHsE",
+     "name": "Telegram Bot Asesor"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "https://api.resend.com/emails",
+    "authentication": "genericCredentialType",
+    "genericAuthType": "httpHeaderAuth",
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ from: 'DigiAccount · Formación Empresarial <noreply@digiaccount.io>', reply_to: 'gerencia@digiaccount.io', to: [$('Preparar aviso').first().json.correo], subject: $('Preparar aviso').first().json.asunto, html: $('Preparar aviso').first().json.html }) }}",
+    "options": {}
+   },
+   "name": "Correo a la persona (recibida)",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.4,
+   "position": [
+    1980,
+    300
+   ],
+   "credentials": {
+    "httpHeaderAuth": {
+     "id": "u5ikE6vKDD9zuEFu",
+     "name": "Header Auth account"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "respondWith": "text",
+    "responseBody": "={{ JSON.stringify($('Preparar aviso').first().json.respuesta) }}",
+    "options": {
+     "responseHeaders": {
+      "entries": [
+       {
+        "name": "Access-Control-Allow-Origin",
+        "value": "*"
+       }
+      ]
+     }
+    }
+   },
+   "name": "Responder OK",
+   "type": "n8n-nodes-base.respondToWebhook",
+   "typeVersion": 1.1,
+   "position": [
+    2200,
+    300
+   ]
+  },
+  {
+   "parameters": {
+    "httpMethod": "GET",
+    "path": "curso-resolver",
+    "responseMode": "responseNode",
+    "options": {}
+   },
+   "name": "Resolver (GET)",
+   "type": "n8n-nodes-base.webhook",
+   "typeVersion": 2,
+   "position": [
+    0,
+    700
+   ],
+   "webhookId": "curso-resolver"
+  },
+  {
+   "parameters": {
+    "jsCode": "const pagina = (titulo, cuerpo, color) => '<!doctype html><html lang=\"es\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>' + titulo + '</title></head>'\n  + '<body style=\"margin:0;font-family:Arial,sans-serif;background:#eef3f9;color:#1f2933\"><div style=\"max-width:480px;margin:40px auto;padding:0 16px\">'\n  + '<div style=\"background:#001b34;color:#fff;padding:16px 20px;border-radius:10px 10px 0 0\"><b>Digi<span style=\"color:#00bfff\">Account</span></b> · Inscripciones del curso</div>'\n  + '<div style=\"background:#fff;padding:22px 20px;border-radius:0 0 10px 10px;border-top:4px solid ' + (color || '#00bfff') + '\">' + cuerpo + '</div></div></body></html>';\nconst boton = (href, txt, fondo) => '<a href=\"' + href + '\" style=\"display:block;text-align:center;background:' + fondo + ';color:#fff;padding:14px;border-radius:8px;text-decoration:none;font-weight:bold;margin-top:12px\">' + txt + '</a>';\n// Sin «c=1» solo se muestra la confirmación: abrir el enlace (o su vista previa) no cambia nada.\nconst q = $json.query || {};\nconst id = parseInt(q.id, 10), t = String(q.t || ''), aprobar = q.a === 'ok';\nconst valido = id > 0 && /^[0-9a-f-]{36}$/i.test(t) && (q.a === 'ok' || q.a === 'no');\nlet html = '';\nif (!valido) html = pagina('Enlace inválido', '<h2>Enlace inválido</h2><p>Este enlace no corresponde a ninguna inscripción.</p>', '#c0392b');\nelse if (q.c !== '1') html = pagina('Confirmar', '<h2 style=\"margin-top:0\">' + (aprobar ? '¿Aprobar' : '¿Rechazar') + ' la inscripción #' + id + '?</h2>'\n  + '<p>' + (aprobar ? 'Confírmalo solo si ya viste el pago en tu banco o en Binance. La persona recibirá por correo el enlace al grupo de WhatsApp.'\n                     : 'La persona recibirá un correo diciendo que no pudimos verificar su pago y que te escriba.') + '</p>'\n  + boton('?id=' + id + '&t=' + t + '&a=' + q.a + '&c=1', aprobar ? '✅ Sí, aprobar' : '❌ Sí, rechazar', aprobar ? '#1c8f5a' : '#c0392b'));\nreturn [{ json: { ejecutar: valido && q.c === '1', id, t, aprobar, html } }];"
+   },
+   "name": "Decidir",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    220,
+    700
+   ]
+  },
+  {
+   "parameters": {
+    "conditions": {
+     "options": {
+      "version": 2,
+      "caseSensitive": true,
+      "typeValidation": "loose"
+     },
+     "conditions": [
+      {
+       "id": "x",
+       "leftValue": "={{ $json.ejecutar }}",
+       "rightValue": true,
+       "operator": {
+        "type": "boolean",
+        "operation": "true",
+        "singleValue": true
+       }
+      }
+     ],
+     "combinator": "and"
+    },
+    "options": {}
+   },
+   "name": "¿Ejecutar?",
+   "type": "n8n-nodes-base.if",
+   "typeVersion": 2.2,
+   "position": [
+    440,
+    700
+   ]
+  },
+  {
+   "parameters": {
+    "respondWith": "text",
+    "responseBody": "={{ $json.html }}",
+    "options": {
+     "responseHeaders": {
+      "entries": [
+       {
+        "name": "Content-Type",
+        "value": "text/html; charset=utf-8"
+       }
+      ]
+     }
+    }
+   },
+   "name": "Mostrar confirmación",
+   "type": "n8n-nodes-base.respondToWebhook",
+   "typeVersion": 1.1,
+   "position": [
+    660,
+    860
+   ]
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "https://esnicjnuymqgktqoueyq.supabase.co/rest/v1/rpc/curso_resolver",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "supabaseApi",
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ p_id: $json.id, p_token: $json.t, p_aprobar: $json.aprobar }) }}",
+    "options": {}
+   },
+   "name": "Resolver (Supabase)",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.4,
+   "position": [
+    660,
+    700
+   ],
+   "credentials": {
+    "supabaseApi": {
+     "id": "6HTJ7SkRWU2wYkmo",
+     "name": "Supabase account"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "jsCode": "const pagina = (titulo, cuerpo, color) => '<!doctype html><html lang=\"es\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>' + titulo + '</title></head>'\n  + '<body style=\"margin:0;font-family:Arial,sans-serif;background:#eef3f9;color:#1f2933\"><div style=\"max-width:480px;margin:40px auto;padding:0 16px\">'\n  + '<div style=\"background:#001b34;color:#fff;padding:16px 20px;border-radius:10px 10px 0 0\"><b>Digi<span style=\"color:#00bfff\">Account</span></b> · Inscripciones del curso</div>'\n  + '<div style=\"background:#fff;padding:22px 20px;border-radius:0 0 10px 10px;border-top:4px solid ' + (color || '#00bfff') + '\">' + cuerpo + '</div></div></body></html>';\nconst boton = (href, txt, fondo) => '<a href=\"' + href + '\" style=\"display:block;text-align:center;background:' + fondo + ';color:#fff;padding:14px;border-radius:8px;text-decoration:none;font-weight:bold;margin-top:12px\">' + txt + '</a>';\nconst r = $json;\nconst e = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\nif (!r || !r.ok) return [{ json: { enviar: false, html: pagina('No encontrada', '<h2>No encontré esa inscripción</h2><p>Revisa el enlace o búscala en Supabase.</p>', '#c0392b') } }];\nconst aprobado = r.estado === 'aprobado';\nconst nombre1 = e(String(r.nombre).split(' ')[0]);\nconst fecha = r.fecha ? new Date(r.fecha + 'T12:00:00').toLocaleDateString('es-VE', { weekday: 'long', day: 'numeric', month: 'long' }) : 'fecha por confirmar';\nconst grupo = r.grupo_whatsapp || '';\nconst tel = String(r.whatsapp).replace(/\\D/g, '').replace(/^0/, '58');\nconst msgWa = '¡Hola ' + String(r.nombre).split(' ')[0] + '! Tu inscripción al curso «Tu negocio en orden» quedó confirmada ✅. '\n  + (grupo ? 'Únete al grupo del curso aquí: ' + grupo : 'En estos días te agrego al grupo del curso.') + ' Nos vemos el ' + fecha + '.';\nconst correo = '<div style=\"font-family:Arial,sans-serif;max-width:560px;margin:auto;color:#1f2933\">'\n  + '<div style=\"background:#001b34;color:#fff;padding:22px 26px;border-radius:10px 10px 0 0\"><b style=\"font-size:20px\">Digi<span style=\"color:#00bfff\">Account</span></b> · Formación Empresarial</div>'\n  + '<div style=\"border:1px solid #d8dee6;border-top:0;padding:24px 26px;border-radius:0 0 10px 10px\">'\n  + (aprobado\n    ? '<h2 style=\"color:#003057;margin:0 0 12px\">¡Estás inscrito, ' + nombre1 + '! ✅</h2><p>Confirmamos tu pago. Te esperamos en el curso <b>«Tu negocio en orden»</b>:</p>'\n      + '<p style=\"background:#ecf9ff;padding:12px 14px;border-radius:8px\">📅 <b>' + e(fecha) + '</b><br>🕣 ' + e(r.hora) + '<br>📍 ' + e(r.lugar || 'Lugar por confirmar: te avisamos por el grupo') + '</p>'\n      + (grupo ? '<p style=\"text-align:center\"><a href=\"' + e(grupo) + '\" style=\"display:inline-block;background:#25d366;color:#fff;padding:14px 22px;border-radius:8px;text-decoration:none;font-weight:bold\">Unirme al grupo de WhatsApp del curso</a></p>' : '<p>En los próximos días te agregamos al grupo de WhatsApp del curso.</p>')\n      + '<p>Lleva calculadora o teléfono, algo para anotar y, si quieres conciliar tu banco en el taller, el estado de cuenta de un mes. La guía te la entregamos allá.</p>'\n    : '<h2 style=\"color:#003057;margin:0 0 12px\">No pudimos verificar tu pago</h2><p>Hola ' + nombre1 + ', revisamos y no encontramos el pago con los datos que enviaste. Puede ser un error en la referencia o el monto.</p><p>Escríbenos por WhatsApp al <a href=\"https://wa.me/584125070103\">0412-5070103</a> con tu comprobante y lo resolvemos.</p>')\n  + '<p style=\"color:#6b7b8d;font-size:13px\">Luis Torres · Contador Público · DigiAccount</p></div></div>';\nconst cuerpo = (r.ya_resuelta ? '<p style=\"background:#fff7e6;padding:10px;border-radius:6px\">Esta inscripción ya estaba <b>' + r.estado + '</b>: no se cambió ni se reenvió nada.</p>' : '')\n  + '<h2 style=\"margin-top:0\">' + (aprobado ? '✅ Aprobada' : '❌ Rechazada') + ' · #' + r.id + '</h2>'\n  + '<p><b>' + e(r.nombre) + '</b><br>' + e(r.correo) + ' · ' + e(r.whatsapp) + '<br>$' + r.monto_usd + ' (' + e(r.tarifa) + ')</p>'\n  + (aprobado ? '<p>Aprobados en este lote: <b>' + r.aprobados + '</b></p>' + (grupo ? '' : '<p style=\"color:#c0392b\"><b>Ojo:</b> el lote aún no tiene enlace del grupo de WhatsApp (curso_ediciones.grupo_whatsapp).</p>')\n      + boton('https://wa.me/' + tel + '?text=' + encodeURIComponent(msgWa), '💬 Escribirle por WhatsApp', '#25d366') : '');\nreturn [{ json: { enviar: !r.ya_resuelta, correo: r.correo,\n  asunto: aprobado ? '✅ Estás inscrito · Tu negocio en orden' : 'Sobre tu pago del curso · Formación Empresarial',\n  htmlCorreo: correo, html: pagina('Inscripción #' + r.id, cuerpo, aprobado ? '#1c8f5a' : '#c0392b') } }];"
+   },
+   "name": "Armar resultado",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    880,
+    700
+   ]
+  },
+  {
+   "parameters": {
+    "conditions": {
+     "options": {
+      "version": 2,
+      "caseSensitive": true,
+      "typeValidation": "loose"
+     },
+     "conditions": [
+      {
+       "id": "m",
+       "leftValue": "={{ $json.enviar }}",
+       "rightValue": true,
+       "operator": {
+        "type": "boolean",
+        "operation": "true",
+        "singleValue": true
+       }
+      }
+     ],
+     "combinator": "and"
+    },
+    "options": {}
+   },
+   "name": "¿Enviar correo?",
+   "type": "n8n-nodes-base.if",
+   "typeVersion": 2.2,
+   "position": [
+    1100,
+    700
+   ]
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "https://api.resend.com/emails",
+    "authentication": "genericCredentialType",
+    "genericAuthType": "httpHeaderAuth",
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ from: 'DigiAccount · Formación Empresarial <noreply@digiaccount.io>', reply_to: 'gerencia@digiaccount.io', to: [$('Armar resultado').first().json.correo], subject: $('Armar resultado').first().json.asunto, html: $('Armar resultado').first().json.htmlCorreo }) }}",
+    "options": {}
+   },
+   "name": "Correo a la persona (resultado)",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.4,
+   "position": [
+    1320,
+    620
+   ],
+   "credentials": {
+    "httpHeaderAuth": {
+     "id": "u5ikE6vKDD9zuEFu",
+     "name": "Header Auth account"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "respondWith": "text",
+    "responseBody": "={{ $('Armar resultado').first().json.html }}",
+    "options": {
+     "responseHeaders": {
+      "entries": [
+       {
+        "name": "Content-Type",
+        "value": "text/html; charset=utf-8"
+       }
+      ]
+     }
+    }
+   },
+   "name": "Mostrar resultado",
+   "type": "n8n-nodes-base.respondToWebhook",
+   "typeVersion": 1.1,
+   "position": [
+    1540,
+    700
+   ]
+  }
+ ],
+ "connections": {
+  "Config (GET)": {
+   "main": [
+    [
+     {
+      "node": "Leer configuración",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Leer configuración": {
+   "main": [
+    [
+     {
+      "node": "Responder config",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Inscripción (POST)": {
+   "main": [
+    [
+     {
+      "node": "Validar",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Validar": {
+   "main": [
+    [
+     {
+      "node": "¿Válido?",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "¿Válido?": {
+   "main": [
+    [
+     {
+      "node": "Registrar (Supabase)",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Responder rechazo",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Registrar (Supabase)": {
+   "main": [
+    [
+     {
+      "node": "Preparar aviso",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Responder error",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Preparar aviso": {
+   "main": [
+    [
+     {
+      "node": "¿Trae comprobante?",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "¿Trae comprobante?": {
+   "main": [
+    [
+     {
+      "node": "Avisar a Luis (con comprobante)",
+      "type": "main",
+      "index": 0
+     },
+     {
+      "node": "Guardar comprobante (Storage)",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Avisar a Luis (sin comprobante)",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Guardar comprobante (Storage)": {
+   "main": [
+    [
+     {
+      "node": "Anotar comprobante",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Avisar a Luis (con comprobante)": {
+   "main": [
+    [
+     {
+      "node": "Correo a la persona (recibida)",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Avisar a Luis (sin comprobante)": {
+   "main": [
+    [
+     {
+      "node": "Correo a la persona (recibida)",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Correo a la persona (recibida)": {
+   "main": [
+    [
+     {
+      "node": "Responder OK",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Resolver (GET)": {
+   "main": [
+    [
+     {
+      "node": "Decidir",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Decidir": {
+   "main": [
+    [
+     {
+      "node": "¿Ejecutar?",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "¿Ejecutar?": {
+   "main": [
+    [
+     {
+      "node": "Resolver (Supabase)",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Mostrar confirmación",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Resolver (Supabase)": {
+   "main": [
+    [
+     {
+      "node": "Armar resultado",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Armar resultado": {
+   "main": [
+    [
+     {
+      "node": "¿Enviar correo?",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "¿Enviar correo?": {
+   "main": [
+    [
+     {
+      "node": "Correo a la persona (resultado)",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Mostrar resultado",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Correo a la persona (resultado)": {
+   "main": [
+    [
+     {
+      "node": "Mostrar resultado",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1"
+ }
+}
