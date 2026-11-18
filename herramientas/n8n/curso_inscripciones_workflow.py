@@ -227,8 +227,23 @@ nodo('¿Ejecutar?', 'n8n-nodes-base.if', 2.2, {'conditions': {
 responder('Mostrar confirmación', '={{ $json.html }}', [660, 860], html=True)
 rpc('Resolver (Supabase)', 'curso_resolver', '={{ JSON.stringify({ p_id: $json.id, p_token: $json.t, p_aprobar: $json.aprobar }) }}', [660, 700], onError='continueRegularOutput')
 
+# Enlaces de descarga firmados (bucket privado material-curso). Vencen 10 días después
+# del curso (o en 120 días si aún no hay fecha). Si el archivo se reemplaza con el mismo
+# nombre, el mismo enlace baja la versión nueva.
+VENCE = ("={{ JSON.stringify({ expiresIn: (() => { const f = $('Resolver (Supabase)').first().json.fecha; "
+         "const s = f ? Math.round((new Date(f + 'T23:59:00-04:00').getTime() + 10 * 864e5 - Date.now()) / 1000) : 120 * 86400; "
+         "return Math.max(s, 7 * 86400); })() }) }}")
+for i, (nombre, archivo) in enumerate([('Enlace guía', 'Guia-del-Participante.pdf'), ('Enlace plantilla', 'Plantilla-Conciliacion-Bancaria.xlsx')]):
+    nodo(nombre, 'n8n-nodes-base.httpRequest', 4.4, {
+        'method': 'POST', 'url': f'{SUPA}/storage/v1/object/sign/material-curso/{archivo}',
+        'authentication': 'predefinedCredentialType', 'nodeCredentialType': 'supabaseApi',
+        'sendBody': True, 'specifyBody': 'json', 'jsonBody': VENCE, 'options': {}}, [800 + 160 * i, 560], CRED_SUPA, onError='continueRegularOutput')
+
 RESULTADO = PAGINA + r"""
-const r = $json;
+const r = $('Resolver (Supabase)').first().json;
+const firmado = (n, archivo) => { const u = $(n).first().json.signedURL; return u ? 'https://esnicjnuymqgktqoueyq.supabase.co/storage/v1' + u + '&download=' + archivo : ''; };
+const urlGuia = firmado('Enlace guía', 'Guia-del-Participante.pdf');
+const urlPlantilla = firmado('Enlace plantilla', 'Plantilla-Conciliacion-Bancaria.xlsx');
 const e = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 if (!r || !r.ok) return [{ json: { enviar: false, html: pagina('No encontrada', '<h2>No encontré esa inscripción</h2><p>Revisa el enlace o búscala en Supabase.</p>', '#c0392b') } }];
 const aprobado = r.estado === 'aprobado';
@@ -245,14 +260,21 @@ const correo = '<div style="font-family:Arial,sans-serif;max-width:560px;margin:
     ? '<h2 style="color:#003057;margin:0 0 12px">¡Estás inscrito, ' + nombre1 + '! ✅</h2><p>Confirmamos tu pago. Te esperamos en el curso <b>«Tu negocio en orden»</b>:</p>'
       + '<p style="background:#ecf9ff;padding:12px 14px;border-radius:8px">📅 <b>' + e(fecha) + '</b><br>🕣 ' + e(r.hora) + '<br>📍 ' + e(r.lugar || 'Lugar por confirmar: te avisamos por el grupo') + '</p>'
       + (grupo ? '<p style="text-align:center"><a href="' + e(grupo) + '" style="display:inline-block;background:#25d366;color:#fff;padding:14px 22px;border-radius:8px;text-decoration:none;font-weight:bold">Unirme al grupo de WhatsApp del curso</a></p>' : '<p>En los próximos días te agregamos al grupo de WhatsApp del curso.</p>')
-      + '<p>Antes del curso te enviamos a este correo la <b>guía del participante en PDF</b>. Si puedes, imprímela; si no, trae un cuaderno para tus apuntes. Lleva también calculadora o teléfono y, si quieres conciliar tu banco en el taller, el estado de cuenta de un mes.</p>'
+      + (urlGuia
+        ? '<p><b>Tu material del curso</b> (descárgalo desde aquí cuando quieras; si actualizamos la guía, este mismo botón te da la versión nueva):</p>'
+          + '<p style="text-align:center"><a href="' + urlGuia + '" style="display:inline-block;background:#00bfff;color:#001b34;padding:13px 22px;border-radius:8px;text-decoration:none;font-weight:bold;margin:4px">📘 Descargar la guía (PDF)</a>'
+          + (urlPlantilla ? '<a href="' + urlPlantilla + '" style="display:inline-block;background:#003057;color:#fff;padding:13px 22px;border-radius:8px;text-decoration:none;font-weight:bold;margin:4px">📊 Plantilla de conciliación (Excel)</a>' : '') + '</p>'
+          + '<p>Si puedes, <b>imprime la guía</b>; si no, trae un cuaderno para tus apuntes.'
+        : '<p>Antes del curso te enviamos la <b>guía del participante en PDF</b>. Si puedes, imprímela; si no, trae un cuaderno para tus apuntes.')
+      + ' Lleva también calculadora o teléfono y, si quieres conciliar tu banco en el taller, el estado de cuenta de un mes.</p>'
     : '<h2 style="color:#003057;margin:0 0 12px">No pudimos verificar tu pago</h2><p>Hola ' + nombre1 + ', revisamos y no encontramos el pago con los datos que enviaste. Puede ser un error en la referencia o el monto.</p><p>Escríbenos por WhatsApp al <a href="https://wa.me/584125070103">0412-5070103</a> con tu comprobante y lo resolvemos.</p>')
   + '<p style="color:#6b7b8d;font-size:13px">Luis Torres · Contador Público · DigiAccount</p></div></div>';
 const cuerpo = (r.ya_resuelta ? '<p style="background:#fff7e6;padding:10px;border-radius:6px">Esta inscripción ya estaba <b>' + r.estado + '</b>: no se cambió ni se reenvió nada.</p>' : '')
   + '<h2 style="margin-top:0">' + (aprobado ? '✅ Aprobada' : '❌ Rechazada') + ' · #' + r.id + '</h2>'
   + '<p><b>' + e(r.nombre) + '</b><br>' + e(r.correo) + ' · ' + e(r.whatsapp) + '<br>$' + r.monto_usd + ' (' + e(r.tarifa) + ')</p>'
   + (aprobado ? '<p>Aprobados en este lote: <b>' + r.aprobados + '</b></p>' + (grupo ? '' : '<p style="color:#c0392b"><b>Ojo:</b> el lote aún no tiene enlace del grupo de WhatsApp (curso_ediciones.grupo_whatsapp).</p>')
-      + boton('https://wa.me/' + tel + '?text=' + encodeURIComponent(msgWa), '💬 Escribirle por WhatsApp', '#25d366') : '');
+      + boton('https://wa.me/' + tel + '?text=' + encodeURIComponent(msgWa), '💬 Escribirle por WhatsApp', '#25d366')
+      + (urlGuia ? '<p style="font-size:13px;color:#6b7b8d;margin-top:16px">Enlace de la guía para fijarlo en el grupo (vence 10 días después del curso):<br><a href="' + urlGuia + '" style="word-break:break-all">' + urlGuia + '</a></p>' : '') : '');
 return [{ json: { enviar: !r.ya_resuelta, correo: r.correo,
   asunto: aprobado ? '✅ Estás inscrito · Tu negocio en orden' : 'Sobre tu pago del curso · Formación Empresarial',
   htmlCorreo: correo, html: pagina('Inscripción #' + r.id, cuerpo, aprobado ? '#1c8f5a' : '#c0392b') } }];"""
@@ -269,7 +291,9 @@ unir('Resolver (GET)', 'Decidir')
 unir('Decidir', '¿Ejecutar?')
 unir('¿Ejecutar?', 'Resolver (Supabase)', 0)
 unir('¿Ejecutar?', 'Mostrar confirmación', 1)
-unir('Resolver (Supabase)', 'Armar resultado')
+unir('Resolver (Supabase)', 'Enlace guía')
+unir('Enlace guía', 'Enlace plantilla')
+unir('Enlace plantilla', 'Armar resultado')
 unir('Armar resultado', '¿Enviar correo?')
 unir('¿Enviar correo?', 'Correo a la persona (resultado)', 0)
 unir('¿Enviar correo?', 'Mostrar resultado', 1)
